@@ -2189,7 +2189,12 @@ class Workflow:
                     validated.add(ref['hash'])
                 return value
             payload = resolve(envelope['payload'])
-            ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'} | (set(payload) & {'phase_data', 'goal_context', 'goal_context_resolutions', 'workflow', 'stack_integration'}), 'Payload')
+            ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'} | (set(payload) & {'phase_data', 'goal_context', 'goal_context_resolutions', 'workflow', 'stack_integration', 'publication_certificate'}), 'Payload')
+            if 'publication_certificate' in payload:
+                certificate = resolve(payload['publication_certificate'])
+                if (not isinstance(certificate, dict) or certificate.get('type') != 'publication_certificate'
+                        or certificate.get('content', {}).get('goal') != n):
+                    raise ValueError('Stored publication certificate is invalid')
             ev.contract_fields(payload['operational'], {'leases', 'receipts'}, 'Operational payload')
             if not isinstance(payload['evidence'], list): raise ValueError('Evidence must be an ordered Ref array')
             historical_graph = resolve(payload['graph'])
@@ -3665,6 +3670,18 @@ class Workflow:
                 marker = facts.get('updated_at')
                 provider_goal = snapshots.get(key[0], {}).get('issue', {})
                 if not isinstance(marker, str): marker = provider_goal.get('updated_at')
+                if facts.get('merged'):
+                    certificate_ref = snapshots.get(key[0], {}).get('payload', {}).get('publication_certificate')
+                    certificate = artifacts.get(certificate_ref.get('hash')) if isinstance(certificate_ref, dict) else None
+                    if (certificate and certificate.get('type') == 'publication_certificate'
+                            and certificate_ref == self.node_ref(digest(certificate), key[0])):
+                        sealed = certificate.get('content', {})
+                        identity = {'repository': self.repository, 'goal': key[0], 'pr': value['pr'],
+                                    'branch': value['branch'], 'base': value['base'],
+                                    'head_oid': facts['head_oid'], 'base_oid': facts['base_oid']}
+                        if all(sealed.get(name) == expected for name, expected in identity.items()):
+                            self.node_stack_verified_merge(facts)
+                            marker = sealed.get('feedback_marker', marker)
                 if isinstance(marker, str): observed['feedback_marker'] = marker
                 semantic = {**observed, 'context': reference}
                 if policy_section(self.project, 'verification_testing')['configuration']['required_ci'] == 'disabled': semantic.pop('ci')
@@ -4614,6 +4631,18 @@ class Workflow:
             return tree_cache[commit] is not None and tree_cache[commit] == tree_cache[head]
         for key, state in states.items():
             if key in work or state['state'] == 'blocked': continue
+            if (state['contract']['executor']['role'] == 'root'
+                    and any(slot.get('type') == 'merge_observation'
+                            for slot in state['contract']['outputs'].values())):
+                # This terminal task observes GitHub's already merged commit.
+                # It reads no repository files, so a managed checkout would
+                # add a mutable input after the irreversible provider effect.
+                binding = remember({'type': 'workspace_snapshot',
+                    'content': {'git_commit': head}, 'producer': None,
+                    'provenance': {'actor': 'host', 'source': None,
+                                   'policy': self.node_evidence_policy()}})
+                contexts[key] = {'binding': binding, 'acquisition': {}, 'readonly': True}
+                continue
             lease = next((item for item in snapshots[key[0]]['payload']['operational']['leases'] if ev.task_key(item['node']) == key), None)
             previous = projection['current'].get(key, (None, None))[1]
             previous_binding = next((item for item in previous['inputs'] if item['name'] == '__workspace'), None) if previous else None
@@ -5343,7 +5372,17 @@ class Workflow:
             blob = artifacts[identity]
             if blob.get('type') != 'publication_authorization': continue
             value = blob['content']; issuer = projection['states'][key]
-            if issuer['contract']['executor']['role'] != 'root' or result['executor'] != (self.runtime or {}).get('root_id'): continue
+            certificate_ref = snapshot['payload'].get('publication_certificate')
+            certificate = (snapshot['artifacts'].get(certificate_ref.get('hash'))
+                           if isinstance(certificate_ref, dict) else None)
+            retained_authority = (certificate is not None
+                and certificate.get('type') == 'publication_certificate'
+                and certificate_ref == self.node_ref(digest(certificate), snapshot['number'])
+                and certificate.get('content', {}).get('authorization', {}).get('hash') == identity
+                and certificate.get('content', {}).get('goal') == snapshot['number']
+                and certificate.get('provenance', {}).get('root') == result['executor'])
+            if (issuer['contract']['executor']['role'] != 'root'
+                    or result['executor'] != (self.runtime or {}).get('root_id') and not retained_authority): continue
             if not self.node_authorization_policy_matches(value, blob, result, artifacts) or value.get('decision') != 'approved': continue
             if value.get('subject') is not None:
                 subject = owners.get(value.get('subject', {}).get('hash')); review = owners.get(value.get('review', {}).get('hash'))
@@ -5366,6 +5405,13 @@ class Workflow:
                 if len(merge_permits) != 1 or not any(
                         review and artifacts[next(iter(review[1]['outputs'].values()))['hash']]['content'].get('decision') == 'approved'
                         for review in reviews): continue
+            if retained_authority:
+                sealed = certificate['content']; facts = observed.get('provider', {})
+                if (not facts.get('merged') or any(sealed.get(name) != expected for name, expected in {
+                        'repository': self.repository, 'pr': observed['context']['pr'],
+                        'head_oid': facts.get('head_oid'), 'base_oid': facts.get('base_oid'),
+                        'base': facts.get('base_ref')}.items())):
+                    continue
             found.append((next(ref for ref in result['outputs'].values() if ref['hash'] == identity), observed))
         return found
 
@@ -6186,6 +6232,42 @@ class Workflow:
             command.append('--admin')
         else:
             admin_consent = None
+        # Seal the exact pre-effect decision on the member itself.  GitHub's
+        # merge updates the PR timestamp, but that update must not erase the
+        # reviews and approval which authorized this specific head and base.
+        before = publication['provider']
+        certificate_value = {'type': 'publication_certificate', 'content': {
+            'repository': self.repository, 'goal': current['goal'],
+            'pr': f"https://github.com/{self.repository}/pull/{current['pr']}",
+            'branch': current['branch'], 'base': current['base'],
+            'head_oid': current['head'], 'base_oid': current['base_head'],
+            'authorization': current['authorization'],
+            'feedback_marker': publication['observed'].get('feedback_marker'),
+            'policy': digest(self.project['policy']), 'method': plan['method']},
+            'producer': None, 'provenance': {'request_id': request['request_id'],
+                                           'root': self.runtime['root_id']}}
+        certificate_stored = self.artifact(current['goal'], certificate_value)
+        certificate_ref = self.node_ref(certificate_stored['hash'], current['goal'])
+        member_payload = copy.deepcopy(member_snapshot['payload'])
+        member_payload['publication_certificate'] = certificate_ref
+        self.node_persist(member_snapshot, member_payload, {'next_steps': [{
+            'kind': 'checkpoint', 'goal': current['goal'], 'certificate': certificate_ref,
+            'action': 'Exact pre-merge authority and provider identity sealed.'}]},
+            {'operation': 'stack_advance', 'request_id': request['request_id'] + '-certificate',
+             'plan_id': plan['plan_id'], 'expected_revision': plan['revision']})
+        if current['goal'] == number:
+            snapshot = self.node_snapshot(number); payload = copy.deepcopy(snapshot['payload'])
+            if snapshot['envelope']['state'] == 'archived': snapshot['closed_administration'] = True
+            control = self.node_stack_control(snapshot)
+        fresh, _, _ = self.api._github_pull_request_states(self.repo, 'gh',
+            [{'number': current['goal']}], {current['goal']: {'repository_context':
+            {'branch': current['branch'], 'base': current['base'], 'target': plan['target'],
+             'pr': certificate_value['content']['pr']}}})
+        latest = fresh.get(current['goal'], {})
+        if (latest.get('merged') or any(latest.get(name) != before.get(name) for name in
+                ('repository', 'head_oid', 'base_oid', 'base_ref', 'updated_at',
+                 'review_verified', 'checks_verified'))):
+            raise ValueError('Provider changed after pre-merge certificate; review exact current head and feedback')
         attempt_value = {'type': 'stack_attempt', 'content': {'plan_id': plan['plan_id'],
             'request_id': request['request_id'], 'goal': current['goal'], 'head': current['head'],
             'repository': plan['repository'], 'pr': current['pr'], 'method': plan['method'],
@@ -6213,6 +6295,7 @@ class Workflow:
             'revision': plan['revision'], 'attempt': attempt_ref,
             'action': 'Durable provider intent recorded before dispatch.'}]}, intent_request)
         snapshot = self.node_snapshot(number); payload = copy.deepcopy(snapshot['payload'])
+        if snapshot['envelope']['state'] == 'archived': snapshot['closed_administration'] = True
         observation_template = {'type': 'stack_observation', 'content': {
             'plan_id': plan['plan_id'], 'goal': current['goal'], 'head': current['head'],
             'state': 'merged', 'merge_commit': '0' * 40, 'merged_at': '0000-00-00T00:00:00Z'},
@@ -6890,8 +6973,20 @@ class Workflow:
             publication = candidates[0]
             if request.get('expected_digest') != digest(snapshot['envelope']) or request.get('expected_merge') != digest(publication['provider']): raise ValueError('Stale expected source digest or merge evidence')
         if operation == 'integrate':
+            unresolved = projection.get('unresolved_obligations')
+            if not isinstance(unresolved, list):
+                raise ValueError('Finding resolution inventory is unavailable before integration')
+            pending_findings = [identity for goal, identity in unresolved if goal == snapshot['number']]
+            if pending_findings:
+                raise ValueError('Integration has unresolved findings: ' + ', '.join(sorted(pending_findings)))
             facts = publication['provider']
             if request.get('expected_head') != facts['head_oid']: raise ValueError('Expected head differs from current provider head')
+            native = self.node_native_delivery(snapshot)
+            if native:
+                candidate = self.node_candidate_state(snapshot)
+                if (candidate['status'] != 'ready' or candidate['head_oid'] != facts['head_oid']
+                        or candidate['branch'] != publication['context']['branch']):
+                    raise ValueError('Integration differs from the exact reviewed Git candidate')
             release_policy = policy_section(self.project, 'git_review_release')['configuration'].get('release_planning')
             if isinstance(release_policy, dict) and release_policy.get('enabled'):
                 release_plan = self.api.GitHubReleasePlanAdapter(self.repo, self.repository).read(self.repository)
@@ -6907,10 +7002,43 @@ class Workflow:
                 if decision['status'] != 'authorized':
                     raise ValueError(f"Release integration blocked: {decision['code']}")
             if not facts.get('merged'):
-                result = subprocess.run(['gh', 'pr', 'merge', publication['context']['pr'], '--squash', '--match-head-commit', facts['head_oid']], cwd=self.repo, capture_output=True, text=True, check=True)
+                context = publication['context']
+                certificate_value = {'type': 'publication_certificate', 'content': {
+                    'repository': self.repository, 'goal': snapshot['number'],
+                    'pr': context['pr'], 'branch': context['branch'], 'base': context['base'],
+                    'head_oid': facts['head_oid'], 'base_oid': facts['base_oid'],
+                    'authorization': request['authorization'],
+                    'feedback_marker': publication['observed'].get('feedback_marker'),
+                    'policy': digest(self.project['policy']),
+                    'method': 'merge' if native else 'squash'},
+                    'producer': None, 'provenance': {'request_id': request['request_id'],
+                                                   'root': self.runtime['root_id']}}
+                stored = self.artifact(snapshot['number'], certificate_value)
+                certificate_ref = self.node_ref(stored['hash'], snapshot['number'])
+                certificate_payload = copy.deepcopy(payload)
+                certificate_payload['publication_certificate'] = certificate_ref
+                self.node_persist(snapshot, certificate_payload, {'next_steps': [{
+                    'kind': 'checkpoint', 'goal': snapshot['number'], 'certificate': certificate_ref,
+                    'action': 'Exact pre-merge authority and provider identity sealed.'}]},
+                    {'operation': 'integrate', 'request_id': request['request_id'] + '-certificate',
+                     'authorization': request['authorization'], 'expected_head': facts['head_oid']})
+                snapshot = self.node_snapshot(snapshot['number']); payload = copy.deepcopy(snapshot['payload'])
+                before, _, _ = self.api._github_pull_request_states(self.repo, 'gh',
+                    [{'number': snapshot['number']}], {snapshot['number']: {'repository_context': context}})
+                latest = before.get(snapshot['number'], {})
+                if (latest.get('merged') or any(latest.get(name) != facts.get(name) for name in
+                        ('repository', 'head_oid', 'base_oid', 'base_ref', 'updated_at',
+                         'review_verified', 'checks_verified'))):
+                    raise ValueError('Provider changed after pre-merge certificate; retry against exact current facts')
+                subprocess.run(['gh', 'pr', 'merge', context['pr'],
+                    '--merge' if native else '--squash', '--match-head-commit', facts['head_oid']],
+                    cwd=self.repo, capture_output=True, text=True, check=True)
                 observed, _, _ = self.api._github_pull_request_states(self.repo, 'gh', [{'number': snapshot['number']}], {snapshot['number']: {'repository_context': publication['context']}})
                 after = observed.get(snapshot['number'], {})
                 if not after.get('merged') or any(after.get(name) != facts.get(name) for name in ('repository', 'head_oid', 'base_oid', 'base_ref')): raise ValueError('Provider did not confirm exact authorized merge; retry same request')
+                self.node_stack_verified_merge(after)
+            else:
+                self.node_stack_verified_merge(facts)
             response = {'next_steps': [{'kind': 'checkpoint', 'goal': snapshot['number'], 'action': 'Provider merge observed; configured post-effect evidence remains required.'}]}
         else:
             complete = projection['complete']
@@ -6927,6 +7055,106 @@ class Workflow:
             response = {'next_steps': [{'kind': 'checkpoint', 'goal': snapshot['number'], 'provider_state': 'closed' if close else 'open',
                                         'action': 'Observed merge reconciled; semantic Results preserved.'}]}
         return self.node_persist(snapshot, payload, response, request)
+
+    def node_terminal_merge_reconcile(self, number):
+        """Finish a confirmed merge through the reviewed terminal task contract.
+
+        Every mutation below is a normal public task transition with a real
+        root-owned lease.  Stable request IDs make a restart after any write
+        resume the same attempt rather than publish a second merge or Result.
+        """
+        root = (self.runtime or {}).get('root_id')
+        if not root:
+            raise ValueError('Terminal merge reconciliation requires authenticated root')
+        self.invalidate()
+        snapshot = self.node_snapshot(number)
+        if snapshot['envelope']['state'] == 'archived':
+            if str(snapshot['issue'].get('state', '')).lower() != 'closed':
+                completed = any(any(step.get('provider_state') == 'closed'
+                    for step in self.read_artifact(number, receipt['result']).get('next_steps', []))
+                    for receipt in snapshot['payload']['operational']['receipts'])
+                merged = any(state.get('publication', {}).get('provider', {}).get('merged')
+                    for state in snapshot['projection']['states'].values()
+                    if state['node']['goal'] == number)
+                if not completed or not merged or snapshot['projection']['complete'] is not True:
+                    raise ValueError('Archived open issue lacks exact terminal closure evidence')
+                with self.locked():
+                    before = self.adapter.get_issue(number)
+                    if before.get('body') != snapshot['issue']['body']:
+                        raise ValueError('Archived goal changed before provider close retry')
+                    try:
+                        self.adapter.update_issue(number, {'state': 'closed'})
+                    except (OSError, RuntimeError):
+                        pass
+                    after = self.adapter.get_issue(number)
+                    if after.get('body') != before['body'] or str(after.get('state', '')).lower() != 'closed':
+                        raise ValueError('Provider goal closure remains unconfirmed; retry exact integration request')
+            return {'status': 'closed', 'goal': number}
+        candidates = [(key, state) for key, state in snapshot['projection']['states'].items()
+                      if key[0] == number and any(slot.get('type') == 'merge_observation'
+                             for slot in state['contract']['outputs'].values())]
+        if len(candidates) != 1:
+            raise ValueError('Configured terminal merge observation is missing or ambiguous')
+        key, state = candidates[0]
+        publication = state.get('publication')
+        if not publication or not publication['provider'].get('merged'):
+            raise ValueError('Exact provider merge is not currently observed')
+        merge_commit, merged_at = self.node_stack_verified_merge(publication['provider'])
+        if state['contract']['executor']['role'] != 'root':
+            raise ValueError('Reviewed terminal observation must be assigned to root for automatic closure')
+        node = state['node']
+        prefix = 'terminal-' + str(number) + '-' + merge_commit
+        if key not in snapshot['projection']['current']:
+            lease = snapshot['projection']['leases'].get(key)
+            expected_input = state.get('input_hash') or (lease or {}).get('fingerprint')
+            if lease is None:
+                if state['state'] != 'ready':
+                    raise ValueError('Terminal merge observation is not ready for acquisition')
+                _, policy_receipt = self.node_policy(state)
+                self.node_mutate_phase(number, {'operation': 'start', 'node': node,
+                    'input_hash': expected_input, 'policy_receipt': policy_receipt,
+                    'request_id': prefix + '-start'})
+                self.invalidate(); snapshot = self.node_snapshot(number)
+                state = snapshot['projection']['states'][key]
+                lease = snapshot['projection']['leases'].get(key)
+            if not lease or lease['owner'] != root or lease['fingerprint'] != expected_input:
+                raise ValueError('Terminal merge observation has another or stale owner; reconcile its exact lease')
+            if lease['worker'] is None:
+                _, policy_receipt = self.node_policy(state)
+                self.node_mutate_phase(number, {'operation': 'bind', 'node': node,
+                    'lease': lease['token'], 'actor': root, 'selection': lease['selection'],
+                    'policy_receipt': policy_receipt, 'request_id': prefix + '-bind'})
+                self.invalidate(); snapshot = self.node_snapshot(number)
+                state = snapshot['projection']['states'][key]
+                lease = snapshot['projection']['leases'][key]
+            if lease['worker'] != root:
+                raise ValueError('Terminal merge observation is bound to another worker')
+            references = [row['source'] for row in state['inputs']
+                          if snapshot['artifacts'][row['source']['hash']].get('type') == 'publication_authorization']
+            if len(references) != 1:
+                raise ValueError('Terminal merge observation lacks one exact authorization')
+            value = {name: publication['observed'][name] for name in
+                     ('repository', 'pr', 'head_oid', 'base_oid', 'base_ref')}
+            value.update(authorization=references[0], merge_commit=merge_commit, merged_at=merged_at)
+            outputs = {slot: value for slot, contract in state['contract']['outputs'].items()
+                       if contract.get('type') == 'merge_observation'}
+            if set(outputs) != set(state['contract']['outputs']):
+                raise ValueError('Terminal merge task has unsupported additional outputs')
+            self.node_mutate_phase(number, {'operation': 'submit', 'node': node,
+                'lease': lease['token'], 'actor': root, 'outputs': outputs,
+                'request_id': prefix + '-submit'})
+            self.invalidate(); snapshot = self.node_snapshot(number)
+        if not snapshot['projection']['complete']:
+            raise ValueError('Merged goal still has unsatisfied terminal evidence or findings')
+        authorities = self.node_publication_authorities(snapshot)
+        if len(authorities) != 1:
+            raise ValueError('Merged goal needs one current reviewed publication authorization')
+        self.node_mutate_phase(number, {'operation': 'complete', 'authorization': authorities[0][0],
+            'request_id': prefix + '-complete'})
+        self.invalidate(); closed = self.node_snapshot(number)
+        if closed['envelope']['state'] != 'archived' or str(closed['issue'].get('state', '')).lower() != 'closed':
+            raise ValueError('Terminal merge closure was not confirmed')
+        return {'status': 'closed', 'goal': number, 'merge_commit': merge_commit}
 
     def node_continuation(self, snapshot, payload, node, result):
         number = snapshot['number']
@@ -7261,7 +7489,7 @@ class Workflow:
         if snapshot.get('capture') and observed.get('number') != number:
             raise ValueError('Capture provider readback changed issue identity')
         if observed['body'] != issue['body']: raise ValueError('Concurrent source edit before body publication')
-        if str(observed.get('state', '')).lower() == 'closed' and not snapshot.get('archive'):
+        if str(observed.get('state', '')).lower() == 'closed' and not (snapshot.get('archive') or snapshot.get('closed_administration')):
             raise ValueError('Goal closed before body publication; explicit reopening is required')
         # Ordinary checkpoints own only the managed body. Resending snapshot
         # labels/state would overwrite unrelated edits or reopen a closed goal.
@@ -7284,8 +7512,10 @@ class Workflow:
                     or confirmed.get('issue') != number):
                 raise ValueError('Provider did not confirm capture repository/issue identity')
         if snapshot.get('archive') and str(updated.get('state', '')).lower() != 'closed': raise ValueError('Provider did not confirm goal closure; repair partial state')
-        if not snapshot.get('archive') and str(updated.get('state', '')).lower() == 'closed':
+        if not (snapshot.get('archive') or snapshot.get('closed_administration')) and str(updated.get('state', '')).lower() == 'closed':
             raise ValueError('Goal closed during body publication; execution cannot resume without explicit reopening')
+        if snapshot.get('closed_administration') and str(updated.get('state', '')).lower() != 'closed':
+            raise ValueError('Closed stack coordinator changed provider state')
         self.invalidate()
         if snapshot.get('capture'):
             return response
@@ -7498,7 +7728,9 @@ class Workflow:
                         if receipt['payload'] != digest(request): raise ValueError('Request receipt payload conflict')
                         response = self.node_receipt_response(number, request, receipt, self.artifact_index(number).resolve(receipt['result']['hash'])[0])
                         if any(step.get('provider_state') == 'closed' for step in response['next_steps']) and str(issue.get('state', '')).lower() != 'closed': raise ValueError('Stored closure receipt conflicts with partial provider state; repair required')
-                        if str(issue.get('state', '')).lower() == 'closed' and not any(step.get('provider_state') == 'closed' for step in response['next_steps']):
+                        if (str(issue.get('state', '')).lower() == 'closed'
+                                and request.get('operation') not in {'stack_status', 'stack_advance', 'integrate'}
+                                and not any(step.get('provider_state') == 'closed' for step in response['next_steps'])):
                             raise ValueError('Closed goal cannot resume an execution receipt without explicit reopening')
                         return self.stop_completed_heartbeat(number, request, durable['operational'], response)
             ownership_graph = None
@@ -7506,7 +7738,15 @@ class Workflow:
                 ownership_reference = durable.get('workflow', {}).get('graph', durable['graph'])
                 ownership_graph = self.artifact_index(number).resolve(ownership_reference['hash'])[0]
             snapshot = self.node_snapshot(number, graph_override=ownership_graph)
-            if snapshot['envelope']['state'] != 'open' or str(snapshot['issue'].get('state', '')).lower() == 'closed': raise ValueError('Archived goal cannot execute or mutate')
+            closed = (snapshot['envelope']['state'] != 'open'
+                      or str(snapshot['issue'].get('state', '')).lower() == 'closed')
+            if closed:
+                if (request.get('operation') not in {'stack_status', 'stack_advance'}
+                        or snapshot['envelope']['state'] != 'archived'
+                        or str(snapshot['issue'].get('state', '')).lower() != 'closed'
+                        or not snapshot['payload'].get('stack_integration', {}).get('plan')):
+                    raise ValueError('Archived goal cannot execute or mutate')
+                snapshot['closed_administration'] = True
             if snapshot.get('workflow_migration_blocker') and request.get('operation') not in {'recover', 'release', 'renew'}:
                 raise ValueError(snapshot['workflow_migration_blocker'])
             payload = copy.deepcopy(snapshot['payload']); projection = snapshot['projection']
@@ -8968,6 +9208,29 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                         and 'files' not in prior['acquisition']):
                     stopped_attempt = prior
         result = engine.mutate(number, payload)
+        terminal_goal = number if operation == 'integrate' else None
+        if operation == 'stack_advance':
+            for step in result.get('next_steps', []):
+                reference = step.get('observation')
+                if not isinstance(reference, dict):
+                    continue
+                observation = engine.read_artifact(number, reference)
+                if (isinstance(observation, dict) and observation.get('type') == 'stack_observation'
+                        and observation.get('content', {}).get('state') == 'merged'):
+                    terminal_goal = observation['content']['goal']
+                    break
+        if terminal_goal is not None:
+            try:
+                terminal = engine.node_terminal_merge_reconcile(terminal_goal)
+            except (ValueError, KeyError, OSError, RuntimeError, subprocess.SubprocessError) as exc:
+                terminal = {'status': 'pending', 'goal': terminal_goal, 'reason': str(exc),
+                            'action': 'Retry this exact integration request after reconciling the reported terminal authority; the provider merge must only be observed.'}
+            result.setdefault('next_steps', []).append({'kind': 'terminal_reconciliation', **terminal})
+            if terminal['status'] == 'closed':
+                for step in result['next_steps']:
+                    if step.get('kind') == 'checkpoint' and step.get('goal') == terminal_goal:
+                        step['provider_state'] = 'closed'
+                        step['action'] = 'Exact provider merge observed and goal terminal evidence closed.'
         if operation == 'integrate':
             cleanup = None
             try:

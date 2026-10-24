@@ -808,6 +808,37 @@ class GenericPublicationPublicTests(DagFixture):
                         "pr": "https://github.com/owner/repo/pull/9"}
         self.configure()
 
+    def test_direct_integration_rejects_later_unresolved_finding(self):
+        engine = z._workflow.Workflow.__new__(z._workflow.Workflow)
+        engine.runtime = {"root_id": "root"}
+        authorization = {"hash": "sha256:" + "a" * 64, "uri": "urn:sha256:" + "a" * 64}
+        engine.node_publication_authorities = lambda snapshot: [(authorization, {
+            "observed": {}, "provider": {"head_oid": "b" * 40}})]
+        engine.node_ci_required = lambda observed: None
+        snapshot = {"number": 100, "projection": {"states": {},
+            "unresolved_obligations": [(100, "finding-after-review")]}}
+        payload = {"operational": {"leases": []}}
+        with self.assertRaisesRegex(ValueError, "unresolved findings"):
+            engine.node_publication_operation(snapshot, payload, {
+                "operation": "integrate", "request_id": "finding-gate",
+                "authorization": authorization, "expected_head": "b" * 40})
+
+    def test_terminal_reconciliation_selects_only_addressed_goal_in_related_closure(self):
+        engine = z._workflow.Workflow.__new__(z._workflow.Workflow)
+        engine.runtime = {"root_id": "root"}
+        engine.invalidate = lambda: None
+        def state(goal):
+            return {"node": {"goal": goal, "node": "observed_merge"},
+                "contract": {"outputs": {"value": {"type": "merge_observation"}},
+                             "executor": {"role": "worker"}},
+                "publication": {"provider": {"merged": True,
+                    "merge_commit": "f" * 40, "merged_at": "2026-09-29T15:00:00Z"}}}
+        engine.node_snapshot = lambda goal: {"envelope": {"state": "open"},
+            "projection": {"states": {(100, "observed_merge"): state(100),
+                                      (101, "observed_merge"): state(101)}}}
+        with self.assertRaisesRegex(ValueError, "assigned to root"):
+            engine.node_terminal_merge_reconcile(100)
+
     def provider_command(self, command, *args, **kwargs):
         if list(command[:1]) != ["gh"]:
             return None
@@ -945,6 +976,109 @@ class GenericPublicationPublicTests(DagFixture):
         return {"authorization": self.produced(self.ids["approve"]),
                 **{key: (self.context["pr"] if key == "pr" else self.observation[key])
                    for key in ("repository", "pr", "head_oid", "base_oid", "base_ref", "merge_commit", "merged_at")}}
+
+    def test_integrate_closes_root_terminal_and_exact_retry_does_not_merge_again(self):
+        self.observation["updated_at"] = "2026-09-29T14:00:00Z"
+        provider_command = self.provider_command
+        def merge_updates_provider_marker(command, *args, **kwargs):
+            result = provider_command(command, *args, **kwargs)
+            if list(command[:3]) == ["gh", "pr", "merge"]:
+                self.observation["updated_at"] = "2026-09-29T15:00:00Z"
+            return result
+        self.session.provider_command = merge_updates_provider_marker
+        graph = self.with_merge_observation(copy.deepcopy(self.graph))
+        graph["nodes"][-1]["executor"]["role"] = "root"
+        graph["terminals"] = [selector("observed_merge")]
+        self.install(graph)
+        self.authorize_context()
+        authority = self.approve_publication()
+        request = self.integration_request(authority)
+        request["request_id"] = "root-terminal-merge"
+        first = self.session.call(100, request)
+        self.assertIn("closed", json.dumps(first))
+        self.assertEqual("closed", self.provider.issues[100]["state"])
+        self.assertEqual(1, len(self.merge_calls))
+        replay = self.session.call(100, request)
+        self.assertIn("closed", json.dumps(replay))
+        self.assertEqual(1, len(self.merge_calls))
+
+    def test_integrate_recovers_provider_merge_before_goal_receipt(self):
+        graph = self.with_merge_observation(copy.deepcopy(self.graph))
+        graph["nodes"][-1]["executor"]["role"] = "root"
+        graph["terminals"] = [selector("observed_merge")]
+        self.install(graph)
+        self.authorize_context()
+        authority = self.approve_publication()
+        request = self.integration_request(authority)
+        request["request_id"] = "merged-before-goal-write"
+        update = self.provider.update_issue
+        interrupted = []
+        def fail_once_after_merge(number, payload):
+            if self.observation["merged"] and not interrupted:
+                interrupted.append(True)
+                raise RuntimeError("goal receipt write interrupted after provider merge")
+            return update(number, payload)
+        self.provider.update_issue = fail_once_after_merge
+        first = self.session.call(100, request, expected=2)
+        self.assertTrue(interrupted)
+        self.assertRegex(json.dumps(first), r"(?i)retry|repair|unconfirmed")
+        self.assertEqual(1, len(self.merge_calls))
+        self.assertEqual("open", self.provider.issues[100]["state"])
+        replay = self.session.call(100, request)
+        self.assertIn("closed", json.dumps(replay))
+        self.assertEqual("closed", self.provider.issues[100]["state"])
+        self.assertEqual(1, len(self.merge_calls))
+
+    def test_feedback_change_after_certificate_blocks_provider_merge(self):
+        self.observation["updated_at"] = "2026-09-29T14:00:00Z"
+        graph = self.with_merge_observation(copy.deepcopy(self.graph))
+        graph["nodes"][-1]["executor"]["role"] = "root"
+        graph["terminals"] = [selector("observed_merge")]
+        self.install(graph)
+        self.authorize_context()
+        authority = self.approve_publication()
+        request = self.integration_request(authority)
+        request["request_id"] = "feedback-after-certificate"
+        update = self.provider.update_issue
+        changed = []
+        def change_feedback_after_certificate(number, payload):
+            observed = update(number, payload)
+            if not self.observation['merged'] and not changed:
+                changed.append(True)
+                self.observation["updated_at"] = "2026-09-29T14:01:00Z"
+            return observed
+        self.provider.update_issue = change_feedback_after_certificate
+        rejected = self.session.call(100, request, expected=2)
+        self.assertTrue(changed)
+        self.assertRegex(json.dumps(rejected), r"(?i)provider changed|feedback|review")
+        self.assertEqual([], self.merge_calls)
+        self.assertEqual("open", self.provider.issues[100]["state"])
+
+    def test_retry_finishes_archived_body_with_provider_issue_still_open(self):
+        graph = self.with_merge_observation(copy.deepcopy(self.graph))
+        graph["nodes"][-1]["executor"]["role"] = "root"
+        graph["terminals"] = [selector("observed_merge")]
+        self.install(graph)
+        self.authorize_context()
+        authority = self.approve_publication()
+        request = self.integration_request(authority)
+        request["request_id"] = "partial-issue-close"
+        update = self.provider.update_issue
+        partial = []
+        def close_body_without_state(number, payload):
+            if payload.get("state") == "closed" and not partial:
+                partial.append(True)
+                return update(number, {"body": payload["body"]})
+            return update(number, payload)
+        self.provider.update_issue = close_body_without_state
+        first = self.session.call(100, request)
+        self.assertTrue(partial)
+        self.assertEqual("open", self.provider.issues[100]["state"])
+        self.assertRegex(json.dumps(first), r"(?i)pending|unconfirmed")
+        replay = self.session.call(100, request)
+        self.assertIn("closed", json.dumps(replay))
+        self.assertEqual("closed", self.provider.issues[100]["state"])
+        self.assertEqual(1, len(self.merge_calls))
 
     def test_integrate_precedes_post_effect_terminal_and_observation_is_exact(self):
         self.install(self.with_merge_observation(copy.deepcopy(self.graph)))
@@ -1300,6 +1434,8 @@ class GenericPublicationPublicTests(DagFixture):
 
     def test_public_abc_stack_persists_and_resumes_each_authorized_effect(self):
         graph = self.with_merge_observation(copy.deepcopy(self.graph))
+        graph["nodes"][-1]["executor"]["role"] = "root"
+        graph["terminals"] = [selector("observed_merge")]
         def symbolic(value):
             if isinstance(value, dict):
                 return {key: ("#this" if key == "goal" and child == 100 else symbolic(child))
@@ -1445,24 +1581,15 @@ class GenericPublicationPublicTests(DagFixture):
         observation = resumed.read(100, observation_ref)
         self.assertEqual(heads[100], observation["content"]["head"])
         self.assertEqual("merged", observation["content"]["state"])
-        self.assertEqual(evidence_before, {number: self.read_at(
-            number, self.envelope_for(number)["payload"])["evidence"]
-            for number in (100, 101, 102)}, "Administrative observation cannot mint Results")
+        self.assertEqual(evidence_before[101], self.read_at(
+            101, self.envelope_for(101)["payload"])["evidence"])
+        self.assertEqual(evidence_before[102], self.read_at(
+            102, self.envelope_for(102)["payload"])["evidence"])
+        self.assertEqual(len(evidence_before[100]) + 1, len(self.read_at(
+            100, self.envelope_for(100)["payload"])["evidence"]),
+            "The terminal Result belongs to the merged member, not the coordinator observation")
 
-        blocked = resumed.call(100, {"operation": "stack_advance",
-            "request_id": "public-abc-b-blocked", "plan_id": prepared["plan_id"],
-            "expected_revision": prepared["revision"] + 1}, expected=2)
-        self.assertRegex(json.dumps(blocked), r"(?i)phase|result|authorization|root|current|reconcile")
-        self.assertEqual(1, len(self.merge_calls))
-
-        observed = resumed.acquire("observed_merge", number=100, actor="merge-observer")
-        merge = self.stack_observations[100]
-        resumed.finish(observed, {"value": {
-            "authorization": produced(100, "approve"), "repository": "owner/repo",
-            "pr": context_value(100)["pr"], "head_oid": heads[100],
-            "base_oid": bases[100][1], "base_ref": bases[100][0],
-            "merge_commit": merge["merge_commit"], "merged_at": merge["merged_at"],
-        }}, number=100)
+        self.assertEqual("closed", self.provider.issues[100]["state"])
         reconciled_a = resumed.call(100, {"operation": "stack_advance",
             "request_id": "public-abc-a-reconcile", "plan_id": prepared["plan_id"],
             "expected_revision": prepared["revision"] + 1})
