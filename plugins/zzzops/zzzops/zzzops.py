@@ -135,6 +135,14 @@ _working_inputs = importlib.util.module_from_spec(_WORKING_INPUTS_MODULE_SPEC)
 sys.modules[_WORKING_INPUTS_MODULE_SPEC.name] = _working_inputs
 _WORKING_INPUTS_MODULE_SPEC.loader.exec_module(_working_inputs)
 
+_ARCHIVED_PREREQUISITES_PATH = Path(__file__).with_name("archived_prerequisites.py")
+_ARCHIVED_PREREQUISITES_SPEC = importlib.util.spec_from_file_location(
+    "zzzops_archived_prerequisites", _ARCHIVED_PREREQUISITES_PATH)
+assert _ARCHIVED_PREREQUISITES_SPEC and _ARCHIVED_PREREQUISITES_SPEC.loader
+_archived_prerequisites = importlib.util.module_from_spec(_ARCHIVED_PREREQUISITES_SPEC)
+sys.modules[_ARCHIVED_PREREQUISITES_SPEC.name] = _archived_prerequisites
+_ARCHIVED_PREREQUISITES_SPEC.loader.exec_module(_archived_prerequisites)
+
 _RELEASES_MODULE_PATH = Path(__file__).with_name("releases.py")
 _RELEASES_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_releases", _RELEASES_MODULE_PATH)
 assert _RELEASES_MODULE_SPEC and _RELEASES_MODULE_SPEC.loader
@@ -997,6 +1005,53 @@ class GitHubGoalTransitionAdapter:
         if not isinstance(issue, dict):
             raise GoalTransitionProviderError("GitHub returned incomplete goal data; no goal update was made.")
         return issue
+
+    def archived_prerequisite_pull(self, number: int) -> dict[str, Any]:
+        """Read one exact PR for a reviewed historical dependency candidate."""
+        self.ensure_identity()
+        result = self._run(["api", f"repos/{self.repository}/pulls/{number}"])
+        if result.returncode:
+            raise self._provider_error(result)
+        try:
+            row = json.loads(result.stdout)
+            base = row['base']
+            return {'number': row['number'],
+                    'baseRepository': base['repo']['full_name'],
+                    'baseRefName': base['ref'],
+                    'state': 'MERGED' if row.get('merged_at') else row.get('state'),
+                    'mergedAt': row.get('merged_at'),
+                    'headRefOid': row['head']['sha'],
+                    'mergeCommit': {'oid': row.get('merge_commit_sha')},
+                    'body': row.get('body') or ''}
+        except (KeyError, TypeError, ValueError) as exc:
+            raise GoalTransitionProviderError('Historical pull request response is incomplete') from exc
+
+    def archived_prerequisite_reachable(self, merge_oid: str, branch: str) -> bool:
+        """Compare immutable merge and observed branch OIDs at the provider."""
+        self.ensure_identity()
+        if (re.fullmatch(r'[0-9a-f]{40}', merge_oid) is None
+                or re.fullmatch(r'[A-Za-z0-9._/-]{1,128}', branch) is None
+                or '..' in branch or branch.startswith('/') or branch.endswith('/')):
+            raise ValueError('Historical integration comparison identity is invalid')
+        head = self._run(['api', f'repos/{self.repository}/git/ref/heads/{branch}'])
+        if head.returncode:
+            raise self._provider_error(head)
+        try:
+            branch_oid = json.loads(head.stdout)['object']['sha']
+        except (KeyError, TypeError, ValueError) as exc:
+            raise GoalTransitionProviderError('Historical integration branch response is incomplete') from exc
+        if not isinstance(branch_oid, str) or re.fullmatch(r'[0-9a-f]{40}', branch_oid) is None:
+            raise GoalTransitionProviderError('Historical integration branch OID is invalid')
+        comparison = self._run(['api', f'repos/{self.repository}/compare/{merge_oid}...{branch_oid}'])
+        if comparison.returncode:
+            raise self._provider_error(comparison)
+        try:
+            row = json.loads(comparison.stdout)
+        except ValueError as exc:
+            raise GoalTransitionProviderError('Historical integration comparison is malformed') from exc
+        if row.get('status') not in {'ahead', 'identical', 'diverged', 'behind'}:
+            raise GoalTransitionProviderError('Historical integration comparison is incomplete')
+        return row['status'] in {'ahead', 'identical'}
 
     def find_capture_goal(self, marker: str) -> dict[str, Any] | None:
         """Recover one exact marked create after an uncertain provider response."""

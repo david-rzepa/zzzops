@@ -198,6 +198,7 @@ class ObservedArtifactIndex(comment_store.ArtifactIndex):
 PUBLIC_OPERATIONS = frozenset({
     'batch', 'bind', 'block', 'phase_finding', 'resolve_goal_blocker',
     'goal_dependency_prepare', 'goal_dependency_review', 'goal_dependency_apply',
+    'goal_external_blocker_prepare',
     'graph_normalize', 'migration_batch', 'graph_prepare', 'graph_review', 'graph_adopt', 'graph_review_bootstrap',
     'checkpoint_reconcile_prepare', 'checkpoint_reconcile_review', 'checkpoint_reconcile_adopt',
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
@@ -4850,6 +4851,16 @@ class Workflow:
                     'action': ('Root must judge whether immutable current evidence satisfies this exact obligation. '
                                'Human-action blockers also require explicit user approval attribution.'),
                     'submission': submission})
+                if blocker.get('category') == 'external-dependency':
+                    for prerequisite in context.get('depends_on', []):
+                        resolution_steps.append({'kind': 'goal_external_blocker_prepare',
+                            'assignment': 'root', 'goal': number,
+                            'blocker': copy.deepcopy(blocker), 'prerequisite': prerequisite,
+                            'action': 'Inspect the exact archived prerequisite and linked merged PR; this preview grants no authority.',
+                            'submission': {'operation': 'goal_external_blocker_prepare',
+                                'request_id': '<unique request id>', 'context_hash': context_ref['hash'],
+                                'blocker_hash': identity, 'prerequisite': prerequisite,
+                                'pull_number': '<linked PR number>'}})
         if snapshot.get('workflow_migration_blocker'):
             return [*resolution_steps, {'kind': 'blocker', 'goal': number,
                      'reason': snapshot['workflow_migration_blocker'],
@@ -5430,6 +5441,74 @@ class Workflow:
         with phase():
             return self.node_mutate_phase(
                 number, request, prepared_verification=context['identity'])
+
+    def node_external_blocker_candidate(self, snapshot, request):
+        """Preview one historical prerequisite without evaluating its phase DAG."""
+        required = {'operation', 'request_id', 'context_hash', 'blocker_hash',
+                    'prerequisite', 'pull_number'}
+        if set(request) != required or request['operation'] != 'goal_external_blocker_prepare':
+            raise ValueError('Archived blocker preview requires one exact blocker and prerequisite')
+        number = snapshot['number']
+        context = snapshot.get('goal_context') or {}
+        original = snapshot.get('original_goal_context') or {}
+        context_ref = snapshot.get('goal_context_ref')
+        if (not isinstance(request['request_id'], str) or not request['request_id']
+                or context_ref is None or request['context_hash'] != context_ref['hash']):
+            raise ValueError('Archived blocker preview request or context is stale')
+        matches = [row for row in original.get('blockers', [])
+                   if digest(row) == request['blocker_hash']]
+        if (len(matches) != 1 or matches[0].get('category') != 'external-dependency'
+                or not any(digest(row) == request['blocker_hash']
+                           for row in context.get('blockers', []))):
+            raise ValueError('Archived blocker preview identifies no unique open external obligation')
+        prerequisite = request['prerequisite']
+        if (type(prerequisite) is not int or prerequisite <= 0 or prerequisite == number
+                or prerequisite not in context.get('depends_on', [])):
+            raise ValueError('Archived blocker preview requires one declared same-goal-context prerequisite')
+        pull_number = request['pull_number']
+        if type(pull_number) is not int or pull_number <= 0:
+            raise ValueError('Archived blocker preview requires an exact linked PR number')
+        issue = self.adapter.get_issue(prerequisite)
+        envelope = self.api.parse_managed_goal(issue.get('body', ''), prerequisite)
+        if not envelope or envelope.get('schema_version') != 2:
+            raise ValueError('Archived prerequisite has no readable v2 envelope')
+        archived_payload = self.read_artifact(prerequisite, envelope['payload'])
+        candidates = []
+        for committed in archived_payload.get('operational', {}).get('receipts', []):
+            response = self.read_artifact(prerequisite, committed['result'])
+            steps = response.get('next_steps', []) if isinstance(response, dict) else []
+            if len(steps) != 1 or steps[0].get('kind') != 'schema_migration':
+                continue
+            receipt = self.read_artifact(prerequisite, steps[0]['receipt'])
+            if receipt.get('converter') == 'manual-reconciliation-522/1':
+                candidates.append((receipt, response))
+        if len(candidates) != 1:
+            raise ValueError('Archived prerequisite has no unique supported migration receipt')
+        receipt, response = candidates[0]
+        source, source_bytes = self.node_published_artifact(receipt['source'])
+        policy, policy_bytes = self.node_published_artifact(receipt['policy'])
+        del source, policy  # The candidate validates the published bytes itself.
+        target_intent = self.read_artifact(prerequisite, receipt['target_intent'])
+        target_payload = self.read_artifact(prerequisite, receipt['target_payload'])
+        pull = self.adapter.archived_prerequisite_pull(pull_number)
+        merge = (pull.get('mergeCommit') or {}).get('oid')
+        branch = (policy_section(self.project, 'git_review_release')['configuration'].get(
+            'release_planning') or {}).get('integration_branch')
+        if not isinstance(merge, str) or not isinstance(branch, str) or not branch:
+            raise ValueError('Archived prerequisite has no exact merge and integration identities')
+        reachable = self.adapter.archived_prerequisite_reachable(merge, branch)
+        candidate = self.api._archived_prerequisites.candidate(
+            repository=self.repository, goal=prerequisite, integration_branch=branch,
+            issue=issue, envelope=envelope, archived_payload=archived_payload,
+            receipt=receipt, migration_response=response, target_intent=target_intent,
+            target_payload=target_payload, source_bytes=source_bytes,
+            policy_bytes=policy_bytes, pull_number=pull_number, pull=pull,
+            merge_reachable=reachable)
+        return {'next_steps': [{'kind': 'archived_prerequisite_preview',
+            'assignment': 'root', 'goal': number, 'blocker_hash': request['blocker_hash'],
+            'context_hash': context_ref['hash'], 'prerequisite': prerequisite,
+            'candidate': candidate,
+            'action': 'Give this exact candidate and preserved obligation to an independent reviewer; it grants no resource or completion authority.'}]}
 
     def node_resolve_goal_blocker(self, snapshot, payload, request):
         """Append one authenticated resolution without rewriting migration history."""
@@ -7052,6 +7131,9 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                            'actor': '<independent reviewer thread>', 'proposal': proposal,
                            'decision': '<approved or changes_requested>',
                            'report': '<independent review report>'}}]}
+    if operation == 'goal_external_blocker_prepare' and number is not None:
+        snapshot = engine.node_snapshot(number)
+        return engine.node_external_blocker_candidate(snapshot, payload)
     if operation == 'checkpoint_reconcile_prepare' and number is not None:
         if set(payload) != {'operation', 'transaction', 'rationale', 'request_id'}:
             raise ValueError('Checkpoint reconciliation preparation requires exact transaction and rationale')
