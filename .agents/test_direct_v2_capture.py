@@ -66,7 +66,7 @@ class DirectV2CaptureTests(dag.DagFixture):
                 "revision": 1,
                 "implementation": None,
                 "resources": [],
-                "engineering_rigor": {"risk_categories": ["data_integrity"], "override": None},
+                "engineering_rigor": {"risk_categories": ["authorization"], "override": None},
             },
         }
 
@@ -164,6 +164,9 @@ class DirectV2CaptureTests(dag.DagFixture):
                     "blockers", "claim", "implementation"}
         metadata = {key: copy.deepcopy(value) for key, value in request["goal"].items()
                     if key not in excluded}
+        metadata["engineering_rigor"] = self.session.api.derive_engineering_rigor(
+            request["goal"]["engineering_rigor"],
+            self.session.api._workflow_section(self.session.project, "engineering_rigor"))
         policy_hash = self.session.api._workflow.digest(self.session.project["policy"])
         engine = self.session.api.workflow_engine(
             self.fixture.repo, self.session.project, self.fixture.runtime,
@@ -199,6 +202,18 @@ class DirectV2CaptureTests(dag.DagFixture):
         self.assertEqual(before_comments, self.provider.comments)
         self.assertEqual(before_updates, self.provider.updates)
 
+    def test_unreviewed_risk_category_fails_before_pending_issue(self):
+        request = self.request()
+        request["goal"]["engineering_rigor"]["risk_categories"] = ["unreviewed"]
+        proposal = self.session.call(100, {"operation": "capture_propose", "request": request})
+        submission = copy.deepcopy(proposal["next_steps"][0]["submission"])
+        submission["approved_by"] = "approved-user"
+        before = copy.deepcopy((self.provider.issues, self.provider.comments, self.provider.updates))
+
+        response = self.session.call(100, submission, expected=2)
+        self.assertIn("unknown_risk_categories", str(response))
+        self.assertEqual(before, (self.provider.issues, self.provider.comments, self.provider.updates))
+
     def test_public_capture_first_managed_state_is_current_and_freshly_executable(self):
         request, submission = self.approved_submission()
         self.session.call(100, submission)
@@ -222,6 +237,39 @@ class DirectV2CaptureTests(dag.DagFixture):
         gates = [step for step in steps if step.get("node")]
         self.assertTrue(gates, "fresh targeted execute must expose the actual reviewed gate")
         self.assertEqual(self.reviewed_graph["nodes"][0]["id"], gates[0]["node"]["node"])
+
+    def test_capture_with_reviewed_risks_makes_understand_executable(self):
+        request = self.request()
+        request["goal"]["depends_on"] = []
+        request["goal"]["blockers"] = []
+        proposal = self.session.call(100, {"operation": "capture_propose", "request": request})
+        submission = copy.deepcopy(proposal["next_steps"][0]["submission"])
+        submission["approved_by"] = "approved-user"
+        self.session.call(100, submission)
+        number = self.created_number()
+
+        steps = self.session.checkpoint(number)
+        self.assertTrue(any(step.get("kind") == "execute"
+                            and step.get("node", {}).get("node") == "understand"
+                            for step in steps), steps)
+
+    def test_early_capture_raw_rigor_derives_floor_without_rewriting_context(self):
+        api = self.session.api
+        node = next(row for row in self.reviewed_graph["nodes"] if row["id"] == "understand")
+        raw = {"difficulty": "M", "engineering_rigor": {
+            "risk_categories": ["authorization"], "override": None}}
+        original = copy.deepcopy(raw)
+        derived = api.derive_engineering_rigor(
+            raw["engineering_rigor"], api._workflow_section(self.session.project, "engineering_rigor"))
+        expected = api._migration_batch.capability_floor(
+            api, self.session.project, {**raw, "engineering_rigor": derived}, node)
+
+        self.assertEqual(expected, api._migration_batch.capability_floor(
+            api, self.session.project, raw, node))
+        self.assertEqual(original, raw, "an authenticated capture artifact stays immutable")
+        with self.assertRaisesRegex(ValueError, "Captured engineering rigor metadata is invalid"):
+            api._migration_batch.capability_floor(api, self.session.project,
+                {"engineering_rigor": {"risk_categories": ["unreviewed"], "override": None}}, node)
 
     def test_installed_copy_public_capture_reaches_targeted_execute_without_migration(self):
         with tempfile.TemporaryDirectory() as directory:
