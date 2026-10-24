@@ -987,6 +987,10 @@ class GenericPublicationPublicTests(DagFixture):
             result = provider_command(command, *args, **kwargs)
             if list(command[:3]) == ["gh", "pr", "merge"]:
                 self.observation["updated_at"] = "2026-09-29T15:00:00Z"
+                # GitHub's postmerge review/check projection is nullable. The
+                # exact premerge gate evidence must survive this representation.
+                self.observation["review_verified"] = False
+                self.observation["checks_verified"] = False
             return result
         self.session.provider_command = merge_updates_provider_marker
         graph = self.with_merge_observation(copy.deepcopy(self.graph))

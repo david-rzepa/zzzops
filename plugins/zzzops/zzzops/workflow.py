@@ -3680,9 +3680,14 @@ class Workflow:
                         identity = {'repository': self.repository, 'goal': key[0], 'pr': value['pr'],
                                     'branch': value['branch'], 'base': value['base'],
                                     'head_oid': facts['head_oid'], 'base_oid': facts['base_oid']}
-                        if all(sealed.get(name) == expected for name, expected in identity.items()):
+                        if (all(sealed.get(name) == expected for name, expected in identity.items())
+                                and sealed.get('policy') == digest(self.project['policy'])):
                             self.node_stack_verified_merge(facts)
                             marker = sealed.get('feedback_marker', marker)
+                            if isinstance(sealed.get('review_verified'), bool):
+                                observed['review_verified'] = sealed['review_verified']
+                            if sealed.get('ci') in {'verified', 'unverified', 'absent', 'unknown'}:
+                                observed['ci'] = sealed['ci']
                 if isinstance(marker, str): observed['feedback_marker'] = marker
                 semantic = {**observed, 'context': reference}
                 if policy_section(self.project, 'verification_testing')['configuration']['required_ci'] == 'disabled': semantic.pop('ci')
@@ -7012,6 +7017,8 @@ class Workflow:
                     'head_oid': facts['head_oid'], 'base_oid': facts['base_oid'],
                     'authorization': request['authorization'],
                     'feedback_marker': publication['observed'].get('feedback_marker'),
+                    'review_verified': publication['observed'].get('review_verified'),
+                    'ci': publication['observed'].get('ci'),
                     'policy': digest(self.project['policy']),
                     'method': 'merge' if native else 'squash'},
                     'producer': None, 'provenance': {'request_id': request['request_id'],
