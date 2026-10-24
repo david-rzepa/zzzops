@@ -6211,7 +6211,12 @@ class Workflow:
                 ownership_graph = self.artifact_index(number).resolve(ownership_reference['hash'])[0]
             snapshot = self.node_snapshot(number, graph_override=ownership_graph)
             if snapshot['envelope']['state'] != 'open' or str(snapshot['issue'].get('state', '')).lower() == 'closed': raise ValueError('Archived goal cannot execute or mutate')
-            if snapshot.get('workflow_migration_blocker') and request.get('operation') not in {'recover', 'release', 'renew'}:
+            # Archived-prerequisite administration repairs an exact migrated
+            # blocker without running or accepting any retired phase. Keep the
+            # old phase mapping debt on the execution frontier after the write.
+            if snapshot.get('workflow_migration_blocker') and request.get('operation') not in {
+                    'recover', 'release', 'renew',
+                    'goal_external_blocker_review', 'goal_external_blocker_apply'}:
                 raise ValueError(snapshot['workflow_migration_blocker'])
             payload = copy.deepcopy(snapshot['payload']); projection = snapshot['projection']
             for receipt in payload['operational']['receipts']:

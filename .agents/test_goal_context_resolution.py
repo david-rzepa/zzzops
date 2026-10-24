@@ -332,8 +332,18 @@ class GoalContextResolutionTests(unittest.TestCase):
                           == 'goal_external_blocker_prepare')
         submission.update(request_id='archived-public-preview-100', pull_number=7)
         before = copy.deepcopy((case.provider.issues, case.provider.comments))
+        original_snapshot = dag.z._workflow.Workflow.node_snapshot
+
+        def unmapped_history(engine, number, **options):
+            snapshot = original_snapshot(engine, number, **options)
+            if number == 100:
+                snapshot['workflow_migration_blocker'] = (
+                    'Unmapped historical phase contracts require policy/data mapping')
+            return snapshot
+
         with mock.patch.object(dag.z._workflow.Workflow, 'read_artifact', read), \
-             mock.patch.object(dag.z._workflow.Workflow, 'node_published_artifact', published):
+             mock.patch.object(dag.z._workflow.Workflow, 'node_published_artifact', published), \
+             mock.patch.object(dag.z._workflow.Workflow, 'node_snapshot', unmapped_history):
             preview = case.session.call(100, submission)
             self.assertEqual('archived_prerequisite_preview', preview['next_steps'][0]['kind'])
             self.assertEqual(before, (case.provider.issues, case.provider.comments))
@@ -392,6 +402,12 @@ class GoalContextResolutionTests(unittest.TestCase):
                                  == 'goal_external_blocker_prepare' for step in steps))
             self.assertFalse(any('Goal #101 requires current' in step.get('reason', '')
                                  for step in steps))
+            self.assertTrue(any(step.get('kind') == 'blocker'
+                                and 'Unmapped historical phase contracts' in step.get('reason', '')
+                                for step in steps))
+            rejected = case.session.call(100, {'operation': 'start',
+                'request_id': 'unmapped-normal-start'}, expected=2)
+            self.assertRegex(json.dumps(rejected), r'Unmapped historical phase contracts')
             case.provider.issues[101]['body'] += '\nA later edit retaining the link.'
             rejected = case.session.call(100, expected=2)
             self.assertRegex(json.dumps(rejected), r'(?i)archived|prerequisite|changed')
