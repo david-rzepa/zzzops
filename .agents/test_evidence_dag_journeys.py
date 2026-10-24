@@ -357,6 +357,31 @@ class DagFixture(unittest.TestCase):
         self.session.finish(acquired, outputs, "valid-after-negative-" + acquired["lease"]["attempt"])
 
 class EvidenceDagPublicTests(DagFixture):
+    @unittest.expectedFailure
+    def test_policy_dag_change_requires_authenticated_cutover_before_old_result_reuse(self):
+        produce = task("produce")
+        finish = task("finish", ["produce"], role="root")
+        old_graph = {"nodes": [produce, finish], "task_sets": [],
+                     "terminals": [selector("finish")]}
+        self.install(old_graph)
+        self.session.finish(self.session.acquire("produce"), {"value": "graph A result"})
+
+        audit = task("audit", ["produce"])
+        audit["inputs"] = {"subject": subject_input("produce")}
+        new_graph = {"nodes": [copy.deepcopy(produce), audit, copy.deepcopy(finish)],
+                     "task_sets": [], "terminals": [selector("finish")]}
+        configuration = z._workflow_section(
+            self.session.project, "workflow_adherence")["configuration"]
+        configuration["phase_dag"] = new_graph
+
+        steps = self.session.checkpoint(100)
+        self.assertFalse(any(step.get("kind") == "execute" for step in steps), steps)
+        cutovers = [step for step in steps if "cutover" in json.dumps(step).lower()]
+        self.assertEqual(1, len(cutovers), steps)
+        contract = json.dumps(cutovers[0], sort_keys=True).lower()
+        for required in ("old", "new", "mapping", "policy", "revision", "receipt"):
+            self.assertIn(required, contract)
+
     def test_committed_submit_survives_compact_response_store_failure(self):
         """A post-commit formatting fault cannot invite duplicate execution."""
         acquired = self.session.acquire("produce")
