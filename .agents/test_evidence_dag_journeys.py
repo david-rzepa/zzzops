@@ -381,7 +381,7 @@ class EvidenceDagPublicTests(DagFixture):
         for required in ("old", "new", "mapping", "policy", "revision", "receipt"):
             self.assertIn(required, contract)
 
-    def test_corrected_result_names_exact_predecessor_and_goal_head_for_cas(self):
+    def test_corrected_result_names_exact_predecessor_and_provider_revision_for_cas(self):
         self.findings()
         predecessor, _record = self.result("produce")
         before_envelope, _payload = self.payload()
@@ -391,10 +391,10 @@ class EvidenceDagPublicTests(DagFixture):
 
         _current, replacement = self.result("produce")
         self.assertIn("supersedes_result", replacement)
-        self.assertIn("expected_goal_tree_head", replacement)
+        self.assertIn("expected_goal_revision", replacement)
         self.assertEqual(predecessor, replacement["supersedes_result"])
-        self.assertEqual(before_envelope["payload"],
-                         replacement["expected_goal_tree_head"])
+        self.assertEqual(before_envelope["revision"],
+                         replacement["expected_goal_revision"])
         replay = self.session.call(100, self.session.submission(
             corrected, {"value": "corrected candidate"},
             "result-supersession-cas"))

@@ -906,6 +906,45 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
         self.assertIn('Retained attempt ref is missing or moved', json.dumps(steps))
         self.assertEqual(before, (fixture.provider.issues, fixture.provider.comments))
 
+    def test_retry_after_git_retention_before_provider_result_adopts_exact_commit(self):
+        fixture = self.fixture_with_git_workspace()
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        bare = Path(remote_dir.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
+        fixture.session.git('remote', 'add', 'origin', str(bare))
+        work = fixture.acquire_workspace('alpha')
+        path = Path(work['managed_worktree']['path'])
+        (path / 'behavior_test.py').write_text('assert True\n')
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=path, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: crash boundary result'],
+                       cwd=path, check=True)
+        head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=path,
+                              capture_output=True, text=True, check=True).stdout.strip()
+        request = fixture.session.submission(
+            work, {'value': 'Result surviving provider interruption'},
+            'git-retained-provider-interrupted')
+        request['workspace_checks'] = [[sys.executable, '-B', 'behavior_test.py']]
+        request['verification_expectation'] = 'passed'
+
+        with mock.patch.object(fixture.provider, 'create_issue_comment',
+                               side_effect=z.GoalTransitionProviderError(
+                                   'Provider unavailable after Git retention')):
+            fixture.session.call(100, request, expected=None)
+
+        ref = f"refs/heads/zzzops/attempts/100/alpha/{work['lease']['attempt']}"
+        self.assertEqual(head, fixture.session.git('ls-remote', 'origin', ref).split()[0])
+        before_retry_comments = len(fixture.provider.comments[100])
+        first = fixture.session.call(100, request)
+        comments = len(fixture.provider.comments[100])
+        second = fixture.session.call(100, request)
+        self.assertEqual(first, second)
+        self.assertEqual(comments, len(fixture.provider.comments[100]))
+        self.assertGreater(comments, before_retry_comments)
+        output = fixture.read_blob(fixture.produced('alpha'))
+        proof = fixture.read_blob(output['provenance']['source'])
+        self.assertEqual(head, proof['checkpoint']['result_commit'])
+
     def test_red_test_commit_then_green_implementation_commit(self):
         fixture = self.fixture_with_git_workspace()
         remote_dir = tempfile.TemporaryDirectory()
