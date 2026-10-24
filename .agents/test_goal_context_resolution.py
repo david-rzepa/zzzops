@@ -211,7 +211,17 @@ class GoalContextResolutionTests(unittest.TestCase):
                 rejected = case.session.call(100, review, expected=2)
             self.assertRegex(json.dumps(rejected), r'(?i)proposal|changed|stale')
             case.provider.issues, case.provider.comments = copy.deepcopy(before)
-            with mock.patch.dict(os.environ, {'CODEX_THREAD_ID': 'independent-thread'}):
+            ordinary_snapshot = dag.z._workflow.Workflow.node_snapshot
+
+            def legacy_context_locator(engine, number, **options):
+                snapshot = ordinary_snapshot(engine, number, **options)
+                if number == 100 and snapshot.get('goal_context_ref'):
+                    identity = snapshot['goal_context_ref']['hash']
+                    snapshot['goal_context_ref'] = {'hash': identity, 'uri': 'urn:' + identity}
+                return snapshot
+
+            with mock.patch.object(dag.z._workflow.Workflow, 'node_snapshot', legacy_context_locator), \
+                 mock.patch.dict(os.environ, {'CODEX_THREAD_ID': 'independent-thread'}):
                 reviewed = case.session.call(100, review)
             apply = copy.deepcopy(reviewed['next_steps'][0]['submission'])
             apply['human_approval'] = {'approved_by': 'requesting-user',
