@@ -7039,7 +7039,9 @@ class Workflow:
                 self.node_stack_verified_merge(after)
             else:
                 self.node_stack_verified_merge(facts)
-            response = {'next_steps': [{'kind': 'checkpoint', 'goal': snapshot['number'], 'action': 'Provider merge observed; configured post-effect evidence remains required.'}]}
+            response = {'next_steps': [{'kind': 'checkpoint', 'goal': snapshot['number'],
+                'provider_state': 'merged',
+                'action': 'Provider merge observed; configured post-effect evidence remains required.'}]}
         else:
             complete = projection['complete']
             if operation == 'complete' and not complete: raise ValueError('Completion requires all current configured terminal evidence and findings')
