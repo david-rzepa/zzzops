@@ -5028,8 +5028,10 @@ class PortfolioTests(unittest.TestCase):
             query = next(value[6:] for value in command if value.startswith("query="))
             self.assertIn("goal_2:issue(number:2)", query)
             self.assertIn("goal_9:issue(number:9)", query)
+            self.assertIn("closedAt", query)
             payload = {"data": {"repository": {
                 f"goal_{number}": {"number": number, "title": f"Goal {number}", "state": "CLOSED",
+                                  "closedAt": "2026-10-05T04:41:42Z",
                                   "url": f"https://example.test/issues/{number}",
                                   "labels": {"nodes": [{"name": "zzzops"}, {"name": "zzzops:status:done"}, {"name": "zzzops:priority:P2"}]}}
                 for number in (2, 9)
@@ -5041,6 +5043,7 @@ class PortfolioTests(unittest.TestCase):
         self.assertEqual(1, processes)
         self.assertEqual({2, 9}, set(relations))
         self.assertEqual("closed", relations[2]["state"])
+        self.assertEqual("2026-10-05T04:41:42Z", relations[2]["closed_at"])
         self.assertEqual(1, run.call_count)
 
     def test_history_audit_reuses_discovered_closed_relation_without_exact_refetch(self):
