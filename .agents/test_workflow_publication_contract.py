@@ -1086,6 +1086,36 @@ class GenericPublicationPublicTests(DagFixture):
         self.assertEqual([], self.merge_calls)
         self.assertEqual("open", self.provider.issues[100]["state"])
 
+    def test_external_merge_after_seal_cannot_reuse_stale_premerge_gates(self):
+        self.observation["updated_at"] = "2026-09-29T14:00:00Z"
+        graph = self.with_merge_observation(copy.deepcopy(self.graph))
+        graph["nodes"][-1]["executor"]["role"] = "root"
+        graph["terminals"] = [selector("observed_merge")]
+        self.install(graph)
+        self.authorize_context()
+        authority = self.approve_publication()
+        request = self.integration_request(authority)
+        request["request_id"] = "external-merge-after-seal"
+        update = self.provider.update_issue
+        changed = []
+        def external_merge_after_seal(number, payload):
+            result = update(number, payload)
+            if not changed:
+                changed.append(True)
+                self.mark_merged()
+                self.observation["updated_at"] = "2026-09-29T14:01:00Z"
+                self.observation["review_verified"] = False
+                self.observation["checks_verified"] = False
+            return result
+        self.provider.update_issue = external_merge_after_seal
+        first = self.session.call(100, request, expected=2)
+        self.assertTrue(changed)
+        self.assertRegex(json.dumps(first), r"(?i)provider changed|feedback|review")
+        retry = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(retry), r"(?i)stale|authority|current|review|provider")
+        self.assertEqual("open", self.provider.issues[100]["state"])
+        self.assertEqual([], self.merge_calls)
+
     def test_retry_finishes_archived_body_with_provider_issue_still_open(self):
         graph = self.with_merge_observation(copy.deepcopy(self.graph))
         graph["nodes"][-1]["executor"]["role"] = "root"
@@ -1583,6 +1613,8 @@ class GenericPublicationPublicTests(DagFixture):
             result = provider_command(command, *args, **kwargs)
             if list(command[:3]) == ["gh", "pr", "merge"] and not lost:
                 lost.append(True)
+                self.stack_observations[100]["review_verified"] = False
+                self.stack_observations[100]["checks_verified"] = False
                 raise subprocess.TimeoutExpired(command, 5)
             return result
         self.session.provider_command = committed_but_uncertain
