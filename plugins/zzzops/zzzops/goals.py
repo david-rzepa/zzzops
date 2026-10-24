@@ -692,8 +692,16 @@ def validate_goal_create(request: Any, *, allow_deferred: bool = False) -> list[
             errors.append("goal must be an object")
         elif goal.get("schema_version") != GOAL_SCHEMA_VERSION:
             errors.append(f"goal schema_version must be {GOAL_SCHEMA_VERSION}")
-        elif goal.get("status", "new") != "new":
-            errors.append("newly captured goals must have status new")
+        else:
+            errors.extend(validate_managed_goal(goal))
+            if goal.get("status", "new") != "new":
+                errors.append("newly captured goals must have status new")
+            if goal.get("revision") != 1:
+                errors.append("newly captured goals must have revision 1")
+            if goal.get("claim") is not None:
+                errors.append("newly captured goals must not have a claim")
+            if goal.get("implementation") is not None:
+                errors.append("newly captured goals must not have implementation state")
         return errors + child_goal_readiness_errors(request)
     errors.extend(validate_managed_goal(goal))
     if isinstance(goal, dict):
