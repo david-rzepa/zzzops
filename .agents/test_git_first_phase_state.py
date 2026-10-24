@@ -136,6 +136,49 @@ class FreshGoalGitCheckpointTests(DagFixture):
         self.assertNotIn('read_files', acquisition)
         self.assertTrue(all(len(comment['body']) <= 65536 for comment in self.provider.comments[100]))
 
+    def test_literal_shipped_dag_uses_reviewed_cutover_contract(self):
+        template = json.loads((fixtures.PLUGIN_ROOT /
+                               'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
+        shipped = copy.deepcopy(z._workflow_section(
+            template, 'workflow_adherence')['configuration']['phase_dag'])
+        self.install(shipped)
+        work = self.session.acquire('requirements')
+        self.session.finish(work, {'value': {
+            'statements': ['Retain exact shipped-DAG evidence.'], 'questions': [],
+            'investigations': {'items': {}, 'rationale': 'No unknowns.'},
+        }}, 'shipped-cutover-requirements')
+        result = self.result('requirements')[0]
+
+        changed = copy.deepcopy(shipped)
+        audit = journeys.task('shipped_cutover_audit', ['requirements'])
+        audit['inputs'] = {'subject': journeys.subject_input('requirements')}
+        audit['independent_of'] = [journeys.selector('requirements')]
+        changed['nodes'].append(audit)
+        changed['terminals'].append(journeys.selector('shipped_cutover_audit'))
+        z._workflow_section(self.session.project, 'workflow_adherence')[
+            'configuration']['phase_dag'] = changed
+        cutover = self.session.checkpoint(100)[0]
+        self.assertEqual('policy_dag_cutover', cutover['kind'])
+        compiled = z._static_workflow.definition(shipped, z._graph_compiler)['graph']
+        self.assertEqual(compiled, self.read_blob(cutover['contract']['old_graph']))
+        self.assertIn('prepare', cutover)
+        mapping = [{'old': {'node': 'requirements', 'output': 'value'},
+                    'new': {'node': 'requirements', 'output': 'value'},
+                    'result': result, 'equivalence': {
+                        'inputs': True, 'outputs': True, 'scope': True,
+                        'role': True, 'independence': True, 'approval': True}}]
+        proposed = self.session.call(100, {**cutover['prepare'], 'actor': 'root-thread',
+            'mapping': mapping, 'request_id': 'prepare-shipped-cutover'})['next_steps'][0]
+        reviewed = self.session.call(100, {**proposed['review'],
+            'actor': 'independent-shipped-cutover-reviewer', 'decision': 'approved',
+            'report': 'Literal shipped result retains its exact contract',
+            'request_id': 'review-shipped-cutover'})['next_steps'][0]
+        applied = self.session.call(100, {**reviewed['apply'], 'actor': 'root-thread',
+            'request_id': 'apply-shipped-cutover'})['next_steps'][0]
+        self.assertEqual('policy_dag_cutover_applied', applied['kind'])
+        self.assertEqual(result, self.result('requirements')[0])
+        self.assertIn('shipped_cutover_audit', self.names())
+
         request = self.session.submission(work, {'value': {
             'statements': ['Preserve the fresh goal evidence.'], 'questions': [],
             'investigations': {'items': {}, 'rationale': 'No unknowns.'},
