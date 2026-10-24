@@ -376,7 +376,10 @@ class WorkflowPublicationContractTests(unittest.TestCase):
                  'head_oid': 'd' * 40, 'base_ref': 'dev'}
         snapshot = {'number': 7, 'artifacts': {auth['hash']: {'type': 'repository_authorization'}},
                     'payload': {'operational': {'receipts': []}},
-                    'projection': {'states': {'merge': {'publication': {'provider': facts}}},
+                    'projection': {'states': {
+                        'merge': {'node': {'goal': 7}, 'publication': {'provider': facts}},
+                        'related_merge': {'node': {'goal': 8}, 'publication': {'provider': {
+                            **facts, 'merge_commit': '9' * 40}}}},
                                    'current': {'auth': ({'hash': 'result'},
                                        {'outputs': {'authorization': auth}})}}}
         def run(command, **_kwargs):
@@ -411,7 +414,7 @@ class WorkflowPublicationContractTests(unittest.TestCase):
             'resolve': lambda _ref: {'next_steps': [{'kind': 'perform', 'lease': {
                 'node': {'goal': 7, 'node': 'understand'}, 'attempt': 'b' * 32,
                 'acquisition': {'read_commit': 'b' * 40}}}]},
-            'projection': {'states': {'merge': {'publication': {'provider': facts}}},
+            'projection': {'states': {'merge': {'node': {'goal': 7}, 'publication': {'provider': facts}}},
                            'current': {'auth': ({'hash': 'result'},
                                {'outputs': {'authorization': auth}})}}}
         def run(command, **_kwargs):
@@ -456,7 +459,7 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         snapshot = {'number': 7, 'artifacts': {auth['hash']: {
             'type': 'repository_authorization'}},
             'payload': {'operational': {'receipts': []}},
-            'projection': {'states': {'merge': {'publication': {'provider': facts}}},
+            'projection': {'states': {'merge': {'node': {'goal': 7}, 'publication': {'provider': facts}}},
                            'current': {'auth': ({'hash': 'result'},
                                {'outputs': {'authorization': auth}})}}}
         def run(command, **_kwargs):
@@ -483,7 +486,7 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         facts = {'merged': True, 'merge_commit': 'e' * 40,
                  'head_oid': 'd' * 40, 'base_ref': 'dev'}
         snapshot = {'number': 7, 'projection': {'states': {
-            'merge': {'publication': {'provider': facts}}}},
+            'merge': {'node': {'goal': 7}, 'publication': {'provider': facts}}}},
             'payload': {'operational': {'receipts': [{'result': {'hash': 'receipt'}}]}},
             'resolve': lambda _ref: {'next_steps': [{'kind': 'perform', 'lease': {
                 'node': {'goal': 7, 'node': 'understand'}, 'attempt': 'a' * 32,
