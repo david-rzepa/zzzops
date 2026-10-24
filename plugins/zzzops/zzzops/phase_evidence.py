@@ -950,7 +950,7 @@ def validate_graph(graph):
         definitions.append((expansion['template'], True))
     for node, template in definitions:
         node_fields = {'id', 'prompt', 'inputs', 'outputs', 'requires', 'executor', 'independent_of', 'gates', 'resolves', 'permits'}
-        if not isinstance(node, dict) or set(node) - node_fields - {'applicability'} or node_fields - set(node):
+        if not isinstance(node, dict) or set(node) - node_fields - {'applicability', 'git_publish'} or node_fields - set(node):
             raise ValueError('Node has unsupported or missing fields')
         name = node['id']
         if not task_identifier(name) or name in names or name in sets: raise ValueError('Duplicate or invalid node/template identity')
@@ -982,6 +982,22 @@ def validate_graph(graph):
         if executor['role'] not in ('root', 'worker') or not task_identifier(executor['capability']): raise ValueError('Executor role/capability is invalid')
         if not isinstance(executor['resources'], list) or any(not task_identifier(r) for r in executor['resources']) or len(set(executor['resources'])) != len(executor['resources']): raise ValueError('Executor resources must be unique identities')
         validate_scope(executor['authority'], template)
+        publish = node.get('git_publish')
+        if publish is not None:
+            contract_fields(publish, {'series', 'group', 'order', 'output', 'commit_type', 'summary'}, 'Git publish')
+            if (template or 'repository_git_workspace' not in executor['resources']
+                    or any(not task_identifier(publish[key]) for key in ('series', 'group'))
+                    or not isinstance(publish['commit_type'], str)
+                    or not re.fullmatch(r'[a-z][a-z0-9]*', publish['commit_type'])
+                    or type(publish['order']) is not int or publish['order'] < 0
+                    or publish['output'] not in node['outputs']
+                    or not isinstance(publish['summary'], str)
+                    or not publish['summary'].strip()
+                    or publish['summary'] != publish['summary'].strip()
+                    or len(publish['summary']) > 120
+                    or any(ord(character) < 32 or ord(character) == 127
+                           for character in publish['summary'])):
+                raise ValueError('Git publish requires a bounded reviewed group and Git workspace output')
         for field in ('requires', 'independent_of', 'gates', 'resolves', 'permits'):
             if not isinstance(node[field], list): raise ValueError(f'Node {field} must be an array')
             for value in node[field]:
@@ -991,6 +1007,20 @@ def validate_graph(graph):
                     if not task_identifier(value['type']): raise ValueError('Permit type is invalid')
                     validate_scope(value['scope'], template)
                 else: validate_scope(value, template)
+    series = {}
+    for node, _ in definitions:
+        publish = node.get('git_publish')
+        if publish is None:
+            continue
+        groups = series.setdefault(publish['series'], {})
+        signature = (publish['order'], publish['commit_type'], publish['summary'])
+        previous = groups.setdefault(publish['group'], signature)
+        if previous != signature:
+            raise ValueError('Git publish group declarations disagree')
+    for groups in series.values():
+        orders = [signature[0] for signature in groups.values()]
+        if sorted(orders) != list(range(len(orders))):
+            raise ValueError('Git publish group order must be unique and contiguous')
     def event_selectors(value):
         if isinstance(value, dict):
             if value.get('kind') == 'member' and (value.get('item') == {'event_subject_item': True}
@@ -1458,7 +1488,7 @@ def _derive_task_steps(graph, payload, context):
             value['type'] in {'repository_authorization', 'publication_authorization',
                               'merge_authorization', 'published_candidate', 'delivery_result'}
             for value in node['outputs'].values()))
-        if not publication and 'repository_workspace' not in resources:
+        if not publication and not {'repository_workspace', 'repository_git_workspace'}.intersection(resources):
             return False
         definitions = {row['id']: row for row in snapshots[number]['graph']['nodes']}
         definitions.update({row['template']['id']: row['template'] for row in snapshots[number]['graph']['task_sets']})
@@ -1548,7 +1578,7 @@ def _derive_task_steps(graph, payload, context):
                     raise ValueError('Unsupported or malformed goal context')
                 resources = node['executor']['resources']
                 publication_gate = ('repository_publication' in resources or node['id'] == 'observe_merge')
-                source_gate = 'repository_workspace' in resources
+                source_gate = bool({'repository_workspace', 'repository_git_workspace'}.intersection(resources))
                 if source_gate or publication_gate:
                     blockers = goal_context['blockers']
                     if any(not isinstance(row, dict) or row.get('status') not in ('closed', 'resolved')
@@ -1610,7 +1640,7 @@ def _derive_task_steps(graph, payload, context):
                                 'provenance': {'actor': 'host', 'source': None, 'policy': policy}})
                 state['inputs'].append({'name': '__policy', 'source': ref, 'path': [], 'mode': 'identity'})
                 hashes['__policy'] = ref['hash']
-            if ('workspaces' in context or 'repository_workspace' in node['executor']['resources']) and not context.get('workspace_probe'):
+            if ('workspaces' in context or {'repository_workspace', 'repository_git_workspace'}.intersection(node['executor']['resources'])) and not context.get('workspace_probe'):
                 workspace = context.get('workspaces', {}).get(key)
                 if not workspace or 'error' in workspace: raise ValueError((workspace or {}).get('error', 'Workspace allocation/authority is unavailable'))
                 ref = workspace['binding']
