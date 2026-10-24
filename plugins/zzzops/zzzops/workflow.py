@@ -5973,33 +5973,7 @@ class Workflow:
                 if decision['status'] != 'authorized':
                     raise ValueError(f"Release integration blocked: {decision['code']}")
             if not facts.get('merged'):
-                merge_method = '--squash'
-                if self.node_native_delivery(snapshot):
-                    inputs = self.node_compaction_inputs(snapshot)
-                    if inputs.get('delivery_class') == 'grouped':
-                        movement = git_phase_state.classify_base_move(self.repo,
-                            old_base=inputs['base_commit'], new_base=facts['base_oid'])
-                        if movement['action'] not in {'current', 'retarget_only'}:
-                            raise ValueError('Git publication base requires reviewed restack and verification')
-                        git_phase_state.verify_grouped_candidate(self.repo,
-                            goal=snapshot['number'], base_commit=inputs['base_commit'],
-                            head_commit=facts['head_oid'], groups=inputs['groups'],
-                            retained_attempts=inputs['retained_attempts'], remote='origin')
-                        candidate, expected = {}, {}
-                    elif inputs.get('delivery_class') == 'composition':
-                        candidate = git_phase_state.verify_single_commit_candidate(self.repo,
-                            goal=snapshot['number'], base_commit=facts['base_oid'],
-                            head_commit=facts['head_oid'])
-                        expected = {'source_commit': inputs['integration_source']}
-                    else:
-                        candidate = git_phase_state.verify_two_commit_candidate(self.repo,
-                            goal=snapshot['number'], base_commit=facts['base_oid'],
-                            head_commit=facts['head_oid'], test_owned=inputs.get('test_owned'))
-                        expected = self.node_native_sources(snapshot)
-                    if any(candidate[name] != value for name, value in expected.items()):
-                        raise ValueError('Git-native candidate sources differ from current reviewed phase Results')
-                    merge_method = '--merge'
-                result = subprocess.run(['gh', 'pr', 'merge', publication['context']['pr'], merge_method, '--match-head-commit', facts['head_oid']], cwd=self.repo, capture_output=True, text=True, check=True)
+                result = subprocess.run(['gh', 'pr', 'merge', publication['context']['pr'], '--squash', '--match-head-commit', facts['head_oid']], cwd=self.repo, capture_output=True, text=True, check=True)
                 observed, _, _ = self.api._github_pull_request_states(self.repo, 'gh', [{'number': snapshot['number']}], {snapshot['number']: {'repository_context': publication['context']}})
                 after = observed.get(snapshot['number'], {})
                 if not after.get('merged') or any(after.get(name) != facts.get(name) for name in ('repository', 'head_oid', 'base_oid', 'base_ref')): raise ValueError('Provider did not confirm exact authorized merge; retry same request')

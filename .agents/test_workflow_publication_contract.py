@@ -61,53 +61,6 @@ class PublicationAPI:
 
 
 class WorkflowPublicationContractTests(unittest.TestCase):
-    def test_git_native_delivery_preserves_the_two_reviewed_commits(self):
-        engine = workflow.Workflow.__new__(workflow.Workflow)
-        engine.repo = Path('/repo')
-        engine.repository = 'owner/repo'
-        engine.runtime = {'root_id': 'root'}
-        engine.project = {'policy': {}}
-        authorization = {'hash': 'sha256:' + '1' * 64, 'uri': 'urn:sha256:' + '1' * 64}
-        facts = {'repository': 'owner/repo', 'head_oid': 'a' * 40,
-                 'base_oid': 'b' * 40, 'base_ref': 'dev', 'merged': False}
-        publication = {'provider': facts, 'observed': {},
-                       'context': {'pr': 'https://example.test/pull/7'}}
-        engine.node_publication_authorities = lambda _snapshot: [(authorization, publication)]
-        engine.node_ci_required = lambda _observed: None
-        engine.node_native_delivery = lambda _snapshot: True
-        engine.node_compaction_inputs = lambda _snapshot: {
-            'delivery_class': 'leaf', 'test_owned': ['behavior_test.py']}
-        engine.node_native_sources = lambda _snapshot: {'test_source': 'c' * 40,
-                                                        'implementation_source': 'd' * 40}
-        engine.node_persist = lambda _snapshot, _payload, response, _request: response
-        engine.api = SimpleNamespace(_github_pull_request_states=lambda *_args: ({7: {
-            **facts, 'merged': True}}, 0, 0))
-        snapshot = {'number': 7, 'projection': {'states': {}}, 'payload': {}}
-        payload = {'operational': {'leases': []}}
-        request = {'operation': 'integrate', 'request_id': 'native-delivery',
-                   'authorization': authorization, 'expected_head': facts['head_oid']}
-        commands = []
-        def run(command, **_kwargs):
-            commands.append(command)
-            return subprocess.CompletedProcess(command, 0, stdout='', stderr='')
-        with mock.patch.object(workflow, 'policy_section', return_value={'configuration': {'release_planning': {'enabled': False}}}), \
-             mock.patch.object(workflow.git_phase_state, 'verify_two_commit_candidate') as verify, \
-             mock.patch.object(workflow.subprocess, 'run', side_effect=run):
-            verify.return_value = {'test_source': 'c' * 40,
-                                   'implementation_source': 'd' * 40}
-            engine.node_publication_operation(snapshot, payload, request)
-            engine.node_native_sources = lambda _snapshot: {'test_source': 'e' * 40,
-                                                            'implementation_source': 'd' * 40}
-            with self.assertRaisesRegex(ValueError, 'sources differ'):
-                engine.node_publication_operation(snapshot, payload, request)
-        self.assertEqual(2, verify.call_count)
-        verify.assert_called_with(Path('/repo'), goal=7,
-                                  base_commit=facts['base_oid'], head_commit=facts['head_oid'],
-                                  test_owned=['behavior_test.py'])
-        self.assertEqual(1, len(commands))
-        self.assertIn('--merge', commands[0])
-        self.assertNotIn('--squash', commands[0])
-
     def test_native_delivery_is_derived_from_goal_evidence(self):
         engine = workflow.Workflow.__new__(workflow.Workflow)
         proof = {'hash': 'proof'}
@@ -374,7 +327,11 @@ class WorkflowPublicationContractTests(unittest.TestCase):
              mock.patch.object(workflow.git_phase_state, 'verify_two_commit_candidate',
                                return_value={'test_source': 'c' * 40,
                                              'implementation_source': 'd' * 40}):
-            self.assertEqual('ready', engine.node_candidate_state(snapshot)['status'])
+            self.assertEqual({
+                'status': 'ready', 'authorization': auth,
+                'path': observed['path'], 'branch': observed['branch'],
+                'head_oid': observed['head'],
+            }, engine.node_candidate_state(snapshot))
         with mock.patch.object(workflow.managed_worktrees, 'inspect_attempt_worktree',
                                return_value={**observed, 'status': 'dirty'}):
             with self.assertRaisesRegex(ValueError, 'dirty'):
@@ -1185,85 +1142,6 @@ class GenericPublicationPublicTests(DagFixture):
             self.assertIn("pending", json.dumps(replay))
             self.assertEqual(stable, (self.provider.issues, self.provider.comments))
             self.assertEqual(1, len(self.merge_calls))
-
-    def test_public_native_integration_preserves_reviewed_red_green_pair(self):
-        repo = self.fixture.repo
-        base = self.session.git('rev-parse', 'HEAD').strip()
-        (repo / 'behavior_test.py').write_text('assert True\n')
-        self.session.git('add', 'behavior_test.py')
-        self.session.git('commit', '-qm', 'test(goal-100): RED source')
-        red_source = self.session.git('rev-parse', 'HEAD').strip()
-        (repo / 'source.py').write_text('def value():\n    return 2\n')
-        self.session.git('add', 'source.py')
-        self.session.git('commit', '-qm', 'feat(goal-100): GREEN source')
-        green_source = self.session.git('rev-parse', 'HEAD').strip()
-        def compact_commit(source, parent, message):
-            tree = self.session.git('rev-parse', source + '^{tree}').strip()
-            result = subprocess.run(['git', 'commit-tree', tree, '-p', parent],
-                                    cwd=repo, input=message, text=True,
-                                    capture_output=True, check=True)
-            return result.stdout.strip()
-        red = compact_commit(red_source, base,
-            f'test(goal-100): consolidate reviewed RED tests\n\nZzzOps-Goal: 100\nZzzOps-Phase: test_design\nZzzOps-Source: {red_source}\n')
-        green = compact_commit(green_source, red,
-            f'feat(goal-100): consolidate GREEN implementation\n\nZzzOps-Goal: 100\nZzzOps-Phase: implement\nZzzOps-Source: {green_source}\n')
-        self.session.git('reset', '--hard', base)
-        self.session.git('branch', '-f', 'goal-child', green)
-        self.observation.update(head_oid=green, base_oid=base)
-        self.authorize_context()
-        authority = self.approve_publication()
-        self.submit_role('finish', 'Exact configured graph complete')
-        request = self.integration_request(authority)
-        request['request_id'] = 'native-public-integration'
-        with mock.patch.object(z._workflow.Workflow, 'node_native_delivery',
-                               return_value=True), \
-             mock.patch.object(z._workflow.Workflow, 'node_compaction_inputs',
-                               return_value={'delivery_class': 'leaf'}), \
-             mock.patch.object(z._workflow.Workflow, 'node_native_sources',
-                               return_value={'test_source': red_source,
-                                             'implementation_source': green_source}), \
-             mock.patch.object(z._workflow.Workflow, 'node_cleanup_delivered_worktrees',
-                               return_value={'status': 'complete', 'removed': 0,
-                                             'preserved_dirty': 0}):
-            result = self.session.call(100, request)
-        self.assertEqual(1, len(self.merge_calls))
-        self.assertIn('--merge', self.merge_calls[0])
-        self.assertNotIn('--squash', self.merge_calls[0])
-        self.assertIn('complete', json.dumps(result['next_steps'][0]['local_cleanup']))
-
-    def test_public_native_composition_integrates_one_reviewed_commit(self):
-        repo = self.fixture.repo
-        base = self.session.git('rev-parse', 'HEAD').strip()
-        (repo / 'integration.txt').write_text('verified composition\n')
-        self.session.git('add', 'integration.txt')
-        self.session.git('commit', '-qm', 'test(goal-100): integration source')
-        source = self.session.git('rev-parse', 'HEAD').strip()
-        tree = self.session.git('rev-parse', source + '^{tree}').strip()
-        message = (f'feat(goal-100): consolidate reviewed integration\n\n'
-                   f'ZzzOps-Goal: 100\nZzzOps-Phase: integration_verification\n'
-                   f'ZzzOps-Source: {source}\n')
-        candidate = subprocess.run(['git', 'commit-tree', tree, '-p', base],
-            cwd=repo, input=message, text=True, capture_output=True, check=True).stdout.strip()
-        self.session.git('reset', '--hard', base)
-        self.session.git('branch', '-f', 'goal-child', candidate)
-        self.observation.update(head_oid=candidate, base_oid=base)
-        self.authorize_context()
-        authority = self.approve_publication()
-        self.submit_role('finish', 'Exact configured graph complete')
-        request = self.integration_request(authority)
-        request['request_id'] = 'native-composition-integration'
-        with mock.patch.object(z._workflow.Workflow, 'node_native_delivery',
-                               return_value=True), \
-             mock.patch.object(z._workflow.Workflow, 'node_compaction_inputs',
-                               return_value={'delivery_class': 'composition',
-                                             'integration_source': source}), \
-             mock.patch.object(z._workflow.Workflow, 'node_cleanup_delivered_worktrees',
-                               return_value={'status': 'complete', 'removed': 0,
-                                             'preserved_dirty': 0}):
-            result = self.session.call(100, request)
-        self.assertEqual(1, len(self.merge_calls))
-        self.assertIn('--merge', self.merge_calls[0])
-        self.assertIn('complete', json.dumps(result['next_steps'][0]['local_cleanup']))
 
     def test_exact_root_authorization_rejects_wrong_subject_review_policy_and_forged_integration(self):
         self.authorize_context()
