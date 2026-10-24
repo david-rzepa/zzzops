@@ -3680,9 +3680,15 @@ class Workflow:
                         identity = {'repository': self.repository, 'goal': key[0], 'pr': value['pr'],
                                     'branch': value['branch'], 'base': value['base'],
                                     'head_oid': facts['head_oid'], 'base_oid': facts['base_oid']}
-                        if all(sealed.get(name) == expected for name, expected in identity.items()):
+                        if (all(sealed.get(name) == expected for name, expected in identity.items())
+                                and sealed.get('policy') == digest(self.project['policy'])
+                                and sealed.get('stage') == 'dispatch'):
                             self.node_stack_verified_merge(facts)
                             marker = sealed.get('feedback_marker', marker)
+                            if isinstance(sealed.get('review_verified'), bool):
+                                observed['review_verified'] = sealed['review_verified']
+                            if sealed.get('ci') in {'verified', 'unverified', 'absent', 'unknown'}:
+                                observed['ci'] = sealed['ci']
                 if isinstance(marker, str): observed['feedback_marker'] = marker
                 semantic = {**observed, 'context': reference}
                 if policy_section(self.project, 'verification_testing')['configuration']['required_ci'] == 'disabled': semantic.pop('ci')
@@ -6302,7 +6308,10 @@ class Workflow:
             'head_oid': current['head'], 'base_oid': current['base_head'],
             'authorization': current['authorization'],
             'feedback_marker': publication['observed'].get('feedback_marker'),
-            'policy': digest(self.project['policy']), 'method': plan['method']},
+            'review_verified': publication['observed'].get('review_verified'),
+            'ci': publication['observed'].get('ci'),
+            'policy': digest(self.project['policy']), 'method': plan['method'],
+            'stage': 'sealed'},
             'producer': None, 'provenance': {'request_id': request['request_id'],
                                            'root': self.runtime['root_id']}}
         certificate_stored = self.artifact(current['goal'], certificate_value)
@@ -6327,6 +6336,22 @@ class Workflow:
                 ('repository', 'head_oid', 'base_oid', 'base_ref', 'updated_at',
                  'review_verified', 'checks_verified'))):
             raise ValueError('Provider changed after pre-merge certificate; review exact current head and feedback')
+        dispatch_certificate = copy.deepcopy(certificate_value)
+        dispatch_certificate['content']['stage'] = 'dispatch'
+        dispatch_stored = self.artifact(current['goal'], dispatch_certificate)
+        dispatch_ref = self.node_ref(dispatch_stored['hash'], current['goal'])
+        member_snapshot = self.node_snapshot(current['goal'])
+        member_payload = copy.deepcopy(member_snapshot['payload'])
+        member_payload['publication_certificate'] = dispatch_ref
+        self.node_persist(member_snapshot, member_payload, {'next_steps': [{
+            'kind': 'checkpoint', 'goal': current['goal'], 'certificate': dispatch_ref,
+            'action': 'Exact provider merge dispatch intent recorded.'}]},
+            {'operation': 'stack_advance', 'request_id': request['request_id'] + '-dispatch',
+             'plan_id': plan['plan_id'], 'expected_revision': plan['revision']})
+        if current['goal'] == number:
+            snapshot = self.node_snapshot(number); payload = copy.deepcopy(snapshot['payload'])
+            if snapshot['envelope']['state'] == 'archived': snapshot['closed_administration'] = True
+            control = self.node_stack_control(snapshot)
         attempt_value = {'type': 'stack_attempt', 'content': {'plan_id': plan['plan_id'],
             'request_id': request['request_id'], 'goal': current['goal'], 'head': current['head'],
             'repository': plan['repository'], 'pr': current['pr'], 'method': plan['method'],
@@ -7069,8 +7094,10 @@ class Workflow:
                     'head_oid': facts['head_oid'], 'base_oid': facts['base_oid'],
                     'authorization': request['authorization'],
                     'feedback_marker': publication['observed'].get('feedback_marker'),
+                    'review_verified': publication['observed'].get('review_verified'),
+                    'ci': publication['observed'].get('ci'),
                     'policy': digest(self.project['policy']),
-                    'method': 'merge' if native else 'squash'},
+                    'method': 'merge' if native else 'squash', 'stage': 'sealed'},
                     'producer': None, 'provenance': {'request_id': request['request_id'],
                                                    'root': self.runtime['root_id']}}
                 stored = self.artifact(snapshot['number'], certificate_value)
@@ -7090,6 +7117,18 @@ class Workflow:
                         ('repository', 'head_oid', 'base_oid', 'base_ref', 'updated_at',
                          'review_verified', 'checks_verified'))):
                     raise ValueError('Provider changed after pre-merge certificate; retry against exact current facts')
+                dispatch_certificate = copy.deepcopy(certificate_value)
+                dispatch_certificate['content']['stage'] = 'dispatch'
+                dispatch_stored = self.artifact(snapshot['number'], dispatch_certificate)
+                dispatch_ref = self.node_ref(dispatch_stored['hash'], snapshot['number'])
+                dispatch_payload = copy.deepcopy(payload)
+                dispatch_payload['publication_certificate'] = dispatch_ref
+                self.node_persist(snapshot, dispatch_payload, {'next_steps': [{
+                    'kind': 'checkpoint', 'goal': snapshot['number'], 'certificate': dispatch_ref,
+                    'action': 'Exact provider merge dispatch intent recorded.'}]},
+                    {'operation': 'integrate', 'request_id': request['request_id'] + '-dispatch',
+                     'authorization': request['authorization'], 'expected_head': facts['head_oid']})
+                snapshot = self.node_snapshot(snapshot['number']); payload = copy.deepcopy(snapshot['payload'])
                 subprocess.run(['gh', 'pr', 'merge', context['pr'],
                     '--merge' if native else '--squash', '--match-head-commit', facts['head_oid']],
                     cwd=self.repo, capture_output=True, text=True, check=True)
