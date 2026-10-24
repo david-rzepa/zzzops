@@ -16,6 +16,11 @@ node, lease and actor; renew/submit need no policy receipt. Follow
 
 `submit` returns `submitted` and actionable next steps; no extra checkpoint.
 Retry identical request ID/payload. Returned steps grant no authority.
+When a shared mutation is invoked from another worktree, follow its
+`workspace_route` command from the reported coordinator `cwd`. Routed workflow
+and release commands pin the original input bytes with `--input-sha256` (and
+workflow runtime bytes with `--runtime-sha256`); changed files require a fresh
+checkpoint, not a replay of the stale route.
 Only root coordinates blockers/approval. Human approval is a separate step.
 Respect allocations and publication gates; infer no operations or models.
 Renew live owners; expiry permits no takeover. Recover only observed stopped owners.
