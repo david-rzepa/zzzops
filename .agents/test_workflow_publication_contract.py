@@ -394,7 +394,10 @@ class WorkflowPublicationContractTests(unittest.TestCase):
                  'head_oid': 'd' * 40, 'base_ref': 'dev'}
         snapshot = {'number': 7, 'artifacts': {auth['hash']: {'type': 'repository_authorization'}},
                     'payload': {'operational': {'receipts': []}},
-                    'projection': {'states': {'merge': {'publication': {'provider': facts}}},
+                    'projection': {'states': {
+                        'merge': {'node': {'goal': 7}, 'publication': {'provider': facts}},
+                        'related_merge': {'node': {'goal': 8}, 'publication': {'provider': {
+                            **facts, 'merge_commit': '9' * 40}}}},
                                    'current': {'auth': ({'hash': 'result'},
                                        {'outputs': {'authorization': auth}})}}}
         def run(command, **_kwargs):
@@ -429,7 +432,7 @@ class WorkflowPublicationContractTests(unittest.TestCase):
             'resolve': lambda _ref: {'next_steps': [{'kind': 'perform', 'lease': {
                 'node': {'goal': 7, 'node': 'understand'}, 'attempt': 'b' * 32,
                 'acquisition': {'read_commit': 'b' * 40}}}]},
-            'projection': {'states': {'merge': {'publication': {'provider': facts}}},
+            'projection': {'states': {'merge': {'node': {'goal': 7}, 'publication': {'provider': facts}}},
                            'current': {'auth': ({'hash': 'result'},
                                {'outputs': {'authorization': auth}})}}}
         def run(command, **_kwargs):
@@ -474,7 +477,7 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         snapshot = {'number': 7, 'artifacts': {auth['hash']: {
             'type': 'repository_authorization'}},
             'payload': {'operational': {'receipts': []}},
-            'projection': {'states': {'merge': {'publication': {'provider': facts}}},
+            'projection': {'states': {'merge': {'node': {'goal': 7}, 'publication': {'provider': facts}}},
                            'current': {'auth': ({'hash': 'result'},
                                {'outputs': {'authorization': auth}})}}}
         def run(command, **_kwargs):
@@ -501,7 +504,7 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         facts = {'merged': True, 'merge_commit': 'e' * 40,
                  'head_oid': 'd' * 40, 'base_ref': 'dev'}
         snapshot = {'number': 7, 'projection': {'states': {
-            'merge': {'publication': {'provider': facts}}}},
+            'merge': {'node': {'goal': 7}, 'publication': {'provider': facts}}}},
             'payload': {'operational': {'receipts': [{'result': {'hash': 'receipt'}}]}},
             'resolve': lambda _ref: {'next_steps': [{'kind': 'perform', 'lease': {
                 'node': {'goal': 7, 'node': 'understand'}, 'attempt': 'a' * 32,
@@ -1125,6 +1128,31 @@ class GenericPublicationPublicTests(DagFixture):
         replay = self.session.call(100, request)
         self.assertIn("closed", json.dumps(replay))
         self.assertEqual("closed", self.provider.issues[100]["state"])
+        self.assertEqual(1, len(self.merge_calls))
+
+    def test_retry_after_certificate_uses_pr_marker_not_goal_issue_timestamp(self):
+        graph = self.with_merge_observation(copy.deepcopy(self.graph))
+        graph["nodes"][-1]["executor"]["role"] = "root"
+        graph["terminals"] = [selector("observed_merge")]
+        self.install(graph)
+        self.authorize_context()
+        authority = self.approve_publication()
+        request = self.integration_request(authority)
+        request["request_id"] = "certificate-before-dispatch-retry"
+        provider_command = self.provider_command
+        interrupted = []
+        def stop_once_before_dispatch(command, *args, **kwargs):
+            if list(command[:3]) == ["gh", "pr", "merge"] and not interrupted:
+                interrupted.append(True)
+                raise OSError("process stopped after durable certificate")
+            return provider_command(command, *args, **kwargs)
+        self.session.provider_command = stop_once_before_dispatch
+        first = self.session.call(100, request, expected=2)
+        self.assertTrue(interrupted)
+        self.assertRegex(json.dumps(first), r"(?i)certificate|dispatch|retry|stopped")
+        self.assertEqual([], self.merge_calls)
+        replay = self.session.call(100, request)
+        self.assertIn("closed", json.dumps(replay))
         self.assertEqual(1, len(self.merge_calls))
 
     def test_feedback_change_after_certificate_blocks_provider_merge(self):
