@@ -1980,7 +1980,7 @@ def _github_goal_by_number(repo: Path, executable: str, owner: str, name: str, n
 
 def _goal_relation_query(numbers: list[int]) -> str:
     fields = "\n".join(
-        f"    goal_{number}:issue(number:{number}){{number title state url labels(first:100){{nodes{{name}}}}}}"
+        f"    goal_{number}:issue(number:{number}){{number title state closedAt url labels(first:100){{nodes{{name}}}}}}"
         for number in numbers
     )
     return "query($owner:String!,$name:String!){\n  repository(owner:$owner,name:$name){\n" + fields + "\n  }\n}"
@@ -2024,6 +2024,7 @@ def _github_goal_relations(
                 continue
             relations[number] = {
                 "number": number, "title": issue.get("title"), "state": str(issue.get("state", "")).lower(),
+                "closed_at": issue.get("closedAt"),
                 "html_url": issue.get("url"), "labels": nodes,
             }
         raw_bytes += len(result.stdout.encode("utf-8"))
