@@ -199,7 +199,9 @@ class ObservedArtifactIndex(comment_store.ArtifactIndex):
 # being routed through an unrelated installation, policy, lease, or portfolio
 # gate.
 PUBLIC_OPERATIONS = frozenset({
-    'batch', 'bind', 'block', 'phase_finding', 'resolve_goal_blocker', 'graph_normalize', 'migration_batch', 'graph_prepare', 'graph_review', 'graph_adopt', 'graph_review_bootstrap',
+    'batch', 'bind', 'block', 'phase_finding', 'resolve_goal_blocker',
+    'goal_dependency_prepare', 'goal_dependency_review', 'goal_dependency_apply',
+    'graph_normalize', 'migration_batch', 'graph_prepare', 'graph_review', 'graph_adopt', 'graph_review_bootstrap',
     'checkpoint_reconcile_prepare', 'checkpoint_reconcile_review', 'checkpoint_reconcile_adopt',
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
     'feedback_submit', 'heartbeat', 'hydration_checkpoint', 'installation_record', 'integrate',
@@ -2144,7 +2146,8 @@ class Workflow:
 
 
 
-    def node_snapshot(self, number, *, publication_probe=False, graph_override=None, prospective=None):
+    def node_snapshot(self, number, *, publication_probe=False, graph_override=None,
+                      prospective=None, dependency_override=None):
         """Read exact scoped records; only relationship consumers request closure."""
         ev = self.api._phase_evidence
         snapshots, artifacts, issues, bootstrap = {}, dict((prospective or {}).get('artifacts', {})), {}, {}
@@ -2191,7 +2194,7 @@ class Workflow:
                     validated.add(ref['hash'])
                 return value
             payload = resolve(envelope['payload'])
-            ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'} | (set(payload) & {'phase_data', 'goal_context', 'goal_context_resolutions', 'workflow', 'stack_integration', 'publication_certificate'}), 'Payload')
+            ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'} | (set(payload) & {'phase_data', 'goal_context', 'goal_context_resolutions', 'goal_context_dependency_events', 'workflow', 'stack_integration', 'publication_certificate'}), 'Payload')
             if 'publication_certificate' in payload:
                 certificate = resolve(payload['publication_certificate'])
                 if (not isinstance(certificate, dict) or certificate.get('type') != 'publication_certificate'
@@ -2378,6 +2381,118 @@ class Workflow:
                 snapshot['goal_context_resolution_events'] = copy.deepcopy(resolution_journal['events'])
                 snapshot['goal_context'] = self.api._static_workflow.resolved_goal_context(
                     snapshot['original_goal_context'], resolved)
+                dependency_journal = payload.get('goal_context_dependency_events',
+                                                 {'version': 1, 'events': []})
+                if (not isinstance(dependency_journal, dict)
+                        or set(dependency_journal) != {'version', 'events'}
+                        or dependency_journal.get('version') != 1
+                        or not isinstance(dependency_journal.get('events'), list)):
+                    raise GoalContextResolutionAuthenticationError(
+                        'Unsupported or malformed goal dependency journal')
+                seen_dependencies = set()
+                for reference in dependency_journal['events']:
+                    try:
+                        ev.validate_ref(reference)
+                        if (self.node_ref_goal(reference, n) != n
+                                or reference['hash'] in seen_dependencies):
+                            raise ValueError('foreign or duplicate event')
+                        seen_dependencies.add(reference['hash'])
+                        event = resolve(reference)
+                        content = event['content']
+                        provenance = event['provenance']
+                        proposal_ref, review_ref = content['proposal'], content['review']
+                        for item in (proposal_ref, review_ref):
+                            ev.validate_ref(item)
+                            if self.node_ref_goal(item, n) != n:
+                                raise ValueError('foreign proposal or review')
+                        proposal, review = resolve(proposal_ref), resolve(review_ref)
+                        proposal_content = proposal.get('content', {})
+                        proposal_provenance = proposal.get('provenance', {})
+                        review_content = review.get('content', {})
+                        review_provenance = review.get('provenance', {})
+                        expected = self.api._static_workflow.changed_goal_dependencies(
+                            snapshot['goal_context'], [{'old': content['old'],
+                                                        'replacement': content['replacement']}])
+                        approval = content['human_approval']
+                        if (set(event) != {'type', 'content', 'producer', 'provenance'}
+                                or event['type'] != 'goal_dependency_change'
+                                or event['producer'] is not None
+                                or set(content) != {'context', 'old', 'replacement', 'before', 'after',
+                                                    'proposal', 'review', 'human_approval'}
+                                or set(provenance) != {'actor', 'repository', 'goal', 'request_id'}
+                                or provenance['repository'] != self.repository or provenance['goal'] != n
+                                or not isinstance(provenance['actor'], str) or not provenance['actor']
+                                or not isinstance(provenance['request_id'], str) or not provenance['request_id']
+                                or content['context'] != snapshot['goal_context_ref']
+                                or content['before'] != snapshot['goal_context']['depends_on']
+                                or content['after'] != expected['depends_on']
+                                or not isinstance(approval, dict)
+                                or set(approval) != {'approved_by', 'attribution'}
+                                or not all(isinstance(approval[key], str) and approval[key].strip()
+                                           for key in approval)
+                                or proposal.get('type') != 'goal_dependency_proposal'
+                                or proposal_content.get('context') != content['context']
+                                or proposal_content.get('before') != content['before']
+                                or proposal_content.get('after') != content['after']
+                                or proposal_content.get('old') != content['old']
+                                or proposal_content.get('replacement') != content['replacement']
+                                or proposal_content.get('repository') != self.repository
+                                or proposal_content.get('goal') != n
+                                or proposal_provenance.get('actor') != provenance['actor']
+                                or proposal_provenance.get('source') != content['context']
+                                or proposal_provenance.get('policy') != proposal_content.get('policy')
+                                or review.get('type') != 'goal_dependency_review'
+                                or not explicit_approval(review_provenance.get('actor'))
+                                or review_provenance['actor'] == provenance['actor']
+                                or review_provenance.get('source') != proposal_ref
+                                or review_provenance.get('policy') != proposal_content.get('policy')
+                                or not isinstance(review_provenance.get('request_id'), str)
+                                or review_content.get('decision') != 'approved'
+                                or not isinstance(review_content.get('report'), str)
+                                or not review_content['report'].strip()):
+                            raise ValueError('dependency event, proposal, review or approval is malformed')
+                        if (not isinstance(proposal_content['policy'], str)
+                                or re.fullmatch(r'sha256:[0-9a-f]{64}',
+                                                proposal_content['policy']) is None):
+                            raise ValueError('dependency review policy identity is malformed')
+                        review_request = {'operation': 'goal_dependency_review',
+                            'request_id': review_provenance['request_id'],
+                            'actor': review_provenance['actor'], 'proposal': proposal_content,
+                            'decision': 'approved', 'report': review_content['report']}
+                        review_receipts = [row for row in payload['operational']['receipts']
+                                           if row['request'] == review_request['request_id']
+                                           and row['payload'] == digest(review_request)]
+                        request = {'operation': 'goal_dependency_apply',
+                            'request_id': provenance['request_id'], 'actor': provenance['actor'],
+                            'proposal': proposal_ref, 'review': review_ref,
+                            'human_approval': approval}
+                        receipts = [row for row in payload['operational']['receipts']
+                                    if row['request'] == provenance['request_id']
+                                    and row['payload'] == digest(request)]
+                        response = {'next_steps': [{'kind': 'goal_dependency_changed',
+                            'goal': n, 'event': reference, 'before': content['before'],
+                            'after': content['after']}]}
+                        index = self.artifact_index(n)
+                        review_edge = (self.node_receipt_edge(n, index, review_receipts[0])
+                                       if len(review_receipts) == 1 else None)
+                        apply_edge = (self.node_receipt_edge(n, index, receipts[0])
+                                      if len(receipts) == 1 else None)
+                        if (review_edge is None or apply_edge is None
+                                or review_edge['source'] != proposal_content.get('source', {}).get('envelope')
+                                or apply_edge['source'] != review_edge['target']
+                                or review_edge['response'].get('next_steps', [{}])[0].get('review') != review_ref
+                                or apply_edge['response'] != response):
+                            raise ValueError('dependency event lacks exact committed receipt')
+                        snapshot['goal_context'] = expected
+                    except (KeyError, TypeError, ValueError) as exc:
+                        raise GoalContextResolutionAuthenticationError(
+                            'Goal dependency journal authentication failed: ' + str(exc)) from exc
+                snapshot['goal_context_dependency_events'] = copy.deepcopy(dependency_journal['events'])
+                if n == number and dependency_override is not None:
+                    snapshot['goal_context'] = copy.deepcopy(dependency_override)
+            elif 'goal_context_dependency_events' in payload:
+                raise GoalContextResolutionAuthenticationError(
+                    'Goal dependency journal has no authenticated context')
             retired_nodes = {row['id']: row for row in historical_graph['nodes']} \
                 .keys() - {row['id'] for row in graph['nodes']}
             # Compiler-generated routes are historical evidence, not additional
@@ -7987,6 +8102,180 @@ class Workflow:
                                     'resolution': reference}]}
         return self.node_persist(snapshot, payload, response, request)
 
+    def node_dependency_proposal(self, snapshot, old, replacement, rationale):
+        """Preview one explicit migrated dependency change and its current impact."""
+        number = snapshot['number']
+        context = snapshot.get('goal_context')
+        context_ref = snapshot.get('goal_context_ref')
+        if context is None or context_ref is None:
+            raise ValueError('Goal has no authenticated dependency context')
+        if snapshot['payload']['operational']['leases']:
+            raise ValueError('Goal dependency change requires reconciled worker ownership')
+        if snapshot['envelope']['state'] != 'open':
+            raise ValueError('Closed goal dependencies cannot be changed')
+        if replacement == number or old == number:
+            raise ValueError('Goal cannot depend on itself')
+        if replacement is not None:
+            issue = self.adapter.get_issue(replacement)
+            related = self.api.parse_managed_goal(issue.get('body', ''), replacement)
+            if related is None or related.get('repository', self.repository) != self.repository:
+                raise ValueError('Replacement dependency is not a canonical same-repository goal')
+        if not isinstance(rationale, str) or not rationale.strip():
+            raise ValueError('Goal dependency change requires an explicit rationale')
+        after_context = self.api._static_workflow.changed_goal_dependencies(
+            context, [{'old': old, 'replacement': replacement}])
+        prospective = self.node_snapshot(number, dependency_override=after_context)
+        if prospective.get('relationship_error'):
+            raise ValueError('Goal dependency preview found inconsistent relationship evidence: '
+                             + prospective['relationship_error'])
+        before = snapshot['projection']['current']
+        after = prospective['projection']['current']
+        retained, invalidated = [], []
+        for key, (reference, result) in sorted(before.items(), key=lambda row: str(row[0])):
+            if key in after and after[key][0] == reference:
+                retained.append(reference)
+            else:
+                invalidated.append({'node': result['node'], 'result': reference})
+        human = self.api._migration_batch.human_parts(self, snapshot['issue']['body'])
+        payload = snapshot['payload']
+        return {'kind': 'goal_dependency_change', 'repository': self.repository,
+            'goal': number, 'context': context_ref, 'old': old,
+            'replacement': replacement, 'before': copy.deepcopy(context['depends_on']),
+            'after': copy.deepcopy(after_context['depends_on']),
+            'policy': self.node_evidence_policy(),
+            'source': {'envelope': copy.deepcopy(snapshot['envelope']),
+                       'spec': payload['spec'], 'graph': payload['graph'],
+                       'evidence': copy.deepcopy(payload['evidence']),
+                       'human_hash': digest(human),
+                       'current': [{'node': result['node'], 'result': ref}
+                                   for _, (ref, result) in sorted(before.items(),
+                                       key=lambda row: str(row[0]))]},
+            'impact': {'retained': retained, 'invalidated': invalidated},
+            'rationale': rationale}
+
+    def node_dependency_review(self, snapshot, payload, request):
+        """Authenticated independent reviewer records an exact proposal review."""
+        if set(request) != {'operation', 'request_id', 'actor', 'proposal',
+                            'decision', 'report'}:
+            raise ValueError('Goal dependency review requires exact returned fields')
+        root = (self.runtime or {}).get('root_id')
+        invoking = os.environ.get('CODEX_THREAD_ID')
+        if (not root or not explicit_approval(request.get('actor'))
+                or request['actor'] == root or invoking != request['actor']):
+            raise ValueError('Goal dependency review requires the authenticated independent thread')
+        if (request['decision'] not in
+                {'approved', 'changes_requested'} or not isinstance(request['report'], str)
+                or not request['report'].strip()):
+            raise ValueError('Goal dependency review requires an explicit decision and report')
+        proposal = request['proposal']
+        if not isinstance(proposal, dict) or proposal.get('kind') != 'goal_dependency_change':
+            raise ValueError('Goal dependency review requires the exact prepared proposal')
+        expected = self.node_dependency_proposal(snapshot, proposal.get('old'),
+            proposal.get('replacement'), proposal.get('rationale'))
+        if proposal != expected:
+            raise ValueError('Goal dependency proposal or affected evidence changed before review')
+        policy = self.node_evidence_policy()
+        proposal_artifact = {'type': 'goal_dependency_proposal',
+            'content': copy.deepcopy(proposal), 'producer': None,
+            'provenance': {'actor': root, 'source': proposal['context'], 'policy': policy}}
+        proposal_ref = self.node_ref(digest(proposal_artifact), snapshot['number'])
+        snapshot['artifacts'][proposal_ref['hash']] = proposal_artifact
+        review_artifact = {'type': 'goal_dependency_review',
+            'content': {'decision': request['decision'], 'report': request['report']},
+            'producer': None,
+            'provenance': {'actor': request['actor'], 'source': proposal_ref, 'policy': policy,
+                           'request_id': request['request_id']}}
+        review_ref = self.node_ref(digest(review_artifact), snapshot['number'])
+        snapshot['artifacts'][review_ref['hash']] = review_artifact
+        if request['decision'] == 'approved':
+            step = {'kind': 'human_approval', 'assignment': 'root',
+                'goal': snapshot['number'], 'proposal': proposal_ref, 'review': review_ref,
+                'action': 'Present this exact dependency change and independent review for approval.',
+                'submission': {'operation': 'goal_dependency_apply',
+                               'request_id': 'goal-dependency-apply-' + digest(review_ref)[7:],
+                               'actor': root, 'proposal': proposal_ref, 'review': review_ref,
+                               'human_approval': {'approved_by': '<user>',
+                                                  'attribution': '<exact approval>'}}}
+        else:
+            step = {'kind': 'changes_requested', 'goal': snapshot['number'],
+                'proposal': proposal_ref, 'review': review_ref,
+                'action': 'Revise the exact proposal; this review grants no change authority.'}
+        return self.node_persist(snapshot, payload, {'next_steps': [step]}, request)
+
+    def node_dependency_apply(self, snapshot, payload, request):
+        """Append one reviewed and human-approved dependency event."""
+        if set(request) != {'operation', 'request_id', 'actor', 'proposal',
+                            'review', 'human_approval'}:
+            raise ValueError('Goal dependency apply requires exact returned fields')
+        root = (self.runtime or {}).get('root_id')
+        invoking = os.environ.get('CODEX_THREAD_ID')
+        if not root or request['actor'] != root or (invoking and invoking != root):
+            raise ValueError('Only the coordinating root may apply a goal dependency change')
+        approval = request['human_approval']
+        if (not isinstance(approval, dict) or set(approval) != {'approved_by', 'attribution'}
+                or not explicit_approval(approval['approved_by'])
+                or not explicit_approval(approval['attribution'])):
+            raise ValueError('Goal dependency change requires explicit human approval attribution')
+        for name in ('proposal', 'review'):
+            self.api._phase_evidence.validate_ref(request[name])
+            if self.node_ref_goal(request[name], snapshot['number']) != snapshot['number']:
+                raise ValueError('Goal dependency review belongs to another goal')
+        proposal_artifact = snapshot['resolve'](request['proposal'])
+        review_artifact = snapshot['resolve'](request['review'])
+        proposal = proposal_artifact.get('content', {})
+        review = review_artifact.get('content', {})
+        review_provenance = review_artifact.get('provenance', {})
+        if (proposal_artifact.get('type') != 'goal_dependency_proposal'
+                or proposal_artifact.get('provenance', {}).get('actor') != root
+                or proposal_artifact.get('provenance', {}).get('source') != snapshot.get('goal_context_ref')
+                or review_artifact.get('type') != 'goal_dependency_review'
+                or not explicit_approval(review_provenance.get('actor'))
+                or review_provenance['actor'] == root
+                or review_provenance.get('source') != request['proposal']
+                or review.get('decision') != 'approved'
+                or not isinstance(review.get('report'), str) or not review['report'].strip()):
+            raise ValueError('Exact independent approved dependency review is required')
+        review_request = {'operation': 'goal_dependency_review',
+            'request_id': review_provenance.get('request_id'),
+            'actor': review_provenance['actor'], 'proposal': proposal,
+            'decision': review['decision'], 'report': review['report']}
+        receipts = [row for row in payload['operational']['receipts']
+                    if row['request'] == review_request['request_id']
+                    and row['payload'] == digest(review_request)]
+        if len(receipts) != 1:
+            raise ValueError('Independent dependency review lacks its exact committed receipt')
+        edge = self.node_receipt_edge(snapshot['number'], self.artifact_index(snapshot['number']), receipts[0])
+        if (edge is None or edge['source'] != proposal.get('source', {}).get('envelope')
+                or edge['target'] != snapshot['envelope']
+                or edge['response'].get('next_steps', [{}])[0].get('review') != request['review']):
+            raise ValueError('Independent dependency review/current goal chain changed')
+        expected = self.node_dependency_proposal(snapshot, proposal.get('old'),
+            proposal.get('replacement'), proposal.get('rationale'))
+        expected['source']['envelope'] = proposal['source']['envelope']
+        if (proposal != expected or proposal.get('context') != snapshot.get('goal_context_ref')
+                or proposal.get('policy') != self.node_evidence_policy()):
+            raise ValueError('Goal dependency proposal, policy or current evidence changed after review')
+        event = {'type': 'goal_dependency_change',
+            'content': {'context': proposal['context'], 'old': proposal['old'],
+                        'replacement': proposal['replacement'],
+                        'before': proposal['before'], 'after': proposal['after'],
+                        'proposal': request['proposal'], 'review': request['review'],
+                        'human_approval': copy.deepcopy(approval)},
+            'producer': None,
+            'provenance': {'actor': root, 'repository': self.repository,
+                           'goal': snapshot['number'], 'request_id': request['request_id']}}
+        reference = self.node_ref(digest(event), snapshot['number'])
+        snapshot['artifacts'][reference['hash']] = event
+        journal = payload.setdefault('goal_context_dependency_events', {'version': 1, 'events': []})
+        if (not isinstance(journal, dict) or set(journal) != {'version', 'events'}
+                or journal.get('version') != 1 or not isinstance(journal['events'], list)):
+            raise ValueError('Unsupported goal dependency journal')
+        journal['events'].append(reference)
+        response = {'next_steps': [{'kind': 'goal_dependency_changed',
+            'goal': snapshot['number'], 'event': reference,
+            'before': proposal['before'], 'after': proposal['after']}]}
+        return self.node_persist(snapshot, payload, response, request)
+
     def node_phase_finding(self, snapshot, payload, request):
         """Record diagnostic phase data; independent review/admission grants work."""
         fields = {'operation', 'request_id', 'actor', 'target', 'subject', 'source', 'rationale', 'id'}
@@ -8106,6 +8395,10 @@ class Workflow:
             pending = self.node_pending(snapshot, request)
             if request['operation'] == 'resolve_goal_blocker':
                 return self.node_resolve_goal_blocker(snapshot, payload, request)
+            if request['operation'] == 'goal_dependency_review':
+                return self.node_dependency_review(snapshot, payload, request)
+            if request['operation'] == 'goal_dependency_apply':
+                return self.node_dependency_apply(snapshot, payload, request)
             if request['operation'] == 'phase_finding':
                 return self.node_phase_finding(snapshot, payload, request)
             if request['operation'] == 'graph_normalize':
@@ -9396,6 +9689,20 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 if any(row['request'] == payload['request_id'] for row in durable['operational']['receipts']):
                     return engine.node_mutate_phase(number, payload)
         raise ValueError('Workflow topology belongs to reviewed project policy; reconcile phase data or update project policy, not individual goal graphs. An interrupted retired graph transaction requires exact checkpoint reconciliation; preserve its frozen request and history.')
+    if operation == 'goal_dependency_prepare' and number is not None:
+        if set(payload) != {'operation', 'request_id', 'old', 'replacement', 'rationale'}:
+            raise ValueError('Goal dependency preview requires one exact edge and rationale')
+        snapshot = engine.node_snapshot(number)
+        proposal = engine.node_dependency_proposal(snapshot, payload['old'],
+            payload['replacement'], payload['rationale'])
+        return {'next_steps': [{'kind': 'review_required', 'assignment': 'root',
+            'goal': number, 'proposal': proposal,
+            'action': 'Give this exact dependency proposal and impact to an independent reviewer.',
+            'submission': {'operation': 'goal_dependency_review',
+                           'request_id': 'goal-dependency-review-' + digest(proposal)[7:],
+                           'actor': '<independent reviewer thread>', 'proposal': proposal,
+                           'decision': '<approved or changes_requested>',
+                           'report': '<independent review report>'}}]}
     if operation == 'checkpoint_reconcile_prepare' and number is not None:
         if set(payload) != {'operation', 'transaction', 'rationale', 'request_id'}:
             raise ValueError('Checkpoint reconciliation preparation requires exact transaction and rationale')

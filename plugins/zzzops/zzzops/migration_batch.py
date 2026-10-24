@@ -140,6 +140,16 @@ def capability_floor(api, project, metadata, node):
     rigor = metadata.get('engineering_rigor')
     if rigor is None:
         return required
+    if isinstance(rigor, dict) and set(rigor) <= {'risk_categories', 'override'}:
+        # Early direct-v2 capture persisted the approved input shape before
+        # projecting its routing floor. Authenticate that immutable input as
+        # usual and derive its current floor without rewriting old evidence.
+        assessment = api.derive_engineering_rigor(
+            rigor, api._workflow_section(project, 'engineering_rigor'))
+        if not assessment['valid']:
+            raise ValueError('Captured engineering rigor metadata is invalid: '
+                             + ', '.join(assessment['errors']))
+        rigor = assessment
     if (not isinstance(rigor, dict)
             or not isinstance(rigor.get('effective'), str)
             or not isinstance(rigor.get('risk_categories'), list)):
