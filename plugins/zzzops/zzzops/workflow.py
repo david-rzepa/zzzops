@@ -683,6 +683,15 @@ class Workflow:
             raise ValueError('Artifact locator must bind its exact hash and same repository goal identity')
         return int(match[2])
 
+    def node_same_local_ref(self, left, right, number, resolve):
+        """Compare content identity across local urn and stored goal locators."""
+        for reference in (left, right):
+            self.api._phase_evidence.validate_ref(reference)
+            if self.node_ref_goal(reference, number) != number:
+                raise ValueError('Goal-context source belongs to another goal')
+        return (left['hash'] == right['hash']
+                and resolve(left) == resolve(right))
+
     def node_published_artifact(self, reference):
         """Decode exact Git bytes using the same bound as generic node inputs."""
         self.api._phase_evidence.validate_ref(reference)
@@ -2452,7 +2461,9 @@ class Workflow:
                                 or proposal_artifact.get('type') != 'archived_prerequisite_proposal'
                                 or proposal_artifact.get('producer') is not None
                                 or proposal_artifact.get('provenance', {}).get('actor') != provenance['actor']
-                                or proposal_artifact.get('provenance', {}).get('source') != snapshot['goal_context_ref']
+                                or not self.node_same_local_ref(
+                                    proposal_artifact.get('provenance', {}).get('source'),
+                                    snapshot['goal_context_ref'], n, resolve)
                                 or review_artifact.get('type') != 'archived_prerequisite_review'
                                 or review_artifact.get('producer') is not None
                                 or review_provenance.get('source') != proposal_ref
@@ -5808,7 +5819,9 @@ class Workflow:
         provenance = review_artifact.get('provenance', {})
         if (proposal_artifact.get('type') != 'archived_prerequisite_proposal'
                 or proposal_artifact.get('provenance', {}).get('actor') != root
-                or proposal_artifact.get('provenance', {}).get('source') != snapshot.get('goal_context_ref')
+                or not self.node_same_local_ref(
+                    proposal_artifact.get('provenance', {}).get('source'),
+                    snapshot.get('goal_context_ref'), snapshot['number'], snapshot['resolve'])
                 or review_artifact.get('type') != 'archived_prerequisite_review'
                 or not explicit_approval(provenance.get('actor')) or provenance['actor'] == root
                 or provenance.get('source') != request['proposal']
