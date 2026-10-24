@@ -203,6 +203,8 @@ PUBLIC_OPERATIONS = frozenset({
     'checkpoint_reconcile_prepare', 'checkpoint_reconcile_review', 'checkpoint_reconcile_adopt',
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
     'feedback_submit', 'heartbeat', 'hydration_checkpoint', 'installation_record', 'integrate',
+    'publication_attempt_retire',
+    'stack_attempt_retire',
     'policy_approve', 'policy_propose', 'read', 'recover', 'release', 'renew',
     'preserve_historical_draft', 'retire_stale_draft', 'route_choice', 'start', 'reconcile', 'submit',
     'stack_prepare', 'stack_status', 'stack_advance', 'compact_candidate',
@@ -3682,7 +3684,7 @@ class Workflow:
                                     'head_oid': facts['head_oid'], 'base_oid': facts['base_oid']}
                         if (all(sealed.get(name) == expected for name, expected in identity.items())
                                 and sealed.get('policy') == digest(self.project['policy'])
-                                and sealed.get('stage') == 'dispatch'):
+                                and self.node_merge_effect_marked(sealed, facts)):
                             self.node_stack_verified_merge(facts)
                             marker = sealed.get('feedback_marker', marker)
                             if isinstance(sealed.get('review_verified'), bool):
@@ -5086,7 +5088,7 @@ class Workflow:
     @staticmethod
     def node_postmerge_operation_allowed(operation, terminal_observation):
         return (operation in {'integrate', 'reconcile', 'complete', 'stack_status',
-                              'stack_advance', 'recover', 'release'}
+                              'stack_advance', 'stack_attempt_retire', 'recover', 'release'}
                 or terminal_observation and operation in {
                     'start', 'bind', 'submit', 'block', 'renew'})
 
@@ -5410,11 +5412,31 @@ class Workflow:
                 step['path'] = observed['path']
                 step['preparation'] = self.migration_preparation({'key': number}, {'goal_spec': snapshot['payload']['spec']['hash']}, observed['migration'])
         if not projection['leases']:
-            publications = [state['publication'] for state in projection['states'].values() if 'publication' in state]
+            publications = [state['publication'] for state in projection['states'].values()
+                            if state['node']['goal'] == number and 'publication' in state]
             merged = next((value for value in publications if value['provider'].get('merged')), None)
+            certificate_ref = snapshot['payload'].get('publication_certificate')
+            certificate = (snapshot['artifacts'].get(certificate_ref.get('hash'))
+                           if isinstance(certificate_ref, dict) else None)
+            uncertain = (certificate and certificate.get('type') == 'publication_certificate'
+                         and certificate.get('content', {}).get('stage') == 'dispatch')
             if merged:
                 steps.append({'kind': 'reconcile', 'goal': number, 'assignment': 'root', 'submission': {'operation': 'reconcile', 'request_id': uuid.uuid4().hex,
                               'expected_digest': None if defer_envelope else digest(snapshot['envelope']), 'expected_merge': digest(merged['provider'])}})
+            elif uncertain:
+                facts = next((value['provider'] for value in publications
+                              if value['provider'].get('head_oid') == certificate['content'].get('head_oid')), {})
+                if facts.get('merged') is False and isinstance(facts.get('updated_at'), str):
+                    steps.append({'kind': 'human_approval', 'goal': number, 'assignment': 'root',
+                        'action': 'Inspect the exact open PR and uncertain merge attempt. Obtain human approval only if the prior effect is definitively absent.',
+                        'submission': {'operation': 'publication_attempt_retire',
+                            'request_id': '<unique request id>', 'certificate': certificate_ref,
+                            'expected_head': facts['head_oid'], 'expected_marker': facts['updated_at'],
+                            'approved_by': '<approving user>', 'attribution': '<exact approval attribution>',
+                            'reason': '<reviewed no-effect evidence>'}})
+                else:
+                    steps.append({'kind': 'blocker', 'goal': number,
+                        'reason': 'Prior merge dispatch remains uncertain; exact open provider state is unavailable.'})
             else:
                 for authority, publication in self.node_publication_authorities(snapshot):
                     try: self.node_ci_required(publication['observed'])
@@ -5428,6 +5450,25 @@ class Workflow:
         for step in steps:
             step['invalidated_ancestor_gates'] = copy.deepcopy(invalidated)
         return [*resolution_steps, *steps]
+
+    @staticmethod
+    def node_merge_effect_marked(sealed, facts):
+        """A predispatch intent alone cannot authenticate a provider merge."""
+        method = sealed.get('method')
+        if sealed.get('stage') != 'dispatch':
+            return False
+        if method == 'merge':
+            topology = facts.get('merge_parents') == [sealed.get('base_oid'), sealed.get('head_oid')]
+        elif method == 'squash':
+            topology = facts.get('merge_parents') == [sealed.get('base_oid')]
+        else:
+            return False
+        if not topology:
+            return False
+        target = sealed.get('effect_hash')
+        return (isinstance(target, str) and any(
+            line.startswith('ZzzOps-Effect: ') and digest(line) == target
+            for line in (facts.get('merge_message') or '').splitlines()))
 
     def node_publication_authorities(self, snapshot):
         projection = snapshot['projection']; artifacts = snapshot['artifacts']; found = []
@@ -5445,6 +5486,9 @@ class Workflow:
                 and certificate_ref == self.node_ref(digest(certificate), snapshot['number'])
                 and certificate.get('content', {}).get('authorization', {}).get('hash') == identity
                 and certificate.get('content', {}).get('goal') == snapshot['number']
+                and certificate.get('content', {}).get('policy') == digest(self.project['policy'])
+                and self.node_merge_effect_marked(certificate.get('content', {}),
+                    (issuer.get('publication') or {}).get('provider', {}))
                 and certificate.get('provenance', {}).get('root') == result['executor'])
             if (issuer['contract']['executor']['role'] != 'root'
                     or result['executor'] != (self.runtime or {}).get('root_id') and not retained_authority): continue
@@ -5883,8 +5927,12 @@ class Workflow:
         intent_response_ref = remember(intent_response)
         predicted_payload['operational']['receipts'].append({'request': intent_request['request_id'],
             'payload': digest(intent_request), 'result': intent_response_ref})
-        predicted_payload['stack_integration'] = {'plan': plan_ref, 'attempt': attempt_ref,
-            'observation': observation, 'dispatch_receipt': dispatch_receipt}
+        retained = {key: payload.get('stack_integration', {})[key]
+                    for key in ('root_refresh',)
+                    if key in payload.get('stack_integration', {})}
+        predicted_payload['stack_integration'] = {**retained, 'plan': plan_ref,
+            'attempt': attempt_ref, 'observation': observation,
+            'dispatch_receipt': dispatch_receipt}
         response = {'next_steps': [{'kind': 'stack_advance', 'goal': number,
             'plan_id': plan['plan_id'], 'revision': predicted_plan['revision'],
             'attempt': attempt_ref, 'observation': observation,
@@ -5956,6 +6004,79 @@ class Workflow:
             raise ValueError('Merged stack member timestamp lacks timezone')
         return commit, merged_at
 
+    def node_stack_attempt_retire(self, snapshot, payload, request):
+        """Clear a coordinator intent after its member's reviewed no-effect retirement."""
+        if not (self.runtime or {}).get('root_id'):
+            raise ValueError('Stack attempt retirement belongs to authenticated root')
+        required = {'operation', 'request_id', 'plan_id', 'expected_revision',
+                    'attempt', 'member_certificate', 'expected_marker'}
+        if set(request) != required:
+            raise ValueError('Stack attempt retirement requires exact plan and member evidence')
+        number = snapshot['number']; control = self.node_stack_control(snapshot)
+        if not control or control.get('attempt') != request['attempt']:
+            raise ValueError('Coordinator attempt changed before retirement')
+        plan = self.read_artifact(number, control['plan'])
+        attempt = self.read_artifact(number, control['attempt'])
+        if (plan.get('plan_id') != request['plan_id']
+                or plan.get('revision') != request['expected_revision']
+                or attempt.get('type') != 'stack_attempt'
+                or attempt.get('content', {}).get('plan_id') != plan['plan_id']):
+            raise ValueError('Exact uncertain stack attempt is unavailable')
+        content = attempt['content']; member_goal = content['goal']
+        observation = (self.read_artifact(number, control['observation'])
+                       if control.get('observation') else None)
+        if observation and observation.get('content', {}).get('goal') == member_goal:
+            raise ValueError('Observed stack effect cannot be retired as absent')
+        member = self.node_snapshot(member_goal)
+        reference = member['payload'].get('publication_certificate')
+        certificate = (member['artifacts'].get(reference.get('hash'))
+                       if isinstance(reference, dict) else None)
+        if (reference != request['member_certificate']
+                or not certificate or certificate.get('type') != 'publication_certificate'
+                or reference != self.node_ref(digest(certificate), member_goal)
+                or certificate.get('content', {}).get('stage') != 'retired'
+                or not isinstance(certificate['content'].get('retirement'), dict)):
+            raise ValueError('Member lacks exact human-approved no-effect retirement')
+        sealed = certificate['content']
+        current_member = (self.node_stack_order_page(number, plan, plan.get('current_index', 0), 1)[0]
+                          if plan.get('ordered_root') else next(
+                              (row for row in plan['members'] if row['goal'] == member_goal), None))
+        if (not current_member or sealed.get('goal') != member_goal
+                or sealed.get('head_oid') != content.get('head')
+                or certificate.get('provenance', {}).get('request_id') != content.get('request_id')
+                or sealed.get('repository') != content.get('repository')
+                or sealed.get('pr') != f"https://github.com/{content['repository']}/pull/{content['pr']}"
+                or sealed.get('method') != content.get('method')
+                or sealed.get('branch') != current_member.get('branch')
+                or sealed.get('base') != current_member.get('base')
+                or sealed.get('base_oid') != current_member.get('base_head')
+                or sealed.get('retirement', {}).get('provider_marker') != request['expected_marker']):
+            raise ValueError('Member retirement does not match coordinator attempt')
+        context = {'branch': sealed['branch'], 'base': sealed['base'],
+                   'target': sealed['base'], 'pr': sealed['pr']}
+        observed, _, _ = self.api._github_pull_request_states(
+            self.repo, 'gh', [{'number': member_goal}],
+            {member_goal: {'repository_context': context}})
+        facts = observed.get(member_goal, {})
+        if (facts.get('merged') is not False or facts.get('updated_at') != request['expected_marker']
+                or any(facts.get(name) != expected for name, expected in {
+                    'repository': sealed['repository'], 'head_oid': sealed['head_oid'],
+                    'base_oid': sealed['base_oid'], 'base_ref': sealed['base']}.items())):
+            raise ValueError('Provider no longer confirms exact open member after retirement')
+        plan = copy.deepcopy(plan)
+        plan.pop('attempt', None); plan.pop('next_action', None)
+        plan['revision'] += 1
+        plan_ref = self.node_stack_store_plan(number, plan)
+        control = {key: value for key, value in control.items()
+                   if key not in {'attempt', 'dispatch_receipt'}}
+        control['plan'] = plan_ref
+        payload['stack_integration'] = control
+        return self.node_persist(snapshot, payload, {'next_steps': [{
+            'kind': 'stack_attempt_retired', 'goal': number,
+            'plan_id': plan['plan_id'], 'revision': plan['revision'],
+            'member_certificate': reference,
+            'action': 'Reviewed no-effect attempt retired; prepare a fresh exact stack advance.'}]}, request)
+
     def node_stack_operation(self, snapshot, payload, request):
         operation = request['operation']; number = snapshot['number']
         if not (self.runtime or {}).get('root_id'):
@@ -5967,7 +6088,7 @@ class Workflow:
             paged = ('members_complete' in request or 'continuation' in request
                      or 'expected_revision' in request)
             if (not required <= set(request) or set(request) - allowed
-                    or request.get('method') not in {'merge', 'squash', 'rebase'}
+                    or request.get('method') not in {'merge', 'squash'}
                     or not isinstance(request.get('members'), list)
                     or (paged and len(request['members']) > stack_integration.STATUS_PAGE_SIZE)):
                 raise ValueError('Stack prepare request is invalid')
@@ -6162,6 +6283,27 @@ class Workflow:
                     'continuation': page['continuation'], 'action': 'Current durable stack state observed.'}
             for name in ('attempt', 'observation', 'dispatch_receipt'):
                 if name in control: step[name] = control[name]
+            if control.get('attempt'):
+                pending_attempt = self.read_artifact(number, control['attempt'])
+                if pending_attempt.get('type') == 'stack_attempt':
+                    member_goal = pending_attempt['content']['goal']
+                    observation = (self.read_artifact(number, control['observation'])
+                                   if control.get('observation') else None)
+                    if observation and observation.get('content', {}).get('goal') == member_goal:
+                        pending_attempt = None
+                if pending_attempt and pending_attempt.get('type') == 'stack_attempt':
+                    member_goal = pending_attempt['content']['goal']
+                    member_state = self.node_snapshot(member_goal)
+                    member_ref = member_state['payload'].get('publication_certificate')
+                    member_certificate = (member_state['artifacts'].get(member_ref.get('hash'))
+                                          if isinstance(member_ref, dict) else None)
+                    if (member_certificate and member_certificate.get('type') == 'publication_certificate'
+                            and member_certificate.get('content', {}).get('stage') == 'retired'):
+                        step['recovery_contract'] = {
+                            'operation': 'stack_attempt_retire', 'request_id': '<unique request id>',
+                            'plan_id': plan['plan_id'], 'expected_revision': plan['revision'],
+                            'attempt': control['attempt'], 'member_certificate': member_ref,
+                            'expected_marker': member_certificate['content']['retirement']['provider_marker']}
             current_root = self.runtime['root_id']
             refresh_key = (current_root, request.get('cursor', 0))
             prior_refresh = control.get('root_refresh', {})
@@ -6279,6 +6421,38 @@ class Workflow:
             raise ValueError('Prior stack member requires current semantic phase Result reconciliation')
         member_snapshot, publication = self.node_stack_member_snapshot(current)
         self.node_stack_release_authorized(current['goal'], publication['provider'])
+        prior_ref = member_snapshot['payload'].get('publication_certificate')
+        prior = (member_snapshot['artifacts'].get(prior_ref.get('hash'))
+                 if isinstance(prior_ref, dict) else None)
+        if prior and prior.get('type') == 'publication_certificate':
+            if prior.get('content', {}).get('stage') == 'dispatch':
+                attempt = (self.read_artifact(number, control['attempt'])
+                           if control.get('attempt') else None)
+                dispatched = (isinstance(attempt, dict)
+                              and attempt.get('type') == 'stack_attempt'
+                              and attempt.get('content', {}).get('goal') == current['goal']
+                              and attempt.get('content', {}).get('request_id') ==
+                              prior.get('provenance', {}).get('request_id'))
+                if dispatched:
+                    raise ValueError('Prior merge dispatch outcome is uncertain; reconcile exact provider effect before another request')
+                # The coordinator never recorded its pre-command intent, so
+                # this exact stack path could not have started the command.
+                retired = copy.deepcopy(prior)
+                retired['content']['stage'] = 'aborted'
+                retired['content']['reason'] = 'coordinator intent absent'
+                stored = self.artifact(current['goal'], retired)
+                aborted_ref = self.node_ref(stored['hash'], current['goal'])
+                aborted_payload = copy.deepcopy(member_snapshot['payload'])
+                aborted_payload['publication_certificate'] = aborted_ref
+                self.node_persist(member_snapshot, aborted_payload, {'next_steps': [{
+                    'kind': 'checkpoint', 'goal': current['goal'],
+                    'action': 'No coordinator dispatch intent was recorded; fresh request required.'}]},
+                    {'operation': 'stack_advance',
+                     'request_id': prior['provenance']['request_id'] + '-no-intent',
+                     'plan_id': plan['plan_id'], 'expected_revision': plan['revision']})
+                raise ValueError('No coordinator dispatch intent was recorded; use a fresh exact request')
+            if prior.get('provenance', {}).get('request_id') == request['request_id']:
+                raise ValueError('Prior private merge nonce is unavailable; observe the provider effect before starting a fresh request')
         if self.node_native_delivery(member_snapshot):
             candidate = self.node_candidate_state(member_snapshot)
             if (candidate['status'] != 'ready' or candidate['head_oid'] != current['head']
@@ -6301,6 +6475,7 @@ class Workflow:
         # merge updates the PR timestamp, but that update must not erase the
         # reviews and approval which authorized this specific head and base.
         before = publication['provider']
+        effect_marker = 'ZzzOps-Effect: ' + os.urandom(32).hex()
         certificate_value = {'type': 'publication_certificate', 'content': {
             'repository': self.repository, 'goal': current['goal'],
             'pr': f"https://github.com/{self.repository}/pull/{current['pr']}",
@@ -6310,6 +6485,7 @@ class Workflow:
             'feedback_marker': publication['observed'].get('feedback_marker'),
             'review_verified': publication['observed'].get('review_verified'),
             'ci': publication['observed'].get('ci'),
+            'effect_hash': digest(effect_marker),
             'policy': digest(self.project['policy']), 'method': plan['method'],
             'stage': 'sealed'},
             'producer': None, 'provenance': {'request_id': request['request_id'],
@@ -6387,16 +6563,19 @@ class Workflow:
             'root': self.runtime['root_id']}}
         if len(comment_store.canonical(observation_template).encode()) > comment_store.MAX_ARTIFACT_BYTES:
             raise ValueError('Post-effect observation exceeds durable storage capacity')
+        dispatch_command = (command + ['--body', f"ZzzOps goal #{current['goal']}\n\n{effect_marker}"]
+                            if plan['method'] != 'rebase' else command)
         uncertain, dispatch_result, dispatch_error = False, None, None
         try:
             remaining = self.api.provider_operation_remaining()
             timeout = remaining if isinstance(remaining, (int, float)) and remaining > 0 else 30
-            dispatch_result = subprocess.run(command, cwd=self.repo, capture_output=True, text=True,
+            dispatch_result = subprocess.run(dispatch_command, cwd=self.repo, capture_output=True, text=True,
                                              check=True, timeout=timeout)
         except (subprocess.SubprocessError, OSError) as exc:
             uncertain, dispatch_error = True, exc
         raw_diagnostic = ((dispatch_result.stdout or '') + (dispatch_result.stderr or '')
                           if dispatch_result is not None else str(dispatch_error or ''))
+        raw_diagnostic = raw_diagnostic.replace(effect_marker, '<redacted merge marker>')
         diagnostic = raw_diagnostic.encode()[:stack_integration.MAX_DIAGNOSTIC].decode(errors='replace')
         dispatch_receipt = self.artifact(number, {'type': 'stack_dispatch_receipt', 'content': {
             'plan_id': plan['plan_id'], 'request_id': request['request_id'],
@@ -6431,7 +6610,9 @@ class Workflow:
                 'state': 'merged', 'merge_commit': fact.get('merge_commit'), 'merged_at': fact.get('merged_at')},
                 'producer': None, 'provenance': {'request_id': request['request_id'], 'root': self.runtime['root_id']}})
         plan['revision'] += 1; plan_ref = self.node_stack_store_plan(number, plan)
-        control = {'plan': plan_ref, 'attempt': attempt_ref, 'dispatch_receipt': dispatch_receipt}
+        control = {key: control[key] for key in ('root_refresh', 'observation') if key in control}
+        control.update({'plan': plan_ref, 'attempt': attempt_ref,
+                        'dispatch_receipt': dispatch_receipt})
         if observation_ref: control['observation'] = observation_ref
         payload['stack_integration'] = control
         step = {'kind': 'stack_advance', 'goal': number, 'plan_id': plan['plan_id'],
@@ -7037,6 +7218,54 @@ class Workflow:
         return {'status': 'complete' if not preserved else 'preserved_dirty',
                 'removed': removed, 'preserved_dirty': preserved}
 
+    def node_publication_attempt_retire(self, snapshot, payload, request):
+        """Explicitly retire an uncertain intent only after exact human review."""
+        if not (self.runtime or {}).get('root_id'):
+            raise ValueError('Publication attempt retirement belongs to authenticated root')
+        required = {'operation', 'request_id', 'certificate', 'expected_head',
+                    'expected_marker', 'approved_by', 'attribution', 'reason'}
+        if set(request) != required or not explicit_approval(request.get('approved_by')):
+            raise ValueError('Exact human approval is required to retire an uncertain merge intent')
+        if any(not isinstance(request.get(name), str) or not request[name].strip()
+               for name in ('attribution', 'reason', 'expected_head', 'expected_marker')):
+            raise ValueError('Attempt retirement requires exact provider facts and approval attribution')
+        reference = payload.get('publication_certificate')
+        if reference != request['certificate']:
+            raise ValueError('Publication certificate changed before retirement')
+        certificate = snapshot['artifacts'].get(reference.get('hash')) if isinstance(reference, dict) else None
+        if (not certificate or certificate.get('type') != 'publication_certificate'
+                or reference != self.node_ref(digest(certificate), snapshot['number'])
+                or certificate.get('content', {}).get('stage') != 'dispatch'):
+            raise ValueError('No exact uncertain dispatch certificate can be retired')
+        sealed = certificate['content']
+        context = {'branch': sealed['branch'], 'base': sealed['base'],
+                   'target': sealed['base'], 'pr': sealed['pr']}
+        observed, _, _ = self.api._github_pull_request_states(
+            self.repo, 'gh', [{'number': snapshot['number']}],
+            {snapshot['number']: {'repository_context': context}})
+        facts = observed.get(snapshot['number'], {})
+        if (facts.get('merged') is not False or any(facts.get(name) != expected
+                for name, expected in {'repository': sealed['repository'],
+                                       'head_oid': sealed['head_oid'],
+                                       'base_oid': sealed['base_oid'],
+                                       'base_ref': sealed['base']}.items())
+                or facts.get('head_oid') != request['expected_head']
+                or facts.get('updated_at') != request['expected_marker']):
+            raise ValueError('Provider is not confirmed open at the exact reviewed head, base and marker')
+        retired = copy.deepcopy(certificate)
+        retired['content']['stage'] = 'retired'
+        retired['content']['retirement'] = {
+            'source': reference, 'approved_by': request['approved_by'],
+            'attribution': request['attribution'], 'reason': request['reason'],
+            'provider_marker': facts['updated_at']}
+        stored = self.artifact(snapshot['number'], retired)
+        retired_ref = self.node_ref(stored['hash'], snapshot['number'])
+        payload['publication_certificate'] = retired_ref
+        return self.node_persist(snapshot, payload, {'next_steps': [{
+            'kind': 'checkpoint', 'goal': snapshot['number'],
+            'certificate': retired_ref,
+            'action': 'Uncertain attempt retired by exact human approval; reacquire current publication authority before any new effect.'}]}, request)
+
     def node_publication_operation(self, snapshot, payload, request):
         operation = request['operation']; projection = snapshot['projection']
         if not (self.runtime or {}).get('root_id'): raise ValueError('Operational publication belongs to authenticated root')
@@ -7088,6 +7317,15 @@ class Workflow:
                     raise ValueError(f"Release integration blocked: {decision['code']}")
             if not facts.get('merged'):
                 context = publication['context']
+                prior_ref = snapshot['payload'].get('publication_certificate')
+                prior = (snapshot['artifacts'].get(prior_ref.get('hash'))
+                         if isinstance(prior_ref, dict) else None)
+                if prior and prior.get('type') == 'publication_certificate':
+                    if prior.get('content', {}).get('stage') == 'dispatch':
+                        raise ValueError('Prior merge dispatch outcome is uncertain; reconcile exact provider effect before another request')
+                    if prior.get('provenance', {}).get('request_id') == request['request_id']:
+                        raise ValueError('Prior private merge nonce is unavailable; observe the provider effect before starting a fresh request')
+                effect_marker = 'ZzzOps-Effect: ' + os.urandom(32).hex()
                 certificate_value = {'type': 'publication_certificate', 'content': {
                     'repository': self.repository, 'goal': snapshot['number'],
                     'pr': context['pr'], 'branch': context['branch'], 'base': context['base'],
@@ -7096,6 +7334,7 @@ class Workflow:
                     'feedback_marker': publication['observed'].get('feedback_marker'),
                     'review_verified': publication['observed'].get('review_verified'),
                     'ci': publication['observed'].get('ci'),
+                    'effect_hash': digest(effect_marker),
                     'policy': digest(self.project['policy']),
                     'method': 'merge' if native else 'squash', 'stage': 'sealed'},
                     'producer': None, 'provenance': {'request_id': request['request_id'],
@@ -7129,9 +7368,13 @@ class Workflow:
                     {'operation': 'integrate', 'request_id': request['request_id'] + '-dispatch',
                      'authorization': request['authorization'], 'expected_head': facts['head_oid']})
                 snapshot = self.node_snapshot(snapshot['number']); payload = copy.deepcopy(snapshot['payload'])
-                subprocess.run(['gh', 'pr', 'merge', context['pr'],
-                    '--merge' if native else '--squash', '--match-head-commit', facts['head_oid']],
-                    cwd=self.repo, capture_output=True, text=True, check=True)
+                try:
+                    subprocess.run(['gh', 'pr', 'merge', context['pr'],
+                        '--merge' if native else '--squash', '--match-head-commit', facts['head_oid'],
+                        '--body', f"ZzzOps goal #{snapshot['number']}\n\n{effect_marker}"],
+                        cwd=self.repo, capture_output=True, text=True, check=True)
+                except (OSError, subprocess.SubprocessError):
+                    raise ValueError('Provider merge dispatch outcome is uncertain; observe the exact PR before retry')
                 observed, _, _ = self.api._github_pull_request_states(self.repo, 'gh', [{'number': snapshot['number']}], {snapshot['number']: {'repository_context': publication['context']}})
                 after = observed.get(snapshot['number'], {})
                 if not after.get('merged') or any(after.get(name) != facts.get(name) for name in ('repository', 'head_oid', 'base_oid', 'base_ref')): raise ValueError('Provider did not confirm exact authorized merge; retry same request')
@@ -7842,7 +8085,7 @@ class Workflow:
             closed = (snapshot['envelope']['state'] != 'open'
                       or str(snapshot['issue'].get('state', '')).lower() == 'closed')
             if closed:
-                if (request.get('operation') not in {'stack_status', 'stack_advance'}
+                if (request.get('operation') not in {'stack_status', 'stack_advance', 'stack_attempt_retire'}
                         or snapshot['envelope']['state'] != 'archived'
                         or str(snapshot['issue'].get('state', '')).lower() != 'closed'
                         or not snapshot['payload'].get('stack_integration', {}).get('plan')):
@@ -7881,8 +8124,12 @@ class Workflow:
                 return self.node_graph_review_bootstrap(snapshot, payload, request)
             if request['operation'] in {'stack_prepare', 'stack_status', 'stack_advance'}:
                 return self.node_stack_operation(snapshot, payload, request)
+            if request['operation'] == 'stack_attempt_retire':
+                return self.node_stack_attempt_retire(snapshot, payload, request)
             if request['operation'] in {'integrate', 'reconcile', 'complete'}:
                 return self.node_publication_operation(snapshot, payload, request)
+            if request['operation'] == 'publication_attempt_retire':
+                return self.node_publication_attempt_retire(snapshot, payload, request)
             node = request.get('node')
             if not isinstance(node, dict): raise ValueError('Generic operation requires exact qualified node identity')
             if node.get('goal') != number:

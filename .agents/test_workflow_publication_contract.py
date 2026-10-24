@@ -861,7 +861,11 @@ class GenericPublicationPublicTests(DagFixture):
             self.assertEqual(1, len(matches), command)
             self.merge_calls.append(list(command))
             matches[0].update(merged=True, merged_at="2026-09-29T15:00:00Z",
-                              merge_commit="f" * 40, review_verified=True)
+                              merge_commit="f" * 40, review_verified=True,
+                              merge_message=command[command.index("--body") + 1]
+                              if "--body" in command else None,
+                              merge_parents=[matches[0]["base_oid"], expected_head]
+                              if "--merge" in command else [matches[0]["base_oid"]])
             return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
         raise AssertionError("Unexpected provider command in synthetic publication fixture: %r" % command)
 
@@ -987,10 +991,6 @@ class GenericPublicationPublicTests(DagFixture):
             result = provider_command(command, *args, **kwargs)
             if list(command[:3]) == ["gh", "pr", "merge"]:
                 self.observation["updated_at"] = "2026-09-29T15:00:00Z"
-                # GitHub's postmerge review/check projection is nullable. The
-                # exact premerge gate evidence must survive this representation.
-                self.observation["review_verified"] = False
-                self.observation["checks_verified"] = False
             return result
         self.session.provider_command = merge_updates_provider_marker
         graph = self.with_merge_observation(copy.deepcopy(self.graph))
@@ -1039,7 +1039,7 @@ class GenericPublicationPublicTests(DagFixture):
             self.assertFalse(allowed(operation, False), operation)
             self.assertFalse(allowed(operation, True), operation)
         for operation in ("integrate", "reconcile", "complete", "stack_status",
-                          "stack_advance", "recover", "release"):
+                          "stack_advance", "stack_attempt_retire", "recover", "release"):
             self.assertTrue(allowed(operation, False), operation)
         self.assertTrue(allowed("submit", True))
         self.assertFalse(allowed("submit", False))
@@ -1106,6 +1106,58 @@ class GenericPublicationPublicTests(DagFixture):
             "payload": {"evidence": [], "operational": {"receipts": [
                 {"result": {"hash": "sha256:" + "b" * 64}}]}}, "artifacts": {}}
         self.assertTrue(engine.node_has_merged_publication(snapshot, 100))
+    def test_native_merge_retains_certified_gates_when_provider_projection_changes(self):
+        self.observation["updated_at"] = "2026-09-29T14:00:00Z"
+        graph = self.with_merge_observation(copy.deepcopy(self.graph))
+        graph["nodes"][-1]["executor"]["role"] = "root"
+        graph["terminals"] = [selector("observed_merge")]
+        self.install(graph)
+        self.authorize_context()
+        authority = self.approve_publication()
+        request = self.integration_request(authority)
+        request["request_id"] = "native-certified-gates"
+        provider_command = self.provider_command
+        def change_postmerge_projection(command, *args, **kwargs):
+            result = provider_command(command, *args, **kwargs)
+            if list(command[:3]) == ["gh", "pr", "merge"]:
+                self.observation["updated_at"] = "2026-09-29T15:00:00Z"
+                self.observation["review_verified"] = False
+                self.observation["checks_verified"] = False
+            return result
+        self.session.provider_command = change_postmerge_projection
+        with mock.patch.object(z._workflow.Workflow, 'node_native_delivery', return_value=True), \
+             mock.patch.object(z._workflow.Workflow, 'node_candidate_state', return_value={
+                 'status': 'ready', 'branch': 'goal-child',
+                 'head_oid': self.observation['head_oid']}):
+            first = self.session.call(100, request)
+            replay = self.session.call(100, request)
+        self.assertIn("closed", json.dumps(first))
+        self.assertIn("closed", json.dumps(replay))
+        self.assertEqual(1, len(self.merge_calls))
+
+    def test_squash_parent_mismatch_cannot_retain_premerge_gates(self):
+        self.observation["updated_at"] = "2026-09-29T14:00:00Z"
+        graph = self.with_merge_observation(copy.deepcopy(self.graph))
+        graph["nodes"][-1]["executor"]["role"] = "root"
+        graph["terminals"] = [selector("observed_merge")]
+        self.install(graph)
+        self.authorize_context()
+        authority = self.approve_publication()
+        request = self.integration_request(authority)
+        request["request_id"] = "squash-wrong-parent"
+        provider_command = self.provider_command
+        def wrong_parent_after_merge(command, *args, **kwargs):
+            result = provider_command(command, *args, **kwargs)
+            if list(command[:3]) == ["gh", "pr", "merge"]:
+                self.observation["updated_at"] = "2026-09-29T15:00:00Z"
+                self.observation["review_verified"] = False
+                self.observation["checks_verified"] = False
+                self.observation["merge_parents"] = ["e" * 40]
+            return result
+        self.session.provider_command = wrong_parent_after_merge
+        first = self.session.call(100, request)
+        self.assertRegex(json.dumps(first), r"(?i)terminal_reconciliation|pending|stale")
+        self.assertEqual("open", self.provider.issues[100]["state"])
 
     def test_integrate_recovers_provider_merge_before_goal_receipt(self):
         graph = self.with_merge_observation(copy.deepcopy(self.graph))
@@ -1134,7 +1186,8 @@ class GenericPublicationPublicTests(DagFixture):
         self.assertEqual("closed", self.provider.issues[100]["state"])
         self.assertEqual(1, len(self.merge_calls))
 
-    def test_retry_after_certificate_uses_pr_marker_not_goal_issue_timestamp(self):
+    def test_postspawn_oserror_keeps_dispatch_uncertain(self):
+        self.observation["updated_at"] = "2026-09-29T14:00:00Z"
         graph = self.with_merge_observation(copy.deepcopy(self.graph))
         graph["nodes"][-1]["executor"]["role"] = "root"
         graph["terminals"] = [selector("observed_merge")]
@@ -1142,21 +1195,72 @@ class GenericPublicationPublicTests(DagFixture):
         self.authorize_context()
         authority = self.approve_publication()
         request = self.integration_request(authority)
-        request["request_id"] = "certificate-before-dispatch-retry"
+        request["request_id"] = "oserror-after-spawn"
         provider_command = self.provider_command
         interrupted = []
-        def stop_once_before_dispatch(command, *args, **kwargs):
+        def stop_once_after_spawn(command, *args, **kwargs):
             if list(command[:3]) == ["gh", "pr", "merge"] and not interrupted:
-                interrupted.append(True)
-                raise OSError("process stopped after durable certificate")
+                interrupted.append("child started")
+                raise OSError("output read failed after child started")
             return provider_command(command, *args, **kwargs)
-        self.session.provider_command = stop_once_before_dispatch
+        self.session.provider_command = stop_once_after_spawn
         first = self.session.call(100, request, expected=2)
         self.assertTrue(interrupted)
-        self.assertRegex(json.dumps(first), r"(?i)certificate|dispatch|retry|stopped")
+        self.assertRegex(json.dumps(first), r"(?i)uncertain|observe")
         self.assertEqual([], self.merge_calls)
-        replay = self.session.call(100, request)
-        self.assertIn("closed", json.dumps(replay))
+        replay = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(replay), r"(?i)prior merge dispatch|uncertain")
+        blocked = self.session.call(100, {**request,
+            "request_id": "fresh-while-oserror-uncertain"}, expected=2)
+        self.assertRegex(json.dumps(blocked), r"(?i)prior merge dispatch|uncertain")
+        certificate = self.payload()[1]["publication_certificate"]
+        self.session.call(100, {"operation": "publication_attempt_retire",
+            "request_id": "retire-oserror-attempt", "certificate": certificate,
+            "expected_head": self.observation["head_oid"],
+            "expected_marker": self.observation["updated_at"],
+            "approved_by": "User explicitly approved exact no-effect recovery",
+            "attribution": "Reviewed open PR after output failure",
+            "reason": "No merge effect was observed"})
+        fresh = self.session.call(100, {**request, "request_id": "fresh-private-merge-nonce"})
+        self.assertIn("closed", json.dumps(fresh))
+        self.assertEqual(1, len(self.merge_calls))
+
+    def test_uncertain_direct_dispatch_blocks_new_effect_request(self):
+        self.observation["updated_at"] = "2026-09-29T14:00:00Z"
+        self.authorize_context()
+        authority = self.approve_publication()
+        request = self.integration_request(authority)
+        request["request_id"] = "uncertain-direct-effect"
+        calls = []
+        def uncertain(command, *args, **kwargs):
+            if list(command[:3]) == ["gh", "pr", "merge"]:
+                calls.append(list(command))
+                raise subprocess.TimeoutExpired(command, 5)
+            return self.provider_command(command, *args, **kwargs)
+        self.session.provider_command = uncertain
+        first = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(first), r"(?i)uncertain|observe")
+        second = self.session.call(100, {**request, "request_id": "new-while-uncertain"}, expected=2)
+        self.assertRegex(json.dumps(second), r"(?i)prior merge dispatch|uncertain")
+        self.assertEqual(1, len(calls), "No second provider effect is dispatched")
+        certificate = self.payload()[1]["publication_certificate"]
+        frontier = self.session.checkpoint(100)
+        self.assertTrue(any(step.get("kind") == "human_approval" and
+            step.get("submission", {}).get("certificate") == certificate for step in frontier),
+            "The CLI must expose the exact reviewed no-effect recovery")
+        retirement = {"operation": "publication_attempt_retire",
+            "request_id": "reviewed-retirement", "certificate": certificate,
+            "expected_head": self.observation["head_oid"],
+            "expected_marker": self.observation["updated_at"],
+            "approved_by": "User explicitly approved this exact no-effect recovery",
+            "attribution": "Reviewed open PR after timeout", "reason": "No merge effect was observed"}
+        rejected = self.session.call(100, {**retirement,
+            "request_id": "wrong-retirement-marker", "expected_marker": "stale"}, expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)provider|marker|exact")
+        self.session.call(100, retirement)
+        self.session.provider_command = self.provider_command
+        fresh = self.session.call(100, {**request, "request_id": "after-reviewed-retirement"})
+        self.assertIn("merged", json.dumps(fresh))
         self.assertEqual(1, len(self.merge_calls))
 
     def test_feedback_change_after_certificate_blocks_provider_merge(self):
@@ -1209,6 +1313,42 @@ class GenericPublicationPublicTests(DagFixture):
         first = self.session.call(100, request, expected=2)
         self.assertTrue(changed)
         self.assertRegex(json.dumps(first), r"(?i)provider changed|feedback|review")
+        retry = self.session.call(100, request, expected=2)
+        self.assertRegex(json.dumps(retry), r"(?i)stale|authority|current|review|provider")
+        self.assertEqual("open", self.provider.issues[100]["state"])
+        self.assertEqual([], self.merge_calls)
+
+    def test_external_merge_after_dispatch_intent_lacks_effect_marker(self):
+        self.observation["updated_at"] = "2026-09-29T14:00:00Z"
+        graph = self.with_merge_observation(copy.deepcopy(self.graph))
+        graph["nodes"][-1]["executor"]["role"] = "root"
+        graph["terminals"] = [selector("observed_merge")]
+        self.install(graph)
+        self.authorize_context()
+        authority = self.approve_publication()
+        request = self.integration_request(authority)
+        request["request_id"] = "external-merge-after-dispatch-intent"
+        update = self.provider.update_issue
+        def merge_after_dispatch_intent(number, payload):
+            result = update(number, payload)
+            certificate = self.payload()[1].get("publication_certificate")
+            if (certificate and self.read_blob(certificate)["content"].get("stage") == "dispatch"
+                    and not self.observation["merged"]):
+                sealed = self.read_blob(certificate)["content"]
+                self.mark_merged()
+                self.observation["updated_at"] = "2026-09-29T14:01:00Z"
+                self.observation["review_verified"] = False
+                self.observation["checks_verified"] = False
+                self.observation["merge_message"] = "ZzzOps-Effect: " + sealed["effect_hash"]
+                self.observation["merge_parents"] = [sealed["base_oid"], sealed["head_oid"]]
+            return result
+        self.provider.update_issue = merge_after_dispatch_intent
+        def no_command_after_external_merge(command, *args, **kwargs):
+            if list(command[:3]) == ["gh", "pr", "merge"] and self.observation["merged"]:
+                raise OSError("provider already merged externally")
+            return self.provider_command(command, *args, **kwargs)
+        self.session.provider_command = no_command_after_external_merge
+        self.session.call(100, request, expected=2)
         retry = self.session.call(100, request, expected=2)
         self.assertRegex(json.dumps(retry), r"(?i)stale|authority|current|review|provider")
         self.assertEqual("open", self.provider.issues[100]["state"])
@@ -1567,6 +1707,84 @@ class GenericPublicationPublicTests(DagFixture):
         self.assertEqual(evidence_before, self.payload()[1]["evidence"],
                          "Stack administration cannot fabricate semantic Results")
 
+    def test_stack_dispatch_certificate_without_coordinator_intent_recovers(self):
+        self.authorize_context()
+        authority = self.approve_publication()
+        self.submit_role("finish", "Current terminal evidence")
+        prepared = self.session.call(100, {
+            "operation": "stack_prepare", "request_id": "stack-no-intent-prepare",
+            "repository": "owner/repo", "target": "dev", "method": "merge",
+            "members": [{
+                "goal": 100, "pr": 100, "branch": "goal-child", "base": "dev",
+                "head": self.observation["head_oid"],
+                "base_head": self.observation["base_oid"],
+                "implementation_review": "current", "ci": "verified",
+                "release": "eligible", "authorization": authority, "owner": None,
+            }],
+        })["next_steps"][0]
+        advance = {"operation": "stack_advance", "request_id": "stack-no-intent",
+                   "plan_id": prepared["plan_id"], "expected_revision": prepared["revision"]}
+        with mock.patch.object(z._workflow.Workflow, 'node_stack_followup_capacity',
+                               side_effect=ValueError('capacity unavailable')):
+            self.session.call(100, advance, expected=2)
+        self.assertEqual([], self.merge_calls)
+        self.assertEqual("dispatch", self.read_blob(
+            self.payload()[1]["publication_certificate"])["content"]["stage"])
+        retry = self.session.call(100, advance, expected=2)
+        self.assertRegex(json.dumps(retry), r"(?i)no coordinator dispatch intent|fresh exact request")
+        self.assertEqual("aborted", self.read_blob(
+            self.payload()[1]["publication_certificate"])["content"]["stage"])
+        fresh = self.session.call(100, {**advance, "request_id": "stack-after-no-intent"})
+        self.assertRegex(json.dumps(fresh), r"(?i)observ|reconcil|pending")
+        self.assertEqual(1, len(self.merge_calls))
+
+    def test_uncertain_stack_effect_can_be_reviewed_and_retired(self):
+        self.observation["updated_at"] = "2026-09-29T14:00:00Z"
+        self.authorize_context()
+        authority = self.approve_publication()
+        self.submit_role("finish", "Current terminal evidence")
+        prepared = self.session.call(100, {
+            "operation": "stack_prepare", "request_id": "stack-retire-prepare",
+            "repository": "owner/repo", "target": "dev", "method": "merge",
+            "members": [{
+                "goal": 100, "pr": 100, "branch": "goal-child", "base": "dev",
+                "head": self.observation["head_oid"],
+                "base_head": self.observation["base_oid"],
+                "implementation_review": "current", "ci": "verified",
+                "release": "eligible", "authorization": authority, "owner": None,
+            }],
+        })["next_steps"][0]
+        advance = {"operation": "stack_advance", "request_id": "uncertain-stack-effect",
+                   "plan_id": prepared["plan_id"], "expected_revision": prepared["revision"]}
+        def timeout_without_merge(command, *args, **kwargs):
+            if list(command[:3]) == ["gh", "pr", "merge"]:
+                raise subprocess.TimeoutExpired(command, 5)
+            return self.provider_command(command, *args, **kwargs)
+        self.session.provider_command = timeout_without_merge
+        uncertain = self.session.call(100, advance)
+        self.assertRegex(json.dumps(uncertain), r"(?i)uncertain|observe")
+        self.assertEqual([], self.merge_calls)
+        certificate = self.payload()[1]["publication_certificate"]
+        self.session.call(100, {"operation": "publication_attempt_retire",
+            "request_id": "retire-stack-member", "certificate": certificate,
+            "expected_head": self.observation["head_oid"],
+            "expected_marker": self.observation["updated_at"],
+            "approved_by": "User approved exact no-effect retirement",
+            "attribution": "Reviewed open member after timeout",
+            "reason": "No stack merge effect was observed"})
+        status = self.session.call(100, {"operation": "stack_status",
+            "request_id": "stack-retire-status", "plan_id": prepared["plan_id"]})
+        recovery = status["next_steps"][0]["recovery_contract"]
+        recovery["request_id"] = "retire-coordinator-attempt"
+        retired = self.session.call(100, recovery)
+        self.assertEqual("stack_attempt_retired", retired["next_steps"][0]["kind"])
+        self.session.provider_command = self.provider_command
+        fresh = self.session.call(100, {**advance,
+            "request_id": "fresh-stack-after-retirement",
+            "expected_revision": retired["next_steps"][0]["revision"]})
+        self.assertRegex(json.dumps(fresh), r"(?i)observ|reconcil|pending")
+        self.assertEqual(1, len(self.merge_calls))
+
     def test_public_stack_rejects_squash_for_exact_git_candidate(self):
         self.authorize_context()
         authority = self.approve_publication()
@@ -1592,6 +1810,24 @@ class GenericPublicationPublicTests(DagFixture):
             }, expected=2)
         self.assertIn('ancestry-preserving merge', json.dumps(rejected))
         self.assertEqual([], self.merge_calls)
+
+    def test_public_stack_rejects_rebase_without_terminal_effect_proof(self):
+        self.authorize_context()
+        authority = self.approve_publication()
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        rejected = self.session.call(100, {
+            "operation": "stack_prepare", "request_id": "unsupported-rebase-stack",
+            "repository": "owner/repo", "target": "dev", "method": "rebase",
+            "members": [{
+                "goal": 100, "pr": 100, "branch": "goal-child", "base": "dev",
+                "head": self.observation["head_oid"],
+                "base_head": self.observation["base_oid"],
+                "implementation_review": "current", "ci": "verified",
+                "release": "eligible", "authorization": authority, "owner": None,
+            }],
+        }, expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)stack prepare|method|invalid")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
     def test_public_abc_stack_persists_and_resumes_each_authorized_effect(self):
         graph = self.with_merge_observation(copy.deepcopy(self.graph))
@@ -1625,7 +1861,7 @@ class GenericPublicationPublicTests(DagFixture):
             "head_oid": heads[number], "base_oid": bases[number][1],
             "base_ref": bases[number][0], "merged": False, "merged_at": None,
             "merge_commit": None, "checks_present": True, "checks_verified": True,
-            "review_verified": True,
+            "review_verified": True, "updated_at": "2026-09-29T14:00:00Z",
         } for number in (100, 101, 102)}
 
         def produced(number, role):
@@ -1709,6 +1945,10 @@ class GenericPublicationPublicTests(DagFixture):
         provider_command = self.provider_command
         lost = []
         def committed_but_uncertain(command, *args, **kwargs):
+            if list(command[:3]) == ["gh", "pr", "merge"]:
+                marker = command[command.index("--body") + 1].splitlines()[-1]
+                self.assertNotIn(marker, json.dumps(self.provider.comments),
+                                 "The secret nonce must not enter public intent records")
             result = provider_command(command, *args, **kwargs)
             if list(command[:3]) == ["gh", "pr", "merge"] and not lost:
                 lost.append(True)
@@ -1770,9 +2010,32 @@ class GenericPublicationPublicTests(DagFixture):
             "review": produced(101, "review"),
             "policy": content_hash(self.session.project["policy"]), "decision": "approved"},
             actor="replacement-root", session=resumed)
+        def timeout_b(command, *args, **kwargs):
+            if list(command[:3]) == ["gh", "pr", "merge"]:
+                raise subprocess.TimeoutExpired(command, 5)
+            return self.provider_command(command, *args, **kwargs)
+        resumed.provider_command = timeout_b
+        uncertain_b = resumed.call(100, {"operation": "stack_advance",
+            "request_id": "public-abc-b-uncertain", "plan_id": prepared["plan_id"],
+            "expected_revision": prepared["revision"] + 2})
+        self.assertRegex(json.dumps(uncertain_b), r"(?i)uncertain|observe")
+        self.assertEqual(1, len(self.merge_calls))
+        member_certificate = self.read_at(101,
+            self.envelope_for(101)["payload"])["publication_certificate"]
+        resumed.call(101, {"operation": "publication_attempt_retire",
+            "request_id": "public-abc-b-member-retire", "certificate": member_certificate,
+            "expected_head": heads[101], "expected_marker": self.stack_observations[101]["updated_at"],
+            "approved_by": "User approved exact no-effect retirement",
+            "attribution": "Reviewed open B after timeout", "reason": "No B merge effect observed"})
+        status_b = resumed.call(100, {"operation": "stack_status",
+            "request_id": "public-abc-b-retire-status", "plan_id": prepared["plan_id"]})
+        recovery = status_b["next_steps"][0]["recovery_contract"]
+        recovery["request_id"] = "public-abc-b-coordinator-retire"
+        retired_b = resumed.call(100, recovery)
+        resumed.provider_command = self.provider_command
         advanced_b = resumed.call(100, {"operation": "stack_advance",
             "request_id": "public-abc-b", "plan_id": prepared["plan_id"],
-            "expected_revision": prepared["revision"] + 2})
+            "expected_revision": retired_b["next_steps"][0]["revision"]})
         self.assertEqual(2, len(self.merge_calls))
         self.assertRegex(json.dumps(advanced_b), r"(?i)dispatch|observ|reconcile|pending")
 
