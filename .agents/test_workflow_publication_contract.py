@@ -1029,6 +1029,31 @@ class GenericPublicationPublicTests(DagFixture):
         self.assertEqual("closed", self.provider.issues[100]["state"])
         self.assertEqual(1, len(self.merge_calls))
 
+    def test_retry_after_certificate_uses_pr_marker_not_goal_issue_timestamp(self):
+        graph = self.with_merge_observation(copy.deepcopy(self.graph))
+        graph["nodes"][-1]["executor"]["role"] = "root"
+        graph["terminals"] = [selector("observed_merge")]
+        self.install(graph)
+        self.authorize_context()
+        authority = self.approve_publication()
+        request = self.integration_request(authority)
+        request["request_id"] = "certificate-before-dispatch-retry"
+        provider_command = self.provider_command
+        interrupted = []
+        def stop_once_before_dispatch(command, *args, **kwargs):
+            if list(command[:3]) == ["gh", "pr", "merge"] and not interrupted:
+                interrupted.append(True)
+                raise OSError("process stopped after durable certificate")
+            return provider_command(command, *args, **kwargs)
+        self.session.provider_command = stop_once_before_dispatch
+        first = self.session.call(100, request, expected=2)
+        self.assertTrue(interrupted)
+        self.assertRegex(json.dumps(first), r"(?i)certificate|dispatch|retry|stopped")
+        self.assertEqual([], self.merge_calls)
+        replay = self.session.call(100, request)
+        self.assertIn("closed", json.dumps(replay))
+        self.assertEqual(1, len(self.merge_calls))
+
     def test_feedback_change_after_certificate_blocks_provider_merge(self):
         self.observation["updated_at"] = "2026-09-29T14:00:00Z"
         graph = self.with_merge_observation(copy.deepcopy(self.graph))

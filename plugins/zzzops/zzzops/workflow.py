@@ -3668,8 +3668,9 @@ class Workflow:
                 # comment and thread edits.  Bind it when available so any
                 # feedback change invalidates the assessment/authorization.
                 marker = facts.get('updated_at')
-                provider_goal = snapshots.get(key[0], {}).get('issue', {})
-                if not isinstance(marker, str): marker = provider_goal.get('updated_at')
+                # The goal issue is our own checkpoint store. Its updated_at
+                # changes when we seal a certificate and cannot stand in for
+                # the pull request's feedback marker.
                 if facts.get('merged'):
                     certificate_ref = snapshots.get(key[0], {}).get('payload', {}).get('publication_certificate')
                     certificate = artifacts.get(certificate_ref.get('hash')) if isinstance(certificate_ref, dict) else None
@@ -5375,7 +5376,8 @@ class Workflow:
             certificate_ref = snapshot['payload'].get('publication_certificate')
             certificate = (snapshot['artifacts'].get(certificate_ref.get('hash'))
                            if isinstance(certificate_ref, dict) else None)
-            retained_authority = (certificate is not None
+            retained_authority = (result['executor'] != (self.runtime or {}).get('root_id')
+                and certificate is not None
                 and certificate.get('type') == 'publication_certificate'
                 and certificate_ref == self.node_ref(digest(certificate), snapshot['number'])
                 and certificate.get('content', {}).get('authorization', {}).get('hash') == identity
