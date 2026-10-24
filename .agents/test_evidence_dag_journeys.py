@@ -429,6 +429,9 @@ class EvidenceDagPublicTests(DagFixture):
         comments = len(self.provider.comments[100])
         self.assertEqual(first, self.session.call(100, apply))
         self.assertEqual(comments, len(self.provider.comments[100]))
+        forward = first["next_steps"][0]
+        self.assertEqual("policy_dag_cutover_applied", forward["kind"])
+        forward_receipt = forward["receipt"]
         self.assertEqual(old_result, self.result("alpha")[0])
         self.assertEqual({"sigma"}, self.names())
         z._workflow_section(self.session.project, "workflow_adherence")[
@@ -436,6 +439,61 @@ class EvidenceDagPublicTests(DagFixture):
         reverse = self.session.checkpoint(100)[0]
         self.assertEqual("policy_dag_cutover", reverse["kind"])
         self.assertEqual(new, self.read_blob(reverse["contract"]["old_graph"]))
+        reverse_mapping = [{"old": {"node": "alpha", "output": "value"},
+                            "new": {"node": "alpha", "output": "value"},
+                            "result": old_result, "equivalence": {
+                                "inputs": True, "outputs": True, "scope": True,
+                                "role": True, "independence": True, "approval": True}}]
+        reverse_prepared = self.session.call(100, {**reverse["prepare"],
+            "actor": "root-thread", "mapping": reverse_mapping,
+            "request_id": "prepare-reviewed-rollback"})["next_steps"][0]
+        self.assertEqual("policy_dag_cutover_proposed", reverse_prepared["kind"])
+        reverse_reviewed = self.session.call(100, {**reverse_prepared["review"],
+            "actor": "independent-rollback-reviewer", "decision": "approved",
+            "report": "Reverse mapping restores the prior reviewed graph without inherited approval",
+            "request_id": "review-reviewed-rollback"})["next_steps"][0]
+        self.assertEqual("policy_dag_cutover_reviewed", reverse_reviewed["kind"])
+        self.assertNotEqual(reverse["prepare"]["expected_goal_revision"],
+                            reverse_reviewed["apply"]["expected_goal_revision"])
+        rollback = {**reverse_reviewed["apply"], "actor": "root-thread",
+                    "request_id": "apply-reviewed-rollback"}
+        update = self.provider.update_issue
+        rollback_lost = []
+        def uncertain_rollback(number, payload):
+            result = update(number, payload)
+            if not rollback_lost:
+                rollback_lost.append(True)
+                raise z.GoalTransitionProviderError("Rollback committed; response lost")
+            return result
+        with mock.patch.object(self.provider, "update_issue", side_effect=uncertain_rollback):
+            self.session.call(100, rollback, expected=None)
+        self.assertTrue(rollback_lost)
+        reversed_once = self.session.call(100, rollback)
+        rollback_comments = len(self.provider.comments[100])
+        self.assertEqual(reversed_once, self.session.call(100, rollback))
+        self.assertEqual(rollback_comments, len(self.provider.comments[100]))
+        reversed_step = reversed_once["next_steps"][0]
+        self.assertEqual("policy_dag_cutover_applied", reversed_step["kind"])
+        reverse_receipt = reversed_step["receipt"]
+        self.assertNotEqual(forward_receipt, reverse_receipt)
+        self.assertEqual(old_result, self.result("alpha")[0])
+        self.assertEqual({"omega"}, self.names())
+
+        _envelope, payload = self.payload()
+        applied = []
+        for row in payload["operational"]["receipts"]:
+            response = self.read_blob(row["result"])
+            for candidate in response.get("next_steps", []):
+                if candidate.get("kind") == "policy_dag_cutover_applied":
+                    applied.append(candidate)
+        self.assertEqual(2, len(applied))
+        self.assertEqual({forward_receipt["hash"], reverse_receipt["hash"]},
+                         {candidate["receipt"]["hash"] for candidate in applied})
+        self.assertEqual(
+            {(candidate["old_graph"]["hash"], candidate["new_graph"]["hash"])
+             for candidate in applied},
+            {(forward["old_graph"]["hash"], forward["new_graph"]["hash"]),
+             (forward["new_graph"]["hash"], forward["old_graph"]["hash"])})
 
     def test_policy_dag_cutover_rejects_bad_mapping_and_live_old_lease(self):
         _old, _new, _result, lease, mapping, step = self.policy_cutover_fixture(
