@@ -4090,9 +4090,14 @@ class Workflow:
         # A merely-ready legacy sibling must not make a fresh commit-backed
         # task serialize the whole repository. Legacy bytes are observed once
         # durable ownership or evidence actually makes them part of evaluation.
+        commit_only_ready = any(
+            state['state'] == 'ready'
+            and 'repository_workspace' not in state['contract']['executor']['resources']
+            for state in states.values())
         legacy_active = any(
             'repository_workspace' in state['contract']['executor']['resources']
-            and (key in projection.get('leases', {})
+            and ((state['state'] == 'ready' and not commit_only_ready)
+                 or key in projection.get('leases', {})
                  or (key in projection['current']
                      and not projection['current'][key][1].get('non_applicability')))
             for key, state in work.items())
