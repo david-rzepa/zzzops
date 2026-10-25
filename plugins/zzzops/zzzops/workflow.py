@@ -45,6 +45,19 @@ HYDRATION_CHECKPOINT_MAX_AGE_SECONDS = 86400
 HYDRATION_CHECKPOINT_MAX_LATER_COMMENTS = 32
 
 
+def _rename_node_selectors(value, old, new):
+    """Copy a graph fragment while renaming only validated node selectors."""
+    if isinstance(value, dict):
+        renamed = {name: _rename_node_selectors(child, old, new)
+                   for name, child in value.items()}
+        if value.get('kind') == 'node' and value.get('node') == old:
+            renamed['node'] = new
+        return renamed
+    if isinstance(value, list):
+        return [_rename_node_selectors(child, old, new) for child in value]
+    return value
+
+
 def materialized_state_contract():
     """Exact decoder/reconstruction semantics bound into derived cache identity."""
     return {
@@ -2213,12 +2226,6 @@ class Workflow:
             if payload['evidence'] and policy_graph != historical_graph:
                 old_nodes = {node['id']: node for node in historical_graph['nodes']}
                 new_ids = {node['id'] for node in policy_graph['nodes']}
-                def renamed(value, old, new):
-                    if isinstance(value, dict):
-                        return {name: renamed(child, old, new) for name, child in value.items()}
-                    if isinstance(value, list):
-                        return [renamed(child, old, new) for child in value]
-                    return new if value == old else value
                 for index, candidate in enumerate(policy_graph['nodes']):
                     matches = []
                     for old_id, old_node in old_nodes.items():
@@ -2228,7 +2235,8 @@ class Workflow:
                         if comparable == old_node:
                             matches.append(old_id)
                     if len(matches) == 1:
-                        policy_graph['nodes'][index] = renamed(candidate, matches[0], candidate['id'])
+                        policy_graph['nodes'][index] = _rename_node_selectors(
+                            candidate, matches[0], candidate['id'])
             definition = self.api._static_workflow.definition(policy_graph, self.api._graph_compiler)
             stored_workflow_graph = None
             if 'workflow' in payload:
@@ -7433,13 +7441,7 @@ class Workflow:
                     equivalence[name] is True for name in required):
                 raise ValueError('Policy DAG cutover evidence equivalence is incomplete')
             old_node, new_node = old_nodes[old_key[0]], new_nodes[new_key[0]]
-            def mapped_contract(value):
-                if isinstance(value, dict):
-                    return {name: mapped_contract(child) for name, child in value.items()}
-                if isinstance(value, list):
-                    return [mapped_contract(child) for child in value]
-                return new_key[0] if value == old_key[0] else value
-            comparable_old = mapped_contract(old_node)
+            comparable_old = _rename_node_selectors(old_node, old_key[0], new_key[0])
             derived = {
                 'inputs': comparable_old['inputs'] == new_node['inputs'],
                 'outputs': comparable_old['outputs'][old_key[1]] == new_node['outputs'][new_key[1]],
