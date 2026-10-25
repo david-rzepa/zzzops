@@ -1207,6 +1207,22 @@ def _derive_task_steps(graph, payload, context):
             instance_order.append(task_key(identity))
         for index, expansion in enumerate(snapshot['graph']['task_sets']):
             expansions[(number, expansion['id'])] = (expansion, index)
+    for key, rows in records_by_node.items():
+        previous_ref = None
+        previous_revision = -1
+        for ref, result in rows:
+            supersedes = result.get('supersedes_result')
+            expected_revision = result.get('expected_goal_revision')
+            if previous_ref is None:
+                if supersedes is not None or expected_revision is not None:
+                    raise ValueError('Initial Result cannot claim a predecessor CAS')
+            else:
+                if supersedes != previous_ref or type(expected_revision) is not int:
+                    raise ValueError('Result successor does not name the exact current predecessor')
+                if expected_revision <= previous_revision:
+                    raise ValueError('Result successor goal revision did not advance')
+                previous_revision = expected_revision
+            previous_ref = ref
     latest_outputs = {key: {ref['hash'] for ref in rows[-1][1]['outputs'].values()} for key, rows in records_by_node.items()}
     output_owners = {ref['hash']: task_key(result['node']) for rows in records.values() for _, result in rows for ref in result['outputs'].values()}
     obligations = {}
