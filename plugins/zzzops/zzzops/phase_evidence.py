@@ -1196,6 +1196,11 @@ def _derive_task_steps(graph, payload, context):
             if result['node']['goal'] != number: raise ValueError('Result goal identity mismatch')
             records[number].append((ref, result))
             records_by_node.setdefault(task_key(result['node']), []).append((ref, result))
+            mapped_node = context.get('cutover_mappings', {}).get(ref['hash'])
+            if mapped_node is not None and mapped_node != result['node']['node']:
+                mapped_key = (number, mapped_node, result['node'].get('item'),
+                              result['node'].get('generation', 1))
+                records_by_node.setdefault(mapped_key, []).append((ref, result))
             for output_ref in result['outputs'].values():
                 output = artifact(output_ref)
                 if output.get('producer') != result['attempt'] or output.get('provenance', {}).get('actor') != result['executor']:
@@ -1208,6 +1213,8 @@ def _derive_task_steps(graph, payload, context):
         for index, expansion in enumerate(snapshot['graph']['task_sets']):
             expansions[(number, expansion['id'])] = (expansion, index)
     for key, rows in records_by_node.items():
+        if rows and task_key(rows[0][1]['node']) != key:
+            continue
         previous_ref = None
         previous_revision = -1
         for ref, result in rows:
@@ -1717,7 +1724,9 @@ def _derive_task_steps(graph, payload, context):
                 predecessor_contract = (semantic_hash({'node': node, 'policy': predecessor_policy_hash})
                                         if recorded_policy == full_policy else None)
                 cutover_equivalent = ref['hash'] in context.get('cutover_results', set())
+                mapped_node = context.get('cutover_mappings', {}).get(ref['hash'])
                 if (task_key(result['node']) != key
+                        and mapped_node != key[1]
                         or not cutover_equivalent
                         and result['contract'] not in {contract, legacy_contract, predecessor_contract}):
                     continue

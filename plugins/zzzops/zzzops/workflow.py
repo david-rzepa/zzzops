@@ -2208,9 +2208,28 @@ class Workflow:
             ev.contract_fields(payload['operational'], {'leases', 'receipts'}, 'Operational payload')
             if not isinstance(payload['evidence'], list): raise ValueError('Evidence must be an ordered Ref array')
             historical_graph = resolve(payload['graph'])
-            definition = self.api._static_workflow.definition(
-                policy_section(self.project, 'workflow_adherence')['configuration']['phase_dag'],
-                self.api._graph_compiler)
+            policy_graph = copy.deepcopy(policy_section(
+                self.project, 'workflow_adherence')['configuration']['phase_dag'])
+            if payload['evidence'] and policy_graph != historical_graph:
+                old_nodes = {node['id']: node for node in historical_graph['nodes']}
+                new_ids = {node['id'] for node in policy_graph['nodes']}
+                def renamed(value, old, new):
+                    if isinstance(value, dict):
+                        return {name: renamed(child, old, new) for name, child in value.items()}
+                    if isinstance(value, list):
+                        return [renamed(child, old, new) for child in value]
+                    return new if value == old else value
+                for index, candidate in enumerate(policy_graph['nodes']):
+                    matches = []
+                    for old_id, old_node in old_nodes.items():
+                        if old_id in new_ids or old_id == candidate['id']:
+                            continue
+                        comparable = copy.deepcopy(candidate); comparable['id'] = old_id
+                        if comparable == old_node:
+                            matches.append(old_id)
+                    if len(matches) == 1:
+                        policy_graph['nodes'][index] = renamed(candidate, matches[0], candidate['id'])
+            definition = self.api._static_workflow.definition(policy_graph, self.api._graph_compiler)
             stored_workflow_graph = None
             if 'workflow' in payload:
                 ev.contract_fields(payload['workflow'], {'version', 'graph'}, 'Workflow definition')
@@ -2258,6 +2277,11 @@ class Workflow:
                     'old_policy_revision': digest(stored_workflow_graph),
                     'new_policy_revision': digest(self.project['policy']),
                 }
+                # Keep pre-cutover currentness and ownership anchored to the
+                # authenticated old graph. The reviewed new graph may rename
+                # nodes that historical Results cannot resolve yet.
+                graph = stored_workflow_graph
+                snapshot['graph'] = graph
             journal = payload.get('phase_data', {'version': 1, 'events': []})
             if (not isinstance(journal, dict) or set(journal) != {'version', 'events'}
                     or journal['version'] != 1 or not isinstance(journal['events'], list)):
@@ -2653,8 +2677,24 @@ class Workflow:
             # Compiler-generated routes are historical evidence, not additional
             # product requirements. Unknown custom phases remain explicit debt.
             mapped_context_nodes = {'legacy_blockers'} if snapshot.get('goal_context') else set()
+            mapped_cutover_nodes = set()
+            for receipt_row in reversed(payload['operational']['receipts']):
+                try:
+                    response = resolve(receipt_row['result'])
+                    applied = next(item for item in response.get('next_steps', [])
+                                   if item.get('kind') == 'policy_dag_cutover_applied')
+                    cutover_receipt = resolve(applied['receipt'])['content']
+                    mapped_cutover_nodes = {item['old']['node'] for item in cutover_receipt['mapping']}
+                    break
+                except (KeyError, StopIteration, TypeError, ValueError):
+                    continue
+            evidenced_nodes = {resolve(reference)['content']['node']['node']
+                               for reference in payload['evidence']}
             unmapped = sorted(name for name in retired_nodes
-                             if not name.startswith(('gc_', 'sw_')) and name not in mapped_context_nodes)
+                             if (not name.startswith(('gc_', 'sw_'))
+                                 and name not in mapped_context_nodes
+                                 and name not in mapped_cutover_nodes
+                                 and name in evidenced_nodes))
             if unmapped:
                 snapshot['workflow_migration_blocker'] = 'Unmapped historical phase contracts require policy/data mapping: ' + ', '.join(unmapped)
             snapshots[n] = snapshot
@@ -2961,6 +3001,18 @@ class Workflow:
                 continue
         context['cutover_results'] = cutover_results
         context['cutover_outputs'] = cutover_outputs
+        context['cutover_mappings'] = {}
+        for row in reversed(selected['payload']['operational']['receipts']):
+            try:
+                response = snapshot['artifacts'].get(row['result']['hash']) or snapshot['resolve'](row['result'])
+                step = next(item for item in response.get('next_steps', [])
+                            if item.get('kind') == 'policy_dag_cutover_applied')
+                receipt = snapshot['artifacts'].get(step['receipt']['hash']) or snapshot['resolve'](step['receipt'])
+                context['cutover_mappings'] = {
+                    item['result']['hash']: item['new']['node'] for item in receipt['content']['mapping']}
+                break
+            except (KeyError, StopIteration, TypeError, ValueError):
+                continue
         def apply_cutover_mappings(projected):
             for row in reversed(selected['payload']['operational']['receipts']):
                 try:
@@ -2972,7 +3024,9 @@ class Workflow:
                         reference = mapping['result']
                         artifact = snapshot['artifacts'].get(reference['hash']) or snapshot['resolve'](reference)
                         result_value = artifact['content']
-                        key = ev.task_key(result_value['node'])
+                        key = (snapshot['number'], mapping['new']['node'],
+                               result_value['node'].get('item'),
+                               result_value['node'].get('generation', 1))
                         state = projected['states'].get(key)
                         if state is not None:
                             projected['current'][key] = (reference, result_value)
@@ -7349,6 +7403,14 @@ class Workflow:
             raise ValueError('Policy DAG cutover mapping must be a non-empty array')
         old_nodes = {node['id']: node for node in old_graph['nodes']}
         new_nodes = {node['id']: node for node in new_graph['nodes']}
+        current = {}
+        for reference in reversed(snapshot['payload']['evidence']):
+            result_artifact = snapshot['resolve'](reference)
+            result = result_artifact.get('content', {})
+            if result_artifact.get('type') != 'result':
+                continue
+            key = self.api._phase_evidence.task_key(result['node'])
+            current.setdefault(key, (reference, result))
         seen_old, seen_new = set(), set()
         required = {'inputs', 'outputs', 'scope', 'role', 'independence', 'approval'}
         for row in mapping:
@@ -7371,14 +7433,21 @@ class Workflow:
                     equivalence[name] is True for name in required):
                 raise ValueError('Policy DAG cutover evidence equivalence is incomplete')
             old_node, new_node = old_nodes[old_key[0]], new_nodes[new_key[0]]
+            def mapped_contract(value):
+                if isinstance(value, dict):
+                    return {name: mapped_contract(child) for name, child in value.items()}
+                if isinstance(value, list):
+                    return [mapped_contract(child) for child in value]
+                return new_key[0] if value == old_key[0] else value
+            comparable_old = mapped_contract(old_node)
             derived = {
-                'inputs': old_node['inputs'] == new_node['inputs'],
-                'outputs': old_node['outputs'][old_key[1]] == new_node['outputs'][new_key[1]],
-                'scope': (old_node['executor'].get('authority') == new_node['executor'].get('authority')
-                          and old_node.get('permits', []) == new_node.get('permits', [])),
-                'role': old_node['executor'].get('role') == new_node['executor'].get('role'),
-                'independence': old_node.get('independent_of', []) == new_node.get('independent_of', []),
-                'approval': old_node.get('gates', []) == new_node.get('gates', []),
+                'inputs': comparable_old['inputs'] == new_node['inputs'],
+                'outputs': comparable_old['outputs'][old_key[1]] == new_node['outputs'][new_key[1]],
+                'scope': (comparable_old['executor'].get('authority') == new_node['executor'].get('authority')
+                          and comparable_old.get('permits', []) == new_node.get('permits', [])),
+                'role': comparable_old['executor'].get('role') == new_node['executor'].get('role'),
+                'independence': comparable_old.get('independent_of', []) == new_node.get('independent_of', []),
+                'approval': comparable_old.get('gates', []) == new_node.get('gates', []),
             }
             changed = sorted(name for name, equivalent in derived.items() if not equivalent)
             if changed:
@@ -7391,6 +7460,31 @@ class Workflow:
             if (artifact.get('type') != 'result' or result.get('node', {}).get('node') != old_key[0]
                     or result.get('outputs', {}).get(old_key[1]) is None):
                 raise ValueError('Policy DAG cutover mapping Result/output identity differs')
+            old_task = (snapshot['number'], old_key[0], result['node'].get('item'),
+                        result['node'].get('generation', 1))
+            if old_task not in current or current[old_task][0] != row['result']:
+                raise ValueError('Policy DAG cutover mapping Result is superseded or not current')
+        mapped_old = {(row['old']['node'], row['old']['output']) for row in mapping}
+        reusable = set()
+        for key, (_reference, result) in current.items():
+            if key[0] != snapshot['number'] or key[2] is not None:
+                continue
+            old_node = old_nodes.get(key[1]); new_node = new_nodes.get(key[1])
+            if old_node is None or new_node is None:
+                continue
+            for output in result['outputs']:
+                if (output in old_node['outputs'] and output in new_node['outputs']
+                        and old_node['inputs'] == new_node['inputs']
+                        and old_node['outputs'][output] == new_node['outputs'][output]
+                        and old_node['executor'] == new_node['executor']
+                        and old_node.get('independent_of', []) == new_node.get('independent_of', [])
+                        and old_node.get('gates', []) == new_node.get('gates', [])
+                        and old_node.get('permits', []) == new_node.get('permits', [])):
+                    reusable.add((key[1], output))
+        omitted = sorted(reusable - mapped_old)
+        if omitted:
+            raise ValueError('Policy DAG cutover mapping omitted reusable current outputs: ' +
+                             ', '.join(node + '/' + output for node, output in omitted))
         return copy.deepcopy(mapping)
 
     def node_policy_cutover_prepare(self, snapshot, payload, request):
