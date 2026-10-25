@@ -523,6 +523,95 @@ class EvidenceDagPublicTests(DagFixture):
         self.assertEqual(lease["lease"]["token"],
                          self.payload()[1]["operational"]["leases"][0]["token"])
 
+    def test_policy_dag_cutover_maps_reviewed_result_across_renamed_nodes(self):
+        old_producer = task("legacy_builder")
+        old_finish = task("legacy_finish", ["legacy_builder"], role="root")
+        old_graph = {"nodes": [old_producer, old_finish], "task_sets": [],
+                     "terminals": [selector("legacy_finish")]}
+        self.install(old_graph)
+        self.session.finish(self.session.acquire("legacy_builder"), {"value": "reviewed bytes"})
+        result = self.result("legacy_builder")[0]
+
+        new_producer = copy.deepcopy(old_producer)
+        new_producer["id"] = "modern_builder"
+        inspect = task("inspect_renamed", ["modern_builder"])
+        inspect["inputs"] = {"subject": subject_input("modern_builder")}
+        new_finish = task("modern_finish", ["inspect_renamed"], role="root")
+        new_graph = {"nodes": [new_producer, inspect, new_finish], "task_sets": [],
+                     "terminals": [selector("modern_finish")]}
+        z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = new_graph
+        cutover = self.session.checkpoint(100)[0]
+        self.assertEqual("policy_dag_cutover", cutover["kind"], cutover)
+        self.assertIn("prepare", cutover)
+        mapping = [{"old": {"node": "legacy_builder", "output": "value"},
+                    "new": {"node": "modern_builder", "output": "value"},
+                    "result": result, "equivalence": {
+                        "inputs": True, "outputs": True, "scope": True,
+                        "role": True, "independence": True, "approval": True}}]
+        proposed = self.session.call(100, {**cutover["prepare"], "actor": "root-thread",
+            "mapping": mapping, "request_id": "prepare-renamed-cutover"})["next_steps"][0]
+        reviewed = self.session.call(100, {**proposed["review"],
+            "actor": "independent-renamed-reviewer", "decision": "approved",
+            "report": "Renamed node retains the exact reviewed contract",
+            "request_id": "review-renamed-cutover"})["next_steps"][0]
+        self.session.call(100, {**reviewed["apply"], "actor": "root-thread",
+                               "request_id": "apply-renamed-cutover"})
+        self.assertEqual({"inspect_renamed"}, self.names())
+        self.assertEqual(result, self.result("legacy_builder")[0])
+
+    def test_policy_dag_cutover_rejects_superseded_mapped_result(self):
+        self.findings()
+        predecessor = self.result("produce")[0]
+        self.session.finish(self.session.acquire("produce"), {"value": "current corrected result"})
+        current = self.result("produce")[0]
+        self.assertNotEqual(predecessor, current)
+        graph = correction_graph()
+        audit = task("post_correction_audit", ["produce"])
+        audit["inputs"] = {"subject": subject_input("produce")}
+        graph["nodes"].append(audit)
+        graph["terminals"].append(selector("post_correction_audit"))
+        z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = graph
+        cutover = self.session.checkpoint(100)[0]
+        mapping = [{"old": {"node": "produce", "output": "value"},
+                    "new": {"node": "produce", "output": "value"},
+                    "result": predecessor, "equivalence": {
+                        "inputs": True, "outputs": True, "scope": True,
+                        "role": True, "independence": True, "approval": True}}]
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        rejected = self.session.call(100, {**cutover["prepare"], "actor": "root-thread",
+            "mapping": mapping, "request_id": "reject-superseded-result"}, expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)current|supersed|stale|predecessor")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_policy_dag_cutover_rejects_omitted_reusable_current_output(self):
+        left, right = task("left"), task("right")
+        finish = task("join", ["left", "right"], role="root")
+        old_graph = {"nodes": [left, right, finish], "task_sets": [],
+                     "terminals": [selector("join")]}
+        self.install(old_graph)
+        for name in ("left", "right"):
+            self.session.finish(self.session.acquire(name), {"value": name + " result"})
+        left_result = self.result("left")[0]
+        changed = copy.deepcopy(old_graph)
+        audit = task("mapped_join_audit", ["left", "right"])
+        changed["nodes"].append(audit)
+        changed["terminals"].append(selector("mapped_join_audit"))
+        z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = changed
+        cutover = self.session.checkpoint(100)[0]
+        mapping = [{"old": {"node": "left", "output": "value"},
+                    "new": {"node": "left", "output": "value"},
+                    "result": left_result, "equivalence": {
+                        "inputs": True, "outputs": True, "scope": True,
+                        "role": True, "independence": True, "approval": True}}]
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        rejected = self.session.call(100, {**cutover["prepare"], "actor": "root-thread",
+            "mapping": mapping, "request_id": "reject-omitted-current-output"}, expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)mapping|omit|missing|current|reusable|right")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
     def test_corrected_result_names_exact_predecessor_and_provider_revision_for_cas(self):
         self.findings()
         predecessor, _record = self.result("produce")
