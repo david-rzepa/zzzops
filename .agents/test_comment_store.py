@@ -129,6 +129,24 @@ class ExactTextPatchContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, r'(?i)conflict|identity'):
             codec.ArtifactIndex(comments).resolve(record['hash'])
 
+    def test_three_plus_chunk_pack_round_trips_exact_text_in_any_comment_order(self):
+        codec = self.codec
+        value = ''.join(hashlib.sha256(('lossless-' + str(index)).encode()).hexdigest()
+                        for index in range(5000))
+        record = {'kind': 'full', 'type': 'text', 'text': value, 'hash': codec.digest(value)}
+        bodies = codec.pack_envelopes({
+            'goal': 21, 'transaction': 'lossless-three-plus-chunks',
+            'context': {'provenance': 'reviewed-cutover-' + 'p' * 8000}}, [record])
+
+        self.assertGreaterEqual(len(bodies), 3,
+            'fixture must cross at least three provider comments to exercise manifest packing')
+        self.assertTrue(all(len(body) <= codec.MAX_COMMENT_CHARACTERS for body in bodies))
+        comments = [{'body': body} for body in reversed(bodies)]
+        resolved, artifact = codec.ArtifactIndex(comments).resolve(record['hash'])
+        self.assertEqual(value, resolved)
+        self.assertEqual(record['hash'], artifact['hash'])
+        self.assertEqual('full', artifact['kind'])
+
     def test_unicode_original_base_offsets_and_exact_newlines(self):
         before = 'A😀e\u0301BC🌍D'
         after = 'AXY😀e\u0301bC🌍!'
