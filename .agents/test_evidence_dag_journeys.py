@@ -670,6 +670,28 @@ class EvidenceDagPublicTests(DagFixture):
             "result-supersession-cas"))
         self.assertEqual("checkpoint", replay["next_steps"][0]["kind"])
 
+    def test_result_predecessor_replay_accepts_only_a_legacy_prefix(self):
+        node = {"goal": 100, "node": "produce", "item": None, "generation": 1}
+        key = z._phase_evidence.task_key(node)
+        refs = [{"hash": "sha256:" + digit * 64,
+                 "uri": "urn:sha256:" + digit * 64} for digit in "1234"]
+        legacy = [(refs[0], {"node": node}), (refs[1], {"node": node})]
+        current = (refs[2], {"node": node, "supersedes_result": refs[1],
+                             "expected_goal_revision": 9})
+        z._phase_evidence.validate_result_successors({key: legacy + [current]})
+
+        cases = [
+            ([(refs[2], {"node": node, "supersedes_result": refs[0],
+                        "expected_goal_revision": 9})], "exact current predecessor"),
+            ([(refs[2], {"node": node, "supersedes_result": refs[1]})], "partial predecessor CAS"),
+            ([current, (refs[3], {"node": node})], "cannot return to legacy"),
+            ([current, (refs[3], {"node": node, "supersedes_result": refs[2],
+                              "expected_goal_revision": 9})], "did not advance"),
+        ]
+        for suffix, reason in cases:
+            with self.subTest(reason=reason), self.assertRaisesRegex(ValueError, reason):
+                z._phase_evidence.validate_result_successors({key: legacy + suffix})
+
     def test_committed_submit_survives_compact_response_store_failure(self):
         """A post-commit formatting fault cannot invite duplicate execution."""
         acquired = self.session.acquire("produce")

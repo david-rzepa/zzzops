@@ -1112,6 +1112,39 @@ _PROJECTION_CACHE_LOCK = RLock()
 _PROJECTION_CACHE_BYTES = 8 * 1024 * 1024
 
 
+def validate_result_successors(records_by_node):
+    """Replay pre-CAS history, then require exact CAS on every new successor."""
+    for key, rows in records_by_node.items():
+        if rows and task_key(rows[0][1]['node']) != key:
+            continue
+        previous_ref = None
+        previous_revision = -1
+        cas_started = False
+        for ref, result in rows:
+            supersedes = result.get('supersedes_result')
+            expected_revision = result.get('expected_goal_revision')
+            if previous_ref is None:
+                if supersedes is not None or expected_revision is not None:
+                    raise ValueError('Initial Result cannot claim a predecessor CAS')
+            else:
+                has_predecessor = 'supersedes_result' in result
+                has_revision = 'expected_goal_revision' in result
+                if has_predecessor != has_revision:
+                    raise ValueError('Result successor has partial predecessor CAS')
+                if not has_predecessor:
+                    if cas_started:
+                        raise ValueError('Result successor cannot return to legacy predecessor history')
+                    previous_ref = ref
+                    continue
+                if supersedes != previous_ref or type(expected_revision) is not int:
+                    raise ValueError('Result successor does not name the exact current predecessor')
+                if expected_revision <= previous_revision:
+                    raise ValueError('Result successor goal revision did not advance')
+                previous_revision = expected_revision
+                cas_started = True
+            previous_ref = ref
+
+
 def derive_task_steps(graph, payload, context):
     """Project the exact current snapshot; reuse expanded projections only."""
     if not graph.get('task_sets'):
@@ -1212,24 +1245,7 @@ def _derive_task_steps(graph, payload, context):
             instance_order.append(task_key(identity))
         for index, expansion in enumerate(snapshot['graph']['task_sets']):
             expansions[(number, expansion['id'])] = (expansion, index)
-    for key, rows in records_by_node.items():
-        if rows and task_key(rows[0][1]['node']) != key:
-            continue
-        previous_ref = None
-        previous_revision = -1
-        for ref, result in rows:
-            supersedes = result.get('supersedes_result')
-            expected_revision = result.get('expected_goal_revision')
-            if previous_ref is None:
-                if supersedes is not None or expected_revision is not None:
-                    raise ValueError('Initial Result cannot claim a predecessor CAS')
-            else:
-                if supersedes != previous_ref or type(expected_revision) is not int:
-                    raise ValueError('Result successor does not name the exact current predecessor')
-                if expected_revision <= previous_revision:
-                    raise ValueError('Result successor goal revision did not advance')
-                previous_revision = expected_revision
-            previous_ref = ref
+    validate_result_successors(records_by_node)
     latest_outputs = {key: {ref['hash'] for ref in rows[-1][1]['outputs'].values()} for key, rows in records_by_node.items()}
     output_owners = {ref['hash']: task_key(result['node']) for rows in records.values() for _, result in rows for ref in result['outputs'].values()}
     obligations = {}
