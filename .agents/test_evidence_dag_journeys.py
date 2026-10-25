@@ -1848,6 +1848,33 @@ class WorkspaceAuthorityPublicTests(DagFixture):
             {"states": {key: state}, "current": {}}, {})
         self.assertEqual({"error": "Finding applicability unresolved"}, contexts[key])
 
+    def test_acquired_legacy_workspace_keeps_file_baseline_when_commit_only_sibling_is_ready(self):
+        def add_commit_only_sibling(graph, allocations):
+            legacy = next(node for node in graph["nodes"] if node["id"] == "alpha")
+            sibling = copy.deepcopy(legacy)
+            sibling["id"] = "commit_only_sibling"
+            sibling["executor"]["authority"]["subject"]["node"] = "charter"
+            sibling["executor"]["resources"] = ["repository_git_workspace"]
+            sibling["inputs"]["allocation"]["path"] = ["allocations", "commit_only_sibling"]
+            graph["nodes"].append(sibling)
+            allocations["allocations"]["commit_only_sibling"] = {
+                "task": {"goal": 100, "node": "commit_only_sibling", "item": None,
+                         "generation": 1},
+                "owned": ["git_only.py"],
+                "consumed": ["source.py", "behavior_test.py", "read_dependency.txt"],
+            }
+
+        self.setup_workspace(add_commit_only_sibling)
+        frontier = self.session.ready()
+        self.assertTrue(any(step.get("node", {}).get("node") == "commit_only_sibling"
+                            for step in frontier), frontier)
+        legacy = self.acquire_workspace("alpha")
+        baseline = legacy["lease"]["acquisition"].get("files")
+        self.assertIsInstance(baseline, dict)
+        self.assertIn("source.py", baseline,
+            "an acquired legacy workspace must retain its raw baseline despite a ready Git-only sibling")
+        self.assertIn("behavior_test.py", baseline)
+
     def setup_workspace(self, mutate=None, *, defer_authorization=False):
         (self.fixture.repo / "source.py").write_text("def value():\n    return 1\n")
         (self.fixture.repo / "read_dependency.txt").write_text("stable dependency\n")
