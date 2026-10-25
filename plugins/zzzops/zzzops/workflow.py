@@ -202,6 +202,7 @@ PUBLIC_OPERATIONS = frozenset({
     'goal_dependency_prepare', 'goal_dependency_review', 'goal_dependency_apply',
     'goal_external_blocker_prepare', 'goal_external_blocker_review',
     'goal_external_blocker_apply',
+    'policy_dag_cutover_prepare', 'policy_dag_cutover_review', 'policy_dag_cutover_apply',
     'graph_normalize', 'migration_batch', 'graph_prepare', 'graph_review', 'graph_adopt', 'graph_review_bootstrap',
     'checkpoint_reconcile_prepare', 'checkpoint_reconcile_review', 'checkpoint_reconcile_adopt',
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
@@ -2236,9 +2237,24 @@ class Workflow:
                         'historical_graph': historical_graph, 'workflow_definition': definition}
             if (definition is not None and payload['evidence'] and stored_workflow_graph is not None
                     and definition['graph'] != stored_workflow_graph):
+                recorded_old_graph = remember(stored_workflow_graph)
+                for receipt_row in reversed(payload['operational']['receipts']):
+                    try:
+                        prior_response = resolve(receipt_row['result'])
+                        prior_step = next(item for item in prior_response.get('next_steps', [])
+                                          if item.get('kind') == 'policy_dag_cutover_applied')
+                        prior_receipt = resolve(prior_step['receipt'])['content']
+                        if prior_receipt.get('new_graph') == recorded_old_graph:
+                            recorded_old_graph = prior_receipt['new_policy_graph']
+                            break
+                    except (KeyError, StopIteration, TypeError, ValueError):
+                        continue
                 snapshot['policy_dag_cutover'] = {
-                    'old_graph': remember(stored_workflow_graph),
+                    'old_graph': recorded_old_graph,
+                    'old_execution_graph': remember(stored_workflow_graph),
                     'new_graph': remember(definition['graph']),
+                    'new_policy_graph': remember(policy_section(
+                        self.project, 'workflow_adherence')['configuration']['phase_dag']),
                     'old_policy_revision': digest(stored_workflow_graph),
                     'new_policy_revision': digest(self.project['policy']),
                 }
@@ -2928,12 +2944,59 @@ class Workflow:
                 events, closure[snapshot['number']]['graph'], snapshot['number'])
         selected = closure[snapshot['number']]
         context['goals'] = closure
-        result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
+        cutover_results = set()
+        cutover_outputs = set()
+        for row in reversed(selected['payload']['operational']['receipts']):
+            try:
+                response = snapshot['artifacts'].get(row['result']['hash']) or snapshot['resolve'](row['result'])
+                step = next(item for item in response.get('next_steps', [])
+                            if item.get('kind') == 'policy_dag_cutover_applied')
+                receipt = snapshot['artifacts'].get(step['receipt']['hash']) or snapshot['resolve'](step['receipt'])
+                for item in receipt['content']['mapping']:
+                    cutover_results.add(item['result']['hash'])
+                    result_artifact = snapshot['artifacts'].get(item['result']['hash']) or snapshot['resolve'](item['result'])
+                    cutover_outputs.update(ref['hash'] for ref in result_artifact['content']['outputs'].values())
+                break
+            except (KeyError, StopIteration, TypeError, ValueError):
+                continue
+        context['cutover_results'] = cutover_results
+        context['cutover_outputs'] = cutover_outputs
+        def apply_cutover_mappings(projected):
+            for row in reversed(selected['payload']['operational']['receipts']):
+                try:
+                    response = snapshot['artifacts'].get(row['result']['hash']) or snapshot['resolve'](row['result'])
+                    step = next(item for item in response.get('next_steps', [])
+                                if item.get('kind') == 'policy_dag_cutover_applied')
+                    receipt = snapshot['artifacts'].get(step['receipt']['hash']) or snapshot['resolve'](step['receipt'])
+                    for mapping in receipt['content']['mapping']:
+                        reference = mapping['result']
+                        artifact = snapshot['artifacts'].get(reference['hash']) or snapshot['resolve'](reference)
+                        result_value = artifact['content']
+                        key = ev.task_key(result_value['node'])
+                        state = projected['states'].get(key)
+                        if state is not None:
+                            projected['current'][key] = (reference, result_value)
+                            state['state'] = 'current'
+                    changed = True
+                    while changed:
+                        changed = False
+                        for state in projected['states'].values():
+                            if (state['state'] == 'blocked' and 'input_hash' in state
+                                    and all(parent in projected['current']
+                                            for parent in state.get('prerequisites', []))):
+                                state['state'] = 'ready'
+                                state.pop('reason', None)
+                                changed = True
+                    break
+                except (KeyError, StopIteration, TypeError, ValueError):
+                    continue
+            return projected
+        result = apply_cutover_mappings(ev.derive_task_steps(selected['graph'], selected['payload'], context))
         workspaces = self.node_workspace_context(closure, result, result['artifacts'])
         publications = {} if publication_probe else self.node_publication_context(closure, result, result['artifacts'])
         context.update(workspace_probe=False, workspaces=workspaces, artifacts=result['artifacts'])
         if not publication_probe: context['publications'] = publications
-        result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
+        result = apply_cutover_mappings(ev.derive_task_steps(selected['graph'], selected['payload'], context))
         for state in result['states'].values():
             state['goal_context'] = closure.get(state['node']['goal'], {}).get('goal_context', {})
         return {**snapshot, 'payload': selected['payload'], 'projection': result, 'artifacts': result['artifacts'],
@@ -5454,6 +5517,15 @@ class Workflow:
         resolution_steps = []
         cutover = snapshot.get('policy_dag_cutover')
         if cutover:
+            prepare = {'operation': 'policy_dag_cutover_prepare',
+                'request_id': '<stable request id>', 'actor': '<authenticated root>',
+                'expected_goal_revision': snapshot['envelope']['revision'],
+                'expected_goal_payload': copy.deepcopy(snapshot['envelope']['payload']),
+                'old_graph': copy.deepcopy(cutover['old_graph']),
+                'new_graph': copy.deepcopy(cutover['new_graph']),
+                'old_policy_digest': cutover['old_policy_revision'],
+                'new_policy_digest': cutover['new_policy_revision'],
+                'mapping': '<explicit reviewed mapping>'}
             return [{'kind': 'policy_dag_cutover', 'assignment': 'root',
                      'goal': number,
                      'reason': ('The reviewed policy DAG differs from the authenticated goal graph; '
@@ -5461,6 +5533,7 @@ class Workflow:
                      'contract': {**copy.deepcopy(cutover),
                          'mapping': '<explicit old node/output/attempt to new contract mapping>',
                          'receipt': '<authenticated idempotent cutover receipt>'},
+                     'prepare': prepare,
                      'action': ('Review the old/new graph mapping, evidence equivalence, in-flight leases '
                                 'and invalidated consumers before recording one revision-pinned cutover.')}]
         context = snapshot.get('goal_context')
@@ -5504,8 +5577,34 @@ class Workflow:
                      'reason': snapshot['workflow_migration_blocker'],
                      'action': 'Preserve history and resolve the exact ownership or phase-data mapping; do not amend the goal graph.'}]
         projection = snapshot['projection']; steps = []
+        cutover_gate = None
+        for row in reversed(snapshot['payload']['operational']['receipts']):
+            try:
+                recorded = snapshot['resolve'](row['result'])
+                applied = next((step for step in recorded.get('next_steps', [])
+                                if step.get('kind') == 'policy_dag_cutover_applied'), None)
+                if applied is None:
+                    continue
+                receipt = snapshot['resolve'](applied['receipt'])['content']
+                old_graph = snapshot['resolve'](receipt['old_graph'])
+                new_graph = snapshot['resolve'](receipt['new_graph'])
+                mapped = {item['old']['node'] for item in receipt['mapping']}
+                added = {node['id'] for node in new_graph['nodes']} - {
+                    node['id'] for node in old_graph['nodes']}
+                terminal_nodes = {selector.get('node') for selector in old_graph['terminals']
+                                  if selector.get('kind') == 'node'}
+                cutover_gate = {'old_unmapped': ({
+                    node['id'] for node in old_graph['nodes']} - mapped).intersection(terminal_nodes),
+                    'added': added}
+                break
+            except (KeyError, TypeError, ValueError):
+                continue
         for state in projection['states'].values():
             if state['node']['goal'] != number: continue
+            if (cutover_gate and state['node']['node'] in cutover_gate['old_unmapped']
+                    and any((number, node, None, 1) not in projection['current']
+                            for node in cutover_gate['added'])):
+                continue
             # A reviewed additive member-route recovery preserves the legacy
             # contract and its historical Results, but only the exact upgraded
             # expansion may accept new work.
@@ -7244,6 +7343,160 @@ class Workflow:
             'before': proposal['before'], 'after': proposal['after']}]}
         return self.node_persist(snapshot, payload, response, request)
 
+    def node_policy_cutover_mapping(self, snapshot, mapping, old_graph, new_graph):
+        """Validate a finite exact Result mapping between two reviewed graphs."""
+        if not isinstance(mapping, list) or not mapping:
+            raise ValueError('Policy DAG cutover mapping must be a non-empty array')
+        old_nodes = {node['id']: node for node in old_graph['nodes']}
+        new_nodes = {node['id']: node for node in new_graph['nodes']}
+        seen_old, seen_new = set(), set()
+        required = {'inputs', 'outputs', 'scope', 'role', 'independence', 'approval'}
+        for row in mapping:
+            if not isinstance(row, dict) or set(row) != {'old', 'new', 'result', 'equivalence'}:
+                raise ValueError('Policy DAG cutover mapping row is malformed')
+            for side, nodes in (('old', old_nodes), ('new', new_nodes)):
+                target = row[side]
+                if not isinstance(target, dict) or set(target) != {'node', 'output'}:
+                    raise ValueError('Policy DAG cutover mapping target is malformed')
+                node = nodes.get(target['node'])
+                if node is None or target['output'] not in node['outputs']:
+                    raise ValueError('Policy DAG cutover mapping names a missing output')
+            old_key = (row['old']['node'], row['old']['output'])
+            new_key = (row['new']['node'], row['new']['output'])
+            if old_key in seen_old or new_key in seen_new:
+                raise ValueError('Policy DAG cutover mapping is ambiguous')
+            seen_old.add(old_key); seen_new.add(new_key)
+            equivalence = row['equivalence']
+            if not isinstance(equivalence, dict) or set(equivalence) != required or not all(
+                    equivalence[name] is True for name in required):
+                raise ValueError('Policy DAG cutover evidence equivalence is incomplete')
+            self.api._phase_evidence.validate_ref(row['result'])
+            if self.node_ref_goal(row['result'], snapshot['number']) != snapshot['number']:
+                raise ValueError('Policy DAG cutover Result belongs to another goal')
+            artifact = snapshot['resolve'](row['result'])
+            result = artifact.get('content', {})
+            if (artifact.get('type') != 'result' or result.get('node', {}).get('node') != old_key[0]
+                    or result.get('outputs', {}).get(old_key[1]) is None):
+                raise ValueError('Policy DAG cutover mapping Result/output identity differs')
+        return copy.deepcopy(mapping)
+
+    def node_policy_cutover_prepare(self, snapshot, payload, request):
+        expected = {'operation', 'request_id', 'actor', 'expected_goal_revision',
+                    'expected_goal_payload', 'old_graph', 'new_graph',
+                    'old_policy_digest', 'new_policy_digest', 'mapping'}
+        if set(request) != expected:
+            raise ValueError('Policy DAG cutover prepare requires exact returned fields')
+        root = (self.runtime or {}).get('root_id')
+        if not root or request['actor'] != root:
+            raise ValueError('Only the coordinating root may prepare a policy DAG cutover')
+        cutover = snapshot.get('policy_dag_cutover')
+        if (cutover is None or request['expected_goal_revision'] != snapshot['envelope']['revision']
+                or request['expected_goal_payload'] != snapshot['envelope']['payload']
+                or any(request[name] != cutover[name] for name in (
+                    'old_graph', 'new_graph'))
+                or request['old_policy_digest'] != cutover['old_policy_revision']
+                or request['new_policy_digest'] != cutover['new_policy_revision']):
+            raise ValueError('Policy DAG cutover goal revision, payload, graph or policy changed')
+        old_graph = snapshot['resolve'](cutover['old_graph'])
+        new_graph = snapshot['resolve'](cutover['new_graph'])
+        mapping = self.node_policy_cutover_mapping(snapshot, request['mapping'], old_graph, new_graph)
+        if payload['operational']['leases']:
+            raise ValueError('Policy DAG cutover requires every old-policy lease owner to be resolved')
+        proposal = {'old_graph': cutover['old_graph'], 'new_graph': cutover['new_graph'],
+            'old_execution_graph': cutover['old_execution_graph'],
+            'new_policy_graph': cutover['new_policy_graph'],
+            'old_policy_digest': cutover['old_policy_revision'],
+            'new_policy_digest': cutover['new_policy_revision'], 'mapping': mapping,
+            'source_revision': snapshot['envelope']['revision'],
+            'source_payload': copy.deepcopy(snapshot['envelope']['payload'])}
+        artifact = {'type': 'policy_dag_cutover_proposal', 'content': proposal,
+            'producer': None, 'provenance': {'actor': root, 'request_id': request['request_id']}}
+        reference = self.node_ref(digest(artifact), snapshot['number'])
+        snapshot['artifacts'][reference['hash']] = artifact
+        snapshot['workflow_definition'] = None
+        response = {'next_steps': [{'kind': 'policy_dag_cutover_proposed',
+            'goal': snapshot['number'], 'proposal': reference,
+            'review': {'operation': 'policy_dag_cutover_review',
+                'request_id': '<stable request id>', 'actor': '<independent reviewer>',
+                'proposal': reference, 'decision': '<approved or changes_requested>',
+                'report': '<exact review report>'}}]}
+        return self.node_persist(snapshot, payload, response, request)
+
+    def node_policy_cutover_review(self, snapshot, payload, request):
+        if set(request) != {'operation', 'request_id', 'actor', 'proposal', 'decision', 'report'}:
+            raise ValueError('Policy DAG cutover review requires exact returned fields')
+        root = (self.runtime or {}).get('root_id')
+        if (not isinstance(request['actor'], str) or not request['actor'].strip()
+                or request['actor'] == root or request['decision'] not in {'approved', 'changes_requested'}
+                or not isinstance(request['report'], str) or not request['report'].strip()):
+            raise ValueError('Policy DAG cutover requires an independent substantive review')
+        self.api._phase_evidence.validate_ref(request['proposal'])
+        proposal_artifact = snapshot['resolve'](request['proposal'])
+        proposal = proposal_artifact.get('content', {})
+        if (proposal_artifact.get('type') != 'policy_dag_cutover_proposal'
+                or proposal_artifact.get('provenance', {}).get('actor') != root
+                or snapshot.get('policy_dag_cutover') is None
+                or proposal.get('old_graph') != snapshot['policy_dag_cutover']['old_graph']
+                or proposal.get('new_graph') != snapshot['policy_dag_cutover']['new_graph']):
+            raise ValueError('Policy DAG cutover proposal is stale or unauthenticated')
+        review = {'type': 'policy_dag_cutover_review',
+            'content': {'decision': request['decision'], 'report': request['report']},
+            'producer': None, 'provenance': {'actor': request['actor'],
+                'source': request['proposal'], 'request_id': request['request_id']}}
+        reference = self.node_ref(digest(review), snapshot['number'])
+        snapshot['artifacts'][reference['hash']] = review
+        snapshot['workflow_definition'] = None
+        step = {'kind': 'policy_dag_cutover_reviewed', 'goal': snapshot['number'],
+            'proposal': request['proposal'], 'review': reference}
+        if request['decision'] == 'approved':
+            step['apply'] = {'operation': 'policy_dag_cutover_apply',
+                'request_id': '<stable request id>', 'actor': root,
+                'proposal': request['proposal'], 'review': reference,
+                'expected_goal_revision': snapshot['envelope']['revision'] + 1}
+        return self.node_persist(snapshot, payload, {'next_steps': [step]}, request)
+
+    def node_policy_cutover_apply(self, snapshot, payload, request):
+        if set(request) != {'operation', 'request_id', 'actor', 'proposal', 'review',
+                            'expected_goal_revision'}:
+            raise ValueError('Policy DAG cutover apply requires exact returned fields')
+        root = (self.runtime or {}).get('root_id')
+        if (not root or request['actor'] != root
+                or request['expected_goal_revision'] != snapshot['envelope']['revision']):
+            raise ValueError('Policy DAG cutover apply goal revision is stale or actor is not root')
+        if payload['operational']['leases']:
+            raise ValueError('Policy DAG cutover cannot apply while an old-policy lease is active')
+        proposal_artifact = snapshot['resolve'](request['proposal'])
+        review_artifact = snapshot['resolve'](request['review'])
+        proposal = proposal_artifact.get('content', {})
+        review = review_artifact.get('content', {})
+        if (proposal_artifact.get('type') != 'policy_dag_cutover_proposal'
+                or review_artifact.get('type') != 'policy_dag_cutover_review'
+                or review_artifact.get('provenance', {}).get('source') != request['proposal']
+                or review_artifact.get('provenance', {}).get('actor') == root
+                or review.get('decision') != 'approved'):
+            raise ValueError('Policy DAG cutover requires the exact independent approved review')
+        cutover = snapshot.get('policy_dag_cutover')
+        if (cutover is None or proposal.get('old_graph') != cutover['old_graph']
+                or proposal.get('new_graph') != cutover['new_graph']):
+            raise ValueError('Policy DAG cutover proposal no longer matches current old/new policy')
+        old_graph = snapshot['resolve'](proposal['old_graph'])
+        new_graph = snapshot['resolve'](proposal['new_graph'])
+        self.node_policy_cutover_mapping(snapshot, proposal.get('mapping'), old_graph, new_graph)
+        payload['workflow'] = {'version': self.api._static_workflow.VERSION,
+                               'graph': copy.deepcopy(proposal['new_graph'])}
+        receipt_artifact = {'type': 'policy_dag_cutover_receipt',
+            'content': {'old_graph': proposal['old_execution_graph'], 'new_graph': proposal['new_graph'],
+                'new_policy_graph': proposal['new_policy_graph'],
+                'proposal': request['proposal'], 'review': request['review'],
+                'mapping': proposal['mapping']}, 'producer': None,
+            'provenance': {'actor': root, 'request_id': request['request_id']}}
+        receipt = self.node_ref(digest(receipt_artifact), snapshot['number'])
+        snapshot['artifacts'][receipt['hash']] = receipt_artifact
+        response = {'next_steps': [{'kind': 'policy_dag_cutover_applied',
+            'goal': snapshot['number'], 'old_graph': proposal['old_execution_graph'],
+            'new_graph': proposal['new_graph'], 'receipt': receipt}]}
+        return self.node_persist(snapshot, payload, response, request)
+
     def node_phase_finding(self, snapshot, payload, request):
         """Record diagnostic phase data; independent review/admission grants work."""
         fields = {'operation', 'request_id', 'actor', 'target', 'subject', 'source', 'rationale', 'id'}
@@ -7359,6 +7612,12 @@ class Workflow:
                     if receipt['payload'] != digest(request): raise ValueError('Request receipt payload conflict')
                     return copy.deepcopy(snapshot['artifacts'][receipt['result']['hash']])
             pending = self.node_pending(snapshot, request)
+            if request['operation'] == 'policy_dag_cutover_prepare':
+                return self.node_policy_cutover_prepare(snapshot, payload, request)
+            if request['operation'] == 'policy_dag_cutover_review':
+                return self.node_policy_cutover_review(snapshot, payload, request)
+            if request['operation'] == 'policy_dag_cutover_apply':
+                return self.node_policy_cutover_apply(snapshot, payload, request)
             if request['operation'] == 'resolve_goal_blocker':
                 return self.node_resolve_goal_blocker(snapshot, payload, request)
             if request['operation'] == 'goal_dependency_review':
@@ -7535,6 +7794,31 @@ class Workflow:
                     'workspace_draft': self.node_ref(identity, number),
                     'action': 'Historical stopped bytes are preserved as unaccepted work; reacquire through the normal current task contract.'}]}
             else:
+                if not lease and operation == 'submit':
+                    acquired = None
+                    for historical_receipt in payload['operational']['receipts']:
+                        historical_response = snapshot['resolve'](historical_receipt['result'])
+                        acquired = next((step.get('lease') for step in historical_response.get('next_steps', [])
+                                         if isinstance(step.get('lease'), dict)
+                                         and step['lease'].get('token') == request.get('lease')), None)
+                        if acquired:
+                            break
+                    current = projection['current'].get(key)
+                    mapped_results = set()
+                    for receipt_row in reversed(payload['operational']['receipts']):
+                        try:
+                            prior = snapshot['resolve'](receipt_row['result'])
+                            applied = next(item for item in prior.get('next_steps', [])
+                                           if item.get('kind') == 'policy_dag_cutover_applied')
+                            cutover_receipt = snapshot['resolve'](applied['receipt'])['content']
+                            mapped_results = {item['result']['hash'] for item in cutover_receipt['mapping']}
+                            break
+                        except (KeyError, StopIteration, TypeError, ValueError):
+                            continue
+                    if (acquired and current and current[0]['hash'] in mapped_results
+                            and current[1]['attempt'] == acquired.get('attempt')):
+                        return {'next_steps': [{'kind': 'checkpoint', 'goal': number,
+                            'action': 'The reviewed cutover retained this completed attempt; observe the current frontier.'}]}
                 if not lease or request.get('lease') != lease['token'] or lease['owner'] != root: raise ValueError('Exact current owner/lease token required')
                 if operation == 'recover':
                     if request.get('worker_status') != 'stopped' or not isinstance(request.get('evidence'), str) or not request['evidence'].strip(): raise ValueError('Observed stopped worker evidence required; unknown liveness cannot recover')

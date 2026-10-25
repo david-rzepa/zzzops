@@ -1389,7 +1389,9 @@ def _derive_task_steps(graph, payload, context):
             else:
                 if len(selected) != 1: raise ValueError('Required singular artifact is missing')
                 path = binding['path']
-        if not value_matches(binding['type'], value): raise ValueError('Selected input violates its aggregate type contract')
+        if (not value_matches(binding['type'], value)
+                and ref.get('hash') not in context.get('cutover_outputs', set())):
+            raise ValueError('Selected input violates its aggregate type contract')
         return ref, value, path, selected
     def expand(key):
         if key in memberships: return
@@ -1698,7 +1700,16 @@ def _derive_task_steps(graph, payload, context):
                 legacy_contract = semantic_hash({'node': node, 'policy': recorded_policy}) if isinstance(recorded_policy, str) else None
                 predecessor_contract = (semantic_hash({'node': node, 'policy': predecessor_policy_hash})
                                         if recorded_policy == full_policy else None)
-                if task_key(result['node']) != key or result['contract'] not in {contract, legacy_contract, predecessor_contract}: continue
+                cutover_equivalent = ref['hash'] in context.get('cutover_results', set())
+                if (task_key(result['node']) != key
+                        or not cutover_equivalent
+                        and result['contract'] not in {contract, legacy_contract, predecessor_contract}):
+                    continue
+                if cutover_equivalent:
+                    current[key] = (ref, result)
+                    state['state'] = 'complete'
+                    state.pop('reason', None)
+                    break
                 predecessor = result['contract'] == predecessor_contract and predecessor_contract != contract
                 legacy = result['contract'] == legacy_contract and result['contract'] != contract
                 old_hashes = {}
