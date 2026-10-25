@@ -25,6 +25,29 @@ For monitoring, replay, reconciliation or test corrections, read [recovery](CLI_
 
 Reviewed policy enables [release planning](RELEASES.md).
 
+## Reviewed policy-DAG cutover
+
+When a goal has accepted Results under a different reviewed policy graph,
+checkpoint returns `policy_dag_cutover` and pauses affected execution. Submit
+the returned `policy_dag_cutover_prepare` contract with one unique mapping for
+each retained Result/output. The host derives input, output, scope, role,
+independence, and approval equivalence from both exact node contracts; caller
+assertions cannot make changed contracts equivalent. Resolve every old-policy
+lease before preparing the transition.
+
+An actor independent of the coordinating root submits the exact returned
+`policy_dag_cutover_review` contract. Only an approved review returns
+`policy_dag_cutover_apply`. Apply uses the fresh post-review goal revision and
+the exact proposal/review references. Exact retries first observe the durable
+receipt, so an uncertain provider response cannot create a second current
+graph. A rollback is another independently reviewed reverse cutover with a new
+receipt; never rewrite either graph, its Results, or the forward receipt.
+
+Replacement Results similarly name the immediately preceding Result and the
+goal revision observed at acquisition. A competing or disconnected successor
+is rejected instead of being selected by append time, branch name, or local
+worktree state.
+
 Execution migrates supported open v1 goals automatically, preserving history
 without granting authority. Preview/historical reads never migrate or reopen.
 For bulk/blocked conversion, read [schema migration](SCHEMA_MIGRATION.md).
