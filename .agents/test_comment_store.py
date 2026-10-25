@@ -142,10 +142,17 @@ class ExactTextPatchContractTests(unittest.TestCase):
             'fixture must cross at least three provider comments to exercise manifest packing')
         self.assertTrue(all(len(body) <= codec.MAX_COMMENT_CHARACTERS for body in bodies))
         comments = [{'body': body} for body in reversed(bodies)]
-        resolved, artifact = codec.ArtifactIndex(comments).resolve(record['hash'])
+        index = codec.ArtifactIndex(comments)
+        chunks = index.records[record['hash']]
+        self.assertEqual(len(bodies), len(chunks))
+        self.assertTrue(all(chunk['kind'] == 'chunk' for chunk in chunks))
+        self.assertTrue(all(chunk['hash'] == record['hash'] for chunk in chunks))
+        self.assertEqual({len(chunks)}, {chunk['total'] for chunk in chunks})
+        resolved, depth, spent = index.resolve(record['hash'])
         self.assertEqual(value, resolved)
-        self.assertEqual(record['hash'], artifact['hash'])
-        self.assertEqual('full', artifact['kind'])
+        self.assertEqual(0, depth)
+        self.assertGreater(spent, len(value.encode('utf-8')))
+        self.assertLessEqual(spent, codec.MAX_RECONSTRUCTION_WORK_BYTES)
 
     def test_unicode_original_base_offsets_and_exact_newlines(self):
         before = 'A😀e\u0301BC🌍D'
