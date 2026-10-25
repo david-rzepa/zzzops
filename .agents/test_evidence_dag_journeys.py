@@ -1875,6 +1875,26 @@ class WorkspaceAuthorityPublicTests(DagFixture):
             "an acquired legacy workspace must retain its raw baseline despite a ready Git-only sibling")
         self.assertIn("behavior_test.py", baseline)
 
+    def test_targeted_legacy_baseline_error_rejects_acquisition_without_provider_write(self):
+        self.setup_workspace()
+        step = next(s for s in self.session.ready() if s["node"]["node"] == "alpha")
+        receipt = json.loads(Path(step["policy"]["path"]).read_text())["policy_receipt"]
+        request = {**step["start"], "policy_receipt": receipt}
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        original = z._workflow.Workflow.node_workspace_context
+
+        def reject_selected(adapter, snapshots, projection, artifacts, *, workspace_target=None):
+            contexts = original(adapter, snapshots, projection, artifacts,
+                                workspace_target=workspace_target)
+            if workspace_target is not None:
+                contexts[workspace_target] = {"error": "Targeted baseline validation failed"}
+            return contexts
+
+        with mock.patch.object(z._workflow.Workflow, "node_workspace_context", reject_selected):
+            response = self.session.call(100, request, expected=2)
+        self.assertIn("Targeted baseline validation failed", json.dumps(response))
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
     def setup_workspace(self, mutate=None, *, defer_authorization=False):
         (self.fixture.repo / "source.py").write_text("def value():\n    return 1\n")
         (self.fixture.repo / "read_dependency.txt").write_text("stable dependency\n")
@@ -2416,9 +2436,9 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.admit_workspace_correction()
         captured = []
         method = z._workflow.Workflow.node_workspace_context
-        def observe(adapter, snapshots, projection, artifacts):
+        def observe(adapter, snapshots, projection, artifacts, **kwargs):
             captured.append((adapter, copy.deepcopy(snapshots), copy.deepcopy(projection), copy.deepcopy(artifacts)))
-            return method(adapter, snapshots, projection, artifacts)
+            return method(adapter, snapshots, projection, artifacts, **kwargs)
         with mock.patch.object(z._workflow.Workflow, "node_workspace_context", observe):
             self.assertIn("beta", self.names())
         adapter, snapshots, projection, artifacts = captured[-1]

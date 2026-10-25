@@ -4345,7 +4345,9 @@ class Workflow:
             for path, value in overrides.items():
                 self.node_workspace_paths([path])
                 if path not in git or not re.fullmatch(r'sha256:[0-9a-f]{64}', str(value)) or files.get(path) != value or git[path] == value: raise ValueError('Acquisition checkout overrides are invalid')
-            return files
+            # A declared absent path is retained in the immutable acquisition,
+            # but it is not a file in the connected workspace topology.
+            return {path: value for path, value in files.items() if value != 'missing'}
         candidates = []
         for result_ref, result in all_results:
             key = ev.task_key(result['node'])
@@ -4934,8 +4936,11 @@ class Workflow:
                         for row in selected_anchors.values()]
                 pinned_binding = next((item['source'] for item in acquisition.get('inputs', [])
                                        if item.get('name') == '__workspace'), None) if lease else None
+                reuse_result_binding = (prior is not None and 'error' not in prior
+                                        and current_ref == prior['result']
+                                        and connected(prior['after']))
                 result_binding = next((item['source'] for item in projection['current'].get(
-                    key, (None, {'inputs': []}))[1]['inputs'] if item.get('name') == '__workspace'), None)
+                    key, (None, {'inputs': []}))[1]['inputs'] if item.get('name') == '__workspace'), None) if reuse_result_binding else None
                 if (result_binding is not None
                         and content(result_binding).get('content', {}).get('migration') != migration):
                     result_binding = None
@@ -7819,11 +7824,16 @@ class Workflow:
                 # Broadphase intentionally avoids serialising a merely-ready
                 # legacy sibling. Once that exact legacy task is selected,
                 # materialise its raw baseline before issuing ownership.
-                selected = self.node_project(snapshot, workspace_target=key)
-                selected_state = selected['projection']['states'][key]
-                if selected_state['state'] != 'ready':
-                    raise ValueError('Selected workspace changed before acquisition')
-                selected_workspace = selected_state.get('workspace')
+                selected_workspace = self.node_workspace_context(
+                    snapshot['evaluation_context']['goals'], projection,
+                    snapshot['artifacts'], workspace_target=key).get(key)
+                if isinstance(selected_workspace, dict) and 'error' in selected_workspace:
+                    raise ValueError(selected_workspace['error'])
+                if 'repository_workspace' in state['contract']['executor']['resources']:
+                    if (not isinstance(selected_workspace, dict)
+                            or 'files' not in selected_workspace
+                            or 'entry' not in selected_workspace):
+                        raise ValueError('Selected legacy workspace baseline is unavailable')
                 if (selected_workspace is not None and 'files' in selected_workspace
                         and 'entry' in selected_workspace):
                     selected_workspace = copy.deepcopy(selected_workspace)
