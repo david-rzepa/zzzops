@@ -612,6 +612,45 @@ class EvidenceDagPublicTests(DagFixture):
         self.assertRegex(json.dumps(rejected), r"(?i)mapping|omit|missing|current|reusable|right")
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
+    def test_policy_dag_cutover_rename_cannot_rewrite_root_executor_role(self):
+        old_node = task("root", role="root")
+        old_node["prompt"] = "Preserve this reviewed authority and schema literally."
+        old_graph = {"nodes": [old_node], "task_sets": [],
+                     "terminals": [selector("root")]}
+        self.install(old_graph)
+        self.session.finish(self.session.acquire("root"), {"value": "root-owned result"})
+        result = self.result("root")[0]
+
+        new_node = copy.deepcopy(old_node)
+        new_node["id"] = "worker"
+        new_node["executor"]["role"] = "worker"
+        new_node["executor"]["authority"]["subject"]["node"] = "worker"
+        new_graph = {"nodes": [new_node], "task_sets": [],
+                     "terminals": [selector("worker")]}
+        z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = new_graph
+        cutover = self.session.checkpoint(100)[0]
+        self.assertEqual("policy_dag_cutover", cutover["kind"])
+        observed_old = self.read_blob(cutover["contract"]["old_graph"])
+        observed_new = z._static_workflow.definition(new_graph, z._graph_compiler)["graph"]
+        self.assertEqual(content_hash(observed_new), cutover["contract"]["new_graph"]["hash"])
+        self.assertEqual("root", observed_old["nodes"][0]["executor"]["role"])
+        self.assertEqual("worker", observed_new["nodes"][0]["executor"]["role"])
+        self.assertEqual(old_node["prompt"], observed_old["nodes"][0]["prompt"])
+        self.assertEqual(old_node["outputs"], observed_old["nodes"][0]["outputs"])
+        self.assertEqual(old_node["executor"]["authority"],
+                         observed_old["nodes"][0]["executor"]["authority"])
+        mapping = [{"old": {"node": "root", "output": "value"},
+                    "new": {"node": "worker", "output": "value"},
+                    "result": result, "equivalence": {
+                        "inputs": True, "outputs": True, "scope": True,
+                        "role": True, "independence": True, "approval": True}}]
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        rejected = self.session.call(100, {**cutover["prepare"], "actor": "root-thread",
+            "mapping": mapping, "request_id": "reject-root-role-rewrite"}, expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)role|authority|equival")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
     def test_corrected_result_names_exact_predecessor_and_provider_revision_for_cas(self):
         self.findings()
         predecessor, _record = self.result("produce")
