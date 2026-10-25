@@ -235,7 +235,7 @@ lease before preparing the transition.
 
 An actor independent of the coordinating root submits the exact returned
 `policy_dag_cutover_review` contract. Only an approved review returns
-`policy_dag_cutover_apply`. Apply uses the fresh post-review goal revision and
+`policy_dag_cutover_apply`. Apply uses the goal revision observed after review and
 the exact proposal/review references. Exact retries first observe the durable
 receipt, so an uncertain provider response cannot create a second current
 graph. A rollback is another independently reviewed reverse cutover with a new
