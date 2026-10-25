@@ -7370,6 +7370,19 @@ class Workflow:
             if not isinstance(equivalence, dict) or set(equivalence) != required or not all(
                     equivalence[name] is True for name in required):
                 raise ValueError('Policy DAG cutover evidence equivalence is incomplete')
+            old_node, new_node = old_nodes[old_key[0]], new_nodes[new_key[0]]
+            derived = {
+                'inputs': old_node['inputs'] == new_node['inputs'],
+                'outputs': old_node['outputs'][old_key[1]] == new_node['outputs'][new_key[1]],
+                'scope': (old_node['executor'].get('authority') == new_node['executor'].get('authority')
+                          and old_node.get('permits', []) == new_node.get('permits', [])),
+                'role': old_node['executor'].get('role') == new_node['executor'].get('role'),
+                'independence': old_node.get('independent_of', []) == new_node.get('independent_of', []),
+                'approval': old_node.get('gates', []) == new_node.get('gates', []),
+            }
+            changed = sorted(name for name, equivalent in derived.items() if not equivalent)
+            if changed:
+                raise ValueError('Policy DAG cutover equivalence changed: ' + ', '.join(changed))
             self.api._phase_evidence.validate_ref(row['result'])
             if self.node_ref_goal(row['result'], snapshot['number']) != snapshot['number']:
                 raise ValueError('Policy DAG cutover Result belongs to another goal')
