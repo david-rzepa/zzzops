@@ -136,6 +136,21 @@ class FreshGoalGitCheckpointTests(DagFixture):
         self.assertNotIn('read_files', acquisition)
         self.assertTrue(all(len(comment['body']) <= 65536 for comment in self.provider.comments[100]))
 
+        request = self.session.submission(work, {'value': {
+            'statements': ['Preserve the fresh goal evidence.'], 'questions': [],
+            'investigations': {'items': {}, 'rationale': 'No unknowns.'},
+        }}, 'fresh-git-checkpoint-result')
+        first = self.session.call(100, request)
+        comments = len(self.provider.comments[100])
+        second = self.session.call(100, request)
+        self.assertEqual(first, second)
+        self.assertEqual(comments, len(self.provider.comments[100]))
+        self.assertEqual([100], sorted(self.provider.issues))
+        self.assertEqual(1, len(self.payload()[1]['evidence']))
+        next_work = self.session.acquire('spec')
+        self.assertEqual(acquisition['read_commit'], next_work['lease']['acquisition']['read_commit'])
+        self.assertTrue(all(len(comment['body']) <= 65536 for comment in self.provider.comments[100]))
+
     def test_literal_shipped_dag_uses_reviewed_cutover_contract(self):
         template = json.loads((fixtures.PLUGIN_ROOT /
                                'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
@@ -178,21 +193,6 @@ class FreshGoalGitCheckpointTests(DagFixture):
         self.assertEqual('policy_dag_cutover_applied', applied['kind'])
         self.assertEqual(result, self.result('requirements')[0])
         self.assertIn('shipped_cutover_audit', self.names())
-
-        request = self.session.submission(work, {'value': {
-            'statements': ['Preserve the fresh goal evidence.'], 'questions': [],
-            'investigations': {'items': {}, 'rationale': 'No unknowns.'},
-        }}, 'fresh-git-checkpoint-result')
-        first = self.session.call(100, request)
-        comments = len(self.provider.comments[100])
-        second = self.session.call(100, request)
-        self.assertEqual(first, second)
-        self.assertEqual(comments, len(self.provider.comments[100]))
-        self.assertEqual([100], sorted(self.provider.issues))
-        self.assertEqual(1, len(self.payload()[1]['evidence']))
-        next_work = self.session.acquire('spec')
-        self.assertEqual(acquisition['read_commit'], next_work['lease']['acquisition']['read_commit'])
-        self.assertTrue(all(len(comment['body']) <= 65536 for comment in self.provider.comments[100]))
 
     def test_readonly_managed_worktree_must_remain_at_exact_clean_commit(self):
         self.default_graph()
