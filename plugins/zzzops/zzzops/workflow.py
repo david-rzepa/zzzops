@@ -2170,7 +2170,7 @@ class Workflow:
 
 
     def node_snapshot(self, number, *, publication_probe=False, graph_override=None,
-                      prospective=None, dependency_override=None):
+                      prospective=None, dependency_override=None, workspace_target=None):
         """Read exact scoped records; only relationship consumers request closure."""
         ev = self.api._phase_evidence
         snapshots, artifacts, issues, bootstrap = {}, dict((prospective or {}).get('artifacts', {})), {}, {}
@@ -2977,9 +2977,11 @@ class Workflow:
         context = {'goal': number, 'policy': self.project['policy'], 'runtime': self.runtime, 'artifacts': artifacts, 'goals': closure, 'published_bytes': published}
         snapshot = {'number': number, 'issue': issues[number], **selected, 'snapshots': snapshots, 'issues': issues,
                     'bootstrap': bootstrap, 'artifacts': artifacts, 'published': published, 'evaluation_context': context}
-        return self.node_project(snapshot, publication_probe=publication_probe)
+        return self.node_project(snapshot, publication_probe=publication_probe,
+                                 workspace_target=workspace_target)
 
-    def node_project(self, snapshot, *, payload=None, publication_probe=False):
+    def node_project(self, snapshot, *, payload=None, publication_probe=False,
+                     workspace_target=None):
         """Evaluate observed context with either durable or prospective evidence."""
         ev = self.api._phase_evidence
         context = {**snapshot['evaluation_context'], 'artifacts': snapshot['artifacts'], 'workspace_probe': True}
@@ -3054,7 +3056,8 @@ class Workflow:
                     continue
             return projected
         result = apply_cutover_mappings(ev.derive_task_steps(selected['graph'], selected['payload'], context))
-        workspaces = self.node_workspace_context(closure, result, result['artifacts'])
+        workspaces = self.node_workspace_context(
+            closure, result, result['artifacts'], workspace_target=workspace_target)
         publications = {} if publication_probe else self.node_publication_context(closure, result, result['artifacts'])
         context.update(workspace_probe=False, workspaces=workspaces, artifacts=result['artifacts'])
         if not publication_probe: context['publications'] = publications
@@ -4201,7 +4204,7 @@ class Workflow:
             seen.add(cursor['hash']); cursor = previous['acquisition'].get('stopped_draft')
         return seen
 
-    def node_workspace_context(self, snapshots, projection, artifacts):
+    def node_workspace_context(self, snapshots, projection, artifacts, *, workspace_target=None):
         """Observe repository facts and bind the explicit workspace adapter.
 
         The graph supplies all semantic prerequisites. This adapter checks the
@@ -4221,7 +4224,8 @@ class Workflow:
             for state in states.values())
         legacy_active = any(
             'repository_workspace' in state['contract']['executor']['resources']
-            and ((state['state'] == 'ready' and not commit_only_ready)
+            and ((state['state'] == 'ready'
+                  and (not commit_only_ready or key == workspace_target))
                  or key in projection.get('leases', {})
                  or (key in projection['current']
                      and not projection['current'][key][1].get('non_applicability')))
@@ -4928,7 +4932,14 @@ class Workflow:
                         if 'error' not in row and row['reviews'] and row['proof']['hash'] in reachable and connected(row['after']): selected_anchors[row['key']] = row
                     acquisition['baseline_proofs'] = [{'result': row['result'], 'proof': row['proof'], 'reviews': [ref for ref, _ in row['reviews']]}
                         for row in selected_anchors.values()]
-                binding = remember({'type': 'workspace_snapshot', 'content': {'files': baseline, **{k: grant[k] for k in ('allocation', 'authorization', 'approval')}, **({'migration': migration} if migration is not None else {})}, 'producer': None, 'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
+                pinned_binding = next((item['source'] for item in acquisition.get('inputs', [])
+                                       if item.get('name') == '__workspace'), None) if lease else None
+                result_binding = next((item['source'] for item in projection['current'].get(
+                    key, (None, {'inputs': []}))[1]['inputs'] if item.get('name') == '__workspace'), None)
+                if (result_binding is not None
+                        and content(result_binding).get('content', {}).get('migration') != migration):
+                    result_binding = None
+                binding = pinned_binding or result_binding or remember({'type': 'workspace_snapshot', 'content': {'files': baseline, **{k: grant[k] for k in ('allocation', 'authorization', 'approval')}, **({'migration': migration} if migration is not None else {})}, 'producer': None, 'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
                 contexts[key] = {'binding': binding, 'files': baseline, 'acquisition': acquisition, **grant}
             except (ValueError, KeyError, subprocess.SubprocessError) as exc:
                 retirement = None
@@ -7789,6 +7800,22 @@ class Workflow:
             elif operation == 'start':
                 if lease: raise ValueError('Task already has an owner; observed-stop recovery is required')
                 if state['state'] != 'ready' or request.get('input_hash') != state.get('input_hash'): raise ValueError('Stale input or prerequisite prevents acquisition')
+                # Broadphase intentionally avoids serialising a merely-ready
+                # legacy sibling. Once that exact legacy task is selected,
+                # materialise its raw baseline before issuing ownership.
+                selected = self.node_project(snapshot, workspace_target=key)
+                selected_state = selected['projection']['states'][key]
+                if selected_state['state'] != 'ready':
+                    raise ValueError('Selected workspace changed before acquisition')
+                selected_workspace = selected_state.get('workspace')
+                if (selected_workspace is not None and 'files' in selected_workspace
+                        and 'entry' in selected_workspace):
+                    selected_workspace = copy.deepcopy(selected_workspace)
+                    for path in (selected_workspace['entry']['owned']
+                                 + selected_workspace['entry']['consumed']):
+                        selected_workspace['files'].setdefault(path, 'missing')
+                    selected_workspace['acquisition']['workspace_digest'] = digest(
+                        selected_workspace['files'])
                 if node['node'] == 'publish' and self.node_native_delivery(snapshot):
                     if self.node_candidate_state(snapshot)['status'] != 'ready':
                         raise ValueError('Git-native candidate must be compacted before publication acquisition')
@@ -7814,8 +7841,8 @@ class Workflow:
                     if selector.get('goal') == '#children' or selector.get('kind') == 'join':
                         aggregates[binding['name']] = copy.deepcopy(snapshot['artifacts'][binding['source']['hash']]['content']['sources'])
                 if aggregates: lease['acquisition']['aggregate_sources'] = aggregates
-                if 'workspace' in state:
-                    workspace = state['workspace']
+                if selected_workspace is not None:
+                    workspace = selected_workspace
                     lease['acquisition'].update(copy.deepcopy(workspace['acquisition']))
                     if 'files' in workspace:
                         lease['acquisition']['files'] = copy.deepcopy(workspace['files'])
