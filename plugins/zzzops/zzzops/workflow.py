@@ -4942,7 +4942,9 @@ class Workflow:
                 result_binding = next((item['source'] for item in projection['current'].get(
                     key, (None, {'inputs': []}))[1]['inputs'] if item.get('name') == '__workspace'), None) if reuse_result_binding else None
                 if (result_binding is not None
-                        and content(result_binding).get('content', {}).get('migration') != migration):
+                        and (content(result_binding).get('content', {}).get('migration') != migration
+                             or content(result_binding).get('provenance', {}).get('policy')
+                             != self.node_evidence_policy())):
                     result_binding = None
                 binding = pinned_binding or result_binding or remember({'type': 'workspace_snapshot', 'content': {'files': baseline, **{k: grant[k] for k in ('allocation', 'authorization', 'approval')}, **({'migration': migration} if migration is not None else {})}, 'producer': None, 'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
                 contexts[key] = {'binding': binding, 'files': baseline, 'acquisition': acquisition, **grant}
@@ -5240,7 +5242,9 @@ class Workflow:
         commands = request.get('workspace_checks', [])
         if not isinstance(commands, list) or any(not isinstance(c, list) or not c or any(not isinstance(a, str) or not a for a in c) for c in commands): raise ValueError('Workspace checks require nonempty argument arrays')
         before = self.workspace_files(); results = []
-        if before != lease['acquisition']['files'] and not commands: raise ValueError('Changed workspace outputs require observed verification checks before publishing a candidate proof')
+        acquired_files = {path: value for path, value in lease['acquisition']['files'].items()
+                          if value != 'missing'}
+        if before != acquired_files and not commands: raise ValueError('Changed workspace outputs require observed verification checks before publishing a candidate proof')
         results = self.node_verification_commands(
             snapshot, lease, request, commands, before, reuse_only=reuse_only)
         if self.workspace_files() != before: raise ValueError('Workspace checks changed source/output bytes; inspect before retry')
