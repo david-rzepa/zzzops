@@ -402,10 +402,14 @@ def pack_envelopes(common, artifacts, history=None):
                 chunks = [{'kind': 'chunk', 'hash': record['hash'], 'type': record['type'],
                            'index': index, 'total': total, 'text': text[index * size:(index + 1) * size]}
                           for index in range(total)]
-                if all(len(encode_envelope({'schema_version': 2, **common, 'part': index,
-                       'manifest': [digest({'kind': 'artifact', 'value': chunk})], 'members': [0],
-                       'artifacts': [chunk], 'history': None})) <= MAX_COMMENT_CHARACTERS
-                       for index, chunk in enumerate(chunks)):
+                try:
+                    for index, chunk in enumerate(chunks):
+                        encode_envelope({'schema_version': 2, **common, 'part': index,
+                            'manifest': [digest({'kind': 'artifact', 'value': chunk})],
+                            'members': [0], 'artifacts': [chunk], 'history': None})
+                except ValueError:
+                    continue
+                else:
                     expanded.extend(chunks)
                     break
             else:
