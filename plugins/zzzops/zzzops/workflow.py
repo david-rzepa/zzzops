@@ -7719,6 +7719,22 @@ class Workflow:
                 ownership_graph = self.artifact_index(number).resolve(ownership_reference['hash'])[0]
             snapshot = self.node_snapshot(number, graph_override=ownership_graph)
             if snapshot['envelope']['state'] != 'open' or str(snapshot['issue'].get('state', '')).lower() == 'closed': raise ValueError('Archived goal cannot execute or mutate')
+            if snapshot.get('policy_dag_cutover'):
+                cutover_operations = {
+                    'policy_dag_cutover_prepare', 'policy_dag_cutover_review',
+                    'policy_dag_cutover_apply',
+                }
+                ownership_operations = {'bind', 'block', 'recover', 'release', 'renew', 'submit'}
+                operation = request.get('operation')
+                if operation in ownership_operations:
+                    requested = request.get('node')
+                    owned = (isinstance(requested, dict) and any(
+                        lease.get('node') == requested
+                        for lease in snapshot['payload']['operational']['leases']))
+                    if not owned:
+                        raise ValueError('Pending policy DAG cutover permits only an exact old-lease operation')
+                elif operation not in cutover_operations:
+                    raise ValueError('Pending policy DAG cutover blocks semantic mutation until reviewed mapping is applied')
             # Archived-prerequisite administration repairs an exact migrated
             # blocker without running or accepting any retired phase. Keep the
             # old phase mapping debt on the execution frontier after the write.
