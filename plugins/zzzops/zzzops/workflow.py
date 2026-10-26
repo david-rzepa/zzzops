@@ -8715,12 +8715,13 @@ class Workflow:
                 exact_subjects = {item['source']['hash'] for item in state['inputs']
                                   if item['name'] == 'subject' and item['mode'] == 'identity'
                                   and not item['path']}
-                for reference in snapshot['payload']['evidence']:
-                    result = snapshot['artifacts'][reference['hash']]['content']
-                    if (result['node'] == node and result['executor'] == actor
-                            and any(ref['hash'] in exact_subjects
-                                    for ref in result['outputs'].values())):
-                        raise ValueError('Independent reviewer cannot be the historical subject executor')
+                if exact_subjects:
+                    for reference in snapshot['payload']['evidence']:
+                        result = snapshot['artifacts'][reference['hash']]['content']
+                        if (result['node'] == node and result['executor'] == actor
+                                and any(ref['hash'] in exact_subjects
+                                        for ref in result['outputs'].values())):
+                            raise ValueError('Independent reviewer cannot be the historical subject executor')
 
 
 def capacity_step(active_leases, limit):
