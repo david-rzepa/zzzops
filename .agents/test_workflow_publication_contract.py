@@ -776,6 +776,64 @@ class WorkflowPublicationContractTests(unittest.TestCase):
                     self.assertIn('missing', result['action'])
                 self.assertEqual([], api.calls)
 
+    def test_published_candidate_adopts_only_exact_oid_retarget_to_policy_trunk(self):
+        old_base = 'main'
+        new_base = 'dev'
+        base_oid = 'b' * 40
+        head_oid = 'a' * 40
+        reference = {'hash': 'published', 'uri': 'urn:published'}
+        authorization = {'hash': 'authorization', 'uri': 'urn:authorization'}
+        historical = {'repository': 'owner/repo', 'branch': 'goal-1',
+                      'base': old_base, 'pr': 'https://github.com/owner/repo/pull/2',
+                      'head_oid': head_oid}
+        facts = {'repository': 'owner/repo', 'base_ref': new_base,
+                 'base_oid': base_oid, 'head_oid': head_oid,
+                 'checks_present': False, 'merged': False}
+        engine = workflow.Workflow.__new__(workflow.Workflow)
+        engine.repo = Path('/repo')
+        engine.repository = 'owner/repo'
+        engine.runtime = {'root_id': 'root'}
+        engine.project = {'policy': {'sections': [
+            {'id': 'git_review_release', 'configuration': {'release_planning': {
+                'enabled': False, 'integration_branch': new_base}}},
+            {'id': 'verification_testing', 'configuration': {'required_ci': 'disabled'}},
+        ]}}
+        engine.api = SimpleNamespace(_phase_evidence=None,
+                                     _github_pull_request_states=lambda *_args:
+                                     ({1: facts}, None, None))
+        engine.node_evidence_policy = lambda: 'sha256:' + 'c' * 64
+        engine.node_managed_publication_branches = lambda *_args: set()
+        engine.publication_topology = lambda *_args, **_kwargs: None
+        publisher = {'executor': 'root', 'outputs': {'value': reference},
+                     'inputs': [{'source': authorization, 'mode': 'identity', 'path': []}]}
+        projection = {'current': {'publish': (reference, publisher)}, 'states': {
+            'publish': {'state': 'done', 'contract': {'executor': {'role': 'root',
+                                                                 'resources': []}}},
+            (1, 'integrate'): {'state': 'ready', 'contract': {'executor': {
+                'resources': ['repository_publication']}},
+                'inputs': [{'source': reference, 'mode': 'identity', 'path': []}]},
+        }}
+        artifacts = {'published': {'type': 'published_candidate', 'content': historical},
+                     'authorization': {'type': 'repository_authorization',
+                                       'content': {'decision': 'approved'}}}
+
+        def observe(old_oid):
+            output = f'{old_oid}\trefs/heads/main\n{base_oid}\trefs/heads/dev\n'
+            with mock.patch.object(workflow.subprocess, 'run',
+                                   return_value=SimpleNamespace(returncode=0, stdout=output)):
+                return engine.node_publication_context({}, projection, artifacts)
+
+        adopted = observe(base_oid)[(1, 'integrate')]
+        self.assertNotIn('error', adopted)
+        self.assertEqual(new_base, adopted['observed']['base_ref'])
+        self.assertEqual(new_base, adopted['context']['base'])
+        self.assertEqual(old_base, artifacts['published']['content']['base'])
+        rejected = observe('d' * 40)[(1, 'integrate')]
+        self.assertIn('base identity mismatch', rejected['error'])
+        engine.project['policy']['sections'][0]['configuration']['release_planning'] = None
+        unsupported = observe(base_oid)[(1, 'integrate')]
+        self.assertIn('base identity mismatch', unsupported['error'])
+
 
 from test_evidence_dag_journeys import DagFixture, REF_TYPE, FINDING_TYPE, ADMISSION_TYPE, content_hash, output, shape, spec_input, z
 import test_evidence_dag_journeys as dag_fixtures

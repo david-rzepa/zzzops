@@ -3986,7 +3986,33 @@ class Workflow:
                     facts, _, _ = self.api._github_pull_request_states(self.repo, 'gh', [{'number': key[0]}], {key[0]: {'repository_context': value}})
                     observations[cache_key] = facts.get(key[0])
                 facts = observations[cache_key]
-                if not isinstance(facts, dict) or facts.get('repository') != self.repository or facts.get('base_ref') != value['base']: raise ValueError('Provider publication repository/base identity mismatch or unknown')
+                if not isinstance(facts, dict) or facts.get('repository') != self.repository:
+                    raise ValueError('Provider publication repository/base identity mismatch or unknown')
+                if facts.get('base_ref') != value['base']:
+                    planning = policy_section(self.project, 'git_review_release')['configuration']['release_planning']
+                    new_base = facts.get('base_ref')
+                    base_oid = facts.get('base_oid')
+                    if (not isinstance(planning, dict) or not candidate or facts.get('merged')
+                            or planning.get('enabled')
+                            or new_base != planning.get('integration_branch')
+                            or not isinstance(base_oid, str) or not re.fullmatch('[0-9a-f]{40}', base_oid)):
+                        raise ValueError('Provider publication repository/base identity mismatch or unknown')
+                    refs = subprocess.run(['git', 'ls-remote', '--heads', 'origin',
+                        'refs/heads/' + value['base'], 'refs/heads/' + new_base],
+                        cwd=self.repo, capture_output=True, text=True, check=False)
+                    remote = {}
+                    if refs.returncode == 0:
+                        for line in refs.stdout.splitlines():
+                            fields = line.split()
+                            if len(fields) == 2:
+                                remote[fields[1]] = fields[0]
+                    if (remote.get('refs/heads/' + value['base']) != base_oid
+                            or remote.get('refs/heads/' + new_base) != base_oid):
+                        raise ValueError('Provider publication repository/base identity mismatch or unknown')
+                    # The root's published-candidate Result remains historical.
+                    # An exact-OID retarget to the policy trunk changes only PR
+                    # topology; current provider facts govern downstream gates.
+                    value = {**value, 'base': new_base}
                 for name in ('head_oid', 'base_oid'):
                     if not isinstance(facts.get(name), str) or not re.fullmatch('[0-9a-f]{40}', facts[name]): raise ValueError('Provider publication head/base is unknown')
                 if candidate and facts['head_oid'] != blob['content']['head_oid']:
