@@ -817,6 +817,39 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
             'ls-remote', 'origin', source_ref).split()[0])
         self.assertEqual([100], sorted(fixture.provider.issues))
 
+    def test_public_restack_continue_rejects_clean_child_without_replay_proof(self):
+        fixture, _first, started, plan, _source_ref, _source_commit = \
+            self.public_same_node_conflicting_restack()
+        worktree = Path(started['managed_worktree']['path'])
+        z._git_phase_state.abort_attempt_restack(
+            worktree, plan, owned_paths=['behavior_test.py'])
+        (worktree / 'behavior_test.py').write_text('assert True\n')
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=worktree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: arbitrary clean child'],
+                       cwd=worktree, check=True)
+        arbitrary = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=worktree,
+            capture_output=True, text=True, check=True).stdout.strip()
+        self.assertEqual(plan['new_base'], subprocess.run(
+            ['git', 'rev-parse', arbitrary + '^'], cwd=worktree,
+            capture_output=True, text=True, check=True).stdout.strip())
+        self.assertNotEqual(0, subprocess.run(
+            ['git', 'rev-parse', '--verify', 'CHERRY_PICK_HEAD'], cwd=worktree,
+            capture_output=True).returncode)
+        template = {**started['restack']['continue'], 'actor': 'restack-worker',
+                    'request_id': 'reject-unproven-clean-restack'}
+        evidence_before = copy.deepcopy(fixture.payload()[1]['evidence'])
+
+        rejected = fixture.session.call(100, template, expected=2)
+
+        self.assertRegex(json.dumps(rejected), r'(?i)replay|sequencer|restack|proof')
+        self.assertEqual(evidence_before, fixture.payload()[1]['evidence'])
+        lease = next(item for item in fixture.payload()[1]['operational']['leases']
+                     if item['token'] == started['lease']['token'])
+        self.assertNotEqual('ready', lease['restack'].get('status'))
+        self.assertNotIn('result_commit', lease['restack'])
+        self.assertEqual([100], sorted(fixture.provider.issues))
+
     def test_submission_uses_managed_worktree_commit_and_checks(self):
         fixture = self.fixture_with_git_workspace()
         remote_dir = tempfile.TemporaryDirectory()
