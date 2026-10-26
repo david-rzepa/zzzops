@@ -2889,6 +2889,52 @@ def _release_policy(project):
         "release_branch_prefix": "release/", "execution_scope": "active_only"})
 
 
+def _release_trunk_names(policy, plan):
+    if not plan or _releases.validate_release_plan(plan):
+        raise ValueError("reviewed release plan is missing or invalid")
+    live = sorted(int(number) for number, release in plan["releases"].items()
+                  if release.get("publication") is None)
+    names = ([policy["publication_branch"]]
+             + [policy["release_branch_prefix"] + str(number) for number in live]
+             + [policy["integration_branch"]])
+    if len(set(names)) != len(names):
+        raise ValueError("reviewed trunk chain contains duplicate branches")
+    return names
+
+
+def _observe_release_trunks(repo, names):
+    trunks = []
+    for branch in names:
+        ref = "refs/heads/" + branch
+        observation = subprocess.run(
+            ["git", "ls-remote", "--exit-code", "--refs", "origin", ref],
+            cwd=repo, capture_output=True, text=True)
+        rows = observation.stdout.splitlines() if observation.returncode == 0 else []
+        fields = rows[0].split() if len(rows) == 1 else []
+        if len(fields) != 2 or fields[1] != ref:
+            raise ValueError("remote trunk observation failed: " + branch)
+        commit = fields[0]
+        if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
+            raise ValueError("remote trunk commit is invalid: " + branch)
+        trunks.append((branch, commit))
+    return trunks
+
+
+def _ensure_release_trunk_objects(repo, trunks):
+    for branch, commit in trunks:
+        found = subprocess.run(["git", "cat-file", "-e", commit + "^{commit}"],
+                               cwd=repo, capture_output=True, text=True)
+        if found.returncode == 0:
+            continue
+        fetched = subprocess.run(["git", "fetch", "--no-tags", "origin",
+                                  "refs/heads/" + branch], cwd=repo,
+                                 capture_output=True, text=True)
+        head = subprocess.run(["git", "rev-parse", "FETCH_HEAD"], cwd=repo,
+                              capture_output=True, text=True) if fetched.returncode == 0 else None
+        if head is None or head.returncode or head.stdout.strip() != commit:
+            raise ValueError("remote trunk changed during exact object fetch: " + branch)
+
+
 def release_cli(repo: Path, command: str, input_path: Path | None = None):
     project = reviewed_project_state(repo); repository = _project_repository_identity(project)
     policy = _release_policy(project)
@@ -2903,28 +2949,11 @@ def release_cli(repo: Path, command: str, input_path: Path | None = None):
         if not isinstance(request, dict) or set(request) != {"request_id"} or not isinstance(request["request_id"], str) or not request["request_id"]:
             raise ValueError("trunk propagation requires only a request_id; Git facts are observed by the host")
         plan = adapter.read(repository)
-        if not plan or _releases.validate_release_plan(plan):
-            raise ValueError("reviewed release plan is missing or invalid")
-        live = sorted(int(number) for number, release in plan["releases"].items()
-                      if release.get("publication") is None)
-        names = ([policy["publication_branch"]]
-                 + [policy["release_branch_prefix"] + str(number) for number in live]
-                 + [policy["integration_branch"]])
-        if len(set(names)) != len(names):
-            raise ValueError("reviewed trunk chain contains duplicate branches")
-        trunks = []
-        for branch in names:
-            ref = "refs/heads/" + branch
-            observation = subprocess.run(
-                ["git", "ls-remote", "--exit-code", "--refs", "origin", ref],
-                cwd=repo, capture_output=True, text=True)
-            rows = observation.stdout.splitlines() if observation.returncode == 0 else []
-            if len(rows) != 1 or rows[0].split()[-1] != ref:
-                raise ValueError("remote trunk observation failed: " + branch)
-            commit = rows[0].split()[0]
-            if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
-                raise ValueError("remote trunk commit is invalid: " + branch)
-            trunks.append((branch, commit))
+        names = _release_trunk_names(policy, plan)
+        trunks = _observe_release_trunks(repo, names)
+        _ensure_release_trunk_objects(repo, trunks)
+        if _observe_release_trunks(repo, names) != trunks:
+            raise ValueError("remote trunk chain moved during preview")
         return {**_releases.preview_trunk_propagation(repo, trunks), "trunks": trunks}
     if command == "configure":
         if not policy["enabled"]: raise ValueError("release planning is disabled by reviewed policy")
