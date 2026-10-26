@@ -16,6 +16,81 @@ z = fixtures.zzzops
 
 
 class ReleasePublicBoundaryTests(unittest.TestCase):
+    def test_trunk_preview_fetches_valid_remote_oids_absent_from_local_repository(self):
+        project = {'backend': 'github_issues',
+                   'repository': {'identity': 'owner/repo'}}
+        policy = {'enabled': True, 'publication_branch': 'main',
+                  'integration_branch': 'dev',
+                  'release_branch_prefix': 'release/'}
+        plan = z._releases.new_release_plan(1)
+        plan['releases'] = {'1': {'state': 'open'}}
+        adapter = mock.Mock()
+        adapter.read.return_value = plan
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            remote = root / 'origin.git'
+            seed = root / 'seed'
+            repo = root / 'repo'
+            subprocess.run(['git', 'init', '--bare', '-q', str(remote)], check=True)
+            subprocess.run(['git', 'init', '-q', '-b', 'main', str(seed)], check=True)
+            subprocess.run(['git', '-C', str(seed), 'config', 'user.name', 'Release Test'], check=True)
+            subprocess.run(['git', '-C', str(seed), 'config', 'user.email', 'release@example.test'], check=True)
+            (seed / 'product.txt').write_text('main\n')
+            subprocess.run(['git', '-C', str(seed), 'add', 'product.txt'], check=True)
+            subprocess.run(['git', '-C', str(seed), 'commit', '-qm', 'main'], check=True)
+            subprocess.run(['git', '-C', str(seed), 'branch', 'release/1'], check=True)
+            subprocess.run(['git', '-C', str(seed), 'branch', 'dev'], check=True)
+            subprocess.run(['git', '-C', str(seed), 'remote', 'add', 'origin', str(remote)], check=True)
+            subprocess.run(['git', '-C', str(seed), 'push', '-q', 'origin',
+                            'main', 'release/1', 'dev'], check=True)
+            subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+            subprocess.run(['git', '-C', str(repo), 'remote', 'add', 'origin', str(remote)], check=True)
+            request = root / 'preview.json'
+            request.write_text(json.dumps({'request_id': 'preview-remote-only-trunks'}))
+            with mock.patch.object(z, 'reviewed_project_state', return_value=project), \
+                 mock.patch.object(z, '_release_policy', return_value=policy), \
+                 mock.patch.object(z, 'GitHubReleasePlanAdapter', return_value=adapter):
+                result = z.release_cli(repo, 'propagate', request)
+
+        self.assertIn(result['status'], {'current', 'propagate'})
+        self.assertEqual(['main', 'release/1', 'dev'],
+                         [name for name, _commit in result['trunks']])
+
+    def test_trunk_preview_fails_closed_when_remote_ref_moves_during_observation(self):
+        project = {'backend': 'github_issues',
+                   'repository': {'identity': 'owner/repo'}}
+        policy = {'enabled': True, 'publication_branch': 'main',
+                  'integration_branch': 'dev',
+                  'release_branch_prefix': 'release/'}
+        plan = z._releases.new_release_plan(1)
+        plan['releases'] = {'1': {'state': 'open'}}
+        adapter = mock.Mock()
+        adapter.read.return_value = plan
+        first = {'main': 'a' * 40, 'release/1': 'b' * 40, 'dev': 'c' * 40}
+        moved = {**first, 'release/1': 'd' * 40}
+        observations = {name: 0 for name in first}
+        def remote(command, **_kwargs):
+            ref = command[-1]
+            branch = ref.removeprefix('refs/heads/')
+            observations[branch] += 1
+            values = first if observations[branch] == 1 else moved
+            return subprocess.CompletedProcess(
+                command, 0, values[branch] + '\t' + ref + '\n', '')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = root / 'preview.json'
+            request.write_text(json.dumps({'request_id': 'moving-remote-trunks'}))
+            with mock.patch.object(z, 'reviewed_project_state', return_value=project), \
+                 mock.patch.object(z, '_release_policy', return_value=policy), \
+                 mock.patch.object(z, 'GitHubReleasePlanAdapter', return_value=adapter), \
+                 mock.patch.object(z.subprocess, 'run', side_effect=remote), \
+                 mock.patch.object(z._releases, 'preview_trunk_propagation',
+                                   return_value={'status': 'current'}):
+                with self.assertRaisesRegex(ValueError, 'moved|changed|remote'):
+                    z.release_cli(root, 'propagate', request)
+
+        self.assertEqual({'main': 2, 'release/1': 2, 'dev': 2}, observations)
+
     def test_public_trunk_propagation_derives_plan_and_remote_refs_on_host(self):
         plan = z._releases.new_release_plan(1)
         plan['releases'] = {
