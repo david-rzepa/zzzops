@@ -873,24 +873,13 @@ def apply_attempt_restack(repo: Path, preview: dict, owned_paths: list[str]) -> 
     return {**plan, 'status': 'conflict', 'conflicts': sorted(paths)}
 
 
-def continue_attempt_restack(repo: Path, preview: dict, owned_paths: list[str],
-                             replay_proof: str | None = None) -> dict:
-    """Continue only the exact previewed cherry-pick after an owned resolution."""
+def prepare_attempt_restack_continue(repo: Path, preview: dict,
+                                     owned_paths: list[str]) -> dict:
+    """Create, but do not adopt, the exact resolved conflict commit."""
     repo = Path(repo).resolve()
     plan = _restack_preview(repo, preview, owned_paths)
-    if replay_proof is not None and re.fullmatch(r'sha256:[0-9a-f]{64}', replay_proof) is None:
-        raise ValueError('Git restack replay proof is invalid')
-    trailer = 'ZzzOps-Restack-Proof: ' + replay_proof if replay_proof else None
     head = _git(repo, 'rev-parse', 'HEAD').decode().strip()
     sequencer = _restack_sequencer(repo)
-    if sequencer is None:
-        if head == plan['new_base']:
-            raise ValueError('Git restack has no conflict resolution to continue')
-        if plan['status'] != 'clean':
-            message = _git(repo, 'show', '-s', '--format=%B', head).decode().splitlines()
-            if trailer is None or message.count(trailer) != 1:
-                raise ValueError('Git restack conflict result lacks an exact replay proof')
-        return _restack_clean_result(repo, plan, owned_paths)
     if sequencer != plan['attempt_commit'] or head != plan['new_base']:
         raise ValueError('Git restack sequencer or HEAD changed')
     paths = _restack_dirty_paths(repo, owned_paths)
@@ -903,22 +892,67 @@ def continue_attempt_restack(repo: Path, preview: dict, owned_paths: list[str],
     _git(repo, 'add', '-A', '--', *sorted(set(paths)))
     if _git(repo, 'ls-files', '-u', '-z'):
         raise ValueError('Git restack conflict remains unresolved')
-    if trailer is not None:
-        message_path = Path(_git(repo, 'rev-parse', '--git-path', 'MERGE_MSG').decode().strip())
-        if not message_path.is_absolute():
-            message_path = repo / message_path
-        message = message_path.read_text(encoding='utf-8')
-        if trailer not in message.splitlines():
-            with message_path.open('a', encoding='utf-8') as handle:
-                if message and not message.endswith('\n'):
-                    handle.write('\n')
-                handle.write('\n' + trailer + '\n')
-    environment = dict(os.environ, GIT_EDITOR='true')
-    result = subprocess.run(['git', 'cherry-pick', '--continue'], cwd=repo,
-                            capture_output=True, text=True, env=environment)
+    tree = _git(repo, 'write-tree').decode().strip()
+    fields = {}
+    for name, format_ in (('GIT_AUTHOR_NAME', '%an'), ('GIT_AUTHOR_EMAIL', '%ae'),
+                          ('GIT_AUTHOR_DATE', '%aI'), ('GIT_COMMITTER_NAME', '%cn'),
+                          ('GIT_COMMITTER_EMAIL', '%ce'), ('GIT_COMMITTER_DATE', '%cI')):
+        fields[name] = _git(repo, 'show', '-s', '--format=' + format_,
+                            plan['attempt_commit']).decode().rstrip('\n')
+    message = _git(repo, 'show', '-s', '--format=%B', plan['attempt_commit'])
+    result = subprocess.run(['git', 'commit-tree', tree, '-p', plan['new_base']], cwd=repo,
+                            input=message, capture_output=True, env={**os.environ, **fields})
     if result.returncode:
-        raise ValueError('Git restack could not continue the exact cherry-pick')
+        raise ValueError('Git restack could not prepare the exact resolved commit')
+    candidate = result.stdout.decode().strip()
+    checkpoint = validate_checkpoint(repo, base_commit=plan['new_base'],
+        result_commit=candidate, owned_paths=owned_paths, require_clean_worktree=False)
+    if checkpoint['result_tree'] != tree:
+        raise ValueError('Git restack prepared tree changed')
+    return {'candidate_commit': candidate, 'result_tree': tree}
+
+
+def complete_attempt_restack_continue(repo: Path, preview: dict,
+                                      owned_paths: list[str], intent: dict) -> dict:
+    """CAS-adopt only an exact provider-frozen resolved conflict commit."""
+    repo = Path(repo).resolve()
+    plan = _restack_preview(repo, preview, owned_paths)
+    if (not isinstance(intent, dict)
+            or set(intent) != {'candidate_commit', 'result_tree'}):
+        raise ValueError('Git restack provider intent is invalid')
+    checkpoint = validate_checkpoint(repo, base_commit=plan['new_base'],
+        result_commit=intent['candidate_commit'], owned_paths=owned_paths,
+        require_clean_worktree=False)
+    if checkpoint['result_tree'] != intent['result_tree']:
+        raise ValueError('Git restack provider-frozen candidate tree changed')
+    head = _git(repo, 'rev-parse', 'HEAD').decode().strip()
+    sequencer = _restack_sequencer(repo)
+    if head == plan['new_base']:
+        if sequencer != plan['attempt_commit']:
+            raise ValueError('Git restack provider intent lacks its exact replay sequencer')
+        if _git(repo, 'write-tree').decode().strip() != intent['result_tree']:
+            raise ValueError('Git restack resolved index changed after provider intent')
+        update = subprocess.run(['git', 'update-ref', 'HEAD', intent['candidate_commit'],
+                                 plan['new_base']], cwd=repo, capture_output=True, text=True)
+        if update.returncode:
+            raise ValueError('Git restack branch changed before candidate adoption')
+        head = intent['candidate_commit']
+    elif head != intent['candidate_commit']:
+        raise ValueError('Git restack HEAD differs from provider-frozen candidate')
+    if sequencer is not None:
+        if sequencer != plan['attempt_commit']:
+            raise ValueError('Git restack sequencer changed before cleanup')
+        result = subprocess.run(['git', 'cherry-pick', '--quit'], cwd=repo,
+                                capture_output=True, text=True)
+        if result.returncode:
+            raise ValueError('Git restack could not clear its completed sequencer')
     return _restack_clean_result(repo, plan, owned_paths)
+
+
+def continue_attempt_restack(repo: Path, preview: dict, owned_paths: list[str]) -> dict:
+    """Legacy one-call continuation, retained only for low-level callers."""
+    intent = prepare_attempt_restack_continue(repo, preview, owned_paths)
+    return complete_attempt_restack_continue(repo, preview, owned_paths, intent)
 
 
 def abort_attempt_restack(repo: Path, preview: dict, owned_paths: list[str]) -> dict:

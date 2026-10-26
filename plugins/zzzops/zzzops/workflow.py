@@ -7873,6 +7873,27 @@ class Workflow:
                     'actor': lease['worker'], 'attempt': lease['attempt'],
                     'plan_hash': restack['plan_hash'],
                     'plan': copy.deepcopy(restack['plan'])}]}
+            elif operation == 'restack_intent':
+                allowed = {'operation', 'request_id', 'node', 'lease', 'actor',
+                           'plan_hash', 'authorized_request', 'candidate_commit', 'result_tree'}
+                restack = lease.get('restack') if lease else None
+                pending_restack = restack.get('pending') if restack else None
+                intent = ({'candidate_commit': request.get('candidate_commit'),
+                           'result_tree': request.get('result_tree')})
+                if (set(request) != allowed or not lease or not restack
+                        or request.get('lease') != lease.get('token')
+                        or request.get('actor') != lease.get('worker')
+                        or request.get('plan_hash') != restack.get('plan_hash')
+                        or pending_restack != {'operation': 'restack_continue',
+                            'request': request.get('authorized_request'), 'actor': request.get('actor')}
+                        or any(re.fullmatch(r'[0-9a-f]{40}', value or '') is None
+                               for value in intent.values())
+                        or restack.get('candidate_intent') not in (None, intent)):
+                    raise ValueError('Restack candidate intent differs from provider-authorized continuation')
+                restack['candidate_intent'] = intent
+                response = {'next_steps': [{'kind': 'restack_intent_confirmed',
+                    'goal': number, 'node': node, 'lease': lease['token'],
+                    'actor': lease['worker'], 'plan_hash': restack['plan_hash'], **intent}]}
             elif operation == 'restack_finalize':
                 allowed = {'operation', 'request_id', 'node', 'lease', 'actor',
                            'plan_hash', 'authorized_request', 'status', 'head_commit'}
@@ -9454,12 +9475,25 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 raise ValueError('Provider-confirmed restack managed worktree is missing')
             path = Path(local['path']); plan = authorization['plan']
             if operation == 'restack_continue':
-                replay_proof = digest({'lease': authorization['lease'],
-                    'actor': authorization['actor'], 'attempt': authorization['attempt'],
-                    'plan_hash': authorization['plan_hash'],
-                    'authorized_request': payload['request_id']})
-                outcome = git_phase_state.continue_attempt_restack(
-                    path, plan, authority['entry']['owned'], replay_proof=replay_proof)
+                lease = next((item for item in current['payload']['operational']['leases']
+                              if item.get('token') == authorization['lease']), None)
+                intent = lease.get('restack', {}).get('candidate_intent') if lease else None
+                if intent is None:
+                    intent = git_phase_state.prepare_attempt_restack_continue(
+                        path, plan, authority['entry']['owned'])
+                    intent_request = {'operation': 'restack_intent',
+                        'request_id': payload['request_id'] + '-intent',
+                        'node': payload['node'], 'lease': payload['lease'],
+                        'actor': payload['actor'], 'plan_hash': payload['plan_hash'],
+                        'authorized_request': payload['request_id'], **intent}
+                    confirmation = engine.mutate(number, intent_request)
+                    confirmed = next((step for step in confirmation.get('next_steps', [])
+                                      if step.get('kind') == 'restack_intent_confirmed'), None)
+                    if (confirmed is None or any(confirmed.get(name) != value
+                            for name, value in intent.items())):
+                        raise ValueError('Provider did not confirm the exact restack candidate intent')
+                outcome = git_phase_state.complete_attempt_restack_continue(
+                    path, plan, authority['entry']['owned'], intent)
                 head = outcome['result_commit']
                 status = 'continue'
             else:
