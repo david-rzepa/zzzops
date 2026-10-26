@@ -2935,6 +2935,82 @@ def _ensure_release_trunk_objects(repo, trunks):
             raise ValueError("remote trunk changed during exact object fetch: " + branch)
 
 
+def _execute_release_propagation(repo, repository, policy, adapter, request):
+    required = {"request_id", "expected_revision", "preview", "preview_digest", "trunks"}
+    if set(request) != required or not isinstance(request["expected_revision"], int):
+        raise ValueError("trunk propagation execution requires the exact preview contract")
+    if (not isinstance(request["preview"], dict)
+            or request["preview_digest"] != _releases.digest(request["preview"])):
+        raise ValueError("trunk propagation preview digest changed")
+    frozen = request["trunks"]
+    if (not isinstance(frozen, list) or any(not isinstance(row, (list, tuple)) or len(row) != 2
+                                            for row in frozen)):
+        raise ValueError("trunk propagation snapshot is malformed")
+    frozen = [tuple(row) for row in frozen]
+    identity = _releases.digest({key: request[key] for key in sorted(required - {"request_id"})})
+    adapter.acquire_repository_lock(repository, request["request_id"])
+    try:
+        plan = adapter.read(repository)
+        if not plan:
+            raise ValueError("reviewed release plan is missing")
+        prior = plan.get("operation_receipts", {}).get(request["request_id"])
+        if prior is not None:
+            if prior.get("identity") != identity:
+                raise ValueError("request id payload changed")
+            return _releases._replay_result(adapter, repository, prior)
+        if plan.get("revision") != request["expected_revision"]:
+            raise ValueError("release plan revision changed")
+        names = _release_trunk_names(policy, plan)
+        if [name for name, _commit in frozen] != names:
+            raise ValueError("reviewed trunk chain changed")
+        old = _observe_release_trunks(repo, names)
+        preview = request["preview"]
+        if preview.get("status") != "propagate" or preview.get("fast_forward") is not True:
+            raise ValueError("trunk propagation requires a reviewed fast-forward candidate")
+        target = preview.get("target")
+        source = preview.get("source")
+        edge = next(((left, right) for left, right in zip(frozen, frozen[1:])
+                     if left[0] == source and right[0] == target), None)
+        if (edge is None or edge[0][1] != preview.get("source_commit")
+                or edge[1][1] != preview.get("target_commit")):
+            raise ValueError("trunk propagation edge differs from frozen chain")
+        advanced = [(name, preview["source_commit"] if name == target else commit)
+                    for name, commit in frozen]
+        if old not in (frozen, advanced):
+            raise ValueError("remote trunk chain moved before propagation")
+        _ensure_release_trunk_objects(repo, frozen)
+        if _observe_release_trunks(repo, names) != old:
+            raise ValueError("remote trunk chain moved during propagation")
+        if _releases.preview_trunk_propagation(repo, frozen) != preview:
+            raise ValueError("trunk propagation preview no longer matches Git")
+        branches = GitHubReleaseBranchAdapter(repo)
+        if old == frozen:
+            branches.compare_exchange(target, expected=preview["target_commit"],
+                                      value=preview["source_commit"])
+        if branches.observe(target) != preview["source_commit"]:
+            raise ValueError("remote trunk update was not confirmed")
+        updated = copy.deepcopy(plan)
+        updated["revision"] += 1
+        updated["last_propagation"] = {"identity": identity, "source": source,
+                                        "target": target, "commit": preview["source_commit"]}
+        record = {"kind": "release-plan", **updated, "request_id": request["request_id"]}
+        result = _releases._result(record)
+        record.setdefault("operation_receipts", {})[request["request_id"]] = _releases._result_receipt(
+            adapter, repository, request["request_id"], identity, result, external=True)
+        _releases._bound_receipts(adapter, repository, record, "operation_receipts")
+        try:
+            adapter.compare_exchange(repository, plan["revision"], record)
+        except TimeoutError:
+            observed = adapter.read(repository)
+            receipt = (observed or {}).get("operation_receipts", {}).get(request["request_id"])
+            if not receipt or receipt.get("identity") != identity:
+                raise ValueError("trunk moved; release receipt pending; retry the exact request")
+            return _releases._replay_result(adapter, repository, receipt)
+        return result
+    finally:
+        adapter.release_repository_lock(repository, request["request_id"])
+
+
 def release_cli(repo: Path, command: str, input_path: Path | None = None):
     project = reviewed_project_state(repo); repository = _project_repository_identity(project)
     policy = _release_policy(project)
@@ -2946,15 +3022,25 @@ def release_cli(repo: Path, command: str, input_path: Path | None = None):
     if command == "propagate":
         if not policy["enabled"]:
             raise ValueError("release planning is disabled by reviewed policy")
-        if not isinstance(request, dict) or set(request) != {"request_id"} or not isinstance(request["request_id"], str) or not request["request_id"]:
-            raise ValueError("trunk propagation requires only a request_id; Git facts are observed by the host")
+        if not isinstance(request, dict) or not isinstance(request.get("request_id"), str) or not request["request_id"]:
+            raise ValueError("trunk propagation requires a request_id")
+        if "preview" in request:
+            return _execute_release_propagation(repo, repository, policy, adapter, request)
+        if set(request) != {"request_id"}:
+            raise ValueError("trunk propagation preview accepts only a request_id")
         plan = adapter.read(repository)
         names = _release_trunk_names(policy, plan)
         trunks = _observe_release_trunks(repo, names)
         _ensure_release_trunk_objects(repo, trunks)
         if _observe_release_trunks(repo, names) != trunks:
             raise ValueError("remote trunk chain moved during preview")
-        return {**_releases.preview_trunk_propagation(repo, trunks), "trunks": trunks}
+        preview = _releases.preview_trunk_propagation(repo, trunks)
+        result = {**preview, "trunks": trunks}
+        if preview.get("status") == "propagate" and preview.get("fast_forward") is True:
+            result["execute"] = {"expected_revision": plan["revision"],
+                                 "preview": preview, "preview_digest": _releases.digest(preview),
+                                 "trunks": trunks}
+        return result
     if command == "configure":
         if not policy["enabled"]: raise ValueError("release planning is disabled by reviewed policy")
         plan = {"revision": 0, **request["plan"]}

@@ -468,6 +468,29 @@ class GitReleaseBranchAdapter:
             raise ValueError("Git did not confirm create-only release branch")
         return {"status": "created", "branch": branch, "sha": sha}
 
+    def compare_exchange(self, branch, *, expected, value):
+        """Move one remote trunk only when its exact observed head still matches."""
+        if (not isinstance(branch, str) or not branch or branch.startswith("/")
+                or ".." in branch or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", expected)
+                or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value)):
+            raise ValueError("trunk compare-and-swap requires exact branch and commits")
+        if self.observe(branch) == value:
+            return {"status": "confirmed", "branch": branch, "sha": value}
+        if self.observe(branch) != expected:
+            raise ValueError("remote trunk moved before compare-and-swap")
+        ancestor = self._git("merge-base", "--is-ancestor", expected, value)
+        if ancestor.returncode:
+            raise ValueError("trunk propagation must preserve target ancestry")
+        ref = f"refs/heads/{branch}"
+        pushed = self._git("push", f"--force-with-lease={ref}:{expected}",
+                           self.remote, f"{value}:{ref}")
+        confirmed = self.observe(branch)
+        if confirmed == value:
+            return {"status": "updated", "branch": branch, "sha": value}
+        if pushed.returncode or confirmed != expected:
+            raise ValueError("remote trunk compare-and-swap was not confirmed")
+        raise ValueError("remote trunk update did not take effect")
+
 
 GitHubReleaseBranchAdapter = GitReleaseBranchAdapter
 
