@@ -245,6 +245,61 @@ class GitPhaseCheckpointTests(unittest.TestCase):
         self.assertEqual(new_base, self.git('rev-parse', 'HEAD').strip())
         self.assertEqual('', self.git('status', '--porcelain'))
 
+    def test_restack_rejects_arbitrary_owned_child_without_exact_replay_sequencer(self):
+        preview, _, _, new_base = self.restack_case(conflict=True)
+        arbitrary = self.result('input.txt', 'arbitrary owned result\n')
+        self.assertEqual(new_base, self.git('rev-parse', arbitrary + '^').strip())
+        self.assertNotEqual(preview['proposed_tree'],
+                            self.git('rev-parse', arbitrary + '^{tree}').strip())
+        self.assertNotEqual(0, subprocess.run(
+            ['git', 'rev-parse', '--verify', 'CHERRY_PICK_HEAD'], cwd=self.repo,
+            capture_output=True).returncode)
+
+        accepted = []
+        for name, operation in (
+                ('apply', git_phase_state.apply_attempt_restack),
+                ('continue', git_phase_state.continue_attempt_restack)):
+            self.git('reset', '--hard', arbitrary)
+            try:
+                operation(self.repo, preview, owned_paths=['input.txt'])
+            except ValueError:
+                pass
+            else:
+                accepted.append(name)
+
+        self.assertEqual([], accepted,
+                         'An arbitrary child is not proof of the exact previewed replay')
+
+    def test_restack_rejects_owned_scope_substitution_for_apply_and_continue(self):
+        preview, _, _, _ = self.restack_case(conflict=True)
+        expanded = ['input.txt', 'extra.txt']
+        accepted = []
+        try:
+            git_phase_state.apply_attempt_restack(
+                self.repo, preview, owned_paths=expanded)
+        except ValueError:
+            pass
+        else:
+            accepted.append('apply')
+
+        git_phase_state.abort_attempt_restack(
+            self.repo, preview, owned_paths=['input.txt'])
+        git_phase_state.apply_attempt_restack(
+            self.repo, preview, owned_paths=['input.txt'])
+        (self.repo / 'input.txt').write_text('resolved result\n')
+        (self.repo / 'extra.txt').write_text('scope substitution dirt\n')
+        self.git('add', 'extra.txt')
+        try:
+            git_phase_state.continue_attempt_restack(
+                self.repo, preview, owned_paths=expanded)
+        except ValueError:
+            pass
+        else:
+            accepted.append('continue')
+
+        self.assertEqual([], accepted,
+                         'Restack execution must retain the exact previewed owned scope')
+
     def test_unowned_change_and_dirty_worktree_are_rejected(self):
         result = self.result()
         with self.assertRaisesRegex(ValueError, 'outside reviewed owned paths'):
