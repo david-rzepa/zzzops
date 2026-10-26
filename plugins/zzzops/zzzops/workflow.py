@@ -3023,45 +3023,13 @@ class Workflow:
                 break
             except (KeyError, StopIteration, TypeError, ValueError):
                 continue
-        def apply_cutover_mappings(projected):
-            for row in reversed(selected['payload']['operational']['receipts']):
-                try:
-                    response = snapshot['artifacts'].get(row['result']['hash']) or snapshot['resolve'](row['result'])
-                    step = next(item for item in response.get('next_steps', [])
-                                if item.get('kind') == 'policy_dag_cutover_applied')
-                    receipt = snapshot['artifacts'].get(step['receipt']['hash']) or snapshot['resolve'](step['receipt'])
-                    for mapping in receipt['content']['mapping']:
-                        reference = mapping['result']
-                        artifact = snapshot['artifacts'].get(reference['hash']) or snapshot['resolve'](reference)
-                        result_value = artifact['content']
-                        key = (snapshot['number'], mapping['new']['node'],
-                               result_value['node'].get('item'),
-                               result_value['node'].get('generation', 1))
-                        state = projected['states'].get(key)
-                        if state is not None:
-                            projected['current'][key] = (reference, result_value)
-                            state['state'] = 'current'
-                    changed = True
-                    while changed:
-                        changed = False
-                        for state in projected['states'].values():
-                            if (state['state'] == 'blocked' and 'input_hash' in state
-                                    and all(parent in projected['current']
-                                            for parent in state.get('prerequisites', []))):
-                                state['state'] = 'ready'
-                                state.pop('reason', None)
-                                changed = True
-                    break
-                except (KeyError, StopIteration, TypeError, ValueError):
-                    continue
-            return projected
-        result = apply_cutover_mappings(ev.derive_task_steps(selected['graph'], selected['payload'], context))
+        result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
         workspaces = self.node_workspace_context(
             closure, result, result['artifacts'], workspace_target=workspace_target)
         publications = {} if publication_probe else self.node_publication_context(closure, result, result['artifacts'])
         context.update(workspace_probe=False, workspaces=workspaces, artifacts=result['artifacts'])
         if not publication_probe: context['publications'] = publications
-        result = apply_cutover_mappings(ev.derive_task_steps(selected['graph'], selected['payload'], context))
+        result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
         for state in result['states'].values():
             state['goal_context'] = closure.get(state['node']['goal'], {}).get('goal_context', {})
         return {**snapshot, 'payload': selected['payload'], 'projection': result, 'artifacts': result['artifacts'],

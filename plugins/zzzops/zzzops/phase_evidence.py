@@ -1746,11 +1746,6 @@ def _derive_task_steps(graph, payload, context):
                         or not cutover_equivalent
                         and result['contract'] not in {contract, legacy_contract, predecessor_contract}):
                     continue
-                if cutover_equivalent:
-                    current[key] = (ref, result)
-                    state['state'] = 'complete'
-                    state.pop('reason', None)
-                    break
                 predecessor = result['contract'] == predecessor_contract and predecessor_contract != contract
                 legacy = result['contract'] == legacy_contract and result['contract'] != contract
                 old_hashes = {}
@@ -1794,6 +1789,18 @@ def _derive_task_steps(graph, payload, context):
                 if legacy and '__policy' not in old_hashes:
                     comparable_hashes.pop('__policy', None)
                 old_resolutions = [{k: r[k] for k in ('location', 'selector', 'targets')} for r in result.get('resolutions', [])]
+                if cutover_equivalent and mapped_node != result['node']['node']:
+                    def mapped_identity(value):
+                        if isinstance(value, dict):
+                            renamed = {name: mapped_identity(child) for name, child in value.items()}
+                            if (renamed.get('goal') == number
+                                    and renamed.get('node') == result['node']['node']):
+                                renamed['node'] = mapped_node
+                            return renamed
+                        if isinstance(value, list):
+                            return [mapped_identity(child) for child in value]
+                        return value
+                    old_resolutions = mapped_identity(old_resolutions)
                 if old_hashes.get('__workspace') != hashes.get('__workspace'): state['reason'] = 'Workspace consumed/acquisition snapshot changed'
                 if old_hashes == comparable_hashes and old_resolutions == resolution_semantics:
                     current[key] = (ref, result); state['state'] = 'complete'; state.pop('reason', None); break
