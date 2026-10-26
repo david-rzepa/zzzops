@@ -609,7 +609,7 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         self.assertEqual('created', recovered['retained_attempt']['outcome'])
         self.assertEqual([], fixture.payload()[1]['operational']['leases'])
 
-    def test_public_same_node_start_commits_lease_before_conflicting_restack(self):
+    def public_same_node_conflicting_restack(self):
         fixture = journeys.WorkspaceAuthorityPublicTests('runTest')
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
@@ -740,6 +740,81 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
             capture_output=True, text=True, check=True).stdout.strip())
         self.assertEqual(source_commit, fixture.session.git(
             'ls-remote', 'origin', expected_ref).split()[0])
+        self.assertEqual([100], sorted(fixture.provider.issues))
+        fixture.session.call(100, {**started['bind'], 'actor': 'restack-worker',
+            'selection': started['lease']['selection'], 'policy_receipt': receipt})
+        started['bound_actor'] = 'restack-worker'
+        return fixture, first, started, expected_plan, expected_ref, source_commit
+
+    def test_public_same_node_start_commits_lease_before_conflicting_restack(self):
+        self.public_same_node_conflicting_restack()
+
+    def test_public_restack_continue_binds_exact_contract_and_replays_one_candidate(self):
+        fixture, first, started, plan, source_ref, source_commit = \
+            self.public_same_node_conflicting_restack()
+        template = {**started['restack']['continue'], 'actor': 'restack-worker',
+                    'request_id': 'continue-exact-restack'}
+        provider_before = copy.deepcopy(
+            (fixture.provider.issues, fixture.provider.comments))
+        for label, changes in (
+                ('lease', {'lease': 'wrong-lease'}),
+                ('actor', {'actor': 'wrong-actor'}),
+                ('plan', {'plan_hash': 'sha256:' + '0' * 64})):
+            rejected = fixture.session.call(100, {
+                **template, **changes, 'request_id': 'reject-' + label}, expected=2)
+            self.assertIn('unsupported', json.dumps(rejected).lower())
+        self.assertEqual(provider_before,
+                         (fixture.provider.issues, fixture.provider.comments))
+        worktree = Path(started['managed_worktree']['path'])
+        (worktree / 'behavior_test.py').write_text('assert True\n')
+        evidence_before = len(fixture.payload()[1]['evidence'])
+
+        continued = fixture.session.call(100, template)['next_steps'][0]
+        candidate = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=worktree,
+            capture_output=True, text=True, check=True).stdout.strip()
+        replay = fixture.session.call(100, template)['next_steps'][0]
+
+        self.assertEqual(continued, replay)
+        self.assertEqual(candidate, continued['result_commit'])
+        self.assertEqual(plan['new_base'], subprocess.run(
+            ['git', 'rev-parse', candidate + '^'], cwd=worktree,
+            capture_output=True, text=True, check=True).stdout.strip())
+        self.assertEqual(1, int(subprocess.run(
+            ['git', 'rev-list', '--count', plan['new_base'] + '..' + candidate],
+            cwd=worktree, capture_output=True, text=True, check=True).stdout.strip()))
+        self.assertEqual(evidence_before, len(fixture.payload()[1]['evidence']))
+        self.assertEqual(source_commit, subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=first['managed_worktree']['path'],
+            capture_output=True, text=True, check=True).stdout.strip())
+        self.assertEqual(source_commit, fixture.session.git(
+            'ls-remote', 'origin', source_ref).split()[0])
+        self.assertEqual([100], sorted(fixture.provider.issues))
+
+    def test_public_restack_abort_restores_new_base_and_preserves_source_attempt(self):
+        fixture, first, started, plan, source_ref, source_commit = \
+            self.public_same_node_conflicting_restack()
+        template = {**started['restack']['abort'], 'actor': 'restack-worker',
+                    'request_id': 'abort-exact-restack'}
+
+        aborted = fixture.session.call(100, template)['next_steps'][0]
+        replay = fixture.session.call(100, template)['next_steps'][0]
+        worktree = Path(started['managed_worktree']['path'])
+
+        self.assertEqual(aborted, replay)
+        self.assertEqual('restack_aborted', aborted['kind'])
+        self.assertEqual(plan['new_base'], aborted['head_commit'])
+        self.assertEqual(plan['new_base'], subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=worktree,
+            capture_output=True, text=True, check=True).stdout.strip())
+        self.assertEqual('', subprocess.run(
+            ['git', 'status', '--porcelain'], cwd=worktree,
+            capture_output=True, text=True, check=True).stdout)
+        self.assertEqual(source_commit, subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=first['managed_worktree']['path'],
+            capture_output=True, text=True, check=True).stdout.strip())
+        self.assertEqual(source_commit, fixture.session.git(
+            'ls-remote', 'origin', source_ref).split()[0])
         self.assertEqual([100], sorted(fixture.provider.issues))
 
     def test_submission_uses_managed_worktree_commit_and_checks(self):
