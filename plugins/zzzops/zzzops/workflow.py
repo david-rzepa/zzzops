@@ -5257,6 +5257,85 @@ class Workflow:
         snapshot['workspace_proof'] = self.node_ref(identity, snapshot['number'])
         return snapshot['workspace_proof']
 
+    def node_attempt_restack_plan(self, snapshot, state, workspace):
+        """Derive moved-base work only from accepted same-node Git evidence."""
+        if not workspace or not workspace.get('git_workspace'):
+            return None
+        new_base = workspace.get('acquisition', {}).get('git_commit')
+        if not isinstance(new_base, str):
+            return None
+        artifacts = snapshot['artifacts']
+        results = []
+        for reference in snapshot['payload']['evidence']:
+            artifact = artifacts.get(reference['hash'], {})
+            if artifact.get('type') == 'result':
+                results.append((reference, artifact.get('content', {})))
+        for result_ref, result in reversed(results):
+            if result.get('node') != state['node']:
+                continue
+            outputs = list(result.get('outputs', {}).values())
+            def accepted_review(review):
+                review_state = snapshot['projection']['states'].get(
+                    self.api._phase_evidence.task_key(review.get('node')))
+                independent = review_state and any(
+                    selector.get('goal') in ('#this', state['node']['goal'])
+                    and selector.get('node') == state['node']['node']
+                    for selector in review_state['contract']['independent_of'])
+                decisions = [artifacts.get(reference['hash'], {}).get('content')
+                             for reference in review.get('outputs', {}).values()
+                             if artifacts.get(reference['hash'], {}).get('type') == 'review_decision']
+                return (review.get('executor') != result.get('executor') and independent
+                        and any(binding.get('source') in outputs
+                                for binding in review.get('inputs', []))
+                        and (not decisions or all(value.get('decision') == 'approved'
+                                                  for value in decisions)))
+            if not any(accepted_review(review) for _reference, review in results):
+                continue
+            sources = {value['provenance']['source']['hash']: value['provenance']['source']
+                       for reference in outputs
+                       if (value := artifacts.get(reference['hash'], {})).get(
+                           'provenance', {}).get('source')}
+            if len(sources) != 1:
+                continue
+            proof_ref = next(iter(sources.values()))
+            proof = artifacts.get(proof_ref['hash'], {})
+            acquisition = proof.get('acquisition', {})
+            checkpoint = proof.get('checkpoint', {})
+            old_base = acquisition.get('git_commit')
+            source_commit = checkpoint.get('result_commit')
+            retained_ref = (f"refs/heads/zzzops/attempts/{state['node']['goal']}/"
+                            f"{state['node']['node']}/{result.get('attempt')}")
+            try:
+                if (proof.get('kind') != 'git_phase_proof'
+                        or proof.get('node') != result['node']
+                        or proof.get('actor') != result.get('executor')
+                        or proof.get('acquisition_hash') != digest(acquisition)
+                        or proof.get('input_hash') != acquisition.get('input_hash')
+                        or proof.get('scope') != digest(workspace['entry'])
+                        or proof.get('retained_ref') != retained_ref
+                        or checkpoint.get('base_commit') != old_base
+                        or checkpoint != git_phase_state.validate_checkpoint(
+                            self.repo, base_commit=old_base, result_commit=source_commit,
+                            owned_paths=workspace['entry']['owned'],
+                            require_clean_worktree=False)):
+                    raise ValueError
+                git_phase_state.verify_attempt_ref(self.repo, remote='origin',
+                    ref=retained_ref, commit=source_commit)
+                if new_base == old_base:
+                    return None
+                plan = git_phase_state.preview_attempt_restack(self.repo,
+                    old_base=old_base, new_base=new_base,
+                    attempt_commit=source_commit,
+                    owned_paths=workspace['entry']['owned'])
+                if plan['status'] == 'clean' and plan['change_count'] == 0:
+                    return None
+                return {'source': {'result': result_ref, 'proof': proof_ref,
+                                   'ref': retained_ref, 'commit': source_commit},
+                        'plan': plan, 'plan_hash': digest(plan)}
+            except (KeyError, ValueError, subprocess.SubprocessError):
+                raise ValueError('Accepted same-node Git restack source is invalid') from None
+        return None
+
     def node_verification_prepare(self, snapshot, state, lease, request):
         """Freeze the authority checked before unlocked local verification."""
         workspace = state.get('workspace')
@@ -7878,6 +7957,10 @@ class Workflow:
                         lease['acquisition']['files'] = copy.deepcopy(workspace['files'])
                     lease['acquisition']['input_hash'] = state['input_hash']
                 lease['acquisition'].update(inputs=copy.deepcopy(state['inputs']), resolutions=copy.deepcopy(state['resolutions']), contract=state['contract_hash'])
+                restack = self.node_attempt_restack_plan(
+                    snapshot, state, selected_workspace)
+                if restack is not None:
+                    lease['restack'] = restack
                 if pending: lease.update(copy.deepcopy(pending['response']['next_steps'][0]['lease']))
                 leases.append(lease)
                 # Reserve local capacity before the durable provider write. A
@@ -9355,13 +9438,44 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                             or active[0].get('acquisition') != acquisition
                             or active[0].get('expires_at', 0) <= time.time()):
                         raise ValueError('Original Git workspace lease is no longer active; recover through the current workflow')
+                    durable_lease = active[0]
                     node = lease['node']
-                    workspace = managed_worktrees.prepare_worktree(
-                        repo, goal=number, node=node['node'], attempt=lease['attempt'],
-                        base_commit=acquisition.get('git_commit', acquisition.get('read_commit')),
-                        resume_dirty='git_commit' in acquisition)
+                    restack = durable_lease.get('restack')
+                    if restack is not None:
+                        local = managed_worktrees.inspect_attempt_worktree(
+                            repo, goal=number, node=node['node'], attempt=lease['attempt'])
+                        workspace = (managed_worktrees.prepare_worktree(
+                            repo, goal=number, node=node['node'], attempt=lease['attempt'],
+                            base_commit=acquisition['git_commit'], resume_dirty=True)
+                            if local['status'] == 'missing' else
+                            {**local, 'outcome': ('existing_dirty'
+                                                 if local['status'] == 'dirty'
+                                                 else 'existing')})
+                        key = api._phase_evidence.task_key(node)
+                        authority = current['workspaces'].get(key, {})
+                        if (not authority.get('git_workspace') or 'entry' not in authority
+                                or restack.get('plan_hash') != digest(restack.get('plan'))):
+                            raise ValueError('Persisted restack lease differs from current reviewed workspace authority')
+                        applied = git_phase_state.apply_attempt_restack(
+                            Path(workspace['path']), restack['plan'],
+                            authority['entry']['owned'])
+                        actor = lease.get('worker') or '<actual worker>'
+                        common = {'node': node, 'lease': lease['token'], 'actor': actor,
+                                  'plan_hash': restack['plan_hash'],
+                                  'request_id': '<unique request>'}
+                        step['restack'] = {**restack, 'status': applied['status'],
+                            'conflicts': applied.get('conflicts', []),
+                            'continue': {'operation': 'restack_continue', **common},
+                            'abort': {'operation': 'restack_abort', **common}}
+                    else:
+                        workspace = managed_worktrees.prepare_worktree(
+                            repo, goal=number, node=node['node'], attempt=lease['attempt'],
+                            base_commit=acquisition.get('git_commit', acquisition.get('read_commit')),
+                            resume_dirty='git_commit' in acquisition)
                     step['managed_worktree'] = workspace
-                    step['action'] = ('Resume this leased dirty draft in the managed worktree at '
+                    step['action'] = ('Resolve only the exact reported owned conflicts, then use the returned continue or abort contract.'
+                        if step.get('restack', {}).get('status') == 'conflict' else
+                        'Resume this leased dirty draft in the managed worktree at '
                         + workspace['path'] + '; verify and commit only authorized outputs before submission.'
                         if workspace['outcome'] == 'existing_dirty' else
                         'Run this leased task in the managed worktree at '
