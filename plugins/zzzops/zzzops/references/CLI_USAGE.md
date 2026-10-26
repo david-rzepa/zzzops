@@ -24,7 +24,7 @@ For monitoring, replay, reconciliation or test corrections, read [recovery](CLI_
 
 See [release planning](RELEASES.md).
 
-For policy-DAG transitions, read [cutover recovery](CLI_RECOVERY.md#reviewed-policy-dag-cutover).
+For policy-DAG transitions, read [Git workspace cutover](GIT_WORKSPACES.md#reviewed-policy-dag-cutover).
 
 Execution migrates supported open v1 goals automatically, preserving history
 without granting authority. Preview/historical reads never migrate or reopen.
