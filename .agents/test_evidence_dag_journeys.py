@@ -357,6 +357,46 @@ class DagFixture(unittest.TestCase):
         self.session.finish(acquired, outputs, "valid-after-negative-" + acquired["lease"]["attempt"])
 
 class EvidenceDagPublicTests(DagFixture):
+    def test_reverted_external_spec_reopens_current_attempt_instead_of_resurrecting_old_result(self):
+        producer = task("versioned_producer")
+        producer["inputs"] = {"request": spec_input()}
+        consumer = task("versioned_consumer", ["versioned_producer"])
+        consumer["inputs"] = {"subject": subject_input("versioned_producer")}
+        graph = {"nodes": [producer, consumer], "task_sets": [],
+                 "terminals": [selector("versioned_consumer")]}
+        self.install(graph)
+
+        self.session.finish(self.session.acquire("versioned_producer"),
+                            {"value": "producer A"})
+        producer_a = self.result("versioned_producer")[0]
+        self.session.finish(self.session.acquire("versioned_consumer"),
+                            {"value": "consumer A"})
+        consumer_a = self.result("versioned_consumer")[0]
+
+        self.replace_spec("external specification B")
+        self.session.finish(self.session.acquire("versioned_producer"),
+                            {"value": "producer B"})
+        producer_b, producer_b_result = self.result("versioned_producer")
+        self.assertEqual(producer_a, producer_b_result["supersedes_result"])
+        self.session.finish(self.session.acquire("versioned_consumer"),
+                            {"value": "consumer B"})
+        consumer_b, consumer_b_result = self.result("versioned_consumer")
+        self.assertEqual(consumer_a, consumer_b_result["supersedes_result"])
+        history = list(self.payload()[1]["evidence"])
+
+        self.replace_spec("Produce and review a value.")
+        frontier = self.session.checkpoint(100)
+
+        self.assertIn("versioned_producer", {
+            step["node"]["node"] for step in frontier if step.get("kind") == "execute"})
+        self.assertNotIn("versioned_consumer", {
+            step["node"]["node"] for step in frontier if step.get("kind") == "execute"})
+        self.assertEqual(history, self.payload()[1]["evidence"])
+        self.assertEqual(producer_b, self.result("versioned_producer")[0],
+                         "The accepted B successor remains history truth until C")
+        self.assertEqual(consumer_b, self.result("versioned_consumer")[0],
+                         "The old A downstream output must never become current again")
+
     def policy_cutover_fixture(self, *, alternate=False, acquire_old_lease=False):
         producer = "alpha" if alternate else "produce"
         terminal = "omega" if alternate else "finish"
