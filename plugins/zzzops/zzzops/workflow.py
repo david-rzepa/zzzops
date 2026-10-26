@@ -1901,6 +1901,14 @@ class Workflow:
             if plan is None:
                 return topology_repair('the reviewed release plan is unavailable')
             lane = self.api._releases.target_release(plan, goal_number)
+            prefix = planning.get('release_branch_prefix')
+            integration = planning.get('integration_branch')
+            lane_trunk = (prefix + str(lane) if isinstance(prefix, str) and prefix
+                          and type(lane) is int and lane > 0 else None)
+            if lane_trunk is not None and identity.get('base_ref') == lane_trunk:
+                trunk = lane_trunk
+            elif isinstance(integration, str) and integration and identity.get('base_ref') == integration:
+                trunk = integration
             owners = {}
             for goal in self.portfolio():
                 branch = (goal.get('implementation') or {}).get('branch')
