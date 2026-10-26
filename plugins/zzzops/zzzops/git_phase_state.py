@@ -775,6 +775,7 @@ def preview_attempt_restack(repo: Path, *, old_base: str, new_base: str,
     return {'status': status, 'old_base': old_base, 'new_base': new_base,
             'attempt_commit': attempt_commit, 'original_tree': original['result_tree'],
             'proposed_tree': tree, 'conflicts': conflicts, 'change_count': changed,
+            'owned_scope': _scope_hash(owned_paths),
             'content_stale': movement['old_tree'] != movement['new_tree'],
             'topology_changed': old_base != new_base}
 
@@ -785,9 +786,11 @@ def _restack_preview(repo: Path, preview: dict, owned_paths: list[str]) -> dict:
         raise ValueError('Git restack requires an exact preview')
     required = {'status', 'old_base', 'new_base', 'attempt_commit', 'original_tree',
                 'proposed_tree', 'conflicts', 'change_count', 'content_stale',
-                'topology_changed'}
+                'topology_changed', 'owned_scope'}
     if set(preview) != required:
         raise ValueError('Git restack preview fields changed')
+    if preview['owned_scope'] != _scope_hash(owned_paths):
+        raise ValueError('Git restack reviewed owned scope changed')
     current = preview_attempt_restack(repo, old_base=preview['old_base'],
         new_base=preview['new_base'], attempt_commit=preview['attempt_commit'],
         owned_paths=owned_paths)
@@ -852,6 +855,8 @@ def apply_attempt_restack(repo: Path, preview: dict, owned_paths: list[str]) -> 
             raise ValueError('Git restack conflict paths changed')
         return {**plan, 'status': 'conflict', 'conflicts': sorted(paths)}
     if head != plan['new_base']:
+        if plan['status'] != 'clean':
+            raise ValueError('Git restack conflict result lacks an exact replay sequencer')
         return _restack_clean_result(repo, plan, owned_paths)
     if _restack_dirty_paths(repo, owned_paths):
         raise ValueError('Git restack requires a clean new-base worktree')
@@ -877,6 +882,8 @@ def continue_attempt_restack(repo: Path, preview: dict, owned_paths: list[str]) 
     if sequencer is None:
         if head == plan['new_base']:
             raise ValueError('Git restack has no conflict resolution to continue')
+        if plan['status'] != 'clean':
+            raise ValueError('Git restack conflict result lacks an exact replay sequencer')
         return _restack_clean_result(repo, plan, owned_paths)
     if sequencer != plan['attempt_commit'] or head != plan['new_base']:
         raise ValueError('Git restack sequencer or HEAD changed')
