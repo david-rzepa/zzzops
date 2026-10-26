@@ -635,6 +635,110 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
 class GitWorkspaceJourneyTests(unittest.TestCase):
     fixture_with_git_workspace = GitWorkspaceAcquisitionTests.fixture_with_git_workspace
 
+    def test_same_owner_can_renew_stale_implement_lease_after_late_test_review(self):
+        case = journeys.DefaultCorrectionPublicTests('runTest')
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        bare = Path(remote_dir.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
+        case.session.git('remote', 'add', 'origin', str(bare))
+        z._workflow_section(
+            case.session.project, 'autonomy_approval_parallelism')[
+                'configuration']['max_workers'] = 2
+        case.default_decomposition()
+        case.session.finish(case.session.acquire('decomposition_review'), {
+            'value': case.review('approved', 'Atomic disposition accepted'),
+            'authorization': case.decomposition_authorization()})
+        case.session.finish(case.session.acquire('retain_decomposition_findings'), {
+            'value': {'items': {}, 'rationale': 'No decomposition findings'}})
+
+        test_work = case.session.acquire('test_design')
+        test_tree = Path(test_work['managed_worktree']['path'])
+        (test_tree / 'behavior_test.py').write_text(
+            "from pathlib import Path\nassert Path('source.py').is_file()\n")
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=test_tree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: first red'], cwd=test_tree, check=True)
+        test_request = case.session.submission(
+            test_work, {'value': 'Initial RED contract'}, 'initial-red-contract')
+        test_request['workspace_checks'] = [[sys.executable, '-B', 'behavior_test.py']]
+        test_request['verification_expectation'] = 'observed'
+        case.session.call(100, test_request)
+        case.verify_test_design(test_tree / 'behavior_test.py', 'initial-red-proof')
+        case.session.finish(case.session.acquire('test_design_review'), {
+            'value': case.review('approved', 'Initial RED proof accepted')})
+        case.session.finish(case.session.acquire('retain_test_design_findings'), {
+            'value': {'items': {}, 'rationale': 'No initial findings'}})
+
+        implementation = case.session.acquire('implement', actor='bound-implementer')
+        lease = implementation['lease']
+        implementation_tree = Path(implementation['managed_worktree']['path'])
+        (implementation_tree / 'unowned-local-note.txt').write_text(
+            'This dirty unowned path must not silently transfer custody.\n')
+
+        test_result, test_record = case.result('test_design')
+        test_subject = test_record['outputs']['value']
+        finding_request = {
+            'operation': 'phase_finding', 'request_id': 'late-test-after-implement-start',
+            'actor': 'root-thread',
+            'target': {'node': 'test_design', 'output': 'value'},
+            'subject': test_subject, 'source': test_result,
+            'rationale': 'The accepted test misses a behavior regression.',
+            'id': 'late-test-defect',
+        }
+        original_phase_finding = z._workflow.Workflow.node_phase_finding
+        class ConcurrentLeases(list):
+            def __bool__(self):
+                return False
+        def record_concurrent_finding(engine, snapshot, payload, request):
+            payload['operational']['leases'] = ConcurrentLeases(
+                payload['operational']['leases'])
+            return original_phase_finding(engine, snapshot, payload, request)
+        with (mock.patch.dict('os.environ', {'CODEX_THREAD_ID': 'root-thread'}),
+              mock.patch.object(z._workflow.Workflow, 'node_phase_finding', autospec=True,
+                                side_effect=record_concurrent_finding)):
+            response = case.session.call(100, finding_request)
+        review_step = next(
+            step for step in response['next_steps']
+            if step.get('kind') == 'execute'
+            and step.get('node', {}).get('node', '').startswith('sw_review_'))
+        review = case.session.acquire(
+            review_step['node']['node'], item=review_step['node']['item'],
+            actor='late-reviewer', frontier=response)
+        case.session.finish(review, {'value': {
+            'decision': 'changes_requested',
+            'report': 'Add the missing regression assertion.'}})
+
+        renewal = {
+            'operation': 'renew', 'node': implementation['node'],
+            'lease': lease['token'], 'actor': implementation['bound_actor'],
+            'worker_status': 'active', 'request_id': 'renew-stale-implement',
+        }
+        case.session.call(100, {**renewal, 'request_id': 'wrong-renewal-token',
+                               'lease': 'wrong-token'}, expected=2)
+        case.session.call(100, {**renewal, 'request_id': 'wrong-renewal-actor',
+                               'actor': 'wrong-actor'}, expected=2)
+
+        renewed = case.session.call(100, renewal)['next_steps'][0]
+
+        self.assertEqual('renewed', renewed['kind'])
+        self.assertEqual(lease['token'], renewed['lease'])
+        self.assertEqual(implementation['bound_actor'], renewed['actor'])
+        current_lease = case.payload()[1]['operational']['leases'][0]
+        self.assertEqual(lease['token'], current_lease['token'])
+        self.assertEqual(implementation['bound_actor'], current_lease['worker'])
+        self.assertTrue((implementation_tree / 'unowned-local-note.txt').is_file())
+
+        stale_submission = case.session.submission(
+            implementation, {'value': 'Must not submit stale work'},
+            'stale-implement-result')
+        case.session.call(100, stale_submission, expected=2)
+        frontier = case.session.checkpoint(100)
+        self.assertNotIn('publish', {
+            step.get('node', {}).get('node') for step in frontier
+            if step.get('kind') in {'execute', 'perform'}})
+
     def acceptance_late_test_finding_rebases_t2_on_i1_then_i2_on_t2(self):
         """Opt-in full shipped-DAG journey; focused CI contracts cover each boundary."""
         case = journeys.DefaultCorrectionPublicTests('runTest')
