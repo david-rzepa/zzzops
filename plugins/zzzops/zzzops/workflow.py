@@ -8310,6 +8310,10 @@ class Workflow:
         ev = self.api._phase_evidence; projection = snapshot['projection']; artifacts = snapshot['artifacts']
         current = {ref['hash']: result for ref, result in projection['current'].values()}
         subject_results = {ref['hash']: result for result in current.values() for ref in result['outputs'].values()}
+        historical_subject_results = {ref['hash']: result
+            for result_ref in snapshot['payload']['evidence']
+            for result in [artifacts[result_ref['hash']]['content']]
+            for ref in result['outputs'].values()}
         history = [(ref, artifacts[ref['hash']]) for item in snapshot['payload']['evidence'] for ref in artifacts[item['hash']]['content']['outputs'].values()]
         proposed = [(state['contract']['outputs'][slot]['type'], value) for slot, value in bundle.items()]
         def nullable_supersession(contract):
@@ -8647,8 +8651,10 @@ class Workflow:
                     raise ValueError('Applicability assessment must classify the obligation with evidence rationale')
                 if not exact_obligation_input(value['admission']) or not exact_obligation_input(value['finding']):
                     raise ValueError('Applicability assessment must bind the exact admission and finding')
-                if not value['subjects'] or any(ref['hash'] not in subject_results or not exact_input(ref) for ref in value['subjects']):
-                    raise ValueError('Applicability assessment requires exact current corrected subjects')
+                if (value['subjects'] != finding.get('subjects') or not value['subjects']
+                        or any(ref['hash'] not in historical_subject_results or not exact_input(ref)
+                               for ref in value['subjects'])):
+                    raise ValueError('Applicability assessment requires the finding-bound exact historical subjects')
                 reviewer = read(value['reviewer_result'], 'result')
                 if value['reviewer_result']['hash'] not in current:
                     raise ValueError('Applicability assessment requires the exact current reviewer Result')
@@ -8662,10 +8668,11 @@ class Workflow:
                 independent_targets = [target for row in reviewer_state['resolutions']
                     if row['selector'] in reviewer_state['contract']['independent_of']
                     for target in row['targets']]
-                if any(subject_results[ref['hash']]['node'] not in independent_targets
+                if any(historical_subject_results[ref['hash']]['node'] not in independent_targets
                        for ref in value['subjects']):
                     raise ValueError('Applicability reviewer requires declared exact subject independence')
-                if any(subject_results[ref['hash']]['executor'] == reviewer['executor'] for ref in value['subjects']):
+                if any(historical_subject_results[ref['hash']]['executor'] == reviewer['executor']
+                       for ref in value['subjects']):
                     raise ValueError('Applicability reviewer must be independent of corrected subjects')
             elif kind == 'supersession':
                 if value is None:
@@ -8705,6 +8712,15 @@ class Workflow:
             for node in resolution['targets']:
                 current = snapshot['projection']['current'].get(self.api._phase_evidence.task_key(node))
                 if current and current[1]['executor'] == actor: raise ValueError('Independent reviewer cannot be the actual subject executor')
+                exact_subjects = {item['source']['hash'] for item in state['inputs']
+                                  if item['name'] == 'subject' and item['mode'] == 'identity'
+                                  and not item['path']}
+                for reference in snapshot['payload']['evidence']:
+                    result = snapshot['artifacts'][reference['hash']]['content']
+                    if (result['node'] == node and result['executor'] == actor
+                            and any(ref['hash'] in exact_subjects
+                                    for ref in result['outputs'].values())):
+                        raise ValueError('Independent reviewer cannot be the historical subject executor')
 
 
 def capacity_step(active_leases, limit):

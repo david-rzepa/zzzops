@@ -1367,6 +1367,22 @@ def _derive_task_steps(graph, payload, context):
                          if target_goal == number}
                 ref = remember({'type': 'obligation_context', 'content': value, 'producer': None,
                                 'provenance': {'actor': 'host', 'source': None, 'policy': policy}})
+            elif slot == 'obligation_subject':
+                if (binding['output'] != 'content' or binding['mode'] != 'identity'
+                        or len(binding['path']) != 1 or not isinstance(binding['path'][0], str)):
+                    raise ValueError('Obligation subject requires one exact materialized obligation identity')
+                obligation = obligations.get((number, binding['path'][0]))
+                if obligation is None or obligation['applicability'] != 'unresolved':
+                    raise ValueError('Obligation subject requires the exact current unresolved obligation')
+                finding = artifact(obligation['finding'])
+                subjects = finding.get('content', {}).get('subjects') if finding.get('type') == 'finding' else None
+                if not isinstance(subjects, list) or len(subjects) != 1:
+                    raise ValueError('Obligation subject requires exactly one authenticated historical subject')
+                ref = subjects[0]
+                value = artifact(ref)['content']
+                if not value_matches(binding['type'], value):
+                    raise ValueError('Obligation historical subject violates its declared output contract')
+                return ref, value, [], []
             elif slot == 'obligation_selections':
                 # Authenticated derived context, folded from immutable admission
                 # and assessment history above. A goal-authored Result cannot
