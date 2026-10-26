@@ -222,7 +222,7 @@ PUBLIC_OPERATIONS = frozenset({
     'feedback_submit', 'heartbeat', 'hydration_checkpoint', 'installation_record', 'integrate',
     'policy_approve', 'policy_propose', 'read', 'recover', 'release', 'renew',
     'preserve_historical_draft', 'retire_stale_draft', 'route_choice', 'start', 'reconcile', 'submit',
-    'compact_candidate',
+    'compact_candidate', 'restack_continue', 'restack_abort',
 })
 
 
@@ -7884,7 +7884,68 @@ class Workflow:
             operation = request['operation']; leases = payload['operational']['leases']
             lease = next((item for item in leases if item['node'] == node), None)
             root = (self.runtime or {}).get('root_id')
-            if operation == 'route_choice':
+            if operation in {'restack_continue', 'restack_abort'}:
+                allowed = {'operation', 'request_id', 'node', 'lease', 'actor', 'plan_hash'}
+                restack = lease.get('restack') if lease else None
+                if (set(request) != allowed or not lease or not restack
+                        or request.get('lease') != lease.get('token')
+                        or request.get('actor') != lease.get('worker')
+                        or not lease.get('worker')
+                        or request.get('plan_hash') != restack.get('plan_hash')
+                        or restack.get('plan_hash') != digest(restack.get('plan'))
+                        or restack.get('pending') is not None):
+                    raise ValueError('Unsupported restack operation or exact lease, actor, and plan changed')
+                restack['pending'] = {'operation': operation,
+                    'request': request['request_id'], 'actor': request['actor']}
+                response = {'next_steps': [{'kind': operation + '_authorized',
+                    'goal': number, 'node': node, 'lease': lease['token'],
+                    'actor': lease['worker'], 'attempt': lease['attempt'],
+                    'plan_hash': restack['plan_hash'],
+                    'plan': copy.deepcopy(restack['plan'])}]}
+            elif operation == 'restack_finalize':
+                allowed = {'operation', 'request_id', 'node', 'lease', 'actor',
+                           'plan_hash', 'authorized_request', 'status', 'head_commit'}
+                restack = lease.get('restack') if lease else None
+                pending_restack = restack.get('pending') if restack else None
+                if (set(request) != allowed or not lease or not restack
+                        or request.get('lease') != lease.get('token')
+                        or request.get('actor') != lease.get('worker')
+                        or request.get('plan_hash') != restack.get('plan_hash')
+                        or pending_restack != {'operation': 'restack_' + request.get('status', ''),
+                            'request': request.get('authorized_request'), 'actor': request.get('actor')}
+                        or request.get('status') not in {'continue', 'abort'}):
+                    raise ValueError('Restack finalization differs from its provider-confirmed operation')
+                workspace = snapshot['workspaces'].get(key, {})
+                observed = managed_worktrees.inspect_attempt_worktree(self.repo,
+                    goal=number, node=node['node'], attempt=lease['attempt'])
+                if (not workspace.get('git_workspace') or 'entry' not in workspace
+                        or observed.get('status') != 'clean'
+                        or observed.get('head') != request.get('head_commit')):
+                    raise ValueError('Restack finalization requires the exact clean managed worktree')
+                plan = restack['plan']
+                git_phase_state.verify_attempt_ref(self.repo, remote='origin',
+                    ref=restack['source']['ref'], commit=restack['source']['commit'])
+                if request['status'] == 'continue':
+                    checkpoint = git_phase_state.validate_checkpoint(Path(observed['path']),
+                        base_commit=plan['new_base'], result_commit=observed['head'],
+                        owned_paths=workspace['entry']['owned'])
+                    restack.update(status='ready', result_commit=observed['head'],
+                                   result_tree=checkpoint['result_tree'])
+                    restack.pop('pending')
+                    response = {'next_steps': [{'kind': 'restack_continued',
+                        'goal': number, 'node': node, 'lease': lease['token'],
+                        'actor': lease['worker'], 'plan_hash': restack['plan_hash'],
+                        'result_commit': observed['head'],
+                        'submission': {'operation': 'submit', 'node': node}}]}
+                else:
+                    if observed['head'] != plan['new_base']:
+                        raise ValueError('Restack abort did not restore the exact new base')
+                    leases.remove(lease)
+                    response = {'next_steps': [{'kind': 'restack_aborted',
+                        'goal': number, 'node': node, 'lease': lease['token'],
+                        'actor': lease['worker'], 'plan_hash': restack['plan_hash'],
+                        'head_commit': observed['head']}]}
+            elif operation == 'route_choice':
                 allowed = {'operation', 'request_id', 'node', 'root_pair', 'requested_pair', 'choice', 'approved_by'}
                 if set(request) != allowed or request.get('choice') != 'downgrade_to_root' or not explicit_approval(request.get('approved_by')):
                     raise ValueError('Root capability downgrade requires the exact returned choice and explicit human approval')
@@ -9403,6 +9464,46 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                         and 'files' not in prior['acquisition']):
                     stopped_attempt = prior
         result = engine.mutate(number, payload)
+        if operation in {'restack_continue', 'restack_abort'}:
+            authorization = next((step for step in result.get('next_steps', [])
+                                  if step.get('kind') == operation + '_authorized'), None)
+            if (authorization is None or authorization.get('lease') != payload.get('lease')
+                    or authorization.get('actor') != payload.get('actor')
+                    or authorization.get('plan_hash') != payload.get('plan_hash')
+                    or authorization.get('plan_hash') != digest(authorization.get('plan'))):
+                raise ValueError('Provider-confirmed restack authorization changed')
+            current = engine.node_snapshot(number)
+            key = api._phase_evidence.task_key(payload['node'])
+            authority = current['workspaces'].get(key, {})
+            if not authority.get('git_workspace') or 'entry' not in authority:
+                raise ValueError('Provider-confirmed restack authority changed')
+            local = managed_worktrees.inspect_attempt_worktree(repo, goal=number,
+                node=payload['node']['node'], attempt=authorization['attempt'])
+            if local['status'] == 'missing':
+                raise ValueError('Provider-confirmed restack managed worktree is missing')
+            path = Path(local['path']); plan = authorization['plan']
+            if operation == 'restack_continue':
+                if local['status'] == 'dirty':
+                    outcome = git_phase_state.continue_attempt_restack(
+                        path, plan, authority['entry']['owned'])
+                    head = outcome['result_commit']
+                else:
+                    head = local['head']
+                    git_phase_state.validate_checkpoint(path,
+                        base_commit=plan['new_base'], result_commit=head,
+                        owned_paths=authority['entry']['owned'])
+                status = 'continue'
+            else:
+                outcome = git_phase_state.abort_attempt_restack(
+                    path, plan, authority['entry']['owned'])
+                head = outcome['head_commit']; status = 'abort'
+            finalize = {'operation': 'restack_finalize',
+                'request_id': payload['request_id'] + '-finalize',
+                'node': payload['node'], 'lease': payload['lease'],
+                'actor': payload['actor'], 'plan_hash': payload['plan_hash'],
+                'authorized_request': payload['request_id'],
+                'status': status, 'head_commit': head}
+            result = engine.mutate(number, finalize)
         if operation == 'integrate':
             cleanup = None
             try:
