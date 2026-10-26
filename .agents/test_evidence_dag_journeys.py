@@ -662,6 +662,87 @@ class EvidenceDagPublicTests(DagFixture):
             self.assertEqual(artifact, self.read_blob({
                 "hash": identity, "uri": "urn:" + identity}))
 
+    def test_cutover_maps_dependent_review_resolution_across_renamed_producer(self):
+        producer_old = task("producer_old")
+        producer_old["inputs"] = {"request": spec_input()}
+        review_old = task("review_old", ["producer_old"])
+        review_old["inputs"] = {"subject": subject_input("producer_old")}
+        review_old["independent_of"] = [selector("producer_old")]
+        old_graph = {"nodes": [producer_old, review_old], "task_sets": [],
+                     "terminals": [selector("review_old")]}
+        self.install(old_graph)
+        self.session.finish(self.session.acquire("producer_old"),
+                            {"value": "old producer output"})
+        self.session.finish(self.session.acquire(
+            "review_old", actor="independent-old-reviewer"),
+            {"value": "old producer independently reviewed"})
+        producer_result = self.result("producer_old")[0]
+        review_result = self.result("review_old")[0]
+        history = list(self.payload()[1]["evidence"])
+        retained = {ref["hash"]: copy.deepcopy(self.read_blob(ref))
+                    for ref in (producer_result, review_result)}
+
+        producer_new = copy.deepcopy(producer_old)
+        producer_new["id"] = "producer_new"
+        producer_new["executor"]["authority"] = scope("producer_new")
+        review_new = copy.deepcopy(review_old)
+        review_new["id"] = "review_new"
+        review_new["executor"]["authority"] = scope("review_new")
+        review_new["requires"] = [selector("producer_new")]
+        review_new["inputs"] = {"subject": subject_input("producer_new")}
+        review_new["independent_of"] = [selector("producer_new")]
+        finish_new = task("finish_new", ["review_new"], role="root")
+        new_graph = {"nodes": [producer_new, review_new, finish_new],
+                     "task_sets": [], "terminals": [selector("finish_new")]}
+        z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = new_graph
+        cutover = self.session.checkpoint(100)[0]
+        mapping = [{"old": {"node": old, "output": "value"},
+                    "new": {"node": new, "output": "value"},
+                    "result": result, "equivalence": {
+                        "inputs": True, "outputs": True, "scope": True,
+                        "role": True, "independence": True, "approval": True}}
+                   for old, new, result in (
+                       ("producer_old", "producer_new", producer_result),
+                       ("review_old", "review_new", review_result))]
+        rename_selectors = z._workflow._rename_node_selectors
+        def reviewed_cross_mapping(node, old, new):
+            projected = rename_selectors(node, old, new)
+            def replace(value):
+                if isinstance(value, dict):
+                    for key, child in value.items():
+                        if key == "node" and child == "producer_old":
+                            value[key] = "producer_new"
+                        else:
+                            replace(child)
+                elif isinstance(value, list):
+                    for child in value:
+                        replace(child)
+            replace(projected)
+            return projected
+        with mock.patch.object(z._workflow, "_rename_node_selectors",
+                               side_effect=reviewed_cross_mapping):
+            proposed = self.session.call(100, {**cutover["prepare"],
+                "actor": "root-thread", "mapping": mapping,
+                "request_id": "prepare-renamed-dependent-cutover"})["next_steps"][0]
+        reviewed = self.session.call(100, {**proposed["review"],
+            "actor": "independent-cutover-reviewer", "decision": "approved",
+            "report": "Producer and dependent review retain exact mapped semantics",
+            "request_id": "review-renamed-dependent-cutover"})["next_steps"][0]
+        with mock.patch.object(z._workflow, "_rename_node_selectors",
+                               side_effect=reviewed_cross_mapping):
+            self.session.call(100, {**reviewed["apply"], "actor": "root-thread",
+                                   "request_id": "apply-renamed-dependent-cutover"})
+
+        self.assertEqual({"finish_new"}, self.names(),
+                         "Both renamed mapped Results remain reusable before drift")
+        self.replace_spec("Changed external input after renamed dependent cutover")
+        self.assertEqual({"producer_new"}, self.names())
+        self.assertEqual(history, self.payload()[1]["evidence"])
+        for identity, artifact in retained.items():
+            self.assertEqual(artifact, self.read_blob({
+                "hash": identity, "uri": "urn:" + identity}))
+
     def test_policy_dag_cutover_rejects_superseded_mapped_result(self):
         self.findings()
         predecessor = self.result("produce")[0]
