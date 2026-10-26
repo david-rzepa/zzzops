@@ -873,17 +873,23 @@ def apply_attempt_restack(repo: Path, preview: dict, owned_paths: list[str]) -> 
     return {**plan, 'status': 'conflict', 'conflicts': sorted(paths)}
 
 
-def continue_attempt_restack(repo: Path, preview: dict, owned_paths: list[str]) -> dict:
+def continue_attempt_restack(repo: Path, preview: dict, owned_paths: list[str],
+                             replay_proof: str | None = None) -> dict:
     """Continue only the exact previewed cherry-pick after an owned resolution."""
     repo = Path(repo).resolve()
     plan = _restack_preview(repo, preview, owned_paths)
+    if replay_proof is not None and re.fullmatch(r'sha256:[0-9a-f]{64}', replay_proof) is None:
+        raise ValueError('Git restack replay proof is invalid')
+    trailer = 'ZzzOps-Restack-Proof: ' + replay_proof if replay_proof else None
     head = _git(repo, 'rev-parse', 'HEAD').decode().strip()
     sequencer = _restack_sequencer(repo)
     if sequencer is None:
         if head == plan['new_base']:
             raise ValueError('Git restack has no conflict resolution to continue')
         if plan['status'] != 'clean':
-            raise ValueError('Git restack conflict result lacks an exact replay sequencer')
+            message = _git(repo, 'show', '-s', '--format=%B', head).decode().splitlines()
+            if trailer is None or message.count(trailer) != 1:
+                raise ValueError('Git restack conflict result lacks an exact replay proof')
         return _restack_clean_result(repo, plan, owned_paths)
     if sequencer != plan['attempt_commit'] or head != plan['new_base']:
         raise ValueError('Git restack sequencer or HEAD changed')
@@ -897,6 +903,16 @@ def continue_attempt_restack(repo: Path, preview: dict, owned_paths: list[str]) 
     _git(repo, 'add', '-A', '--', *sorted(set(paths)))
     if _git(repo, 'ls-files', '-u', '-z'):
         raise ValueError('Git restack conflict remains unresolved')
+    if trailer is not None:
+        message_path = Path(_git(repo, 'rev-parse', '--git-path', 'MERGE_MSG').decode().strip())
+        if not message_path.is_absolute():
+            message_path = repo / message_path
+        message = message_path.read_text(encoding='utf-8')
+        if trailer not in message.splitlines():
+            with message_path.open('a', encoding='utf-8') as handle:
+                if message and not message.endswith('\n'):
+                    handle.write('\n')
+                handle.write('\n' + trailer + '\n')
     environment = dict(os.environ, GIT_EDITOR='true')
     result = subprocess.run(['git', 'cherry-pick', '--continue'], cwd=repo,
                             capture_output=True, text=True, env=environment)

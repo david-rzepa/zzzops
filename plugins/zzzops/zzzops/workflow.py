@@ -9451,15 +9451,13 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                 raise ValueError('Provider-confirmed restack managed worktree is missing')
             path = Path(local['path']); plan = authorization['plan']
             if operation == 'restack_continue':
-                if local['status'] == 'dirty':
-                    outcome = git_phase_state.continue_attempt_restack(
-                        path, plan, authority['entry']['owned'])
-                    head = outcome['result_commit']
-                else:
-                    head = local['head']
-                    git_phase_state.validate_checkpoint(path,
-                        base_commit=plan['new_base'], result_commit=head,
-                        owned_paths=authority['entry']['owned'])
+                replay_proof = digest({'lease': authorization['lease'],
+                    'actor': authorization['actor'], 'attempt': authorization['attempt'],
+                    'plan_hash': authorization['plan_hash'],
+                    'authorized_request': payload['request_id']})
+                outcome = git_phase_state.continue_attempt_restack(
+                    path, plan, authority['entry']['owned'], replay_proof=replay_proof)
+                head = outcome['result_commit']
                 status = 'continue'
             else:
                 outcome = git_phase_state.abort_attempt_restack(
