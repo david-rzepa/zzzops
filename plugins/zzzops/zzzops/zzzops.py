@@ -2897,6 +2897,35 @@ def release_cli(repo: Path, command: str, input_path: Path | None = None):
     if command == "status":
         plan = adapter.read(repository)
         return plan or {**_releases.new_release_plan(policy["next_release"]), "status": "disabled" if not policy["enabled"] else "unconfigured"}
+    if command == "propagate":
+        if not policy["enabled"]:
+            raise ValueError("release planning is disabled by reviewed policy")
+        if not isinstance(request, dict) or set(request) != {"request_id"} or not isinstance(request["request_id"], str) or not request["request_id"]:
+            raise ValueError("trunk propagation requires only a request_id; Git facts are observed by the host")
+        plan = adapter.read(repository)
+        if not plan or _releases.validate_release_plan(plan):
+            raise ValueError("reviewed release plan is missing or invalid")
+        live = sorted(int(number) for number, release in plan["releases"].items()
+                      if release.get("publication") is None)
+        names = ([policy["publication_branch"]]
+                 + [policy["release_branch_prefix"] + str(number) for number in live]
+                 + [policy["integration_branch"]])
+        if len(set(names)) != len(names):
+            raise ValueError("reviewed trunk chain contains duplicate branches")
+        trunks = []
+        for branch in names:
+            ref = "refs/heads/" + branch
+            observation = subprocess.run(
+                ["git", "ls-remote", "--exit-code", "--refs", "origin", ref],
+                cwd=repo, capture_output=True, text=True)
+            rows = observation.stdout.splitlines() if observation.returncode == 0 else []
+            if len(rows) != 1 or rows[0].split()[-1] != ref:
+                raise ValueError("remote trunk observation failed: " + branch)
+            commit = rows[0].split()[0]
+            if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
+                raise ValueError("remote trunk commit is invalid: " + branch)
+            trunks.append((branch, commit))
+        return {**_releases.preview_trunk_propagation(repo, trunks), "trunks": trunks}
     if command == "configure":
         if not policy["enabled"]: raise ValueError("release planning is disabled by reviewed policy")
         plan = {"revision": 0, **request["plan"]}
@@ -3926,7 +3955,7 @@ def _private_main() -> int:
     release_parser = commands.add_parser("release", help="Manage the reviewed repository release plan")
     release_commands = release_parser.add_subparsers(dest="release_command", required=True)
     release_commands.add_parser("status", help="Read the current release plan")
-    for name in ("configure", "assign", "checkpoint", "approve", "publication"):
+    for name in ("configure", "assign", "checkpoint", "approve", "publication", "propagate"):
         command = release_commands.add_parser(name)
         command.add_argument("--input", type=Path, required=True)
     goal_command = commands.add_parser("goal", help="Create, transition, or inspect validated GitHub-backed goals")
