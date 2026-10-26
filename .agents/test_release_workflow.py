@@ -32,50 +32,6 @@ def goal(key, *, release=None, priority="P2", state="write", depends_on=(), comm
 class ReleaseWorkflowContractTests(unittest.TestCase):
     def setUp(self): self.r = load_subject()
 
-    def test_git_release_branch_compare_exchange_is_exact_fast_forward_only(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            remote = root / 'origin.git'
-            repo = root / 'repo'
-            subprocess.run(['git', 'init', '--bare', '-q', str(remote)], check=True)
-            subprocess.run(['git', 'init', '-q', '-b', 'dev', str(repo)], check=True)
-            def git(*args):
-                return subprocess.run(['git', *args], cwd=repo, check=True,
-                                      text=True, capture_output=True).stdout.strip()
-            git('config', 'user.name', 'Release CAS Test')
-            git('config', 'user.email', 'release-cas@example.test')
-            git('remote', 'add', 'origin', str(remote))
-            (repo / 'product.txt').write_text('base\n')
-            git('add', 'product.txt')
-            git('commit', '-qm', 'base')
-            base = git('rev-parse', 'HEAD')
-            git('push', '-q', 'origin', base + ':refs/heads/release/1')
-            (repo / 'product.txt').write_text('fast forward\n')
-            git('commit', '-qam', 'release: fast forward')
-            fast_forward = git('rev-parse', 'HEAD')
-            adapter = self.r.GitReleaseBranchAdapter(repo)
-
-            updated = adapter.compare_exchange(
-                'release/1', expected=base, value=fast_forward)
-
-            self.assertEqual({'status': 'updated', 'branch': 'release/1',
-                              'sha': fast_forward}, updated)
-            self.assertEqual(fast_forward, adapter.observe('release/1'))
-            with self.assertRaisesRegex(ValueError, 'moved|compare-and-swap'):
-                adapter.compare_exchange(
-                    'release/1', expected=base, value=base)
-            self.assertEqual(fast_forward, adapter.observe('release/1'))
-
-            git('checkout', '-q', '--detach', base)
-            (repo / 'other.txt').write_text('divergent\n')
-            git('add', 'other.txt')
-            git('commit', '-qm', 'release: divergent candidate')
-            divergent = git('rev-parse', 'HEAD')
-            with self.assertRaisesRegex(ValueError, 'ancestry|fast-forward|preserve'):
-                adapter.compare_exchange(
-                    'release/1', expected=fast_forward, value=divergent)
-            self.assertEqual(fast_forward, adapter.observe('release/1'))
-
     def test_live_trunks_propagate_one_adjacent_edge_and_preserve_same_tree_evidence(self):
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)
