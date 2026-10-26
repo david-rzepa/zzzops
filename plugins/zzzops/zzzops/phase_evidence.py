@@ -1734,7 +1734,10 @@ def _derive_task_steps(graph, payload, context):
                     'context': snapshots[number].get('context_ref'), 'targets': [instances[k]['node'] for k in selected]})
             resolution_semantics = [{'location': r['location'], 'selector': r['selector'], 'targets': r['targets']} for r in state['resolutions']]
             state.update(input_hash=semantic_hash({'node': instance['node'], 'contract': contract, 'inputs': hashes, 'resolutions': resolution_semantics}), state='ready', prerequisites=prerequisites)
-            for ref, result in reversed(records_by_node.get(key, [])):
+            # Successor validation above establishes one authenticated history
+            # head. Freshness may reopen that head, but must never resurrect an
+            # older Result merely because external inputs reverted.
+            for ref, result in records_by_node.get(key, [])[-1:]:
                 recorded_policy = artifact(ref).get('provenance', {}).get('policy')
                 legacy_contract = semantic_hash({'node': node, 'policy': recorded_policy}) if isinstance(recorded_policy, str) else None
                 predecessor_contract = (semantic_hash({'node': node, 'policy': predecessor_policy_hash})
