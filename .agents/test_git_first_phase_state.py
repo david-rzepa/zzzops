@@ -609,6 +609,139 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         self.assertEqual('created', recovered['retained_attempt']['outcome'])
         self.assertEqual([], fixture.payload()[1]['operational']['leases'])
 
+    def test_public_same_node_start_commits_lease_before_conflicting_restack(self):
+        fixture = journeys.WorkspaceAuthorityPublicTests('runTest')
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        original_install = fixture.install
+        def install_git_graph(graph):
+            for node in graph['nodes']:
+                resources = node['executor']['resources']
+                if 'repository_workspace' in resources:
+                    resources[resources.index(
+                        'repository_workspace')] = 'repository_git_workspace'
+            return original_install(graph)
+        fixture.install = install_git_graph
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        bare = Path(remote_dir.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
+        fixture.session.git('remote', 'add', 'origin', str(bare))
+        fixture.setup_workspace_corrections(target='alpha')
+
+        first = fixture.acquire_workspace('alpha')
+        first_tree = Path(first['managed_worktree']['path'])
+        (first_tree / 'behavior_test.py').write_text('assert True\n')
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=first_tree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: verified source attempt'],
+                       cwd=first_tree, check=True)
+        source_commit = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=first_tree,
+            capture_output=True, text=True, check=True).stdout.strip()
+        submission = fixture.session.submission(
+            first, {'value': 'Verified alpha source'}, 'verified-source-before-restack')
+        submission['workspace_checks'] = [[sys.executable, '-B', 'behavior_test.py']]
+        submission['verification_expectation'] = 'passed'
+        fixture.session.call(100, submission)
+        result_ref, _ = fixture.result('alpha')
+        proof_ref = fixture.read_blob(fixture.produced('alpha'))['provenance']['source']
+        proof = fixture.read_blob(proof_ref)
+        self.assertTrue(proof['passed'])
+        self.assertEqual(0, proof['commands'][0]['exit_code'])
+        self.assertEqual(source_commit, proof['checkpoint']['result_commit'])
+        expected_ref = (f"refs/heads/zzzops/attempts/100/alpha/"
+                        f"{first['lease']['attempt']}")
+        self.assertEqual(expected_ref, proof['retained_ref'])
+        self.assertEqual(source_commit, fixture.session.git(
+            'ls-remote', 'origin', expected_ref).split()[0])
+        fixture.review_candidate('alpha', 0)
+
+        fixture.admit_workspace_correction('alpha')
+        moved_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(moved_dir.cleanup)
+        moved = Path(moved_dir.name) / 'moved-base'
+        fixture.session.git('worktree', 'add', '-q', '--detach', str(moved),
+                            fixture.session.git('rev-parse', 'HEAD').strip())
+        (moved / 'behavior_test.py').write_text('moved accepted base\n')
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=moved, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: conflicting accepted base'],
+                       cwd=moved, check=True)
+        new_base = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=moved,
+            capture_output=True, text=True, check=True).stdout.strip()
+        workspace_context = z._workflow.Workflow.node_workspace_context
+        def accepted_moved_base(engine, snapshots, projection, artifacts,
+                                *, workspace_target=None):
+            contexts = workspace_context(
+                engine, snapshots, projection, artifacts,
+                workspace_target=workspace_target)
+            for key, context in contexts.items():
+                if key[1] == 'alpha' and context.get('git_workspace'):
+                    context['acquisition']['git_commit'] = new_base
+            return contexts
+        observations = []
+        apply_restack = z._workflow.git_phase_state.apply_attempt_restack
+        def observe_committed_start(repo, plan, owned_paths):
+            payload = fixture.payload()[1]
+            leases = [lease for lease in payload['operational']['leases']
+                      if lease['node'] == step['node']]
+            receipts = [row for row in payload['operational']['receipts']
+                        if row['request'] == request['request_id']]
+            observations.append({
+                'leases': copy.deepcopy(leases),
+                'receipts': copy.deepcopy(receipts),
+                'plan': copy.deepcopy(plan),
+                'owned_paths': copy.deepcopy(owned_paths),
+            })
+            return apply_restack(repo, plan, owned_paths)
+
+        with mock.patch.object(z._workflow.Workflow, 'node_workspace_context',
+                               autospec=True, side_effect=accepted_moved_base):
+            step = next(s for s in fixture.session.ready()
+                        if s['node']['node'] == 'alpha')
+            receipt = json.loads(Path(step['policy']['path']).read_text())['policy_receipt']
+            request = {**step['start'], 'policy_receipt': receipt,
+                       'request_id': 'start-conflicting-restack'}
+            with mock.patch.object(z._workflow.git_phase_state, 'apply_attempt_restack',
+                                   side_effect=observe_committed_start):
+                started = fixture.session.call(100, request)['next_steps'][0]
+
+        self.assertEqual(1, len(observations),
+                         'Public start must apply its host-derived restack plan')
+        observed = observations[0]
+        self.assertEqual(1, len(observed['leases']))
+        self.assertEqual(started['lease']['token'], observed['leases'][0]['token'])
+        self.assertEqual(1, len(observed['receipts']))
+        self.assertEqual(['behavior_test.py'], observed['owned_paths'])
+        expected_plan = z._git_phase_state.preview_attempt_restack(
+            Path(started['managed_worktree']['path']),
+            old_base=first['lease']['acquisition']['git_commit'],
+            new_base=new_base, attempt_commit=source_commit,
+            owned_paths=['behavior_test.py'])
+        self.assertEqual(expected_plan, observed['plan'])
+        self.assertEqual('conflict', started['restack']['status'])
+        self.assertEqual({'result': result_ref, 'proof': proof_ref,
+                          'ref': expected_ref, 'commit': source_commit},
+                         started['restack']['source'])
+        self.assertEqual(expected_plan, started['restack']['plan'])
+        self.assertEqual(['behavior_test.py'], started['restack']['conflicts'])
+        common = {'node': started['node'], 'lease': started['lease']['token'],
+                  'actor': '<actual worker>',
+                  'plan_hash': journeys.content_hash(expected_plan)}
+        self.assertEqual({'operation': 'restack_continue', **common,
+                          'request_id': '<unique request>'},
+                         started['restack']['continue'])
+        self.assertEqual({'operation': 'restack_abort', **common,
+                          'request_id': '<unique request>'},
+                         started['restack']['abort'])
+        self.assertNotEqual(first['lease']['attempt'], started['lease']['attempt'])
+        self.assertEqual(source_commit, subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=first_tree,
+            capture_output=True, text=True, check=True).stdout.strip())
+        self.assertEqual(source_commit, fixture.session.git(
+            'ls-remote', 'origin', expected_ref).split()[0])
+        self.assertEqual([100], sorted(fixture.provider.issues))
+
     def test_submission_uses_managed_worktree_commit_and_checks(self):
         fixture = self.fixture_with_git_workspace()
         remote_dir = tempfile.TemporaryDirectory()
