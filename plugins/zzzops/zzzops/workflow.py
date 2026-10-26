@@ -8050,13 +8050,22 @@ class Workflow:
                     response = {'next_steps': [{'kind': 'perform', 'goal': number, 'node': node, 'lease': lease}]}
                 else:
                     if request.get('actor') != lease['worker'] or not lease['worker']: raise ValueError('Exact bound actor required')
-                    if state.get('input_hash') != lease['fingerprint'] or state['state'] != 'ready': raise ValueError('Stale substantive input/contract/prerequisite; owner remains bound: ' + state.get('reason', 'workspace or input identity drift'))
-                    if lease['expires_at'] <= time.time() and operation not in {'renew', 'release'}:
-                        raise ValueError('Lease expired; observe stopped owner before recovery')
                     if operation == 'renew':
+                        current = (state.get('input_hash') == lease['fingerprint']
+                                   and state['state'] == 'ready')
                         lease['expires_at'] = pending['response']['next_steps'][0]['lease']['expires_at'] if pending else time.time() + 600
-                        response = {'next_steps': [{'kind': 'renewed', 'goal': number, 'node': node, 'lease': lease['token'], 'actor': lease['worker'], 'expires_at': lease['expires_at']}]}
-                    elif operation == 'release':
+                        step = {'kind': 'renewed', 'goal': number, 'node': node,
+                            'lease': lease['token'], 'actor': lease['worker'],
+                            'expires_at': lease['expires_at'], 'current': current}
+                        if not current:
+                            step.update(reason=state.get('reason', 'workspace or input identity drift'),
+                                action='Custody only: preserve the owned attempt; current review and input authority are still required before submission.')
+                        response = {'next_steps': [step]}
+                    else:
+                        if state.get('input_hash') != lease['fingerprint'] or state['state'] != 'ready': raise ValueError('Stale substantive input/contract/prerequisite; owner remains bound: ' + state.get('reason', 'workspace or input identity drift'))
+                        if lease['expires_at'] <= time.time() and operation != 'release':
+                            raise ValueError('Lease expired; observe stopped owner before recovery')
+                    if operation == 'release':
                         if set(request) - {'operation', 'node', 'lease', 'actor', 'request_id'}:
                             raise ValueError('Lease release accepts only the exact owner identity')
                         leases.remove(lease)
@@ -8148,7 +8157,8 @@ class Workflow:
                         identity = digest(artifact); snapshot['artifacts'][identity] = artifact
                         ref = self.node_ref(identity, number); payload['evidence'].append(ref); leases.remove(lease)
                         response = self.node_continuation(snapshot, payload, node, ref)
-                    else: raise ValueError('Unsupported generic operation; semantic evidence uses submit')
+                    elif operation != 'renew':
+                        raise ValueError('Unsupported generic operation; semantic evidence uses submit')
             return self.node_persist(snapshot, payload, response, request)
 
     def node_validate_bundle(self, snapshot, state, bundle, actor):
