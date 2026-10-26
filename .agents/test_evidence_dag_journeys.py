@@ -560,6 +560,68 @@ class EvidenceDagPublicTests(DagFixture):
         self.assertEqual({"inspect_renamed"}, self.names())
         self.assertEqual(result, self.result("legacy_builder")[0])
 
+    def test_policy_dag_cutover_mapping_rechecks_changed_external_inputs(self):
+        producer = task("produce_external")
+        producer["inputs"] = {"request": spec_input()}
+        review = task("review_external", ["produce_external"])
+        review["inputs"] = {"subject": subject_input("produce_external")}
+        review["independent_of"] = [selector("produce_external")]
+        old_graph = {"nodes": [producer, review], "task_sets": [],
+                     "terminals": [selector("review_external")]}
+        self.install(old_graph)
+        self.session.finish(self.session.acquire("produce_external"),
+                            {"value": "mapped producer result"})
+        self.session.finish(self.session.acquire(
+            "review_external", actor="independent-external-reviewer"),
+            {"value": "reviewed mapped producer"})
+        producer_result = self.result("produce_external")[0]
+        review_result = self.result("review_external")[0]
+        retained = {
+            producer_result["hash"]: copy.deepcopy(self.read_blob(producer_result)),
+            review_result["hash"]: copy.deepcopy(self.read_blob(review_result)),
+        }
+
+        consume = task("consume_external", ["review_external"], role="root")
+        consume["inputs"] = {"subject": subject_input("produce_external")}
+        new_graph = {"nodes": [copy.deepcopy(producer), copy.deepcopy(review), consume],
+                     "task_sets": [], "terminals": [selector("consume_external")]}
+        z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = new_graph
+        cutover = self.session.checkpoint(100)[0]
+        mapping = [{"old": {"node": node, "output": "value"},
+                    "new": {"node": node, "output": "value"},
+                    "result": result, "equivalence": {
+                        "inputs": True, "outputs": True, "scope": True,
+                        "role": True, "independence": True, "approval": True}}
+                   for node, result in (("produce_external", producer_result),
+                                        ("review_external", review_result))]
+        proposed = self.session.call(100, {**cutover["prepare"],
+            "actor": "root-thread", "mapping": mapping,
+            "request_id": "prepare-external-freshness-cutover"})["next_steps"][0]
+        reviewed = self.session.call(100, {**proposed["review"],
+            "actor": "independent-cutover-reviewer", "decision": "approved",
+            "report": "Mapped producer and review retain their exact old inputs only",
+            "request_id": "review-external-freshness-cutover"})["next_steps"][0]
+        applied = self.session.call(100, {**reviewed["apply"],
+            "actor": "root-thread",
+            "request_id": "apply-external-freshness-cutover"})["next_steps"][0]
+        self.assertEqual("policy_dag_cutover_applied", applied["kind"])
+        self.assertEqual({"consume_external"}, self.names())
+        history_before = list(self.payload()[1]["evidence"])
+
+        self.replace_spec("Changed external requirement after reviewed DAG cutover")
+        frontier = self.session.checkpoint(100)
+
+        self.assertIn("produce_external", {
+            step["node"]["node"] for step in frontier if step.get("kind") == "execute"})
+        self.assertNotIn("consume_external", {
+            step["node"]["node"] for step in frontier if step.get("kind") == "execute"})
+        self.assertNotIn("review_external", self.names())
+        self.assertEqual(history_before, self.payload()[1]["evidence"])
+        for identity, artifact in retained.items():
+            self.assertEqual(artifact, self.read_blob({
+                "hash": identity, "uri": "urn:" + identity}))
+
     def test_policy_dag_cutover_rejects_superseded_mapped_result(self):
         self.findings()
         predecessor = self.result("produce")[0]
