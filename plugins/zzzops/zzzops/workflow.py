@@ -3012,6 +3012,7 @@ class Workflow:
         context['cutover_results'] = cutover_results
         context['cutover_outputs'] = cutover_outputs
         context['cutover_mappings'] = {}
+        context['cutover_node_aliases'] = {}
         for row in reversed(selected['payload']['operational']['receipts']):
             try:
                 response = snapshot['artifacts'].get(row['result']['hash']) or snapshot['resolve'](row['result'])
@@ -3020,6 +3021,8 @@ class Workflow:
                 receipt = snapshot['artifacts'].get(step['receipt']['hash']) or snapshot['resolve'](step['receipt'])
                 context['cutover_mappings'] = {
                     item['result']['hash']: item['new']['node'] for item in receipt['content']['mapping']}
+                context['cutover_node_aliases'] = {
+                    item['old']['node']: item['new']['node'] for item in receipt['content']['mapping']}
                 break
             except (KeyError, StopIteration, TypeError, ValueError):
                 continue

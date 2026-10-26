@@ -1792,13 +1792,13 @@ def _derive_task_steps(graph, payload, context):
                 if legacy and '__policy' not in old_hashes:
                     comparable_hashes.pop('__policy', None)
                 old_resolutions = [{k: r[k] for k in ('location', 'selector', 'targets')} for r in result.get('resolutions', [])]
-                if cutover_equivalent and mapped_node != result['node']['node']:
+                if cutover_equivalent:
+                    aliases = context.get('cutover_node_aliases', {})
                     def mapped_identity(value):
                         if isinstance(value, dict):
                             renamed = {name: mapped_identity(child) for name, child in value.items()}
-                            if (renamed.get('goal') == number
-                                    and renamed.get('node') == result['node']['node']):
-                                renamed['node'] = mapped_node
+                            if renamed.get('goal') == number and renamed.get('node') in aliases:
+                                renamed['node'] = aliases[renamed['node']]
                             return renamed
                         if isinstance(value, list):
                             return [mapped_identity(child) for child in value]
