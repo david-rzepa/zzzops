@@ -91,6 +91,71 @@ class ReleasePublicBoundaryTests(unittest.TestCase):
 
         self.assertEqual({'main': 2, 'release/1': 2, 'dev': 2}, observations)
 
+    def test_trunk_propagation_execute_binds_preview_and_replays_confirmed_cas(self):
+        project = {'backend': 'github_issues',
+                   'repository': {'identity': 'owner/repo'}}
+        policy = {'enabled': True, 'publication_branch': 'main',
+                  'integration_branch': 'dev',
+                  'release_branch_prefix': 'release/'}
+        adapter = MemoryPlanAdapter()
+        adapter.record = z._releases.new_release_plan(1)
+        adapter.record['releases'] = {'1': {'state': 'open'}}
+        adapter.record['revision'] = 4
+        commits = {'main': 'a' * 40, 'release/1': 'b' * 40, 'dev': 'c' * 40}
+        preview_value = {
+            'status': 'propagate', 'source': 'main', 'target': 'release/1',
+            'source_commit': commits['main'], 'target_commit': commits['release/1'],
+            'source_tree': '1' * 40, 'target_tree': '1' * 40,
+            'content_change': False, 'fast_forward': True,
+        }
+        branches = mock.Mock()
+        branches.compare_exchange.return_value = {
+            'status': 'updated', 'branch': 'release/1', 'sha': commits['main']}
+        branches.observe.side_effect = lambda branch: (
+            commits['main'] if branch in {'main', 'release/1'} else commits[branch])
+        observed = []
+        def remote(command, **_kwargs):
+            branch = command[-1].removeprefix('refs/heads/')
+            observed.append(branch)
+            commit = commits[branch]
+            return subprocess.CompletedProcess(
+                command, 0, commit + '\trefs/heads/' + branch + '\n', '')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = root / 'propagate.json'
+            request.write_text(json.dumps({'request_id': 'preview-propagation-cas'}))
+            with mock.patch.object(z, 'reviewed_project_state', return_value=project), \
+                 mock.patch.object(z, '_release_policy', return_value=policy), \
+                 mock.patch.object(z, 'GitHubReleasePlanAdapter', return_value=adapter), \
+                 mock.patch.object(z, 'GitHubReleaseBranchAdapter', return_value=branches), \
+                 mock.patch.object(z.subprocess, 'run', side_effect=remote), \
+                 mock.patch.object(z._releases, 'preview_trunk_propagation',
+                                   return_value=preview_value):
+                preview = z.release_cli(root, 'propagate', request)
+                execute = preview['execute']
+                self.assertEqual(4, execute['expected_revision'])
+                self.assertEqual(preview_value, execute['preview'])
+                self.assertEqual(z._releases.digest(preview_value),
+                                 execute['preview_digest'])
+                self.assertNotIn('source_commit', {
+                    key: value for key, value in execute.items()
+                    if key not in {'preview'}})
+                request.write_text(json.dumps({**execute,
+                    'request_id': 'execute-propagation-cas'}))
+                first = z.release_cli(root, 'propagate', request)
+                replay = z.release_cli(root, 'propagate', request)
+
+        self.assertEqual(first, replay)
+        branches.compare_exchange.assert_called_once_with(
+            'release/1', expected=commits['release/1'], value=commits['main'])
+        self.assertGreaterEqual(observed.count('main'), 2)
+        self.assertGreaterEqual(observed.count('release/1'), 2)
+        self.assertEqual(commits['main'], branches.observe('release/1'))
+        receipt = adapter.record['operation_receipts']['execute-propagation-cas']
+        self.assertEqual(first, z._releases._replay_result(
+            adapter, 'owner/repo', receipt))
+        self.assertEqual(5, adapter.record['revision'])
+
     def test_public_trunk_propagation_derives_plan_and_remote_refs_on_host(self):
         plan = z._releases.new_release_plan(1)
         plan['releases'] = {
