@@ -16,6 +16,57 @@ z = fixtures.zzzops
 
 
 class ReleasePublicBoundaryTests(unittest.TestCase):
+    def test_public_trunk_propagation_derives_plan_and_remote_refs_on_host(self):
+        plan = z._releases.new_release_plan(1)
+        plan['releases'] = {
+            '1': {'state': 'open'},
+            '2': {'state': 'open'},
+        }
+        project = {'backend': 'github_issues',
+                   'repository': {'identity': 'owner/repo'}}
+        policy = {'enabled': True, 'publication_branch': 'main',
+                  'integration_branch': 'dev',
+                  'release_branch_prefix': 'release/'}
+        adapter = mock.Mock()
+        adapter.read.return_value = plan
+        commits = {
+            'main': 'a' * 40,
+            'release/1': 'b' * 40,
+            'release/2': 'c' * 40,
+            'dev': 'd' * 40,
+        }
+        observed = []
+        def remote(command, **_kwargs):
+            self.assertEqual(['git', 'ls-remote', '--exit-code', '--refs',
+                              'origin'], command[:5])
+            ref = command[5]
+            branch = ref.removeprefix('refs/heads/')
+            observed.append(branch)
+            return subprocess.CompletedProcess(
+                command, 0, commits[branch] + '\t' + ref + '\n', '')
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            request = root / 'propagate.json'
+            request.write_text(json.dumps({'request_id': 'propagate-reviewed-trunks'}))
+            with mock.patch.object(z, 'reviewed_project_state', return_value=project), \
+                 mock.patch.object(z, '_release_policy', return_value=policy), \
+                 mock.patch.object(z, 'GitHubReleasePlanAdapter', return_value=adapter), \
+                 mock.patch.object(z.subprocess, 'run', side_effect=remote), \
+                 mock.patch.object(z._releases, 'preview_trunk_propagation',
+                    return_value={'status': 'propagate', 'source': 'main',
+                                  'target': 'release/1'}) as preview:
+                result = z.release_cli(root, 'propagate', request)
+
+        expected = [('main', commits['main']),
+                    ('release/1', commits['release/1']),
+                    ('release/2', commits['release/2']),
+                    ('dev', commits['dev'])]
+        self.assertEqual(['main', 'release/1', 'release/2', 'dev'], observed)
+        preview.assert_called_once_with(root, expected)
+        self.assertEqual({'status': 'propagate', 'source': 'main',
+                          'target': 'release/1', 'trunks': expected}, result)
+
     def test_configure_retry_reuses_enrollment_after_audit_failure(self):
         adapter = MemoryPlanAdapter()
         adapter.open_goal_ids = mock.Mock(return_value=[7, 8])
