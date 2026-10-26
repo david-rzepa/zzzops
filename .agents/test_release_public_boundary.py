@@ -84,6 +84,7 @@ class ReleasePublicBoundaryTests(unittest.TestCase):
                  mock.patch.object(z, '_release_policy', return_value=policy), \
                  mock.patch.object(z, 'GitHubReleasePlanAdapter', return_value=adapter), \
                  mock.patch.object(z.subprocess, 'run', side_effect=remote), \
+                 mock.patch.object(z, '_ensure_release_trunk_objects'), \
                  mock.patch.object(z._releases, 'preview_trunk_propagation',
                                    return_value={'status': 'current'}):
                 with self.assertRaisesRegex(ValueError, 'moved|changed|remote'):
@@ -129,6 +130,7 @@ class ReleasePublicBoundaryTests(unittest.TestCase):
                  mock.patch.object(z, 'GitHubReleasePlanAdapter', return_value=adapter), \
                  mock.patch.object(z, 'GitHubReleaseBranchAdapter', return_value=branches), \
                  mock.patch.object(z.subprocess, 'run', side_effect=remote), \
+                 mock.patch.object(z, '_ensure_release_trunk_objects'), \
                  mock.patch.object(z._releases, 'preview_trunk_propagation',
                                    return_value=preview_value):
                 preview = z.release_cli(root, 'propagate', request)
@@ -176,6 +178,12 @@ class ReleasePublicBoundaryTests(unittest.TestCase):
             'dev': 'd' * 40,
         }
         observed = []
+        preview_value = {
+            'status': 'propagate', 'source': 'main', 'target': 'release/1',
+            'source_commit': commits['main'], 'target_commit': commits['release/1'],
+            'source_tree': '1' * 40, 'target_tree': '1' * 40,
+            'content_change': False, 'fast_forward': True,
+        }
         def remote(command, **_kwargs):
             self.assertEqual(['git', 'ls-remote', '--exit-code', '--refs',
                               'origin'], command[:5])
@@ -193,19 +201,22 @@ class ReleasePublicBoundaryTests(unittest.TestCase):
                  mock.patch.object(z, '_release_policy', return_value=policy), \
                  mock.patch.object(z, 'GitHubReleasePlanAdapter', return_value=adapter), \
                  mock.patch.object(z.subprocess, 'run', side_effect=remote), \
+                 mock.patch.object(z, '_ensure_release_trunk_objects'), \
                  mock.patch.object(z._releases, 'preview_trunk_propagation',
-                    return_value={'status': 'propagate', 'source': 'main',
-                                  'target': 'release/1'}) as preview:
+                                   return_value=preview_value) as preview:
                 result = z.release_cli(root, 'propagate', request)
 
         expected = [('main', commits['main']),
                     ('release/1', commits['release/1']),
                     ('release/2', commits['release/2']),
                     ('dev', commits['dev'])]
-        self.assertEqual(['main', 'release/1', 'release/2', 'dev'], observed)
+        self.assertEqual(['main', 'release/1', 'release/2', 'dev'] * 2, observed)
         preview.assert_called_once_with(root, expected)
-        self.assertEqual({'status': 'propagate', 'source': 'main',
-                          'target': 'release/1', 'trunks': expected}, result)
+        self.assertEqual({**preview_value, 'trunks': expected,
+                          'execute': {'expected_revision': plan['revision'],
+                                      'preview': preview_value,
+                                      'preview_digest': z._releases.digest(preview_value),
+                                      'trunks': expected}}, result)
 
     def test_configure_retry_reuses_enrollment_after_audit_failure(self):
         adapter = MemoryPlanAdapter()
