@@ -777,3 +777,147 @@ def preview_attempt_restack(repo: Path, *, old_base: str, new_base: str,
             'proposed_tree': tree, 'conflicts': conflicts, 'change_count': changed,
             'content_stale': movement['old_tree'] != movement['new_tree'],
             'topology_changed': old_base != new_base}
+
+
+def _restack_preview(repo: Path, preview: dict, owned_paths: list[str]) -> dict:
+    """Recompute a restack plan so caller-supplied facts never authorize Git writes."""
+    if not isinstance(preview, dict):
+        raise ValueError('Git restack requires an exact preview')
+    required = {'status', 'old_base', 'new_base', 'attempt_commit', 'original_tree',
+                'proposed_tree', 'conflicts', 'change_count', 'content_stale',
+                'topology_changed'}
+    if set(preview) != required:
+        raise ValueError('Git restack preview fields changed')
+    current = preview_attempt_restack(repo, old_base=preview['old_base'],
+        new_base=preview['new_base'], attempt_commit=preview['attempt_commit'],
+        owned_paths=owned_paths)
+    if current != preview:
+        raise ValueError('Git restack preview changed')
+    return current
+
+
+def _restack_sequencer(repo: Path) -> str | None:
+    result = subprocess.run(['git', 'rev-parse', '--verify', 'CHERRY_PICK_HEAD'],
+        cwd=repo, capture_output=True, text=True)
+    if result.returncode:
+        return None
+    value = result.stdout.strip()
+    if re.fullmatch(r'[0-9a-f]{40}', value) is None:
+        raise ValueError('Git restack cherry-pick identity is invalid')
+    return value
+
+
+def _restack_dirty_paths(repo: Path, owned_paths: list[str]) -> list[str]:
+    dirty = _git(repo, 'status', '--porcelain=v1', '-z', '--untracked-files=all',
+                 '--no-renames', '--', '.', ':(exclude).zzzops')
+    paths = []
+    for entry in dirty.split(b'\x00'):
+        if not entry:
+            continue
+        if len(entry) < 4 or entry[2:3] != b' ':
+            raise ValueError('Git restack worktree status is invalid')
+        try:
+            path = entry[3:].decode('utf-8')
+        except UnicodeDecodeError as exc:
+            raise ValueError('Git restack contains a non-UTF-8 path') from exc
+        if not _owned_path(path) or path not in owned_paths:
+            raise ValueError('Git restack contains unowned dirt outside reviewed owned paths')
+        paths.append(path)
+    return paths
+
+
+def _restack_clean_result(repo: Path, plan: dict, owned_paths: list[str]) -> dict:
+    head = _git(repo, 'rev-parse', 'HEAD').decode().strip()
+    checkpoint = validate_checkpoint(repo, base_commit=plan['new_base'],
+        result_commit=head, owned_paths=owned_paths)
+    if (plan['status'] == 'clean'
+            and checkpoint['result_tree'] != plan['proposed_tree']):
+        raise ValueError('Git restack result tree differs from exact preview')
+    return {**plan, 'status': 'clean', 'result_commit': head,
+            'result_tree': checkpoint['result_tree'], 'conflicts': []}
+
+
+def apply_attempt_restack(repo: Path, preview: dict, owned_paths: list[str]) -> dict:
+    """Cherry-pick one exact verified attempt onto its previewed moved base."""
+    repo = Path(repo).resolve()
+    plan = _restack_preview(repo, preview, owned_paths)
+    head = _git(repo, 'rev-parse', 'HEAD').decode().strip()
+    sequencer = _restack_sequencer(repo)
+    if sequencer is not None:
+        if (sequencer != plan['attempt_commit'] or head != plan['new_base']
+                or plan['status'] != 'conflict'):
+            raise ValueError('Git restack sequencer or HEAD changed')
+        paths = _restack_dirty_paths(repo, owned_paths)
+        if sorted(paths) != sorted(plan['conflicts']):
+            raise ValueError('Git restack conflict paths changed')
+        return {**plan, 'status': 'conflict', 'conflicts': sorted(paths)}
+    if head != plan['new_base']:
+        return _restack_clean_result(repo, plan, owned_paths)
+    if _restack_dirty_paths(repo, owned_paths):
+        raise ValueError('Git restack requires a clean new-base worktree')
+    result = subprocess.run(['git', 'cherry-pick', plan['attempt_commit']], cwd=repo,
+                            capture_output=True, text=True)
+    if result.returncode == 0:
+        return _restack_clean_result(repo, plan, owned_paths)
+    sequencer = _restack_sequencer(repo)
+    if sequencer != plan['attempt_commit'] or plan['status'] != 'conflict':
+        raise ValueError('Git restack cherry-pick failed without the expected conflict')
+    paths = _restack_dirty_paths(repo, owned_paths)
+    if sorted(paths) != sorted(plan['conflicts']):
+        raise ValueError('Git restack conflict paths changed')
+    return {**plan, 'status': 'conflict', 'conflicts': sorted(paths)}
+
+
+def continue_attempt_restack(repo: Path, preview: dict, owned_paths: list[str]) -> dict:
+    """Continue only the exact previewed cherry-pick after an owned resolution."""
+    repo = Path(repo).resolve()
+    plan = _restack_preview(repo, preview, owned_paths)
+    head = _git(repo, 'rev-parse', 'HEAD').decode().strip()
+    sequencer = _restack_sequencer(repo)
+    if sequencer is None:
+        if head == plan['new_base']:
+            raise ValueError('Git restack has no conflict resolution to continue')
+        return _restack_clean_result(repo, plan, owned_paths)
+    if sequencer != plan['attempt_commit'] or head != plan['new_base']:
+        raise ValueError('Git restack sequencer or HEAD changed')
+    paths = _restack_dirty_paths(repo, owned_paths)
+    if not paths:
+        raise ValueError('Git restack conflict resolution is missing')
+    for path in paths:
+        target = repo / path
+        if target.is_symlink() or target.exists() and not target.is_file():
+            raise ValueError('Git restack resolution requires ordinary files, never symlinks')
+    _git(repo, 'add', '-A', '--', *sorted(set(paths)))
+    if _git(repo, 'ls-files', '-u', '-z'):
+        raise ValueError('Git restack conflict remains unresolved')
+    environment = dict(os.environ, GIT_EDITOR='true')
+    result = subprocess.run(['git', 'cherry-pick', '--continue'], cwd=repo,
+                            capture_output=True, text=True, env=environment)
+    if result.returncode:
+        raise ValueError('Git restack could not continue the exact cherry-pick')
+    return _restack_clean_result(repo, plan, owned_paths)
+
+
+def abort_attempt_restack(repo: Path, preview: dict, owned_paths: list[str]) -> dict:
+    """Abort an exact conflict and restore the clean moved-base attempt."""
+    repo = Path(repo).resolve()
+    plan = _restack_preview(repo, preview, owned_paths)
+    head = _git(repo, 'rev-parse', 'HEAD').decode().strip()
+    sequencer = _restack_sequencer(repo)
+    if sequencer is None:
+        if head != plan['new_base'] or _restack_dirty_paths(repo, owned_paths):
+            raise ValueError('Git restack abort state changed')
+    else:
+        if sequencer != plan['attempt_commit'] or head != plan['new_base']:
+            raise ValueError('Git restack sequencer or HEAD changed')
+        _restack_dirty_paths(repo, owned_paths)
+        result = subprocess.run(['git', 'cherry-pick', '--abort'], cwd=repo,
+                                capture_output=True, text=True)
+        if result.returncode:
+            raise ValueError('Git restack could not abort the exact cherry-pick')
+    if (_git(repo, 'rev-parse', 'HEAD').decode().strip() != plan['new_base']
+            or _restack_sequencer(repo) is not None
+            or _restack_dirty_paths(repo, owned_paths)):
+        raise ValueError('Git restack abort did not restore the clean moved base')
+    return {**plan, 'status': 'aborted', 'head_commit': plan['new_base'],
+            'conflicts': []}
