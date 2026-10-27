@@ -158,7 +158,7 @@ for workflow, hot_paths in WORKFLOW_PROMPTS.items():
 
 WORKFLOW_SIGNALS = {
     "bootstrap-greenfield": ("never silently de-escalate", "adaptive product interview", "exactly one canonical top-level product-outcome goal", "canonical verification", "Continue from harness outcomes into product milestones", "ordered PR review queue", PROACTIVE_DELEGATION_SIGNAL),
-    "bootstrap-brownfield": ("evidence-led product/harness audit", "top-level product-outcome goal", "reconcile it in place", "$migrate-to-zzzops", "canonical verification", "until exhaustion", PROACTIVE_DELEGATION_SIGNAL),
+    "bootstrap-brownfield": ("evidence-led product/harness audit", "top-level product-outcome goal", "Preserve existing repository instructions", "$migrate-to-zzzops", "canonical verification", "until exhaustion", PROACTIVE_DELEGATION_SIGNAL),
     "capture": ("duplicate/relationship matches", "interview at", "owns requirements/acceptance", "active same-task execute intent", "effective engineering rigor", "vibe → light", "never silently de-escalate", "Git-free creation", PROACTIVE_DELEGATION_SIGNAL),
     "execution": ("complete:true", "smallest falsifiable chunk", "difficulty is cost, not value", "human_at_exhaustion", "human_after_checks", "PR review queue", "Execution assumes the user is absent", "Before substantive work on a newly selected goal", "safe useful work", "effective engineering rigor", "created-but-unrun machinery is not proof", "current public workflow checkpoint", "mandatory implementation review", PROACTIVE_DELEGATION_SIGNAL),
     "policy-review": ("Only this workflow changes or confirms the reviewed configuration and agent policy", "explicit approval of the current digest", "The policy is already approved", "privacy-safe execution reports"),

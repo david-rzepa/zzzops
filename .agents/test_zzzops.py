@@ -6823,6 +6823,12 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("Approved adherence", review)
         self.assertIn("recorded in the reviewed project policy", review)
         self.assertIn("Do not create or reconcile a root `AGENTS.md` block", review)
+        bootstrap = (root / "zzzops" / "references" / "next_steps" / "bootstrap.md").read_text(encoding="utf-8")
+        self.assertIn("Repository instruction files are optional", bootstrap)
+        self.assertIn("do not create `AGENTS.md` merely to mirror ZzzOps policy", bootstrap)
+        for name in ("GREENFIELD.md", "BROWNFIELD.md"):
+            guidance = (root / "zzzops" / "references" / "bootstrap" / name).read_text(encoding="utf-8")
+            self.assertNotIn("owned by `$review-zzzops-policy`", guidance)
         for text in (initialization, execution):
             self.assertIn("`optional`", text)
             self.assertIn("`tracked`", text)

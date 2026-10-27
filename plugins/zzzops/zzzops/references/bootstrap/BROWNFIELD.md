@@ -9,7 +9,7 @@ Brownfield bootstrap is an evidence-led product/harness audit, not a re-scaffold
 3. Compare the observed harness with effective rigor and applicable risks. Report only evidenced gaps: missing or divergent canonical verification, unenforced material invariants, inadequate risk-specific checks, stale context, or absent required CI. Do not impose a preferred layout, tool, or architecture on a working repository.
 4. Build the root/harness/product DAG through `PLAN.md`. Preserve valid product hierarchy and add harness dependencies only to eligible unstarted goals. Send TODO/backlog migration to `$migrate-to-zzzops`; bootstrap does not import it itself.
 5. Invoke `$execute-zzzops` for every authorized gap and product goal until exhaustion. Each change uses repository conventions, runs its narrow probe, and produces observed evidence; a new file or command that was not executed is not closure.
-6. Reconcile `AGENTS.md` in place. Preserve unrelated instructions and the ZzzOps-adherence block owned and updated by `$review-zzzops-policy`; do not generate another policy renderer. Add only stable, high-signal commands, invariants, and links justified by the audit. Prefer existing deterministic enforcement when practical, but prose remains valid when machinery would not earn its complexity.
+6. Preserve existing repository instructions. Reconcile them only where the audit justifies stable, high-signal commands, invariants, or links; do not add a ZzzOps policy mirror or create an instruction file by default. Prefer existing deterministic enforcement when practical, but prose remains valid when machinery would not earn its complexity.
 7. At combined harness and product checkpoints, run canonical verification and inspect equivalent exact-head CI. Report the product root, preserved decisions, closed gaps, product outcomes, ordered PR queue, conflicts, and hard blockers.
 8. Repeat the audit. A clean rerun creates no duplicate goals, rewrites no context, and makes no source change.
 
@@ -23,7 +23,7 @@ The audit must:
 - observe each current command before proposing changes;
 - create ordinary goals to make `verify` compose the existing lint/build/test/dependency gates and make CI invoke `verify`;
 - reconcile the prose invariant with the existing dependency-test facility without introducing a second architecture tool;
-- preserve the policy-owned ZzzOps block in `AGENTS.md` byte-for-byte unless `$review-zzzops-policy` changes it;
+- preserve unrelated existing `AGENTS.md` instructions unless a separately justified harness goal changes them;
 - route an unrelated legacy TODO collection to `$migrate-to-zzzops` rather than absorbing it;
 - execute the gap goals through `$execute-zzzops`, then observe one passing local canonical command and equivalent exact-head CI;
 - leave product behavior and established architecture unchanged, and make a second bootstrap run a no-op.
