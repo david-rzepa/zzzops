@@ -1732,10 +1732,6 @@ def _derive_task_steps(graph, payload, context):
                     old_pre_static['sections'] = [row for row in old_pre_static['sections']
                         if row.get('id') not in OPERATIONAL_POLICY_SECTIONS]
                     historical_form_hashes.add(semantic_hash(old_pre_static))
-                if (approved_policy is not None and
-                        (approved_policy not in historical_form_hashes or recorded_policy not in historical_form_hashes)):
-                    state['reason'] = 'Approved policy identity does not authenticate Result provenance form'
-                    continue
                     for row in old_pre_static['sections']:
                         if row.get('id') == 'workflow_adherence':
                             for field in ('phase_dag', 'migration_entries'):
@@ -1744,6 +1740,10 @@ def _derive_task_steps(graph, payload, context):
                                           'default_id', 'default_disposition'):
                                 row.pop(field, None)
                     historical_form_hashes.add(semantic_hash(old_pre_static))
+                if (approved_policy is not None and
+                        (approved_policy not in historical_form_hashes or recorded_policy not in historical_form_hashes)):
+                    state['reason'] = 'Approved policy identity does not authenticate Result provenance form'
+                    continue
                 def ci_mode(value):
                     return next((row.get('configuration', {}).get('required_ci') for row in value.get('sections', [])
                                  if row.get('id') == 'verification_testing'), None)
