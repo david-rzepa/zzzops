@@ -31,6 +31,7 @@ import zzzops_state_cache as state_cache
 _OBSERVED_ARTIFACT_INDEXES = {}
 _GIT_ARTIFACT_SNAPSHOTS = {}
 _VERIFICATION_LOCKS = {}
+_STORAGE_RENEW_INTERVAL_SECONDS = 90
 
 
 class ContinuationFirstEnvelopeBudget(ValueError):
@@ -1154,6 +1155,8 @@ class Workflow:
             adapter.timeout_budget = budget.timeout
         deadline = time.monotonic() + 10
         reservation = None
+        keepalive_stop = threading.Event()
+        keepalive = None
         attempted = False
         observed_adapter = self.adapter
         if isinstance(observed_adapter, ProviderReadGateway): self.adapter = self._mutation_adapter
@@ -1174,12 +1177,38 @@ class Workflow:
                 raise ValueError('Provider did not confirm the storage reservation expiry; no write is allowed')
             reservation = {
                 'adapter': adapter, 'owner': owner, 'run': run,
-                'expires_at': expires_at, 'valid': True,
+                'expires_at': expires_at, 'valid': True, 'mutex': threading.Lock(),
             }
             self._storage_reservation = reservation
+            def maintain_reservation():
+                while not keepalive_stop.wait(_STORAGE_RENEW_INTERVAL_SECONDS):
+                    if keepalive_stop.is_set():
+                        return
+                    with reservation['mutex']:
+                        if not reservation['valid']:
+                            return
+                        try:
+                            renewed = api.renew_storage_lock(
+                                adapter, self.repository, 'workflow', owner, run, 300,
+                            )
+                            renewed_expiry = renewed.get('expires_at')
+                            if (not renewed.get('acquired') or not isinstance(renewed_expiry, (int, float))
+                                    or isinstance(renewed_expiry, bool) or renewed_expiry <= time.time()):
+                                reservation['valid'] = False
+                                return
+                            reservation['expires_at'] = renewed_expiry
+                        except Exception:
+                            # Provider uncertainty never extends write authority.
+                            reservation['valid'] = False
+                            return
+            keepalive = threading.Thread(target=maintain_reservation, daemon=True)
+            keepalive.start()
             self.invalidate()
             yield
         finally:
+            keepalive_stop.set()
+            if keepalive is not None:
+                keepalive.join()
             self.adapter = observed_adapter
             if getattr(self, '_storage_reservation', None) is reservation:
                 self._storage_reservation = None
@@ -1192,23 +1221,24 @@ class Workflow:
     def save(self, issue, goal, desired, *, human_spec=None):
         reservation = getattr(self, '_storage_reservation', None)
         if reservation is not None:
-            if not reservation['valid']:
-                raise ValueError('A current workflow storage reservation is required before writing')
-            if time.time() >= reservation['expires_at']:
-                reservation['valid'] = False
-                raise ValueError('The workflow storage reservation expired before writing; re-read and retry')
-            renewed = self.api.renew_storage_lock(
-                reservation['adapter'], self.repository, 'workflow',
-                reservation['owner'], reservation['run'], 300,
-            )
-            if not renewed.get('acquired'):
-                reservation['valid'] = False
-                raise ValueError('The workflow storage reservation was lost before writing; re-read and retry')
-            expires_at = renewed.get('expires_at')
-            if not isinstance(expires_at, (int, float)) or isinstance(expires_at, bool) or expires_at <= time.time():
-                reservation['valid'] = False
-                raise ValueError('Provider did not confirm a live workflow storage reservation; no write is allowed')
-            reservation['expires_at'] = expires_at
+            with reservation['mutex']:
+                if not reservation['valid']:
+                    raise ValueError('A current workflow storage reservation is required before writing')
+                if time.time() >= reservation['expires_at']:
+                    reservation['valid'] = False
+                    raise ValueError('The workflow storage reservation expired before writing; re-read and retry')
+                renewed = self.api.renew_storage_lock(
+                    reservation['adapter'], self.repository, 'workflow',
+                    reservation['owner'], reservation['run'], 300,
+                )
+                if not renewed.get('acquired'):
+                    reservation['valid'] = False
+                    raise ValueError('The workflow storage reservation was lost before writing; re-read and retry')
+                expires_at = renewed.get('expires_at')
+                if not isinstance(expires_at, (int, float)) or isinstance(expires_at, bool) or expires_at <= time.time():
+                    reservation['valid'] = False
+                    raise ValueError('Provider did not confirm a live workflow storage reservation; no write is allowed')
+                reservation['expires_at'] = expires_at
         desired['revision'] = goal['revision'] + 1
         def before_publish():
             if reservation is not None and (not reservation['valid'] or time.time() >= reservation['expires_at']):
