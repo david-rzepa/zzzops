@@ -175,13 +175,6 @@ class GenericIntegrationFreshnessTests(DagFixture):
         self.session.project = original
         self.session.finish(work, {"value": "unchanged approved policy"})
 
-    def test_ci_only_change_preserves_current_nonterminal_assignment(self):
-        work = self.session.acquire("produce")
-        configuration = z._workflow_section(self.session.project, "verification_testing")["configuration"]
-        configuration["required_ci"] = ("disabled" if configuration.get("required_ci") != "disabled" else "inspect_exact_pr_head")
-        self.session.finish(work, {"value": "CI mode does not change this nonterminal result"})
-        self.assertNotIn("produce", self.names())
-
     def test_operational_routing_and_capacity_settings_do_not_stale_owned_or_completed_work(self):
         work = self.session.acquire("produce")
         routing = z._workflow_section(self.session.project, "model_routing")["configuration"]

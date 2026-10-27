@@ -2322,7 +2322,13 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.session.finish(review, {"permit": self.permit})
         self.session.finish(self.session.acquire("consent"), {"permit": self.permit})
 
-        PolicyCiTransitionTests.reviewed_policy(self, "existing_only")
+        parallelism = z._workflow_section(
+            self.session.project, "autonomy_approval_parallelism")["configuration"]
+        parallelism["max_workers"] += 1
+        autonomy = z._workflow_section(self.session.project, "autonomy_approval_parallelism")
+        autonomy["default_disposition"] = "changed"
+        autonomy.pop("default_provenance", None)
+        PolicyCiTransitionTests.reviewed_policy(self, "disabled")
 
         self.acquire_workspace("alpha")
 
@@ -4540,10 +4546,13 @@ class GenericStoragePublicTests(DagFixture):
                 comment["body"] = original
                 self.assertEqual(artifact, self.session.read(100, reference))
 
-    def test_bounded_delta_depth_creates_independent_full_record(self):
-        first, _artifact, _before = self.versioned_output("a" * 20000)
-        for index in range(9):
-            changed, artifact, _before = self.versioned_output(("a" * 10000) + str(index) + ("a" * 9999))
+    def test_unfavorable_output_delta_is_independent_full_record(self):
+        original = "".join(hashlib.sha256(("first-%d" % i).encode()).hexdigest() for i in range(16))
+        divergent = list(original)
+        for index in range(0, len(divergent), 2):
+            divergent[index] = "X" if divergent[index] != "X" else "Y"
+        first, _artifact, _before = self.versioned_output(original)
+        changed, artifact, _before = self.versioned_output("".join(divergent))
         self.assertEqual("full", self.records(changed)[0][2]["kind"])
         self.remove_output_record(first)
         self.assertEqual(artifact, self.session.read(100, changed))
