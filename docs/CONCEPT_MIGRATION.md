@@ -4,7 +4,7 @@ Goal #334 audited repeated operational vocabulary after the bounded-commitment, 
 
 ## Method
 
-The inventory scans `AGENTS.md`, canonical plugin skills and rules, templates, and agent-facing documentation. Codex and Claude distributions are derived from those canonical plugin sources and are validated by their package tests; generated copies are not edited or double-counted.
+The historical inventory scanned the then-present `AGENTS.md`, canonical plugin skills and rules, templates, and agent-facing documentation. Codex and Claude distributions were derived from those canonical plugin sources and validated by their package tests; generated copies were not edited or double-counted.
 
 Each candidate records exact boundary-matched occurrences, document paths, routed-load weight, estimated repeated-definition bytes, cold definition bytes, expected on-demand read rate, concept-link overhead, semantic-divergence penalty, authority-sensitivity penalty, and maintenance value. The deterministic score is:
 
