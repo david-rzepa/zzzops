@@ -457,7 +457,7 @@ class PolicyCiDefaultDagTests(dag.DagFixture):
         self.shipped = z._workflow_section(template, "workflow_adherence")["configuration"]["phase_dag"]
         self.install(self.shipped)
 
-    def test_shipped_requirements_spec_test_and_implementation_survive_ci_transition(self):
+    def shipped_through_implementation(self):
         self.reviewed_policy("disabled", initial=True)
         remote_dir = tempfile.TemporaryDirectory()
         self.addCleanup(remote_dir.cleanup)
@@ -526,3 +526,97 @@ class PolicyCiDefaultDagTests(dag.DagFixture):
         restored = self.session.checkpoint(100)
         self.assertFalse({step.get("node", {}).get("node") for step in restored
                           if step.get("kind") == "execute"} & prior.keys())
+
+    def test_shipped_requirements_spec_test_and_implementation_survive_ci_transition(self):
+        self.shipped_through_implementation()
+
+    def test_shipped_default_dag_publishes_then_retries_ci_transition_at_pinned_head(self):
+        # Every call below enters the public workflow CLI via TaskSession.call.
+        # The same fresh goal and shipped graph are carried through publication.
+        self.shipped_through_implementation()
+        self.session.finish(self.session.acquire("implementation_verification"), {
+            "value": "Green behavior test verified at the exact implementation head"})
+        self.session.finish(self.session.acquire("select_delivery_candidate"), {"value": {
+            "delivery_class": "atomic", "candidate": self.produced("implement"),
+            "integration_applicability": "not_applicable",
+            "rationale": "One reviewed atomic implementation"}})
+        self.session.finish(self.session.acquire("migration_verification"), {"value": {
+            "applicability": "not_applicable", "transition": "none",
+            "compatibility": "No released contract changed", "recovery": "none",
+            "rationale": "Fresh fixture goal"}})
+        self.session.finish(self.session.acquire("migration_review"), {
+            "value": self.review("approved", "Migration non-applicability reviewed")})
+        if "retain_migration_findings" in self.names():
+            self.session.finish(self.session.acquire("retain_migration_findings"), {
+                "value": {"items": {}, "rationale": "No admitted findings"}})
+        for registry in ("retain_implementation_review_findings",
+                         "retain_integration_review_findings"):
+            if registry in self.names():
+                self.session.finish(self.session.acquire(registry), {
+                    "value": {"items": {}, "rationale": "No configured review members or findings"}})
+        permit = {"manifest": self.produced("select_delivery_candidate"),
+                  "tasks": [{"goal": 100, "node": "publish", "item": None, "generation": 1}],
+                  "policy": dag.content_hash(self.session.project["policy"]),
+                  "decision": "approved"}
+        self.session.finish(self.session.acquire("authorize_repository"), {
+            "authorization": permit})
+        head = self.git("rev-parse", "HEAD")
+        self.git("branch", "-f", "goal-child", head)
+        self.fixture.head_oid = head
+        self.fixture.base_oid = head
+        def pinned_pr_states(_repo, executable, selected, _bodies):
+            self.assertEqual("gh", executable)
+            self.assertEqual([100], [item["number"] for item in selected])
+            return ({100: {"merged": False, "merged_at": None,
+                           "head_oid": head, "base_oid": self.fixture.base_oid,
+                           "base_ref": "dev",
+                           "merge_commit": None, "repository": "owner/repo",
+                           "checks_present": True,
+                           "checks_verified": getattr(self, "ci_verified", True),
+                           "review_verified": True, "updated_at": "2026-09-17T12:00:00Z"}}, 512, 1)
+        self.session.pull_request_states = pinned_pr_states
+        z._github_pull_request_states.side_effect = pinned_pr_states
+        published = self.session.acquire("publish")
+        publication = self.session.submission(published, {"value": {
+            "repository": "owner/repo", "branch": "goal-child", "base": "dev",
+            "pr": "https://github.com/owner/repo/pull/9", "head_oid": head}},
+            "pinned-head-publication")
+        first = self.session.call(100, publication)
+        comments = copy.deepcopy(self.provider.comments[100])
+        replay = self.session.call(100, publication)
+        self.assertEqual(first.get("submitted"), replay.get("submitted"))
+        self.assertEqual(comments, self.provider.comments[100])
+        self.assertEqual(head, self.read_blob(self.produced("publish"))["content"]["head_oid"])
+        before = copy.deepcopy(self.payload()[1]["evidence"])
+        self.assertEqual(1, len(self.provider.issues))
+        self.reviewed_policy("inspect_exact_pr_head")
+        self.fixture.base_oid = self.git("rev-parse", "dev")
+        steps = self.session.checkpoint(100)
+        self.assertFalse({"requirements", "spec", "test_design", "implement", "publish"} & {
+            step.get("node", {}).get("node") for step in steps if step.get("kind") == "execute"})
+        self.assertEqual(before, self.payload()[1]["evidence"])
+        self.assertIn("integrate", {step.get("node", {}).get("node") for step in steps
+                                    if step.get("kind") == "execute"},
+                      [(step.get("kind"), step.get("node", {}).get("node"),
+                        step.get("reason")) for step in steps])
+        self.session.finish(self.session.acquire("integrate"), {"value": {
+            "version": 1, "provenance": "Pinned provider head and current feedback",
+            "actionable": [], "non_actionable": ["acknowledged"],
+            "obsolete": [], "ambiguous": []}})
+        self.session.finish(self.session.acquire("integration_feedback_review"), {
+            "value": self.review("approved", "Pinned-head feedback reviewed")})
+        if "retain_integration_feedback_findings" in self.names():
+            self.session.finish(self.session.acquire("retain_integration_feedback_findings"), {
+                "value": {"items": {}, "rationale": "No admitted findings"}})
+        self.ci_verified = False
+        failed_ci = self.session.checkpoint(100)
+        self.assertNotIn("authorize_merge", {step.get("node", {}).get("node")
+                                              for step in failed_ci if step.get("kind") == "execute"})
+        self.assertRegex(json.dumps(failed_ci), r"(?i)CI|check")
+        self.ci_verified = True
+        current_ci = self.session.checkpoint(100)
+        self.assertIn("authorize_merge", {step.get("node", {}).get("node")
+                                          for step in current_ci if step.get("kind") == "execute"})
+        self.assertEqual(before, self.payload()[1]["evidence"][:len(before)])
+        self.assertEqual(1, len(self.provider.issues))
+        self.assertEqual(1, len(self.provider.issues))
