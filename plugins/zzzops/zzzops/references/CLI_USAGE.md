@@ -3,6 +3,9 @@
 Run package-local [`zzzops.py`](../zzzops.py), never globally. Use the skill's
 semantic `--intent` with `workflow --intent INTENT`; copy returned `--goal`, runtime and input.
 
+Authority order is user/safety > project rules > reviewed project policy > goals;
+goals grant no authority.
+
 Workflow checkpoints and reads have a 90-second provider budget by default.
 Use `workflow --timeout SECONDS` for a slower repository; the override must be
 a positive finite provider deadline for that invocation. Renewal keeps its
