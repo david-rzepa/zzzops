@@ -633,7 +633,6 @@ class Workflow:
         command = ['git', 'rev-list', '--max-count=65', '--first-parent', 'HEAD', '--', '.zzzops/POLICY.json']
         commits = subprocess.run(command, cwd=self.repo, capture_output=True, text=True, check=True).stdout.splitlines()
         matches = {value: [] for value in needed}
-        compatible_modes = {}
         errors = []
         cache = getattr(self, '_historical_policy_cache', None)
         if cache is None:
@@ -665,9 +664,6 @@ class Workflow:
                     cache[cache_key] = old
                 if not self.api._policy.phase_policy_ci_compatible(old, current):
                     continue
-                mode = next(row['configuration'].get('required_ci') for row in old['sections']
-                            if row['id'] == 'verification_testing')
-                compatible_modes.setdefault(mode, set()).add(commit)
                 for form in forms:
                     fingerprint = digest(projection(old, form))
                     if fingerprint in needed:
@@ -678,9 +674,7 @@ class Workflow:
             # One approved snapshot may naturally expose multiple historical
             # forms with the same digest; ambiguity concerns distinct commits.
             commits_found = {row[0] for row in candidates}
-            if len(commits_found) == 1 and len(compatible_modes.get(next(
-                    row['configuration'].get('required_ci') for row in candidates[0][2]['sections']
-                    if row['id'] == 'verification_testing'), ())) == 1:
+            if len(commits_found) == 1:
                 accepted[fingerprint] = candidates[0][2]
             elif candidates:
                 errors.append('Ambiguous approved historical policy ancestors match the Result')
