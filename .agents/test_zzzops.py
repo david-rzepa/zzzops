@@ -6821,9 +6821,8 @@ class WorkflowContractTests(unittest.TestCase):
         initialization = (Path(__file__).parents[1] / "docs" / "INITIALIZATION.md").read_text(encoding="utf-8")
         execution = (Path(__file__).parents[1] / "docs" / "EXECUTION.md").read_text(encoding="utf-8")
         self.assertIn("Approved adherence", review)
-        self.assertIn("reconcile a bounded `AGENTS.md` block", review)
-        self.assertIn("preserve all unrelated instructions", review)
-        self.assertIn("BEGIN ZZZOPS WORKFLOW ADHERENCE", review)
+        self.assertIn("recorded in the reviewed project policy", review)
+        self.assertIn("Do not create or reconcile a root `AGENTS.md` block", review)
         for text in (initialization, execution):
             self.assertIn("`optional`", text)
             self.assertIn("`tracked`", text)
