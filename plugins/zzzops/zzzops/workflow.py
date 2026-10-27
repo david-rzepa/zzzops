@@ -598,6 +598,95 @@ class Workflow:
     def node_evidence_policy(self):
         return digest(self.api._phase_evidence.evidence_policy(self.project['policy']))
 
+    def node_historical_policies(self, snapshots, artifacts):
+        """Authenticate bounded first-parent policy history for recorded Results."""
+        forms = ("full", "pre_static", "current", "normalized")
+        projection = self.api._policy.phase_policy_projection
+        current = self.project['policy']
+        current_hashes = {digest(projection(current, form)) for form in forms}
+        recorded = {artifacts[ref['hash']].get('provenance', {}).get('policy')
+                    for snapshot in snapshots.values() for ref in snapshot['payload']['evidence']}
+        needed = {value for value in recorded if isinstance(value, str) and value not in current_hashes}
+        if not needed:
+            return {}, None
+        accepted = {}
+        # Preserve the pre-existing phase-DAG adapter: an authenticated graph
+        # Ref may reconstruct the sole excluded workflow field exactly.
+        for snapshot in snapshots.values():
+            graph_ref = snapshot['payload'].get('graph')
+            old_graph = artifacts.get(graph_ref.get('hash')) if isinstance(graph_ref, dict) else None
+            if not isinstance(old_graph, dict):
+                continue
+            reconstructed = copy.deepcopy(current)
+            for section in reconstructed['sections']:
+                if section['id'] == 'workflow_adherence':
+                    section['configuration']['phase_dag'] = old_graph
+            if projection(reconstructed, 'normalized') == projection(current, 'normalized'):
+                for form in forms:
+                    fingerprint = digest(projection(reconstructed, form))
+                    if fingerprint in needed:
+                        accepted[fingerprint] = reconstructed
+        needed -= set(accepted)
+        if not needed:
+            return accepted, None
+        command = ['git', 'rev-list', '--max-count=65', '--first-parent', 'HEAD', '--', '.zzzops/POLICY.json']
+        commits = subprocess.run(command, cwd=self.repo, capture_output=True, text=True, check=True).stdout.splitlines()
+        matches = {value: [] for value in needed}
+        compatible_modes = {}
+        errors = []
+        cache = getattr(self, '_historical_policy_cache', None)
+        if cache is None:
+            cache = self._historical_policy_cache = {}
+        for commit in commits[:64]:
+            try:
+                cache_key = (commit, digest(current))
+                old = cache.get(cache_key)
+                if old is None:
+                    files = {}
+                    for name in ('POLICY.json', 'PROJECT.md', 'PROJECT_AUDIT.md'):
+                        raw = subprocess.run(['git', 'show', f'{commit}:.zzzops/{name}'], cwd=self.repo,
+                                             capture_output=True, check=True).stdout
+                        files[name] = raw.decode('utf-8-sig')
+                    state = json.loads(files['POLICY.json'])
+                    invalid = self.api._policy.validate_project_state(state)
+                    if state.get('initialized') is not True:
+                        invalid.append('historical policy is not initialized')
+                    if state.get('repository', {}).get('identity') != self.project.get('repository', {}).get('identity'):
+                        invalid.append('historical policy repository identity changed')
+                    bindings = state.get('bindings', {})
+                    for name, file in (('project', 'PROJECT.md'), ('audit', 'PROJECT_AUDIT.md')):
+                        if bindings.get(name, {}).get('digest') != self.api._policy.project_digest(files[file]):
+                            invalid.append(f'historical {name} policy artifact binding changed')
+                    if invalid:
+                        errors.extend(invalid)
+                        continue
+                    old = state['policy']
+                    cache[cache_key] = old
+                if not self.api._policy.phase_policy_ci_compatible(old, current):
+                    continue
+                mode = next(row['configuration'].get('required_ci') for row in old['sections']
+                            if row['id'] == 'verification_testing')
+                compatible_modes.setdefault(mode, set()).add(commit)
+                for form in forms:
+                    fingerprint = digest(projection(old, form))
+                    if fingerprint in needed:
+                        matches[fingerprint].append((commit, form, old))
+            except (OSError, UnicodeError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as exc:
+                errors.append(f'historical policy ancestor {commit} is unavailable or malformed: {exc}')
+        for fingerprint, candidates in matches.items():
+            # One approved snapshot may naturally expose multiple historical
+            # forms with the same digest; ambiguity concerns distinct commits.
+            commits_found = {row[0] for row in candidates}
+            if len(commits_found) == 1 and len(compatible_modes.get(next(
+                    row['configuration'].get('required_ci') for row in candidates[0][2]['sections']
+                    if row['id'] == 'verification_testing'), ())) == 1:
+                accepted[fingerprint] = candidates[0][2]
+            elif candidates:
+                errors.append('Ambiguous approved historical policy ancestors match the Result')
+            else:
+                errors.append('No authenticated matching historical policy ancestor within 64 policy changes')
+        return accepted, '; '.join(errors) if errors else None
+
     def node_authorization_policy_matches(self, value, artifact, result, artifacts):
         """Keep an exact authorization valid across later policy settings changes."""
         accepted = {
@@ -2837,6 +2926,9 @@ class Workflow:
                 events, closure[snapshot['number']]['graph'], snapshot['number'])
         selected = closure[snapshot['number']]
         context['goals'] = closure
+        historical, historical_error = self.node_historical_policies(closure, snapshot['artifacts'])
+        context['historical_policies'] = historical
+        context['historical_policy_error'] = historical_error
         result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
         workspaces = self.node_workspace_context(closure, result, result['artifacts'])
         publications = {} if publication_probe else self.node_publication_context(closure, result, result['artifacts'])
