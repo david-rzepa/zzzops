@@ -604,8 +604,9 @@ class Workflow:
         projection = self.api._policy.phase_policy_projection
         current = self.project['policy']
         current_hashes = {digest(projection(current, form)) for form in forms}
-        recorded = {artifacts[ref['hash']].get('provenance', {}).get('policy')
-                    for snapshot in snapshots.values() for ref in snapshot['payload']['evidence']}
+        recorded = {value for snapshot in snapshots.values() for ref in snapshot['payload']['evidence']
+                    for value in (artifacts[ref['hash']].get('provenance', {}).get('policy'),
+                                  artifacts[ref['hash']].get('provenance', {}).get('approved_policy'))}
         needed = {value for value in recorded if isinstance(value, str) and value not in current_hashes}
         if not needed:
             return {}, None
@@ -691,7 +692,9 @@ class Workflow:
         """Keep an exact authorization valid across later policy settings changes."""
         accepted = {
             self.node_evidence_policy(),
+            digest(self.project['policy']),
             artifact.get('provenance', {}).get('policy'),
+            artifact.get('provenance', {}).get('approved_policy'),
         }
         bindings = [item for item in result.get('inputs', []) if item.get('name') == '__policy']
         if len(bindings) == 1:
@@ -6601,11 +6604,11 @@ class Workflow:
                         outputs = {}
                         previous = next((snapshot['artifacts'][ref['hash']]['content']['outputs'] for ref in reversed(snapshot['payload']['evidence']) if snapshot['artifacts'][ref['hash']]['content']['node'] == node), {})
                         for slot, content in bundle.items():
-                            output = {'type': contracts[slot]['type'], 'content': content, 'producer': lease['attempt'], 'provenance': {'actor': lease['worker'], 'source': proof_ref, 'policy': digest(self.project['policy'])}}
+                            output = {'type': contracts[slot]['type'], 'content': content, 'producer': lease['attempt'], 'provenance': {'actor': lease['worker'], 'source': proof_ref, 'policy': self.node_evidence_policy(), 'approved_policy': digest(self.project['policy'])}}
                             identity = digest(output); snapshot['artifacts'][identity] = output; outputs[slot] = self.node_ref(identity, number)
                             if slot in previous: snapshot.setdefault('output_bases', {})[identity] = previous[slot]['hash']
                         result = {'node': node, 'attempt': lease['attempt'], 'contract': state['contract_hash'], 'inputs': lease['acquisition']['inputs'], 'executor': lease['worker'], 'outputs': outputs, 'resolutions': lease['acquisition']['resolutions']}
-                        artifact = {'type': 'result', 'content': result, 'producer': lease['attempt'], 'provenance': {'actor': lease['worker'], 'source': None, 'policy': digest(self.project['policy'])}}
+                        artifact = {'type': 'result', 'content': result, 'producer': lease['attempt'], 'provenance': {'actor': lease['worker'], 'source': None, 'policy': self.node_evidence_policy(), 'approved_policy': digest(self.project['policy'])}}
                         identity = digest(artifact); snapshot['artifacts'][identity] = artifact
                         ref = self.node_ref(identity, number); payload['evidence'].append(ref); leases.remove(lease)
                         response = self.node_continuation(snapshot, payload, node, ref)
@@ -6817,12 +6820,12 @@ class Workflow:
                         outputs = {}
                         for slot, original in mapping['outputs'].items():
                             output = {'type': mapped_state['contract']['outputs'][slot]['type'], 'content': load(original), 'producer': attempt,
-                                      'provenance': {'actor': historical['actor'], 'source': mapping_ref, 'policy': digest(self.project['policy'])}}
+                                      'provenance': {'actor': historical['actor'], 'source': mapping_ref, 'policy': self.node_evidence_policy(), 'approved_policy': digest(self.project['policy'])}}
                             identity = digest(output); artifacts[identity] = output; outputs[slot] = self.node_ref(identity, snapshot['number'])
                         mapped = {'node': mapping['target'], 'attempt': attempt, 'contract': mapped_state['contract_hash'], 'inputs': mapped_state['inputs'],
                                   'executor': historical['actor'], 'outputs': outputs, 'resolutions': mapped_state['resolutions']}
                         result_blob = {'type': 'result', 'content': mapped, 'producer': attempt,
-                                       'provenance': {'actor': historical['actor'], 'source': None, 'policy': digest(self.project['policy'])}}
+                                       'provenance': {'actor': historical['actor'], 'source': None, 'policy': self.node_evidence_policy(), 'approved_policy': digest(self.project['policy'])}}
                         identity = digest(result_blob); artifacts[identity] = result_blob
                         payload['evidence'].append(self.node_ref(identity, snapshot['number']))
                 snapshot['activation'] = {'envelope': target, 'payload': payload, 'graph': graph, 'conversion': conversion_blob['content'], 'review': reviews[0], 'approval': value['approval']}

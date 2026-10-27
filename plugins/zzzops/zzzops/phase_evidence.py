@@ -1202,6 +1202,9 @@ def _derive_task_steps(graph, payload, context):
                 output = artifact(output_ref)
                 if output.get('producer') != result['attempt'] or output.get('provenance', {}).get('actor') != result['executor']:
                     raise ValueError('Result/output producer provenance mismatch')
+                if (output.get('provenance', {}).get('policy') != value.get('provenance', {}).get('policy')
+                        or output.get('provenance', {}).get('approved_policy') != value.get('provenance', {}).get('approved_policy')):
+                    raise ValueError('Result/output policy provenance mismatch')
                 outputs.append((output_ref, output, result))
         for index, node in enumerate(snapshot['graph']['nodes']):
             identity = {'goal': number, 'node': node['id'], 'item': None, 'generation': 1}
@@ -1695,22 +1698,52 @@ def _derive_task_steps(graph, payload, context):
                     'context': snapshots[number].get('context_ref'), 'targets': [instances[k]['node'] for k in selected]})
             resolution_semantics = [{'location': r['location'], 'selector': r['selector'], 'targets': r['targets']} for r in state['resolutions']]
             state.update(input_hash=semantic_hash({'node': instance['node'], 'contract': contract, 'inputs': hashes, 'resolutions': resolution_semantics}), state='ready', prerequisites=prerequisites)
-            for ref, result in records_by_node.get(key, [])[-1:]:
-                recorded_policy = artifact(ref).get('provenance', {}).get('policy')
+            for ref, result in reversed(records_by_node.get(key, [])):
+                provenance = artifact(ref).get('provenance', {})
+                recorded_policy = provenance.get('policy')
+                approved_policy = provenance.get('approved_policy')
                 possible_legacy = (semantic_hash({'node': node, 'policy': recorded_policy})
                                    if isinstance(recorded_policy, str) else None)
-                if task_key(result['node']) != key or result['contract'] not in {
-                        contract, possible_legacy,
-                        semantic_hash({'node': node, 'policy': predecessor_policy_hash})}:
+                allowed_contracts = {contract, possible_legacy,
+                    semantic_hash({'node': node, 'policy': predecessor_policy_hash})}
+                if approved_policy in policy_forms:
+                    approved_snapshot = policy_forms[approved_policy]
+                    allowed_contracts.add(semantic_hash({'node': node,
+                        'policy': semantic_hash(evidence_policy(approved_snapshot))}))
+                if task_key(result['node']) != key or result['contract'] not in allowed_contracts:
                     if '64 policy' in (context.get('historical_policy_error') or ''):
                         state['reason'] = context['historical_policy_error']
                     continue
+                if approved_policy is not None:
+                    if approved_policy not in policy_forms:
+                        state['reason'] = context.get('historical_policy_error') or 'Historical approved policy identity does not authenticate normalized Result provenance'
+                        continue
                 if recorded_policy not in policy_forms:
                     if not (result['contract'] == contract and not (
                             isinstance(recorded_policy, str) and SHA256.fullmatch(recorded_policy))):
                         state['reason'] = context.get('historical_policy_error') or 'Historical policy ancestor does not authenticate recorded Result provenance'
                         continue
-                old_policy = policy_forms.get(recorded_policy, context['policy'])
+                old_policy = policy_forms.get(approved_policy if approved_policy is not None else recorded_policy,
+                                              context['policy'])
+                historical_form_hashes = {semantic_hash(old_policy),
+                    semantic_hash(evidence_policy(old_policy))}
+                old_pre_static = copy.deepcopy(old_policy)
+                if isinstance(old_pre_static.get('sections'), list):
+                    old_pre_static['sections'] = [row for row in old_pre_static['sections']
+                        if row.get('id') not in OPERATIONAL_POLICY_SECTIONS]
+                    historical_form_hashes.add(semantic_hash(old_pre_static))
+                if (approved_policy is not None and
+                        (approved_policy not in historical_form_hashes or recorded_policy not in historical_form_hashes)):
+                    state['reason'] = 'Approved policy identity does not authenticate Result provenance form'
+                    continue
+                    for row in old_pre_static['sections']:
+                        if row.get('id') == 'workflow_adherence':
+                            for field in ('phase_dag', 'migration_entries'):
+                                row.get('configuration', {}).pop(field, None)
+                            for field in ('review', 'default_digest', 'default_hash', 'content_hash',
+                                          'default_id', 'default_disposition'):
+                                row.pop(field, None)
+                    historical_form_hashes.add(semantic_hash(old_pre_static))
                 def ci_mode(value):
                     return next((row.get('configuration', {}).get('required_ci') for row in value.get('sections', [])
                                  if row.get('id') == 'verification_testing'), None)
@@ -1743,7 +1776,7 @@ def _derive_task_steps(graph, payload, context):
                     recorded_context = {'type': 'policy_context', 'content': {'policy': bound_policy},
                         'producer': None, 'provenance': {'actor': 'host', 'source': None, 'policy': bound_policy}}
                     if (len(bindings) != 1 or bindings[0]['mode'] != 'identity' or bindings[0]['path']
-                            or bound_policy not in policy_forms or policy_forms[bound_policy] != old_policy
+                            or bound_policy not in historical_form_hashes
                             or artifact(bindings[0]['source']) != recorded_context
                             or old_hashes['__policy'] != semantic_hash(recorded_context)):
                         continue
@@ -1760,8 +1793,7 @@ def _derive_task_steps(graph, payload, context):
                     if (any(row['mode'] != 'identity' or row['path'] for row in old_bindings + new_bindings)
                             or before.get('type') != 'workspace_snapshot'
                             or after.get('type') != 'workspace_snapshot'
-                            or before.get('provenance', {}).get('policy') not in policy_forms
-                            or policy_forms[before['provenance']['policy']] != old_policy
+                            or before.get('provenance', {}).get('policy') not in historical_form_hashes
                             or {k: v for k, v in before.get('provenance', {}).items() if k != 'policy'} != {'actor': 'host', 'source': None}
                             or after.get('provenance') != {'actor': 'host', 'source': None, 'policy': policy}
                             or {**before, 'provenance': after['provenance']} != after):
