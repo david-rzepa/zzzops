@@ -163,24 +163,24 @@ class GenericIntegrationFreshnessTests(DagFixture):
         self.session.finish(work, {"value": "same approved input"})
         self.assertNotIn("produce", self.names())
 
-    def test_configuration_and_instruction_drift_each_reject_current_assignment(self):
+    def test_instruction_drift_rejects_current_assignment(self):
         work = self.session.acquire("produce")
         original = copy.deepcopy(self.session.project)
-        for field in ("configuration", "instructions"):
-            with self.subTest(field=field):
-                self.session.project = copy.deepcopy(original)
-                section = z._workflow_section(self.session.project, "verification_testing")
-                if field == "configuration":
-                    configuration = section["configuration"]
-                    configuration["required_ci"] = ("disabled" if configuration.get("required_ci") != "disabled" else "inspect_exact_pr_head")
-                else:
-                    section["instructions"] = section.get("instructions", "") + " Preserve failing evidence."
-                before = copy.deepcopy((self.provider.issues, self.provider.comments))
-                response = self.session.call(100, self.session.submission(work, {"value": "stale policy"}, "changed-" + field), expected=2)
-                self.assertRegex(json.dumps(response), r"(?i)policy|input|stale|changed")
-                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        section = z._workflow_section(self.session.project, "verification_testing")
+        section["instructions"] = section.get("instructions", "") + " Preserve failing evidence."
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        response = self.session.call(100, self.session.submission(work, {"value": "stale policy"}, "changed-instructions"), expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)policy|input|stale|changed")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
         self.session.project = original
         self.session.finish(work, {"value": "unchanged approved policy"})
+
+    def test_ci_only_change_preserves_current_nonterminal_assignment(self):
+        work = self.session.acquire("produce")
+        configuration = z._workflow_section(self.session.project, "verification_testing")["configuration"]
+        configuration["required_ci"] = ("disabled" if configuration.get("required_ci") != "disabled" else "inspect_exact_pr_head")
+        self.session.finish(work, {"value": "CI mode does not change this nonterminal result"})
+        self.assertNotIn("produce", self.names())
 
     def test_operational_routing_and_capacity_settings_do_not_stale_owned_or_completed_work(self):
         work = self.session.acquire("produce")
