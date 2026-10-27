@@ -211,9 +211,9 @@ class PolicyCiTransitionTests(dag.DagFixture):
 
     def test_two_matching_approved_ancestors_are_not_arbitrarily_selected(self):
         before = self.initial_result()
-        verification = z._workflow_section(self.session.project, "verification_testing")
-        verification["rationale"] += " Confirmed by a second independent review."
-        self.reviewed_policy("disabled")
+        policy_path = self.fixture.repo / ".zzzops/POLICY.json"
+        policy_path.write_text(policy_path.read_text() + "\n")
+        self.commit_policy("same approved policy in a second first-parent commit")
         self.reviewed_policy("existing_only")
         steps = self.session.checkpoint(100)
         self.assertNotIn("review_a", {step["node"]["node"] for step in steps
