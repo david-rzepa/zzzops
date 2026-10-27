@@ -4147,7 +4147,7 @@ class Workflow:
                 reference = next((ref for ref in result['outputs'].values() if ref['hash'] == output_hash), None)
                 if (not isinstance(value, dict) or not reference or value.get('manifest') != manifest or
                         node not in value.get('tasks', []) or value.get('decision') != 'approved' or
-                        value.get('policy') not in {self.node_evidence_policy(), candidate.get('provenance', {}).get('policy')} or
+                        not self.node_authorization_policy_matches(value, candidate, result, artifacts) or
                         not any(binding['source'] == manifest and binding['mode'] == 'identity' for binding in result['inputs'])):
                     continue
                 approvals.append((reference, result, states[owner_key]))
