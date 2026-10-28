@@ -619,6 +619,49 @@ class Workflow:
     def node_evidence_policy(self):
         return digest(self.api._phase_evidence.evidence_policy(self.project['policy']))
 
+    def node_policy_at_commit(self, commit):
+        """Authenticate a committed policy and both bound instruction files."""
+        if not isinstance(commit, str) or not re.fullmatch('[0-9a-f]{40}', commit):
+            raise ValueError('Exact policy commit is required')
+        files = {}
+        for name in ('POLICY.json', 'PROJECT.md', 'PROJECT_AUDIT.md'):
+            files[name] = subprocess.run(['git', 'show', f'{commit}:.zzzops/{name}'],
+                cwd=self.repo, capture_output=True, check=True).stdout.decode('utf-8-sig')
+        state = json.loads(files['POLICY.json'])
+        if not isinstance(state, dict):
+            raise ValueError('Historical policy state must be an object')
+        invalid = self.api._policy.validate_project_state(state)
+        if invalid:
+            raise ValueError('; '.join(invalid))
+        if state.get('initialized') is not True:
+            invalid.append('historical policy is not initialized')
+        if state.get('repository', {}).get('identity') != self.project.get('repository', {}).get('identity'):
+            invalid.append('historical policy repository identity changed')
+        for name, file in (('project', 'PROJECT.md'), ('audit', 'PROJECT_AUDIT.md')):
+            if state.get('bindings', {}).get(name, {}).get('digest') != self.api._policy.project_digest(files[file]):
+                invalid.append(f'historical {name} policy artifact binding changed')
+        if invalid:
+            raise ValueError('; '.join(invalid))
+        return state['policy']
+
+    def node_policy_only_base(self, base, head):
+        """Prove a primary-base movement changed only compatible reviewed policy."""
+        try:
+            if subprocess.run(['git', 'merge-base', '--is-ancestor', base, head],
+                              cwd=self.repo, capture_output=True).returncode != 0:
+                return False
+            paths = subprocess.run(['git', 'diff', '--name-only', '-z', base, head, '--'],
+                cwd=self.repo, capture_output=True, check=True).stdout.split(b'\0')
+            paths = {path for path in paths if path}
+            allowed = {b'.zzzops/POLICY.json', b'.zzzops/PROJECT.md', b'.zzzops/PROJECT_AUDIT.md'}
+            if not paths or paths - allowed:
+                return False
+            before, after = self.node_policy_at_commit(base), self.node_policy_at_commit(head)
+            return (digest(after) == digest(self.project['policy'])
+                    and self.api._policy.phase_policy_ci_compatible(before, after))
+        except (OSError, UnicodeError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+            return False
+
     def node_historical_policies(self, snapshots, artifacts):
         """Authenticate bounded first-parent policy history for recorded Results."""
         forms = ("full", "pre_static", "current", "normalized")
@@ -663,25 +706,7 @@ class Workflow:
                 cache_key = (commit, digest(current))
                 old = cache.get(cache_key)
                 if old is None:
-                    files = {}
-                    for name in ('POLICY.json', 'PROJECT.md', 'PROJECT_AUDIT.md'):
-                        raw = subprocess.run(['git', 'show', f'{commit}:.zzzops/{name}'], cwd=self.repo,
-                                             capture_output=True, check=True).stdout
-                        files[name] = raw.decode('utf-8-sig')
-                    state = json.loads(files['POLICY.json'])
-                    invalid = self.api._policy.validate_project_state(state)
-                    if state.get('initialized') is not True:
-                        invalid.append('historical policy is not initialized')
-                    if state.get('repository', {}).get('identity') != self.project.get('repository', {}).get('identity'):
-                        invalid.append('historical policy repository identity changed')
-                    bindings = state.get('bindings', {})
-                    for name, file in (('project', 'PROJECT.md'), ('audit', 'PROJECT_AUDIT.md')):
-                        if bindings.get(name, {}).get('digest') != self.api._policy.project_digest(files[file]):
-                            invalid.append(f'historical {name} policy artifact binding changed')
-                    if invalid:
-                        errors.extend(invalid)
-                        continue
-                    old = state['policy']
+                    old = self.node_policy_at_commit(commit)
                     cache[cache_key] = old
                 if not self.api._policy.phase_policy_ci_compatible(old, current):
                     continue
@@ -4792,7 +4817,7 @@ class Workflow:
             git_phase_state.verify_attempt_ref(self.repo, remote='origin',
                 ref=proof['retained_ref'], commit=result_commit)
             return proof
-        git_edges = {}
+        git_edges = {}; policy_base_bridges = {}
         def connected_git_head(start, goal):
             start_tree = subprocess.run(['git', 'rev-parse', start + '^{tree}'], cwd=self.repo,
                                         capture_output=True, text=True, check=True).stdout.strip()
@@ -4801,6 +4826,13 @@ class Workflow:
             if start_tree == head_tree: return True
             if goal not in git_edges:
                 edges = []
+                def append_checkpoint(checkpoint):
+                    edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
+                    base = checkpoint['base_commit']
+                    if base not in policy_base_bridges:
+                        policy_base_bridges[base] = self.node_policy_only_base(base, head)
+                    if policy_base_bridges[base]:
+                        edges.append((head_tree, checkpoint['base_tree']))
                 for other_key, other in work.items():
                     if (other_key[0] != goal
                             or 'repository_git_workspace' not in other['contract']['executor']['resources']
@@ -4816,11 +4848,11 @@ class Workflow:
                                 checkpoint = git_phase_state.validate_checkpoint(self.repo,
                                     base_commit=predecessor, result_commit=head,
                                     owned_paths=other_grant['entry']['owned'])
-                                edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
+                                append_checkpoint(checkpoint)
                         elif other_key in projection['current']:
                             proof = checked_git_proof(other, other_grant, projection['current'][other_key][1])
                             checkpoint = proof['checkpoint']
-                            edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
+                            append_checkpoint(checkpoint)
                     except (ValueError, KeyError, subprocess.SubprocessError):
                         continue
                 admitted_subjects = {subject['hash']
@@ -4836,7 +4868,7 @@ class Workflow:
                     try:
                         proof = checked_git_proof(other, authority(other), result)
                         checkpoint = proof['checkpoint']
-                        edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
+                        append_checkpoint(checkpoint)
                     except (ValueError, KeyError, subprocess.SubprocessError):
                         continue
                 if admitted_subjects:
@@ -4853,7 +4885,7 @@ class Workflow:
                         try:
                             proof = checked_git_proof(other, historical_authority(result['node']), result)
                             checkpoint = proof['checkpoint']
-                            edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
+                            append_checkpoint(checkpoint)
                         except (ValueError, KeyError, subprocess.SubprocessError):
                             continue
                 git_edges[goal] = edges
