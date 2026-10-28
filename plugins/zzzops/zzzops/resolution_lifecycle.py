@@ -111,7 +111,7 @@ def committed_results(engine, snapshot):
     receipts = snapshot['payload']['operational']['receipts']
     edges = {}
     for receipt in receipts:
-        edge = engine.node_receipt_edge(number, index, receipt)
+        edge = engine.node_receipt_edge(number, index, receipt, resolve=snapshot['resolve_observed'])
         if edge is None:
             continue
         key = engine.api._workflow.digest(edge['target'])
