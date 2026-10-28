@@ -887,12 +887,31 @@ with s.reference('process-lock', 'reader'):
         for bad in ({}, {"data": {}},
                     {"data": {"repository": {**repository, "viewerPermission": "READ"}, "node": None}},
                     {"data": {"repository": {**repository, "nameWithOwner": "other/repo"}, "node": None}},
+                    {"data": {"repository": {**repository, "id": ""}, "node": None}},
+                    {"data": {"repository": {**repository, "hasIssuesEnabled": False}, "node": None}},
+                    {"data": {"repository": repository, "node": None},
+                     "errors": [{**missing["errors"][0], "path": ["repository"]}]},
+                    {"data": {"repository": repository, "node": None},
+                     "errors": [{**missing["errors"][0], "message": "Could not resolve another node."}]},
+                    {"data": {"repository": repository, "node": None},
+                     "errors": [{**missing["errors"][0], "message": "Could not resolve to a node with the global id of 'LA_kwDOTasXu88AAAAC_0VtDA'."}]},
                     {"data": {"repository": repository, "node": None},
                      "errors": missing["errors"] + [{"type": "FORBIDDEN", "path": ["repository"]}]}):
-            with self.subTest(bad=bad):
-                self.assertIsNone(check(bad), "unknown observation must never issue an applied receipt")
+            for code in ((0, 1) if "errors" in bad else (0,)):
+                with self.subTest(bad=bad, code=code):
+                    self.assertIsNone(check(bad, code=code),
+                                      "unknown observation must never issue an applied receipt")
+        for access in ({"viewerPermission": "READ"}, {"nameWithOwner": "other/repo"},
+                       {"id": ""}, {"hasIssuesEnabled": False}):
+            with self.subTest(nonzero_not_found_access=access):
+                bad = {"data": {"repository": {**repository, **access}, "node": None},
+                       "errors": missing["errors"]}
+                self.assertIsNone(check(bad, code=1),
+                                  "nonzero NOT_FOUND cannot bypass repository access")
         self.assertIsNone(check({"data": {"repository": repository, "node": None}},
                                 code=1, stderr="gh: transport failed"))
+        error_free = check({"data": {"repository": repository, "node": None}})
+        self.assertTrue(error_free and error_free.get("applied") is True, error_free)
         outcome = check(missing, code=1, stderr="gh: Could not resolve exact node")
         self.assertTrue(outcome and outcome.get("applied") is True, outcome)
         self.assertEqual({"deleted": node}, outcome["result"])
@@ -954,6 +973,8 @@ with s.reference('process-lock', 'reader'):
         self.assertEqual({"applied": False}, check(repository, {**label, "description": "old"}))
         for repo_facts, label_facts in (({**repository, "viewerPermission": "READ"}, label),
                                         ({**repository, "nameWithOwner": "other/repo"}, label),
+                                        ({**repository, "id": ""}, label),
+                                        ({**repository, "hasIssuesEnabled": False}, label),
                                         (repository, {**label, "repository": {"nameWithOwner": "other/repo"}}),
                                         (repository, {**label, "__typename": "Issue"})):
             with self.subTest(repo=repo_facts, node=label_facts):

@@ -57,9 +57,9 @@ class ExactLabelObservationTests(unittest.TestCase):
         return adapter
 
     def observed(self, *, node=None, permission="ADMIN", repository="david-rzepa/zzzops",
-                 errors=None, returncode=0):
-        data = {"repository": {"id": "R_kgDOTasXuw", "nameWithOwner": repository,
-                               "hasIssuesEnabled": True, "viewerPermission": permission},
+                 repository_id="R_kgDOTasXuw", issues=True, errors=None, returncode=0):
+        data = {"repository": {"id": repository_id, "nameWithOwner": repository,
+                               "hasIssuesEnabled": issues, "viewerPermission": permission},
                 "node": node}
         body = {"data": data}
         if errors is not None:
@@ -77,13 +77,25 @@ class ExactLabelObservationTests(unittest.TestCase):
         except reservation.ReservationProviderError as exc:
             self.fail(f"exact authenticated NOT_FOUND remained unknown: {exc}")
         self.assertIsNone(deleted)
+        self.assertIsNone(self.adapter(self.observed()).get_label_node(self.node_id))
         for response in (self.observed(permission="READ"),
                          self.observed(repository="other/repo"),
+                         self.observed(repository_id=""),
+                         self.observed(issues=False),
                          subprocess.CompletedProcess([], 0, "{}", ""),
                          subprocess.CompletedProcess([], 0, "{malformed", ""),
                          subprocess.CompletedProcess([], 1, "", "NOT_FOUND"),
+                         self.observed(errors=[{**self.not_found()[0], "path": ["repository"]}], returncode=1),
+                         self.observed(errors=[{**self.not_found()[0], "message": "Could not resolve another node."}], returncode=1),
+                         self.observed(errors=[{**self.not_found()[0], "message": "Could not resolve to a node with the global id of 'LA_kwDOTasXu88AAAAC_0VtDA'."}], returncode=1),
                          self.observed(errors=self.not_found() + [{"type": "FORBIDDEN", "path": ["repository"]}], returncode=1)):
             with self.subTest(response=response):
+                with self.assertRaises(reservation.ReservationProviderError):
+                    self.adapter(response).get_label_node(self.node_id)
+        for access in ({"permission": "READ"}, {"repository": "other/repo"},
+                       {"repository_id": ""}, {"issues": False}):
+            with self.subTest(nonzero_not_found_access=access):
+                response = self.observed(**access, errors=self.not_found(), returncode=1)
                 with self.assertRaises(reservation.ReservationProviderError):
                     self.adapter(response).get_label_node(self.node_id)
 
