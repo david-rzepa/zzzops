@@ -20,6 +20,11 @@ _POLICY_SPEC = importlib.util.spec_from_file_location("zzzops_reservation_policy
 assert _POLICY_SPEC and _POLICY_SPEC.loader
 _policy = importlib.util.module_from_spec(_POLICY_SPEC)
 _POLICY_SPEC.loader.exec_module(_policy)
+_LABEL_SPEC = importlib.util.spec_from_file_location(
+    "zzzops_reservation_label_observation", Path(__file__).with_name("github_label_observation.py"))
+assert _LABEL_SPEC and _LABEL_SPEC.loader
+_label_observation = importlib.util.module_from_spec(_LABEL_SPEC)
+_LABEL_SPEC.loader.exec_module(_label_observation)
 normalize_resources = _policy.normalize_resources
 normalize_resource_policy = _policy.normalize_resource_policy
 exclusive_resources = _policy.exclusive_resources
@@ -181,19 +186,16 @@ class GitHubReservationAdapter:
         return label
 
     def get_label_node(self, node_id: str) -> dict[str, Any] | None:
-        query = "query($id:ID!){node(id:$id){... on Label{id name description}}}"
-        result = self._run(["api", "graphql", "-F", f"id={node_id}", "-f", f"query={query}"])
-        if result.returncode:
-            raise self._provider_error(result)
         try:
-            value = json.loads(result.stdout)["data"]["node"]
-            if value is None:
-                return None
-            if not isinstance(value, dict) or value.get("id") != node_id or not isinstance(value.get("name"), str):
-                raise TypeError
-            return {"node_id": value["id"], "name": value["name"], "description": value.get("description")}
-        except (KeyError, TypeError, json.JSONDecodeError) as exc:
-            raise ReservationProviderError("GitHub returned invalid reservation label metadata.") from exc
+            arguments = _label_observation.query_arguments(self.repository, node_id)
+        except ValueError as exc:
+            raise ReservationProviderError("Invalid exact reservation label target.") from exc
+        result = self._run(arguments)
+        status, value = _label_observation.classify(result, self.repository, node_id)
+        if status == "unknown":
+            raise ReservationProviderError(
+                "GitHub did not confirm exact reservation label and current repository access; no ownership assumed.")
+        return value
 
     def _write(self, operation, target, arguments, call, postcondition):
         if _provider_write is None:

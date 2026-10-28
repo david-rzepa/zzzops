@@ -1,4 +1,6 @@
 import importlib.util
+import json
+import subprocess
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -41,6 +43,72 @@ class FakeAdapter:
             del self.labels[name]
         if self.on_delete:
             self.on_delete(self, name)
+
+
+class ExactLabelObservationTests(unittest.TestCase):
+    """The exact GraphQL observation must authenticate both node and repository."""
+
+    node_id = "LA_kwDOTasXu88AAAAC_0HWUA"
+
+    def adapter(self, response):
+        adapter = object.__new__(reservation.GitHubReservationAdapter)
+        adapter.repository = "david-rzepa/zzzops"
+        adapter._run = lambda arguments: response
+        return adapter
+
+    def observed(self, *, node=None, permission="ADMIN", repository="david-rzepa/zzzops",
+                 repository_id="R_kgDOTasXuw", issues=True, errors=None, returncode=0):
+        data = {"repository": {"id": repository_id, "nameWithOwner": repository,
+                               "hasIssuesEnabled": issues, "viewerPermission": permission},
+                "node": node}
+        body = {"data": data}
+        if errors is not None:
+            body["errors"] = errors
+        return subprocess.CompletedProcess([], returncode, json.dumps(body), "")
+
+    def not_found(self):
+        return [{"type": "NOT_FOUND", "path": ["node"],
+                 "message": f"Could not resolve to a node with the global id of '{self.node_id}'."}]
+
+    def test_exact_deleted_label_requires_fresh_repository_access(self):
+        response = self.observed(errors=self.not_found(), returncode=1)
+        try:
+            deleted = self.adapter(response).get_label_node(self.node_id)
+        except reservation.ReservationProviderError as exc:
+            self.fail(f"exact authenticated NOT_FOUND remained unknown: {exc}")
+        self.assertIsNone(deleted)
+        self.assertIsNone(self.adapter(self.observed()).get_label_node(self.node_id))
+        for response in (self.observed(permission="READ"),
+                         self.observed(repository="other/repo"),
+                         self.observed(repository_id=""),
+                         self.observed(issues=False),
+                         subprocess.CompletedProcess([], 0, "{}", ""),
+                         subprocess.CompletedProcess([], 0, "{malformed", ""),
+                         subprocess.CompletedProcess([], 1, "", "NOT_FOUND"),
+                         self.observed(errors=[{**self.not_found()[0], "path": ["repository"]}], returncode=1),
+                         self.observed(errors=[{**self.not_found()[0], "message": "Could not resolve another node."}], returncode=1),
+                         self.observed(errors=[{**self.not_found()[0], "message": "Could not resolve to a node with the global id of 'LA_kwDOTasXu88AAAAC_0VtDA'."}], returncode=1),
+                         self.observed(errors=self.not_found() + [{"type": "FORBIDDEN", "path": ["repository"]}], returncode=1)):
+            with self.subTest(response=response):
+                with self.assertRaises(reservation.ReservationProviderError):
+                    self.adapter(response).get_label_node(self.node_id)
+        for access in ({"permission": "READ"}, {"repository": "other/repo"},
+                       {"repository_id": ""}, {"issues": False}):
+            with self.subTest(nonzero_not_found_access=access):
+                response = self.observed(**access, errors=self.not_found(), returncode=1)
+                with self.assertRaises(reservation.ReservationProviderError):
+                    self.adapter(response).get_label_node(self.node_id)
+
+    def test_live_label_requires_exact_type_identity_repository_and_description(self):
+        node = {"__typename": "Label", "id": self.node_id, "name": "lease",
+                "description": "held", "repository": {"nameWithOwner": "david-rzepa/zzzops"}}
+        observed = self.adapter(self.observed(node=node)).get_label_node(self.node_id)
+        self.assertEqual({"node_id": self.node_id, "name": "lease", "description": "held"}, observed)
+        for change in ({"__typename": "Issue"}, {"id": "other"},
+                       {"repository": {"nameWithOwner": "other/repo"}}):
+            with self.subTest(change=change):
+                with self.assertRaises(reservation.ReservationProviderError):
+                    self.adapter(self.observed(node={**node, **change})).get_label_node(self.node_id)
 
 
 class PhaseLeaseRecoveryTests(unittest.TestCase):
