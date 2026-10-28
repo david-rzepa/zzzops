@@ -9915,8 +9915,16 @@ class Workflow:
                 if operation in {'bind', 'submit'}:
                     selection = lease['selection']
                     reviewed = policy_section(self.project, 'model_routing')['configuration']['model_inventory']['reviewed_pairs']
+                    # The current root's observed pair is independent of the
+                    # inventory of pairs the harness can delegate to workers.
+                    if state['contract']['executor']['role'] == 'root':
+                        available = (selection == (self.runtime or {}).get('root_pair')
+                                     and lease['worker'] == root
+                                     and request.get('actor') == root)
+                    else:
+                        available = selection in (self.runtime or {}).get('available_pairs', [])
                     if (not any(all(pair.get(field) == selection.get(field) for field in ('model', 'effort')) for pair in reviewed)
-                            or selection not in (self.runtime or {}).get('available_pairs', [])):
+                            or not available):
                         raise ValueError('Bound model/effort pair is unavailable or no longer reviewed; preserve ownership and recover or release it')
                 if operation == 'recover':
                     if request.get('worker_status') != 'stopped' or not isinstance(request.get('evidence'), str) or not request['evidence'].strip(): raise ValueError('Observed stopped worker evidence required; unknown liveness cannot recover')

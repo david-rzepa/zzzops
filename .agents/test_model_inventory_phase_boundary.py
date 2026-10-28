@@ -139,3 +139,79 @@ class ModelInventoryPhaseBoundaryTests(DagFixture):
         steps = self.session.checkpoint(101)
         self.assertTrue(any(step.get('kind') == 'policy_review' for step in steps))
         self.assertFalse(any('start' in step for step in steps))
+
+
+class ActualRootInventoryContinuityTests(DagFixture):
+    def acquire_root_without_delegable_pair(self):
+        graph = copy.deepcopy(self.graph)
+        graph['nodes'][0]['executor']['role'] = 'root'
+        self.install(graph)
+        pair = self.session.runtime['root_pair']
+        self.session.runtime['available_pairs'] = [
+            item for item in self.session.runtime['available_pairs'] if item != pair]
+        return self.session.acquire('produce')
+
+    def test_current_root_binds_and_submits_without_being_delegable(self):
+        work = self.acquire_root_without_delegable_pair()
+        root = self.session.runtime['root_id']
+        self.assertEqual(root, work['lease']['worker'])
+        self.assertEqual(self.session.runtime['root_pair'], work['lease']['selection'])
+        self.assertNotIn(work['lease']['selection'], self.session.runtime['available_pairs'])
+        receipt = json.loads(Path(work['policy']['path']).read_text())['policy_receipt']
+        self.session.call(100, {**work['bind'], 'actor': root,
+            'selection': work['lease']['selection'], 'policy_receipt': receipt})
+        result = self.session.finish(work, {'value': 'actual root result'})
+        self.assertEqual(work['node'], result['submitted']['node'])
+        self.assertFalse(self.payload()[1]['operational']['leases'])
+
+    def test_changed_root_pair_cannot_submit_even_if_old_pair_is_delegable(self):
+        work = self.acquire_root_without_delegable_pair()
+        old_pair = copy.deepcopy(work['lease']['selection'])
+        self.session.runtime['root_pair'] = copy.deepcopy(self.session.runtime['available_pairs'][0])
+        self.session.runtime['available_pairs'].append(old_pair)
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        result = self.session.call(100, self.session.submission(work, {'value': 'wrong runtime'}, 'changed-root-pair'), expected=2)
+        self.assertIn('Bound model/effort pair', str(result))
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        identity = {'node': work['node'], 'lease': work['lease']['token'],
+                    'actor': work['bound_actor']}
+        renewed = self.session.call(100, {'operation': 'renew', **identity})
+        self.assertEqual('renewed', renewed['next_steps'][0]['kind'])
+        released = self.session.call(100, {'operation': 'release', **identity})
+        self.assertEqual('released', released['next_steps'][0]['kind'])
+
+    def test_foreign_actor_or_owner_cannot_use_current_root_availability(self):
+        work = self.acquire_root_without_delegable_pair()
+        request = self.session.submission(work, {'value': 'foreign actor'}, 'foreign-root-actor')
+        request['actor'] = 'foreign-worker'
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        receipt = json.loads(Path(work['policy']['path']).read_text())['policy_receipt']
+        self.session.call(100, {**work['bind'], 'actor': 'foreign-worker',
+            'selection': work['lease']['selection'], 'policy_receipt': receipt}, expected=2)
+        self.session.call(100, request, expected=2)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.session.runtime['root_id'] = 'foreign-root'
+        self.session.call(100, self.session.submission(work, {'value': 'foreign owner'}, 'foreign-root-owner'), expected=2)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_root_pair_still_requires_current_policy_review(self):
+        work = self.acquire_root_without_delegable_pair()
+        config = z._workflow_section(self.session.project, 'model_routing')['configuration']
+        config['model_inventory']['reviewed_pairs'] = [
+            pair for pair in config['model_inventory']['reviewed_pairs']
+            if any(pair[field] != work['lease']['selection'][field] for field in ('model', 'effort'))]
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, self.session.submission(work, {'value': 'unreviewed'}, 'unreviewed-root'), expected=2)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_worker_cannot_use_root_pair_without_delegation_availability(self):
+        # The worker is legitimately selected and bound first. Once its pair
+        # disappears, even that exact current-root pair grants no worker access.
+        work = self.session.acquire('produce')
+        self.session.runtime['root_pair'] = copy.deepcopy(work['lease']['selection'])
+        self.session.runtime['available_pairs'] = [
+            pair for pair in self.session.runtime['available_pairs'] if pair != work['lease']['selection']]
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        rejected = self.session.call(100, self.session.submission(work, {'value': 'unavailable worker'}, 'root-is-not-worker-inventory'), expected=2)
+        self.assertIn('Bound model/effort pair', str(rejected))
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
