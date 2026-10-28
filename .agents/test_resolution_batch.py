@@ -266,6 +266,70 @@ class ResolutionBatchPublicTests(dag.DagFixture):
         self.provider.comments[100] = copy.deepcopy(fixture['comments'])
         return fixture
 
+    def test_legacy_lineage_materializes_each_ref_once_per_snapshot(self):
+        self.load_legacy()
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        active = [False]
+        checked_refs, edges = [], []
+        lifecycle = dag.z._resolution_lifecycle
+        workflow = dag.z._workflow
+        original = lifecycle.committed_results
+        checked = workflow.ObservedArtifactIndex._checked
+        receipt_edge = workflow.Workflow.node_receipt_edge
+
+        def lineage(engine, snapshot):
+            active[0] = True
+            try:
+                return original(engine, snapshot)
+            finally:
+                active[0] = False
+
+        def check(index, identity, value_required, **kwargs):
+            if active[0]:
+                checked_refs.append(identity)
+            return checked(index, identity, value_required, **kwargs)
+
+        def edge(engine, number, index, receipt, **kwargs):
+            if active[0]:
+                edges.append((number, receipt['request'], receipt['payload'], receipt['result']['hash']))
+            return receipt_edge(engine, number, index, receipt, **kwargs)
+
+        with mock.patch.object(lifecycle, 'committed_results', side_effect=lineage), \
+                mock.patch.object(workflow.ObservedArtifactIndex, '_checked', check), \
+                mock.patch.object(workflow.Workflow, 'node_receipt_edge', edge):
+            steps = self.session.checkpoint(100)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.assertFalse(any(step['kind'] in ('execute', 'policy_dag_cutover', 'blocker') for step in steps), steps)
+        self.assertEqual(21, len(edges))
+        self.assertEqual(len(edges), len(set(edges)))
+        self.assertTrue(checked_refs)
+        self.assertEqual(len(set(checked_refs)), len(checked_refs),
+                         'lineage repeated checked reads of an already resolved snapshot Ref')
+
+    def test_legacy_closure_rechecks_deleted_and_tampered_rows_on_fresh_observation(self):
+        fixture = self.load_legacy()
+        pristine = copy.deepcopy((self.provider.issues, self.provider.comments))
+        store = dag.z._workflow.comment_store
+        selected = [row['id'] for row in fixture['comments']
+                    if (store.decode_envelope(row['body']) or {}).get('context', {}).get('request_id')
+                    == 'legacy-resolution-submit']
+        self.assertTrue(selected)
+        for mutation in ('delete', 'tamper'):
+            with self.subTest(mutation=mutation):
+                self.provider.issues, self.provider.comments = copy.deepcopy(pristine)
+                valid = self.session.checkpoint(100)
+                self.assertFalse(any(step['kind'] == 'blocker' for step in valid), valid)
+                if mutation == 'delete':
+                    self.provider.comments[100] = [row for row in self.provider.comments[100]
+                                                   if row['id'] not in selected]
+                else:
+                    row = next(row for row in self.provider.comments[100] if row['id'] in selected)
+                    row['body'] = row['body'].replace('"hash":"sha256:', '"hash":"sha256:0', 1)
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                response = self.session.call(100)
+                self.assertEqual('blocker', response['next_steps'][0]['kind'], response)
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
     def test_pre_batch_public_journal_adopts_without_rewriting_and_keeps_old_resolution_closed(self):
         fixture = self.load_legacy()
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
