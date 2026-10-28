@@ -25,6 +25,9 @@ Respect allocations and publication gates; infer no operations or models.
 Renew live owners; expiry permits no takeover. Recover only observed stopped owners.
 For monitoring, replay, reconciliation or test corrections, read [recovery](CLI_RECOVERY.md).
 
+For exact finding manifests, unresolved retries and historical closure, read
+[finding resolution](FINDING_RESOLUTION.md).
+
 Policy enables [release planning](RELEASES.md).
 
 ## Pull-request stacks
