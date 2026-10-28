@@ -2419,8 +2419,21 @@ class Workflow:
             ev.validate_graph(graph)
             snapshot = {'envelope': envelope, 'payload': payload, 'graph': graph, 'resolve': resolve,
                         'historical_graph': historical_graph, 'workflow_definition': definition}
+            batch_adoption = (definition is not None and stored_workflow_graph is not None
+                and self.api._static_workflow.resolution_batch_adoption(
+                    stored_workflow_graph, definition['graph'], self.api._graph_compiler))
+            if batch_adoption:
+                retired = {row['template']['id'] for row in definition['graph']['task_sets']
+                           if row['source']['producer'] == {'slot': 'retired_resolution_members'}}
+                retained_owners = [lease for lease in payload['operational']['leases']
+                                   if lease['node']['node'] in retired]
+                if retained_owners:
+                    graph = stored_workflow_graph
+                    snapshot.update(graph=graph, workflow_definition=None,
+                                    resolution_batch_recovery=retained_owners)
             if (definition is not None and payload['evidence'] and stored_workflow_graph is not None
-                    and definition['graph'] != stored_workflow_graph):
+                    and definition['graph'] != stored_workflow_graph
+                    and not batch_adoption):
                 recorded_old_graph = remember(stored_workflow_graph)
                 for receipt_row in reversed(payload['operational']['receipts']):
                     try:
@@ -3204,6 +3217,16 @@ class Workflow:
         historical, historical_error = self.node_historical_policies(closure, snapshot['artifacts'])
         context['historical_policies'] = historical
         context['historical_policy_error'] = historical_error
+        accepted_entries = []
+        for n, observed in snapshot['snapshots'].items():
+            if n not in closure: continue
+            accepted_entries.extend(self.api._resolution_lifecycle.fold(self, observed, historical))
+        candidate = snapshot.get('_resolution_candidate')
+        if payload is not None and candidate is not None:
+            if payload['evidence'] != snapshot['payload']['evidence'] + [candidate['result']]:
+                raise ValueError('Resolution provisional acceptance requires the exact validated appended Result')
+            accepted_entries.extend(candidate['entries'])
+        context['accepted_resolution_entries'] = accepted_entries
         result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
         workspaces = self.node_workspace_context(
             closure, result, result['artifacts'], workspace_target=workspace_target)
@@ -5960,6 +5983,14 @@ class Workflow:
         """Format the same readiness and authority boundaries for both callers."""
         number = snapshot['number']
         resolution_steps = []
+        if snapshot.get('resolution_batch_recovery'):
+            return [{'kind': 'await_worker', 'goal': number, 'node': lease['node'], 'lease': lease,
+                     'resume_worker': lease['worker'],
+                     'reason': 'Existing singular resolution ownership must finish or be observed stopped before batch adoption.',
+                     'recovery_contract': {'operation': 'recover', 'node': lease['node'],
+                         'lease': lease['token'], 'actor': lease['worker'],
+                         'worker_status': '<observed stopped status>', 'evidence': '<terminal observation>'}}
+                    for lease in snapshot['resolution_batch_recovery']]
         cutover = snapshot.get('policy_dag_cutover')
         if cutover:
             prepare = {'operation': 'policy_dag_cutover_prepare',
@@ -6132,6 +6163,14 @@ class Workflow:
                         'expected_workspace': recovery['expected_workspace'],
                         'expected_delta': recovery['expected_delta']}})
             elif state['state'] == 'blocked': steps.append({'kind': 'blocked' if state.get('reason', '').startswith('Workspace') else 'dependency', 'goal': number, 'node': state['node'], 'reason': state.get('reason', 'Required evidence unknown')})
+        for error in projection.get('resolution_errors', []):
+            if error['goal'] == number and error['reason'].startswith('Unsupported'):
+                steps.append({'kind': 'blocker', 'goal': number, 'reason': error['reason']})
+        for waiting in projection.get('resolution_waiting', []):
+            if waiting['goal'] == number:
+                steps.append({'kind': 'dependency', 'goal': number,
+                    'reason': 'Explicitly unresolved findings need changed finding, subject, independent review, required context, or policy contract before another resolution assessment.',
+                    'findings': waiting['findings']})
         for step in steps:
             observed = snapshot['workspaces'].get(self.api._phase_evidence.task_key(step['node']), {}) if step.get('node') else {}
             if 'migration' in observed:
@@ -9489,6 +9528,8 @@ class Workflow:
                 ownership_reference = durable.get('workflow', {}).get('graph', durable['graph'])
                 ownership_graph = self.artifact_index(number).resolve(ownership_reference['hash'])[0]
             snapshot = self.node_snapshot(number, graph_override=ownership_graph)
+            if snapshot.get('resolution_batch_recovery') and request.get('operation') == 'start':
+                raise ValueError('Existing singular resolution ownership must finish or be recovered before batch acquisition')
             closed = (snapshot['envelope']['state'] != 'open'
                       or str(snapshot['issue'].get('state', '')).lower() == 'closed')
             if closed:
@@ -10036,6 +10077,9 @@ class Workflow:
                         artifact = {'type': 'result', 'content': result, 'producer': lease['attempt'], 'provenance': {'actor': lease['worker'], 'source': None, 'policy': self.node_evidence_policy(), 'approved_policy': digest(self.project['policy'])}}
                         identity = digest(artifact); snapshot['artifacts'][identity] = artifact
                         ref = self.node_ref(identity, number); payload['evidence'].append(ref); leases.remove(lease)
+                        if snapshot.get('_validated_resolution_entries'):
+                            snapshot['_resolution_candidate'] = {'result': ref,
+                                'entries': [{**entry, 'result': ref} for entry in snapshot['_validated_resolution_entries']]}
                         response = self.node_continuation(snapshot, payload, node, ref)
                     elif operation != 'renew':
                         raise ValueError('Unsupported generic operation; semantic evidence uses submit')
@@ -10428,14 +10472,47 @@ class Workflow:
                 finding = read(value['finding'], 'finding'); permit(kind, finding['target']); authority(value['authority'])
                 prior = obligation(finding)
                 if not prior or prior['finding'] != value['finding'] or value['target'] != finding['target']: raise ValueError('Retirement requires exact current finding and target')
-            elif kind == 'resolution':
-                finding = read(value['finding'], 'finding'); permit(kind, finding['target']); prior = obligation(finding)
-                reviewer = read(value['reviewer_result'], 'result')
-                if not prior or prior['finding'] != value['finding'] or value['reviewer_result']['hash'] not in current: raise ValueError('Resolution requires current finding revision and reviewer result')
-                if not value['subjects'] or any(ref['hash'] not in subject_results for ref in value['subjects']): raise ValueError('Resolution subject is stale')
-                inspected = {binding['source']['hash'] for binding in reviewer['inputs']}
-                if any(ref['hash'] not in inspected for ref in value['subjects']): raise ValueError('Reviewer did not inspect exact resolution subjects')
-                if any(subject_results[ref['hash']]['executor'] == reviewer['executor'] for ref in value['subjects']): raise ValueError('Resolution reviewer must be independent of subject executor')
+            elif kind in ('resolution', 'resolution_batch'):
+                lifecycle = self.api._resolution_lifecycle
+                if kind == 'resolution_batch':
+                    manifest = state['values'].get('batch')
+                    if not isinstance(manifest, dict) or set(value['entries']) != set(manifest['findings']):
+                        raise ValueError('Resolution batch must supply every exact required finding entry')
+                    entries = value['entries']
+                    if len({row['finding']['hash'] for row in manifest['findings'].values()}) != len(entries):
+                        raise ValueError('Resolution batch contains duplicate finding identities')
+                    required_reviews = manifest['reviews']
+                    subject = manifest['subject']
+                else:
+                    finding = read(value['finding'], 'finding')
+                    manifest = {'findings': {'legacy': {'finding': value['finding'],
+                        'id': finding['id'], 'revision': finding['revision']}}, 'opportunities': {}}
+                    entries = {'legacy': value}
+                    subject, required_reviews = value['subjects'], [value['reviewer_result']]
+                subjects = subject if isinstance(subject, list) else [subject]
+                if (not subjects or any(reference['hash'] not in subject_results for reference in subjects)
+                        or kind == 'resolution_batch' and not all(exact_input(reference) for reference in subjects)):
+                    raise ValueError('Resolution requires exact current corrected subjects and the batch must bind them')
+                result_map = {reference['hash']: (reference, result)
+                              for reference, result in projection['current'].values()}
+                contracts = {reference['hash']: projection['states'][ev.task_key(result['node'])]['contract']
+                             for reference, result in projection['current'].values()}
+                checked = []
+                for key, entry in entries.items():
+                    expected = manifest['findings'][key]
+                    finding = read(expected['finding'], 'finding')
+                    permit(kind, finding['target'])
+                    prior = obligation(finding)
+                    if not prior or prior['finding'] != expected['finding'] or prior['applicability'] != 'applicable':
+                        raise ValueError('Resolution requires the exact current applicable finding revision')
+                    if 'admission' in expected and prior['admission'] != expected['admission']:
+                        raise ValueError('Resolution batch admission changed')
+                    lifecycle.validate_entry(entry, expected=expected, scope=finding['target'],
+                        goal=snapshot['number'], results=result_map, contracts=contracts,
+                        read=read, ev=ev, required_reviews=expected.get('reviews', required_reviews), subject=subject)
+                    checked.append({'finding': entry['finding'], 'decision': entry['decision'],
+                                    'opportunity': manifest['opportunities'].get(key)})
+                snapshot.setdefault('_validated_resolution_entries', []).extend(checked)
             elif kind == 'source':
                 for _, old in history:
                     if old['type'] == kind and old['content'].get('id') == value.get('id') and old['content'].get('revision') == value.get('revision') and old['content'] != value: raise ValueError('Conflicting immutable source identity/revision')

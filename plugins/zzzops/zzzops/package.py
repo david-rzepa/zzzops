@@ -40,7 +40,7 @@ REQUIRED_FILES = {
     "rules/INITIALIZATION.md", "zzzops/installation.py", "zzzops/plugin_freshness.py", "zzzops/bootstrap.py", "zzzops/merge_reconciliation.py", "zzzops/entropy.py",
     "zzzops/entropy_review.py", "zzzops/zzzops.py", "zzzops/working_inputs.py",
     "zzzops/stack_integration.py",
-    "zzzops/archived_prerequisites.py",
+    "zzzops/archived_prerequisites.py", "zzzops/resolution_lifecycle.py",
     "zzzops/coaching.py", "zzzops/concepts.py",
     "skills/execute-zzzops/references/ENTROPY_OBSERVATIONS.md",
     "skills/execute-zzzops/references/REVIEW_QUEUE.md",

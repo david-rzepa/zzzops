@@ -258,6 +258,10 @@ _STATIC_WORKFLOW_SPEC = importlib.util.spec_from_file_location("zzzops_static_wo
 _static_workflow = importlib.util.module_from_spec(_STATIC_WORKFLOW_SPEC)
 _STATIC_WORKFLOW_SPEC.loader.exec_module(_static_workflow)
 
+_RESOLUTION_LIFECYCLE_SPEC = importlib.util.spec_from_file_location("zzzops_resolution_lifecycle", Path(__file__).with_name("resolution_lifecycle.py"))
+_resolution_lifecycle = importlib.util.module_from_spec(_RESOLUTION_LIFECYCLE_SPEC)
+_RESOLUTION_LIFECYCLE_SPEC.loader.exec_module(_resolution_lifecycle)
+
 _GIT_PHASE_STATE_SPEC = importlib.util.spec_from_file_location("zzzops_git_phase_state", Path(__file__).with_name("git_phase_state.py"))
 _git_phase_state = importlib.util.module_from_spec(_GIT_PHASE_STATE_SPEC)
 sys.modules[_GIT_PHASE_STATE_SPEC.name] = _git_phase_state
@@ -4621,7 +4625,7 @@ def main() -> int:
         if args.intent is None:
             raise ValueError("--intent is required unless --read-response is used")
         runtime = json.loads(args.runtime.read_text()) if args.runtime else codex_thread_runtime()
-        payload = json.loads(args.input.read_text()) if args.input else None
+        payload = _comment_store.strict_json(args.input.read_text()) if args.input else None
         if isinstance(payload, dict) and payload.get('operation') == 'capture_propose':
             capture_errors = validate_goal_create(payload.get('request'), allow_deferred=True)
             if capture_errors:

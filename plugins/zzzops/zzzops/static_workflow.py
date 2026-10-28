@@ -29,7 +29,7 @@ EVENT = {'kind': 'object', 'fields': {
 
 SELECTION = {'kind': 'object', 'fields': {
     'items': {'kind': 'map', 'values': EVENT}, 'rationale': {'kind': 'string'}}}
-CONTROL_TYPES = {'finding', 'admission', 'resolution', 'supersession', 'withdrawal',
+CONTROL_TYPES = {'finding', 'admission', 'resolution', 'resolution_batch', 'supersession', 'withdrawal',
                  'retirement', 'finding_registry', 'applicability_assessment', 'result',
                  'policy_context'}
 
@@ -132,6 +132,42 @@ def _canonical(graph, compiler):
     fail closed rather than silently granting a different contract.
     """
     result = copy.deepcopy(graph)
+    batch_rows = [row for row in result['task_sets']
+                  if row['source']['producer'] == {'slot': 'resolution_batches'}]
+    result['task_sets'] = [row for row in result['task_sets'] if row not in batch_rows]
+    eligible = {}
+
+    def restore_retired(row):
+        previous = next((old for old in result['task_sets'] if old['id'] == row['id']), None)
+        if previous is not None and previous['source']['producer'] == {'slot': 'retired_resolution_members'}:
+            expected = copy.deepcopy(row)
+            expected['source'] = retired_source(row)
+            if previous != expected:
+                raise ValueError('Unsupported modified retired resolution contract')
+            result['task_sets'][result['task_sets'].index(previous)] = copy.deepcopy(row)
+
+    def append_family(family):
+        for row in family['task_sets']: restore_retired(row)
+        # Recompiling a canonical batch graph may restore exactly its removed
+        # singular resolver before deriving the same batch definition again.
+        missing = [row for row in family['task_sets']
+                   if not any(old['id'] == row['id'] for old in result['task_sets'])]
+        if batch_rows and len(missing) == 1 and all(
+                output['type'] == 'resolution'
+                for output in missing[0]['template']['outputs'].values()):
+            present = {'nodes': family['nodes'],
+                       'task_sets': [row for row in family['task_sets'] if row not in missing]}
+            if all(any(old == node for old in result['nodes']) for node in present['nodes']) and all(
+                    any(old == row for old in result['task_sets']) for row in present['task_sets']):
+                result['task_sets'].extend(copy.deepcopy(missing))
+        compiler._append_family(result, family)
+
+    def retain_resolver(family):
+        for row in family['task_sets']:
+            if all(value['type'] == 'resolution' for value in row['template']['outputs'].values()):
+                if any(old == row for old in result['task_sets']):
+                    eligible[row['id']] = row
+
     # Routine rejections use the same fixed policy-time compilation. For custom
     # reviewed policy contracts, infer only one exact independent full subject;
     # names/fingerprints from shipped defaults are not execution authority.
@@ -156,6 +192,17 @@ def _canonical(graph, compiler):
                 declared = False
             for scope in scopes:
                 complete, legacy = compiler._route_status(result, review, slot, scope)
+                if scope['subject']['kind'] == 'node':
+                    key = compiler._route_key(result, review, slot, scope, compiler.SUPPORTED_VERSION)
+                    expected = compiler._route_family(result, review, slot, scope, key)
+                    expected = _exact_target(expected, {**scope['subject'], 'goal': '#this'}, scope['subject'])
+                    if expected['nodes'] and all(node in result['nodes'] for node in expected['nodes']):
+                        for row in expected['task_sets']: restore_retired(row)
+                        if batch_rows:
+                            append_family(expected)
+                        retain_resolver(expected)
+                        if any(row['id'] in eligible for row in expected['task_sets']):
+                            complete = True
                 if complete: continue
                 if declared:
                     # Preserve the reviewed legacy declaration byte-for-byte,
@@ -179,7 +226,8 @@ def _canonical(graph, compiler):
                 family = compiler._route_family(result, review, slot, scope, key)
                 local = {**scope['subject'], 'goal': '#this'}
                 family = _exact_target(family, local, scope['subject'])
-                compiler._append_family(result, family)
+                append_family(family)
+                retain_resolver(family)
     for target, output in targets(graph):
         name = review_name(target['id'], output)
         target_expansion = next((row['id'] for row in graph['task_sets'] if row['template']['id'] == target['id']), None)
@@ -223,7 +271,10 @@ def _canonical(graph, compiler):
                 'values': [True], 'outputs': {'value': {'items': {}, 'rationale': 'No late events.'}},
                 'rationale': 'No authenticated late events require retention.'}
             append_exact(result['nodes'], node)
-        for task_set in family['task_sets']: append_exact(result['task_sets'], task_set)
+        for task_set in family['task_sets']:
+            restore_retired(task_set)
+            append_exact(result['task_sets'], task_set)
+        retain_resolver(family)
     # Reviewed custom correction families are policy contracts, not candidates
     # for the legacy per-goal repair compiler's fingerprint eligibility rules.
     # Preserve their bytes, and supply the universal unresolved-admission route
@@ -243,8 +294,124 @@ def _canonical(graph, compiler):
                              'member applicability assessment is unsupported; no goal graph repair is permitted')
         _validate_static_scope(result, scope, compiler)
         compiler._append_family(result, compiler._applicability_family(result, scope, compiler.SUPPORTED_VERSION))
+    # Older shipped policies declare the same single-finding registry contract
+    # under non-generated names. Recognize its exact bounded semantics, never a
+    # name/fingerprint wildcard or an arbitrary user correction workflow.
+    for row in result['task_sets']:
+        node = row['template']
+        if row['id'] in eligible or not any(value['type'] == 'resolution' for value in node['outputs'].values()):
+            continue
+        finding = node['inputs'].get('finding', {})
+        producer = finding.get('producer', {}).get('node', {})
+        registry = next((candidate for candidate in result['nodes'] if candidate['id'] == producer.get('node')), None)
+        if registry is None or registry['outputs'].get(finding.get('output'), {}).get('type') != 'finding_registry':
+            source_node = row['source']['producer'].get('node', {}).get('node')
+            source_registry = next((candidate for candidate in result['nodes'] if candidate['id'] == source_node), None)
+            if (source_registry is not None and source_registry['outputs'].get(row['source']['output'], {}).get('type') == 'finding_registry'
+                    or row['source']['producer'] == {'slot': 'retired_resolution_members'}):
+                raise ValueError('Unsupported resolution registry finding binding: ' + node['id'])
+            continue
+        scopes = node['resolves']
+        subjects = [scope['subject'] for scope in scopes]
+        if (not scopes or any(scope['subject']['kind'] != 'node' for scope in scopes)
+                or set(node['outputs']) != {'value'} or node['outputs']['value']['type'] != 'resolution'
+                or node['gates'] or node['executor']['capability'] not in ('bounded', 'reasoning')
+                or {**node['executor'], 'capability': 'reasoning'} != {'role': 'worker', 'capability': 'reasoning',
+                    'resources': [], 'authority': {'subject': {'kind': 'self'}, 'output': 'value'}}
+                or sorted(node['independent_of'], key=digest) != sorted(subjects, key=digest)
+                or sorted(node['permits'], key=digest) != sorted(
+                    [{'type': 'resolution', 'scope': scope} for scope in scopes], key=digest)
+                or finding.get('path') != ['items', {'item_key': True}] or finding.get('mode') != 'content'):
+            raise ValueError('Unsupported custom resolution batching contract: ' + node['id'])
+        for scope in scopes:
+            matching = [binding for binding in node['inputs'].values()
+                        if binding.get('producer') == {'node': scope['subject']}
+                        and binding.get('output') == scope['output'] and binding.get('mode') == 'identity'
+                        and binding.get('path') == []]
+            if len(matching) != 1:
+                raise ValueError('Unsupported resolution subject contract: ' + node['id'])
+        for name, binding in node['inputs'].items():
+            if name in ('finding', 'review', 'approved', 'approved_reviews'): continue
+            if (binding.get('producer', {}).get('node', {}).get('kind') != 'node'
+                    or binding.get('mode') != 'identity' or binding.get('path') != []):
+                raise ValueError('Unsupported additional resolution input: ' + node['id'] + '/' + name)
+        expected_source = {'producer': copy.deepcopy(finding['producer']), 'output': finding['output'],
+                           'path': [], 'mode': 'content', 'type': copy.deepcopy(registry['outputs'][finding['output']]['schema'])}
+        original = {**copy.deepcopy(row), 'source': expected_source}
+        if row['source'] not in (expected_source, retired_source(original)):
+            raise ValueError('Unsupported custom resolution registry selection: ' + node['id'])
+        review_inputs = {key: value for key, value in node['inputs'].items()
+                         if key in ('review', 'approved', 'approved_reviews')}
+        if not review_inputs or not any(
+                value.get('path') == ['decision'] and value.get('type') == {'kind': 'enum', 'values': ['approved']}
+                or value.get('type', {}).get('kind') == 'map'
+                and value['type']['values'].get('fields', {}).get('decision') == {'kind': 'enum', 'values': ['approved']}
+                for value in review_inputs.values()):
+            raise ValueError('Unsupported resolution contract without exact approved review gate: ' + node['id'])
+        allowed_dependencies = [producer] + [value['producer']['node'] for value in review_inputs.values()]
+        if any(selector not in allowed_dependencies for selector in node['requires']):
+            raise ValueError('Unsupported additional resolution prerequisite: ' + node['id'])
+        eligible[row['id']] = original
+    groups = {}
+    for row in eligible.values():
+        node = row['template']
+        for scope in node['resolves']:
+            subject_binding = next(binding for binding in node['inputs'].values()
+                if binding.get('producer') == {'node': scope['subject']} and binding.get('output') == scope['output']
+                and binding.get('mode') == 'identity' and binding.get('path') == [])
+            identity = digest(scope)
+            group = groups.setdefault(identity, {'scope': scope, 'subject': subject_binding, 'reviews': {}, 'independent': []})
+            for selector in node['independent_of']:
+                if selector not in group['independent']: group['independent'].append(copy.deepcopy(selector))
+            if group['subject'] != subject_binding:
+                raise ValueError('Unsupported batch correction contracts disagree on exact subject binding')
+            for label, binding in node['inputs'].items():
+                if label == 'finding' or binding == subject_binding: continue
+                binding = copy.deepcopy(binding)
+                is_review = label in ('review', 'approved', 'approved_reviews')
+                selector = binding['producer'].get('node', {})
+                if is_review and selector.get('kind') == 'member' and selector.get('item') == {'item_key': True}:
+                    if label == 'approved': continue
+                    selector.pop('item'); selector.pop('generation'); selector['kind'] = 'join'
+                    approved = copy.deepcopy(binding['type'])
+                    approved['fields']['decision'] = {'kind': 'enum', 'values': ['approved']}
+                    binding['type'] = {'kind': 'map', 'values': approved}
+                group['reviews'][('review_' if is_review else 'context_') + digest(binding)[7:]] = binding
+        position = next(index for index, old in enumerate(result['task_sets']) if old['id'] == row['id'])
+        result['task_sets'][position] = {**copy.deepcopy(row), 'source': retired_source(row)}
+    generated = []
+    for identity, group in sorted(groups.items()):
+        generated.append(compiler.resolution_batch_family(
+            group['scope'], group['subject'], dict(sorted(group['reviews'].items())),
+            sorted(group['independent'], key=digest)))
+    if batch_rows and sorted(batch_rows, key=lambda row: row['id']) != sorted(generated, key=lambda row: row['id']):
+        raise ValueError('Unsupported or altered resolution batch contract; exact policy compiler definition required')
+    result['task_sets'].extend(generated)
     return result
 
+
+
+def retired_source(row):
+    return {'producer': {'slot': 'retired_resolution_members'}, 'output': 'content',
+            'path': [row['id']], 'mode': 'content', 'type': copy.deepcopy(row['source']['type'])}
+
+
+def resolution_batch_adoption(old, new, compiler):
+    """Only the exact compiler substitution may adopt lazily; other DAG changes wait."""
+    if old == new or old['nodes'] != new['nodes'] or old['terminals'] != new['terminals']:
+        return False
+    if len(new['task_sets']) < len(old['task_sets']):
+        return False
+    for before, after in zip(old['task_sets'], new['task_sets']):
+        if before == after: continue
+        if (before['template'] != after['template'] or
+                after != {**before, 'source': retired_source(before)} or
+                any(output['type'] != 'resolution' for output in before['template']['outputs'].values())):
+            return False
+    if any(row['source']['producer'] != {'slot': 'resolution_batches'}
+           for row in new['task_sets'][len(old['task_sets']):]):
+        return False
+    return canonical(old, compiler) == new
 
 def canonical(graph, compiler):
     """Bounded memoized policy compilation; every caller gets detached JSON."""

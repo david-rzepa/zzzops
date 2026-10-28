@@ -168,7 +168,15 @@ class StaticWorkflowCoreTests(unittest.TestCase):
         compiled = s.canonical(graph, dag.z._graph_compiler)
         dag.z._phase_evidence.validate_graph(compiled)
         self.assertEqual(graph['nodes'], compiled['nodes'][:len(graph['nodes'])])
-        self.assertEqual(graph['task_sets'], compiled['task_sets'][:len(graph['task_sets'])])
+        for old, current in zip(graph['task_sets'], compiled['task_sets']):
+            self.assertEqual(old['id'], current['id'])
+            self.assertEqual(old['template'], current['template'])
+            if current['source']['producer'] == {'slot': 'retired_resolution_members'}:
+                self.assertTrue(all(output['type'] == 'resolution'
+                                    for output in old['template']['outputs'].values()))
+                self.assertEqual(s.retired_source(old), current['source'])
+            else:
+                self.assertEqual(old, current)
         self.assertEqual(compiled, s.canonical(compiled, dag.z._graph_compiler))
 
     def test_unknown_goal_context_blocks_only_resource_phase(self):
