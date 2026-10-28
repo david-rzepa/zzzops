@@ -19,6 +19,38 @@ import test_workflow_publication_contract as publication
 z = dag.z
 
 
+class PolicyCutoverInputGateTests(dag.DagFixture):
+    def test_retained_output_does_not_bypass_current_consumer_decision_type(self):
+        producer = dag.task("produce")
+        producer["outputs"]["value"] = {"type": "checkpoint_decision", "schema": {
+            "kind": "object", "fields": {
+                "decision": {"kind": "enum", "values": ["approved", "changes_requested"]},
+                "report": {"kind": "string"}}}}
+        consumers = []
+        for name, decision in (("accept", "approved"), ("reject", "changes_requested")):
+            node = dag.task(name, ["produce"])
+            node["inputs"] = {"decision": {"producer": {"node": dag.selector("produce")},
+                "output": "value", "path": ["decision"], "mode": "content",
+                "type": {"kind": "enum", "values": [decision]}}}
+            consumers.append(node)
+        self.install({"nodes": [producer, *consumers], "task_sets": [],
+                      "terminals": [dag.selector("accept")]})
+        self.session.finish(self.session.acquire("produce"), {
+            "value": {"decision": "approved", "report": "Exact retained approval"}})
+        self.assertIn("accept", self.names())
+        self.assertNotIn("reject", self.names())
+        result = self.read_blob(self.payload()[1]["evidence"][-1])
+        retained = {ref["hash"] for ref in result["content"]["outputs"].values()}
+        derive = z._phase_evidence.derive_task_steps
+
+        def cutover(graph, payload, context):
+            return derive(graph, payload, {**context, "cutover_outputs": retained})
+
+        with mock.patch.object(z._phase_evidence, "derive_task_steps", side_effect=cutover):
+            self.assertIn("accept", self.names(), "Retained compatible evidence must remain usable")
+            self.assertNotIn("reject", self.names(), "Cutover must not turn approval into rejection")
+
+
 class PolicyCiTransitionTests(dag.DagFixture):
     def git(self, *args):
         return subprocess.check_output(["git", "-C", str(self.fixture.repo), *args], text=True).strip()
