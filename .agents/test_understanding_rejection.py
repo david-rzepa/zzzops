@@ -413,6 +413,42 @@ class RepeatedConfiguredMemberCorrectionTests(j.DagFixture):
                                'rationale': 'Re-review the configured domain correction'}},
             'allocation': allocation})
 
+    def cutover_mapping(self):
+        old_graph = self.read_blob(self.payload()[1]['graph'])
+        new_graph = j.z._workflow_section(
+            self.session.project, 'workflow_adherence')['configuration']['phase_dag']
+        old = {node['id']: node for node in old_graph['nodes']}
+        new = {node['id']: node for node in new_graph['nodes']}
+        current = {}
+        for reference in reversed(self.payload()[1]['evidence']):
+            artifact = self.read_blob(reference); result = artifact.get('content', {})
+            node = result.get('node', {})
+            if artifact.get('type') != 'result' or node.get('item') is not None:
+                continue
+            current.setdefault(node.get('node'), (reference, result))
+        mapping = []
+        for name, (reference, result) in current.items():
+            if name not in old or name not in new:
+                continue
+            for output in result.get('outputs', {}):
+                if output in old[name]['outputs'] and output in new[name]['outputs']:
+                    mapping.append({'old': {'node': name, 'output': output},
+                        'new': {'node': name, 'output': output}, 'result': reference,
+                        'equivalence': {key: True for key in
+                            ('inputs', 'outputs', 'scope', 'role', 'independence', 'approval')}})
+        return mapping
+
+    def reviewed_cutover(self, step):
+        prepared = self.session.call(100, {**step['prepare'], 'actor': 'root-thread',
+            'mapping': self.cutover_mapping(),
+            'request_id': 'prepare-legacy-admission-cutover'})['next_steps'][0]
+        reviewed = self.session.call(100, {**prepared['review'],
+            'actor': 'independent-cutover-reviewer', 'decision': 'approved',
+            'report': 'The legacy admission is replaced without inheriting its authority.',
+            'request_id': 'review-legacy-admission-cutover'})['next_steps'][0]
+        return self.session.call(100, {**reviewed['apply'], 'actor': 'root-thread',
+            'request_id': 'apply-legacy-admission-cutover'})['next_steps'][0]
+
     def test_repeated_configured_member_correction_requires_exact_atomic_transfer(self):
         self.requirements()
         _specification, allocation = self.specification(
@@ -472,26 +508,14 @@ class RepeatedConfiguredMemberCorrectionTests(j.DagFixture):
             owned = self.session.acquire('admit_spec_review_correction',
                                          item='data_residency', actor='legacy-owner')
         frontier = self.session.checkpoint(100)
-        waiting = [step for step in frontier if step.get('kind') == 'await_worker'
-                   and step.get('node') == owned['node']]
-        self.assertEqual(1, len(waiting), frontier)
+        self.assertEqual(['policy_dag_cutover'], [step['kind'] for step in frontier])
         self.assertFalse(any(step.get('kind') == 'execute'
                              and step.get('node', {}).get('node', '').startswith('gc_atomic_admit_')
                              for step in frontier), 'replacement must not race the owned legacy admission')
-        # Capture the otherwise-ready replacement start from the same durable state
-        # with only the historical lease removed, then restore exact provider bytes.
-        durable = copy.deepcopy((self.provider.issues, self.provider.comments))
-        envelope, payload = self.payload(); payload = copy.deepcopy(payload)
-        payload['operational']['leases'] = []
-        envelope = copy.deepcopy(envelope); envelope['payload'] = self.blob(payload); envelope['revision'] += 1
-        self.provider.issues[100]['body'] = '<!-- zzzops-goal\n' + json.dumps(envelope) + '\nzzzops-goal -->'
-        replacement = next(step for step in self.session.ready()
-                           if step.get('node', {}).get('node', '').startswith('gc_atomic_admit_'))
-        receipt = json.loads(j.Path(replacement['policy']['path']).read_text())['policy_receipt']
-        self.provider.issues, self.provider.comments = durable
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
-        direct = {**replacement['start'], 'policy_receipt': receipt,
-                  'request_id': 'race-shadowed-legacy-admission'}
+        direct = {**frontier[0]['prepare'], 'actor': 'root-thread',
+                  'mapping': self.cutover_mapping(),
+                  'request_id': 'cutover-with-owned-legacy-admission'}
         rejected = self.session.call(100, direct, expected=2)
         self.assertRegex(json.dumps(rejected), r'(?i)owner|legacy|admission|lease|recover')
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
@@ -502,6 +526,8 @@ class RepeatedConfiguredMemberCorrectionTests(j.DagFixture):
         self.session.call(100, recovery)
         self.assertFalse(any(row['token'] == owned['lease']['token']
                              for row in self.payload()[1]['operational']['leases']))
+        applied = self.reviewed_cutover(self.session.checkpoint(100)[0])
+        self.assertEqual('policy_dag_cutover_applied', applied['kind'])
         self.assertNotIn('admit_spec_review_correction', self.names())
         self.assertTrue(any(name.startswith('gc_atomic_admit_') for name in self.names()))
 

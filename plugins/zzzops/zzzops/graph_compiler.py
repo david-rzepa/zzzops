@@ -504,7 +504,8 @@ def _applicability_family(graph, scope, version):
               'path': [target['id'], output], 'mode': 'content', 'type': selection}
     obligation_input = {'producer': {'slot': 'obligations'}, 'output': 'content',
                         'path': [{'item_key': True}], 'mode': 'content', 'type': obligation}
-    subject_input = {'producer': {'node': scope['subject']}, 'output': output, 'path': [],
+    subject_input = {'producer': {'slot': 'obligation_subject'}, 'output': 'content',
+                     'path': [{'item_key': True}],
                      'mode': 'identity', 'type': copy.deepcopy(target['outputs'][output]['schema'])}
     assessment = {'kind': 'object', 'fields': {
         'admission': _ref_type(), 'finding': _ref_type(),
@@ -514,9 +515,9 @@ def _applicability_family(graph, scope, version):
     rows = []
     for role in ('observation', 'context', 'assessment'):
         node = {'id': names[role],
-            'prompt': {'observation': 'Independently inspect this exact unresolved obligation and current subject; report applicability evidence without classifying or resolving it.',
+            'prompt': {'observation': 'Independently inspect this exact unresolved obligation and its exact admitted historical subject; report applicability evidence without classifying or resolving it.',
                        'context': 'Root supplies current bounded applicability context for this exact obligation and independent observation; do not grant workspace or source authority.',
-                       'assessment': 'Root explicitly classifies this exact admission and finding revision using the current subject, independent observation Result and root context Result. Classification never resolves finding debt.'}[role],
+                       'assessment': 'Root explicitly classifies this exact admission and finding revision using its exact admitted historical subject, independent observation Result and root context Result. Classification never resolves finding debt.'}[role],
             'inputs': {'obligation': copy.deepcopy(obligation_input), 'subject': copy.deepcopy(subject_input)},
             'outputs': {'value': {'type': 'applicability_assessment' if role == 'assessment' else 'text',
                                  'schema': copy.deepcopy(assessment) if role == 'assessment' else {'kind': 'string'}}},

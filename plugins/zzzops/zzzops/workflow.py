@@ -34,6 +34,7 @@ import zzzops_managed_worktrees as managed_worktrees
 _OBSERVED_ARTIFACT_INDEXES = {}
 _GIT_ARTIFACT_SNAPSHOTS = {}
 _VERIFICATION_LOCKS = {}
+_STORAGE_RENEW_INTERVAL_SECONDS = 90
 
 
 class ContinuationFirstEnvelopeBudget(ValueError):
@@ -44,6 +45,19 @@ HYDRATION_CHECKPOINT_MIN_COMMENTS = 32
 HYDRATION_CHECKPOINT_MIN_BYTES = 262144
 HYDRATION_CHECKPOINT_MAX_AGE_SECONDS = 86400
 HYDRATION_CHECKPOINT_MAX_LATER_COMMENTS = 32
+
+
+def _rename_node_selectors(value, old, new):
+    """Copy a graph fragment while renaming only validated node selectors."""
+    if isinstance(value, dict):
+        renamed = {name: _rename_node_selectors(child, old, new)
+                   for name, child in value.items()}
+        if value.get('kind') == 'node' and value.get('node') == old:
+            renamed['node'] = new
+        return renamed
+    if isinstance(value, list):
+        return [_rename_node_selectors(child, old, new) for child in value]
+    return value
 
 
 def materialized_state_contract():
@@ -201,6 +215,9 @@ class ObservedArtifactIndex(comment_store.ArtifactIndex):
 PUBLIC_OPERATIONS = frozenset({
     'batch', 'bind', 'block', 'phase_finding', 'resolve_goal_blocker',
     'goal_dependency_prepare', 'goal_dependency_review', 'goal_dependency_apply',
+    'goal_external_blocker_prepare', 'goal_external_blocker_review',
+    'goal_external_blocker_apply',
+    'policy_dag_cutover_prepare', 'policy_dag_cutover_review', 'policy_dag_cutover_apply',
     'graph_normalize', 'migration_batch', 'graph_prepare', 'graph_review', 'graph_adopt', 'graph_review_bootstrap',
     'checkpoint_reconcile_prepare', 'checkpoint_reconcile_review', 'checkpoint_reconcile_adopt',
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
@@ -209,7 +226,7 @@ PUBLIC_OPERATIONS = frozenset({
     'stack_attempt_retire',
     'policy_approve', 'policy_propose', 'read', 'recover', 'release', 'renew',
     'preserve_historical_draft', 'retire_stale_draft', 'route_choice', 'start', 'reconcile', 'submit',
-    'stack_prepare', 'stack_status', 'stack_advance', 'compact_candidate',
+    'stack_prepare', 'stack_status', 'stack_advance', 'compact_candidate', 'restack_continue', 'restack_abort',
 })
 
 
@@ -566,7 +583,8 @@ class ProviderReadGateway:
         for name in ('get_issue_comments_full', 'get_issue_comments_since', 'get_issue_comment_tail', 'get_issue_comment_tails'):
             if hasattr(provider, name):
                 setattr(self, name, getattr(provider, name))
-        for name in ('list_issue_metadata', 'get_parent_issue', 'get_sub_issues'):
+        for name in ('list_issue_metadata', 'get_parent_issue', 'get_sub_issues',
+                     'archived_prerequisite_pull', 'archived_prerequisite_reachable'):
             if hasattr(provider, name):
                 setattr(self, name, getattr(provider, name))
 
@@ -601,11 +619,97 @@ class Workflow:
     def node_evidence_policy(self):
         return digest(self.api._phase_evidence.evidence_policy(self.project['policy']))
 
+    def node_historical_policies(self, snapshots, artifacts):
+        """Authenticate bounded first-parent policy history for recorded Results."""
+        forms = ("full", "pre_static", "current", "normalized")
+        projection = self.api._policy.phase_policy_projection
+        current = self.project['policy']
+        current_hashes = {digest(projection(current, form)) for form in forms}
+        recorded = {value for snapshot in snapshots.values() for ref in snapshot['payload']['evidence']
+                    for value in (artifacts[ref['hash']].get('provenance', {}).get('policy'),
+                                  artifacts[ref['hash']].get('provenance', {}).get('approved_policy'))}
+        needed = {value for value in recorded if isinstance(value, str) and value not in current_hashes}
+        if not needed:
+            return {}, None
+        accepted = {}
+        # Preserve the pre-existing phase-DAG adapter: an authenticated graph
+        # Ref may reconstruct the sole excluded workflow field exactly.
+        for snapshot in snapshots.values():
+            graph_ref = snapshot['payload'].get('graph')
+            old_graph = artifacts.get(graph_ref.get('hash')) if isinstance(graph_ref, dict) else None
+            if not isinstance(old_graph, dict):
+                continue
+            reconstructed = copy.deepcopy(current)
+            for section in reconstructed['sections']:
+                if section['id'] == 'workflow_adherence':
+                    section['configuration']['phase_dag'] = old_graph
+            if projection(reconstructed, 'normalized') == projection(current, 'normalized'):
+                for form in forms:
+                    fingerprint = digest(projection(reconstructed, form))
+                    if fingerprint in needed:
+                        accepted[fingerprint] = reconstructed
+        needed -= set(accepted)
+        if not needed:
+            return accepted, None
+        command = ['git', 'rev-list', '--max-count=65', '--first-parent', 'HEAD', '--', '.zzzops/POLICY.json']
+        commits = subprocess.run(command, cwd=self.repo, capture_output=True, text=True, check=True).stdout.splitlines()
+        matches = {value: [] for value in needed}
+        errors = []
+        cache = getattr(self, '_historical_policy_cache', None)
+        if cache is None:
+            cache = self._historical_policy_cache = {}
+        for commit in commits[:64]:
+            try:
+                cache_key = (commit, digest(current))
+                old = cache.get(cache_key)
+                if old is None:
+                    files = {}
+                    for name in ('POLICY.json', 'PROJECT.md', 'PROJECT_AUDIT.md'):
+                        raw = subprocess.run(['git', 'show', f'{commit}:.zzzops/{name}'], cwd=self.repo,
+                                             capture_output=True, check=True).stdout
+                        files[name] = raw.decode('utf-8-sig')
+                    state = json.loads(files['POLICY.json'])
+                    invalid = self.api._policy.validate_project_state(state)
+                    if state.get('initialized') is not True:
+                        invalid.append('historical policy is not initialized')
+                    if state.get('repository', {}).get('identity') != self.project.get('repository', {}).get('identity'):
+                        invalid.append('historical policy repository identity changed')
+                    bindings = state.get('bindings', {})
+                    for name, file in (('project', 'PROJECT.md'), ('audit', 'PROJECT_AUDIT.md')):
+                        if bindings.get(name, {}).get('digest') != self.api._policy.project_digest(files[file]):
+                            invalid.append(f'historical {name} policy artifact binding changed')
+                    if invalid:
+                        errors.extend(invalid)
+                        continue
+                    old = state['policy']
+                    cache[cache_key] = old
+                if not self.api._policy.phase_policy_ci_compatible(old, current):
+                    continue
+                for form in forms:
+                    fingerprint = digest(projection(old, form))
+                    if fingerprint in needed:
+                        matches[fingerprint].append((commit, form, old))
+            except (OSError, UnicodeError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as exc:
+                errors.append(f'historical policy ancestor {commit} is unavailable or malformed: {exc}')
+        for fingerprint, candidates in matches.items():
+            # One approved snapshot may naturally expose multiple historical
+            # forms with the same digest; ambiguity concerns distinct commits.
+            commits_found = {row[0] for row in candidates}
+            if len(commits_found) == 1:
+                accepted[fingerprint] = candidates[0][2]
+            elif candidates:
+                errors.append('Ambiguous approved historical policy ancestors match the Result')
+            else:
+                errors.append('No authenticated matching historical policy ancestor within 64 policy changes')
+        return accepted, '; '.join(errors) if errors else None
+
     def node_authorization_policy_matches(self, value, artifact, result, artifacts):
         """Keep an exact authorization valid across later policy settings changes."""
         accepted = {
             self.node_evidence_policy(),
+            digest(self.project['policy']),
             artifact.get('provenance', {}).get('policy'),
+            artifact.get('provenance', {}).get('approved_policy'),
         }
         bindings = [item for item in result.get('inputs', []) if item.get('name') == '__policy']
         if len(bindings) == 1:
@@ -685,6 +789,15 @@ class Workflow:
         if not match or match[1] != self.repository or match[3] != identity:
             raise ValueError('Artifact locator must bind its exact hash and same repository goal identity')
         return int(match[2])
+
+    def node_same_local_ref(self, left, right, number, resolve):
+        """Compare content identity across local urn and stored goal locators."""
+        for reference in (left, right):
+            self.api._phase_evidence.validate_ref(reference)
+            if self.node_ref_goal(reference, number) != number:
+                raise ValueError('Goal-context source belongs to another goal')
+        return (left['hash'] == right['hash']
+                and resolve(left) == resolve(right))
 
     def node_published_artifact(self, reference):
         """Decode exact Git bytes using the same bound as generic node inputs."""
@@ -1148,6 +1261,8 @@ class Workflow:
             adapter.timeout_budget = budget.timeout
         deadline = time.monotonic() + 10
         reservation = None
+        keepalive_stop = threading.Event()
+        keepalive = None
         attempted = False
         observed_adapter = self.adapter
         if isinstance(observed_adapter, ProviderReadGateway): self.adapter = self._mutation_adapter
@@ -1168,12 +1283,38 @@ class Workflow:
                 raise ValueError('Provider did not confirm the storage reservation expiry; no write is allowed')
             reservation = {
                 'adapter': adapter, 'owner': owner, 'run': run,
-                'expires_at': expires_at, 'valid': True,
+                'expires_at': expires_at, 'valid': True, 'mutex': threading.Lock(),
             }
             self._storage_reservation = reservation
+            def maintain_reservation():
+                while not keepalive_stop.wait(_STORAGE_RENEW_INTERVAL_SECONDS):
+                    if keepalive_stop.is_set():
+                        return
+                    with reservation['mutex']:
+                        if not reservation['valid']:
+                            return
+                        try:
+                            renewed = api.renew_storage_lock(
+                                adapter, self.repository, 'workflow', owner, run, 300,
+                            )
+                            renewed_expiry = renewed.get('expires_at')
+                            if (not renewed.get('acquired') or not isinstance(renewed_expiry, (int, float))
+                                    or isinstance(renewed_expiry, bool) or renewed_expiry <= time.time()):
+                                reservation['valid'] = False
+                                return
+                            reservation['expires_at'] = renewed_expiry
+                        except Exception:
+                            # Provider uncertainty never extends write authority.
+                            reservation['valid'] = False
+                            return
+            keepalive = threading.Thread(target=maintain_reservation, daemon=True)
+            keepalive.start()
             self.invalidate()
             yield
         finally:
+            keepalive_stop.set()
+            if keepalive is not None:
+                keepalive.join()
             self.adapter = observed_adapter
             if getattr(self, '_storage_reservation', None) is reservation:
                 self._storage_reservation = None
@@ -1186,23 +1327,24 @@ class Workflow:
     def save(self, issue, goal, desired, *, human_spec=None):
         reservation = getattr(self, '_storage_reservation', None)
         if reservation is not None:
-            if not reservation['valid']:
-                raise ValueError('A current workflow storage reservation is required before writing')
-            if time.time() >= reservation['expires_at']:
-                reservation['valid'] = False
-                raise ValueError('The workflow storage reservation expired before writing; re-read and retry')
-            renewed = self.api.renew_storage_lock(
-                reservation['adapter'], self.repository, 'workflow',
-                reservation['owner'], reservation['run'], 300,
-            )
-            if not renewed.get('acquired'):
-                reservation['valid'] = False
-                raise ValueError('The workflow storage reservation was lost before writing; re-read and retry')
-            expires_at = renewed.get('expires_at')
-            if not isinstance(expires_at, (int, float)) or isinstance(expires_at, bool) or expires_at <= time.time():
-                reservation['valid'] = False
-                raise ValueError('Provider did not confirm a live workflow storage reservation; no write is allowed')
-            reservation['expires_at'] = expires_at
+            with reservation['mutex']:
+                if not reservation['valid']:
+                    raise ValueError('A current workflow storage reservation is required before writing')
+                if time.time() >= reservation['expires_at']:
+                    reservation['valid'] = False
+                    raise ValueError('The workflow storage reservation expired before writing; re-read and retry')
+                renewed = self.api.renew_storage_lock(
+                    reservation['adapter'], self.repository, 'workflow',
+                    reservation['owner'], reservation['run'], 300,
+                )
+                if not renewed.get('acquired'):
+                    reservation['valid'] = False
+                    raise ValueError('The workflow storage reservation was lost before writing; re-read and retry')
+                expires_at = renewed.get('expires_at')
+                if not isinstance(expires_at, (int, float)) or isinstance(expires_at, bool) or expires_at <= time.time():
+                    reservation['valid'] = False
+                    raise ValueError('Provider did not confirm a live workflow storage reservation; no write is allowed')
+                reservation['expires_at'] = expires_at
         desired['revision'] = goal['revision'] + 1
         def before_publish():
             if reservation is not None and (not reservation['valid'] or time.time() >= reservation['expires_at']):
@@ -1878,6 +2020,14 @@ class Workflow:
             if plan is None:
                 return topology_repair('the reviewed release plan is unavailable')
             lane = self.api._releases.target_release(plan, goal_number)
+            prefix = planning.get('release_branch_prefix')
+            integration = planning.get('integration_branch')
+            lane_trunk = (prefix + str(lane) if isinstance(prefix, str) and prefix
+                          and type(lane) is int and lane > 0 else None)
+            if lane_trunk is not None and identity.get('base_ref') == lane_trunk:
+                trunk = lane_trunk
+            elif isinstance(integration, str) and integration and identity.get('base_ref') == integration:
+                trunk = integration
             owners = {}
             for goal in self.portfolio():
                 branch = (goal.get('implementation') or {}).get('branch')
@@ -2147,7 +2297,7 @@ class Workflow:
 
 
     def node_snapshot(self, number, *, publication_probe=False, graph_override=None,
-                      prospective=None, dependency_override=None):
+                      prospective=None, dependency_override=None, workspace_target=None):
         """Read exact scoped records; only relationship consumers request closure."""
         ev = self.api._phase_evidence
         snapshots, artifacts, issues, bootstrap = {}, dict((prospective or {}).get('artifacts', {})), {}, {}
@@ -2194,7 +2344,7 @@ class Workflow:
                     validated.add(ref['hash'])
                 return value
             payload = resolve(envelope['payload'])
-            ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'} | (set(payload) & {'phase_data', 'goal_context', 'goal_context_resolutions', 'goal_context_dependency_events', 'workflow', 'stack_integration', 'publication_certificate'}), 'Payload')
+            ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'} | (set(payload) & {'phase_data', 'goal_context', 'goal_context_resolutions', 'goal_context_dependency_events', 'goal_context_archived_prerequisites', 'workflow', 'stack_integration', 'publication_certificate'}), 'Payload')
             if 'publication_certificate' in payload:
                 certificate = resolve(payload['publication_certificate'])
                 if (not isinstance(certificate, dict) or certificate.get('type') != 'publication_certificate'
@@ -2203,14 +2353,30 @@ class Workflow:
             ev.contract_fields(payload['operational'], {'leases', 'receipts'}, 'Operational payload')
             if not isinstance(payload['evidence'], list): raise ValueError('Evidence must be an ordered Ref array')
             historical_graph = resolve(payload['graph'])
-            definition = self.api._static_workflow.definition(
-                policy_section(self.project, 'workflow_adherence')['configuration']['phase_dag'],
-                self.api._graph_compiler)
+            policy_graph = copy.deepcopy(policy_section(
+                self.project, 'workflow_adherence')['configuration']['phase_dag'])
+            if payload['evidence'] and policy_graph != historical_graph:
+                old_nodes = {node['id']: node for node in historical_graph['nodes']}
+                new_ids = {node['id'] for node in policy_graph['nodes']}
+                for index, candidate in enumerate(policy_graph['nodes']):
+                    matches = []
+                    for old_id, old_node in old_nodes.items():
+                        if old_id in new_ids or old_id == candidate['id']:
+                            continue
+                        comparable = copy.deepcopy(candidate); comparable['id'] = old_id
+                        if comparable == old_node:
+                            matches.append(old_id)
+                    if len(matches) == 1:
+                        policy_graph['nodes'][index] = _rename_node_selectors(
+                            candidate, matches[0], candidate['id'])
+            definition = self.api._static_workflow.definition(policy_graph, self.api._graph_compiler)
+            stored_workflow_graph = None
             if 'workflow' in payload:
                 ev.contract_fields(payload['workflow'], {'version', 'graph'}, 'Workflow definition')
                 if payload['workflow']['version'] != self.api._static_workflow.VERSION:
                     raise ValueError('Unsupported stored workflow definition version')
-                ev.validate_graph(resolve(payload['workflow']['graph']))
+                stored_workflow_graph = resolve(payload['workflow']['graph'])
+                ev.validate_graph(stored_workflow_graph)
             graph = definition['graph'] if envelope['state'] == 'open' else historical_graph
             source_artifact = resolve(payload['spec'])
             if source_artifact.get('type') == 'migration_source':
@@ -2228,6 +2394,34 @@ class Workflow:
             ev.validate_graph(graph)
             snapshot = {'envelope': envelope, 'payload': payload, 'graph': graph, 'resolve': resolve,
                         'historical_graph': historical_graph, 'workflow_definition': definition}
+            if (definition is not None and payload['evidence'] and stored_workflow_graph is not None
+                    and definition['graph'] != stored_workflow_graph):
+                recorded_old_graph = remember(stored_workflow_graph)
+                for receipt_row in reversed(payload['operational']['receipts']):
+                    try:
+                        prior_response = resolve(receipt_row['result'])
+                        prior_step = next(item for item in prior_response.get('next_steps', [])
+                                          if item.get('kind') == 'policy_dag_cutover_applied')
+                        prior_receipt = resolve(prior_step['receipt'])['content']
+                        if prior_receipt.get('new_graph') == recorded_old_graph:
+                            recorded_old_graph = prior_receipt['new_policy_graph']
+                            break
+                    except (KeyError, StopIteration, TypeError, ValueError):
+                        continue
+                snapshot['policy_dag_cutover'] = {
+                    'old_graph': recorded_old_graph,
+                    'old_execution_graph': remember(stored_workflow_graph),
+                    'new_graph': remember(definition['graph']),
+                    'new_policy_graph': remember(policy_section(
+                        self.project, 'workflow_adherence')['configuration']['phase_dag']),
+                    'old_policy_revision': digest(stored_workflow_graph),
+                    'new_policy_revision': digest(self.project['policy']),
+                }
+                # Keep pre-cutover currentness and ownership anchored to the
+                # authenticated old graph. The reviewed new graph may rename
+                # nodes that historical Results cannot resolve yet.
+                graph = stored_workflow_graph
+                snapshot['graph'] = graph
             journal = payload.get('phase_data', {'version': 1, 'events': []})
             if (not isinstance(journal, dict) or set(journal) != {'version', 'events'}
                     or journal['version'] != 1 or not isinstance(journal['events'], list)):
@@ -2488,18 +2682,159 @@ class Workflow:
                         raise GoalContextResolutionAuthenticationError(
                             'Goal dependency journal authentication failed: ' + str(exc)) from exc
                 snapshot['goal_context_dependency_events'] = copy.deepcopy(dependency_journal['events'])
+                archived_journal = payload.get('goal_context_archived_prerequisites',
+                                               {'version': 1, 'events': []})
+                if (not isinstance(archived_journal, dict)
+                        or set(archived_journal) != {'version', 'events'}
+                        or archived_journal.get('version') != 1
+                        or not isinstance(archived_journal.get('events'), list)):
+                    raise GoalContextResolutionAuthenticationError(
+                        'Unsupported archived prerequisite journal')
+                archived = {}
+                seen_archived = set()
+                for reference in archived_journal['events']:
+                    try:
+                        ev.validate_ref(reference)
+                        if (self.node_ref_goal(reference, n) != n
+                                or reference['hash'] in seen_archived):
+                            raise ValueError('foreign or duplicate archived event')
+                        seen_archived.add(reference['hash'])
+                        event = resolve(reference)
+                        content = event['content']
+                        provenance = event['provenance']
+                        proposal_ref, review_ref = content['proposal'], content['review']
+                        for item in (proposal_ref, review_ref):
+                            ev.validate_ref(item)
+                            if self.node_ref_goal(item, n) != n:
+                                raise ValueError('foreign proposal or review')
+                        proposal_artifact, review_artifact = resolve(proposal_ref), resolve(review_ref)
+                        proposal = proposal_artifact['content']
+                        review = review_artifact['content']
+                        review_provenance = review_artifact['provenance']
+                        approval = content['human_approval']
+                        prerequisite = content['prerequisite']
+                        if (set(event) != {'type', 'content', 'producer', 'provenance'}
+                                or event['type'] != 'archived_prerequisite_resolution'
+                                or event['producer'] is not None
+                                or set(content) != {'context_hash', 'blocker_hash', 'prerequisite',
+                                                    'candidate', 'proposal', 'review', 'human_approval'}
+                                or set(provenance) != {'actor', 'repository', 'goal', 'request_id'}
+                                or provenance['repository'] != self.repository
+                                or provenance['goal'] != n
+                                or not explicit_approval(provenance['actor'])
+                                or not isinstance(provenance['request_id'], str)
+                                or not provenance['request_id']
+                                or type(prerequisite) is not int
+                                or content['context_hash'] != snapshot['goal_context_ref']['hash']
+                                or not isinstance(approval, dict)
+                                or set(approval) != {'approved_by', 'attribution'}
+                                or not all(explicit_approval(approval[key]) for key in approval)
+                                or proposal_artifact.get('type') != 'archived_prerequisite_proposal'
+                                or proposal_artifact.get('producer') is not None
+                                or proposal_artifact.get('provenance', {}).get('actor') != provenance['actor']
+                                or not self.node_same_local_ref(
+                                    proposal_artifact.get('provenance', {}).get('source'),
+                                    snapshot['goal_context_ref'], n, resolve)
+                                or review_artifact.get('type') != 'archived_prerequisite_review'
+                                or review_artifact.get('producer') is not None
+                                or review_provenance.get('source') != proposal_ref
+                                or not explicit_approval(review_provenance.get('actor'))
+                                or review_provenance['actor'] == provenance['actor']
+                                or review.get('decision') != 'approved'
+                                or not isinstance(review.get('report'), str)
+                                or not review['report'].strip()
+                                or not isinstance(review.get('adoption'), dict)
+                                or set(review['adoption']) != {'manual_request',
+                                    'terminal_equivalence', 'retained_obligations'}
+                                or review['adoption']['manual_request'] != 'opaque'
+                                or not all(isinstance(review['adoption'].get(key), str)
+                                    and review['adoption'][key].strip() for key in
+                                    ('terminal_equivalence', 'retained_obligations'))
+                                or proposal.get('manual_request') !=
+                                    'opaque_requires_reviewed_adoption'):
+                            raise ValueError('archived event, proposal, review or approval is malformed')
+                        prepared = {'operation': 'goal_external_blocker_prepare',
+                            'request_id': provenance['request_id'],
+                            'context_hash': content['context_hash'],
+                            'blocker_hash': content['blocker_hash'],
+                            'prerequisite': prerequisite,
+                            'pull_number': proposal['pull_number']}
+                        expected_proposal = self.node_external_blocker_proposal(
+                            {'number': n, 'envelope': envelope, **snapshot}, prepared,
+                            historical_edge=True)
+                        expected_proposal['source_envelope'] = proposal['source_envelope']
+                        expected_proposal['policy'] = proposal['policy']
+                        if (proposal != expected_proposal
+                                or proposal['candidate'] != content['candidate']
+                                or proposal_artifact['provenance'].get('policy') != proposal['policy']
+                                or review_provenance.get('policy') != proposal['policy']):
+                            raise ValueError('archived prerequisite evidence changed')
+                        review_request = {'operation': 'goal_external_blocker_review',
+                            'request_id': review_provenance['request_id'],
+                            'actor': review_provenance['actor'], 'proposal': proposal,
+                            'decision': 'approved', 'report': review['report'],
+                            'adoption': review['adoption']}
+                        apply_request = {'operation': 'goal_external_blocker_apply',
+                            'request_id': provenance['request_id'], 'actor': provenance['actor'],
+                            'proposal': proposal_ref, 'review': review_ref,
+                            'human_approval': approval}
+                        review_receipts = [row for row in payload['operational']['receipts']
+                            if row['request'] == review_request['request_id']
+                            and row['payload'] == digest(review_request)]
+                        apply_receipts = [row for row in payload['operational']['receipts']
+                            if row['request'] == apply_request['request_id']
+                            and row['payload'] == digest(apply_request)]
+                        index = self.artifact_index(n)
+                        review_edge = (self.node_receipt_edge(n, index, review_receipts[0])
+                                       if len(review_receipts) == 1 else None)
+                        apply_edge = (self.node_receipt_edge(n, index, apply_receipts[0])
+                                      if len(apply_receipts) == 1 else None)
+                        response = {'next_steps': [{'kind': 'archived_prerequisite_applied',
+                            'goal': n, 'prerequisite': prerequisite, 'resolution': reference}]}
+                        if (review_edge is None or apply_edge is None
+                                or review_edge['source'] != proposal['source_envelope']
+                                or apply_edge['source'] != review_edge['target']
+                                or review_edge['response'].get('next_steps', [{}])[0].get('review') != review_ref
+                                or apply_edge['response'] != response):
+                            raise ValueError('archived event lacks exact committed receipt')
+                        snapshot['goal_context'] = self.api._static_workflow.resolved_goal_context(
+                            snapshot['goal_context'], [content['blocker_hash']])
+                        archived.setdefault(prerequisite, reference)
+                    except (KeyError, TypeError, ValueError) as exc:
+                        raise GoalContextResolutionAuthenticationError(
+                            'Archived prerequisite journal authentication failed: ' + str(exc)) from exc
+                snapshot['archived_prerequisites'] = archived
                 if n == number and dependency_override is not None:
                     snapshot['goal_context'] = copy.deepcopy(dependency_override)
             elif 'goal_context_dependency_events' in payload:
                 raise GoalContextResolutionAuthenticationError(
                     'Goal dependency journal has no authenticated context')
+            elif 'goal_context_archived_prerequisites' in payload:
+                raise GoalContextResolutionAuthenticationError(
+                    'Archived prerequisite journal has no authenticated context')
             retired_nodes = {row['id']: row for row in historical_graph['nodes']} \
                 .keys() - {row['id'] for row in graph['nodes']}
             # Compiler-generated routes are historical evidence, not additional
             # product requirements. Unknown custom phases remain explicit debt.
             mapped_context_nodes = {'legacy_blockers'} if snapshot.get('goal_context') else set()
+            mapped_cutover_nodes = set()
+            for receipt_row in reversed(payload['operational']['receipts']):
+                try:
+                    response = resolve(receipt_row['result'])
+                    applied = next(item for item in response.get('next_steps', [])
+                                   if item.get('kind') == 'policy_dag_cutover_applied')
+                    cutover_receipt = resolve(applied['receipt'])['content']
+                    mapped_cutover_nodes = {item['old']['node'] for item in cutover_receipt['mapping']}
+                    break
+                except (KeyError, StopIteration, TypeError, ValueError):
+                    continue
+            evidenced_nodes = {resolve(reference)['content']['node']['node']
+                               for reference in payload['evidence']}
             unmapped = sorted(name for name in retired_nodes
-                             if not name.startswith(('gc_', 'sw_')) and name not in mapped_context_nodes)
+                             if (not name.startswith(('gc_', 'sw_'))
+                                 and name not in mapped_context_nodes
+                                 and name not in mapped_cutover_nodes
+                                 and name in evidenced_nodes))
             if unmapped:
                 snapshot['workflow_migration_blocker'] = 'Unmapped historical phase contracts require policy/data mapping: ' + ', '.join(unmapped)
             snapshots[n] = snapshot
@@ -2727,7 +3062,8 @@ class Workflow:
             snapshot['context_ref'] = remember({'type': 'relationship_context', 'content': relation, 'producer': None,
                 'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
             related = {ref['goal'] for ref in refs if type(ref['goal']) is int}
-            related.update(snapshot.get('goal_context', {}).get('depends_on', []))
+            related.update(target for target in snapshot.get('goal_context', {}).get('depends_on', [])
+                           if target not in snapshot.get('archived_prerequisites', {}))
             if any(ref['goal'] == '#parent' for ref in refs) and envelope['parent'] is not None: related.add(envelope['parent'])
             related.update(int(key) for key in children)
             for target in related:
@@ -2773,9 +3109,11 @@ class Workflow:
         context = {'goal': number, 'policy': self.project['policy'], 'runtime': self.runtime, 'artifacts': artifacts, 'goals': closure, 'published_bytes': published}
         snapshot = {'number': number, 'issue': issues[number], **selected, 'snapshots': snapshots, 'issues': issues,
                     'bootstrap': bootstrap, 'artifacts': artifacts, 'published': published, 'evaluation_context': context}
-        return self.node_project(snapshot, publication_probe=publication_probe)
+        return self.node_project(snapshot, publication_probe=publication_probe,
+                                 workspace_target=workspace_target)
 
-    def node_project(self, snapshot, *, payload=None, publication_probe=False):
+    def node_project(self, snapshot, *, payload=None, publication_probe=False,
+                     workspace_target=None):
         """Evaluate observed context with either durable or prospective evidence."""
         ev = self.api._phase_evidence
         context = {**snapshot['evaluation_context'], 'artifacts': snapshot['artifacts'], 'workspace_probe': True}
@@ -2806,8 +3144,44 @@ class Workflow:
             selected = {**selected, 'payload': evaluation_payload}
             closure[snapshot['number']] = selected
             context['goals'] = closure
+        cutover_results = set()
+        cutover_outputs = set()
+        for row in reversed(selected['payload']['operational']['receipts']):
+            try:
+                response = snapshot['artifacts'].get(row['result']['hash']) or snapshot['resolve'](row['result'])
+                step = next(item for item in response.get('next_steps', [])
+                            if item.get('kind') == 'policy_dag_cutover_applied')
+                receipt = snapshot['artifacts'].get(step['receipt']['hash']) or snapshot['resolve'](step['receipt'])
+                for item in receipt['content']['mapping']:
+                    cutover_results.add(item['result']['hash'])
+                    result_artifact = snapshot['artifacts'].get(item['result']['hash']) or snapshot['resolve'](item['result'])
+                    cutover_outputs.update(ref['hash'] for ref in result_artifact['content']['outputs'].values())
+                break
+            except (KeyError, StopIteration, TypeError, ValueError):
+                continue
+        context['cutover_results'] = cutover_results
+        context['cutover_outputs'] = cutover_outputs
+        context['cutover_mappings'] = {}
+        context['cutover_node_aliases'] = {}
+        for row in reversed(selected['payload']['operational']['receipts']):
+            try:
+                response = snapshot['artifacts'].get(row['result']['hash']) or snapshot['resolve'](row['result'])
+                step = next(item for item in response.get('next_steps', [])
+                            if item.get('kind') == 'policy_dag_cutover_applied')
+                receipt = snapshot['artifacts'].get(step['receipt']['hash']) or snapshot['resolve'](step['receipt'])
+                context['cutover_mappings'] = {
+                    item['result']['hash']: item['new']['node'] for item in receipt['content']['mapping']}
+                context['cutover_node_aliases'] = {
+                    item['old']['node']: item['new']['node'] for item in receipt['content']['mapping']}
+                break
+            except (KeyError, StopIteration, TypeError, ValueError):
+                continue
+        historical, historical_error = self.node_historical_policies(closure, snapshot['artifacts'])
+        context['historical_policies'] = historical
+        context['historical_policy_error'] = historical_error
         result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
-        workspaces = self.node_workspace_context(closure, result, result['artifacts'])
+        workspaces = self.node_workspace_context(
+            closure, result, result['artifacts'], workspace_target=workspace_target)
         publications = {} if publication_probe else self.node_publication_context(closure, result, result['artifacts'])
         context.update(workspace_probe=False, workspaces=workspaces, artifacts=result['artifacts'])
         if not publication_probe: context['publications'] = publications
@@ -3767,7 +4141,33 @@ class Workflow:
                     facts, _, _ = self.api._github_pull_request_states(self.repo, 'gh', [{'number': key[0]}], {key[0]: {'repository_context': value}})
                     observations[cache_key] = facts.get(key[0])
                 facts = observations[cache_key]
-                if not isinstance(facts, dict) or facts.get('repository') != self.repository or facts.get('base_ref') != value['base']: raise ValueError('Provider publication repository/base identity mismatch or unknown')
+                if not isinstance(facts, dict) or facts.get('repository') != self.repository:
+                    raise ValueError('Provider publication repository/base identity mismatch or unknown')
+                if facts.get('base_ref') != value['base']:
+                    planning = policy_section(self.project, 'git_review_release')['configuration']['release_planning']
+                    new_base = facts.get('base_ref')
+                    base_oid = facts.get('base_oid')
+                    if (not isinstance(planning, dict) or not candidate or facts.get('merged')
+                            or planning.get('enabled')
+                            or new_base != planning.get('integration_branch')
+                            or not isinstance(base_oid, str) or not re.fullmatch('[0-9a-f]{40}', base_oid)):
+                        raise ValueError('Provider publication repository/base identity mismatch or unknown')
+                    refs = subprocess.run(['git', 'ls-remote', '--heads', 'origin',
+                        'refs/heads/' + value['base'], 'refs/heads/' + new_base],
+                        cwd=self.repo, capture_output=True, text=True, check=False)
+                    remote = {}
+                    if refs.returncode == 0:
+                        for line in refs.stdout.splitlines():
+                            fields = line.split()
+                            if len(fields) == 2:
+                                remote[fields[1]] = fields[0]
+                    if (remote.get('refs/heads/' + value['base']) != base_oid
+                            or remote.get('refs/heads/' + new_base) != base_oid):
+                        raise ValueError('Provider publication repository/base identity mismatch or unknown')
+                    # The root's published-candidate Result remains historical.
+                    # An exact-OID retarget to the policy trunk changes only PR
+                    # topology; current provider facts govern downstream gates.
+                    value = {**value, 'base': new_base}
                 for name in ('head_oid', 'base_oid'):
                     if not isinstance(facts.get(name), str) or not re.fullmatch('[0-9a-f]{40}', facts[name]): raise ValueError('Provider publication head/base is unknown')
                 if candidate and facts['head_oid'] != blob['content']['head_oid']:
@@ -3983,7 +4383,7 @@ class Workflow:
             seen.add(cursor['hash']); cursor = previous['acquisition'].get('stopped_draft')
         return seen
 
-    def node_workspace_context(self, snapshots, projection, artifacts):
+    def node_workspace_context(self, snapshots, projection, artifacts, *, workspace_target=None):
         """Observe repository facts and bind the explicit workspace adapter.
 
         The graph supplies all semantic prerequisites. This adapter checks the
@@ -3994,9 +4394,18 @@ class Workflow:
         states = projection['states']; work = {key: state for key, state in states.items()
             if {'repository_workspace', 'repository_git_workspace'}.intersection(state['contract']['executor']['resources'])}
         head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
+        # A merely-ready legacy sibling must not make a fresh commit-backed
+        # task serialize the whole repository. Legacy bytes are observed once
+        # durable ownership or evidence actually makes them part of evaluation.
+        commit_only_ready = any(
+            state['state'] == 'ready'
+            and 'repository_workspace' not in state['contract']['executor']['resources']
+            for state in states.values())
         legacy_active = any(
             'repository_workspace' in state['contract']['executor']['resources']
-            and (state['state'] == 'ready' or key in projection.get('leases', {})
+            and ((state['state'] == 'ready'
+                  and (not commit_only_ready or key == workspace_target))
+                 or key in projection.get('leases', {})
                  or (key in projection['current']
                      and not projection['current'][key][1].get('non_applicability')))
             for key, state in work.items())
@@ -4093,7 +4502,7 @@ class Workflow:
                 reference = next((ref for ref in result['outputs'].values() if ref['hash'] == output_hash), None)
                 if (not isinstance(value, dict) or not reference or value.get('manifest') != manifest or
                         node not in value.get('tasks', []) or value.get('decision') != 'approved' or
-                        value.get('policy') not in {self.node_evidence_policy(), candidate.get('provenance', {}).get('policy')} or
+                        not self.node_authorization_policy_matches(value, candidate, result, artifacts) or
                         not any(binding['source'] == manifest and binding['mode'] == 'identity' for binding in result['inputs'])):
                     continue
                 approvals.append((reference, result, states[owner_key]))
@@ -4115,7 +4524,9 @@ class Workflow:
             for path, value in overrides.items():
                 self.node_workspace_paths([path])
                 if path not in git or not re.fullmatch(r'sha256:[0-9a-f]{64}', str(value)) or files.get(path) != value or git[path] == value: raise ValueError('Acquisition checkout overrides are invalid')
-            return files
+            # A declared absent path is retained in the immutable acquisition,
+            # but it is not a file in the connected workspace topology.
+            return {path: value for path, value in files.items() if value != 'missing'}
         candidates = []
         for result_ref, result in all_results:
             key = ev.task_key(result['node'])
@@ -4702,7 +5113,19 @@ class Workflow:
                         if 'error' not in row and row['reviews'] and row['proof']['hash'] in reachable and connected(row['after']): selected_anchors[row['key']] = row
                     acquisition['baseline_proofs'] = [{'result': row['result'], 'proof': row['proof'], 'reviews': [ref for ref, _ in row['reviews']]}
                         for row in selected_anchors.values()]
-                binding = remember({'type': 'workspace_snapshot', 'content': {'files': baseline, **{k: grant[k] for k in ('allocation', 'authorization', 'approval')}, **({'migration': migration} if migration is not None else {})}, 'producer': None, 'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
+                pinned_binding = next((item['source'] for item in acquisition.get('inputs', [])
+                                       if item.get('name') == '__workspace'), None) if lease else None
+                reuse_result_binding = (prior is not None and 'error' not in prior
+                                        and current_ref == prior['result']
+                                        and connected(prior['after']))
+                result_binding = next((item['source'] for item in projection['current'].get(
+                    key, (None, {'inputs': []}))[1]['inputs'] if item.get('name') == '__workspace'), None) if reuse_result_binding else None
+                if (result_binding is not None
+                        and (content(result_binding).get('content', {}).get('migration') != migration
+                             or content(result_binding).get('provenance', {}).get('policy')
+                             != self.node_evidence_policy())):
+                    result_binding = None
+                binding = pinned_binding or result_binding or remember({'type': 'workspace_snapshot', 'content': {'files': baseline, **{k: grant[k] for k in ('allocation', 'authorization', 'approval')}, **({'migration': migration} if migration is not None else {})}, 'producer': None, 'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
                 contexts[key] = {'binding': binding, 'files': baseline, 'acquisition': acquisition, **grant}
             except (ValueError, KeyError, subprocess.SubprocessError) as exc:
                 retirement = None
@@ -5010,7 +5433,9 @@ class Workflow:
         commands = request.get('workspace_checks', [])
         if not isinstance(commands, list) or any(not isinstance(c, list) or not c or any(not isinstance(a, str) or not a for a in c) for c in commands): raise ValueError('Workspace checks require nonempty argument arrays')
         before = self.workspace_files(); results = []
-        if before != lease['acquisition']['files'] and not commands: raise ValueError('Changed workspace outputs require observed verification checks before publishing a candidate proof')
+        acquired_files = {path: value for path, value in lease['acquisition']['files'].items()
+                          if value != 'missing'}
+        if before != acquired_files and not commands: raise ValueError('Changed workspace outputs require observed verification checks before publishing a candidate proof')
         results = self.node_verification_commands(
             snapshot, lease, request, commands, before, reuse_only=reuse_only)
         if self.workspace_files() != before: raise ValueError('Workspace checks changed source/output bytes; inspect before retry')
@@ -5022,6 +5447,85 @@ class Workflow:
         identity = digest(proof); snapshot['artifacts'][identity] = proof
         snapshot['workspace_proof'] = self.node_ref(identity, snapshot['number'])
         return snapshot['workspace_proof']
+
+    def node_attempt_restack_plan(self, snapshot, state, workspace):
+        """Derive moved-base work only from accepted same-node Git evidence."""
+        if not workspace or not workspace.get('git_workspace'):
+            return None
+        new_base = workspace.get('acquisition', {}).get('git_commit')
+        if not isinstance(new_base, str):
+            return None
+        artifacts = snapshot['artifacts']
+        results = []
+        for reference in snapshot['payload']['evidence']:
+            artifact = artifacts.get(reference['hash'], {})
+            if artifact.get('type') == 'result':
+                results.append((reference, artifact.get('content', {})))
+        for result_ref, result in reversed(results):
+            if result.get('node') != state['node']:
+                continue
+            outputs = list(result.get('outputs', {}).values())
+            def accepted_review(review):
+                review_state = snapshot['projection']['states'].get(
+                    self.api._phase_evidence.task_key(review.get('node')))
+                independent = review_state and any(
+                    selector.get('goal') in ('#this', state['node']['goal'])
+                    and selector.get('node') == state['node']['node']
+                    for selector in review_state['contract']['independent_of'])
+                decisions = [artifacts.get(reference['hash'], {}).get('content')
+                             for reference in review.get('outputs', {}).values()
+                             if artifacts.get(reference['hash'], {}).get('type') == 'review_decision']
+                return (review.get('executor') != result.get('executor') and independent
+                        and any(binding.get('source') in outputs
+                                for binding in review.get('inputs', []))
+                        and (not decisions or all(value.get('decision') == 'approved'
+                                                  for value in decisions)))
+            if not any(accepted_review(review) for _reference, review in results):
+                continue
+            sources = {value['provenance']['source']['hash']: value['provenance']['source']
+                       for reference in outputs
+                       if (value := artifacts.get(reference['hash'], {})).get(
+                           'provenance', {}).get('source')}
+            if len(sources) != 1:
+                continue
+            proof_ref = next(iter(sources.values()))
+            proof = artifacts.get(proof_ref['hash'], {})
+            acquisition = proof.get('acquisition', {})
+            checkpoint = proof.get('checkpoint', {})
+            old_base = acquisition.get('git_commit')
+            source_commit = checkpoint.get('result_commit')
+            retained_ref = (f"refs/heads/zzzops/attempts/{state['node']['goal']}/"
+                            f"{state['node']['node']}/{result.get('attempt')}")
+            try:
+                if (proof.get('kind') != 'git_phase_proof'
+                        or proof.get('node') != result['node']
+                        or proof.get('actor') != result.get('executor')
+                        or proof.get('acquisition_hash') != digest(acquisition)
+                        or proof.get('input_hash') != acquisition.get('input_hash')
+                        or proof.get('scope') != digest(workspace['entry'])
+                        or proof.get('retained_ref') != retained_ref
+                        or checkpoint.get('base_commit') != old_base
+                        or checkpoint != git_phase_state.validate_checkpoint(
+                            self.repo, base_commit=old_base, result_commit=source_commit,
+                            owned_paths=workspace['entry']['owned'],
+                            require_clean_worktree=False)):
+                    raise ValueError
+                git_phase_state.verify_attempt_ref(self.repo, remote='origin',
+                    ref=retained_ref, commit=source_commit)
+                if new_base == old_base:
+                    return None
+                plan = git_phase_state.preview_attempt_restack(self.repo,
+                    old_base=old_base, new_base=new_base,
+                    attempt_commit=source_commit,
+                    owned_paths=workspace['entry']['owned'])
+                if plan['status'] == 'clean' and plan['change_count'] == 0:
+                    return None
+                return {'source': {'result': result_ref, 'proof': proof_ref,
+                                   'ref': retained_ref, 'commit': source_commit},
+                        'plan': plan, 'plan_hash': digest(plan)}
+            except (KeyError, ValueError, subprocess.SubprocessError):
+                raise ValueError('Accepted same-node Git restack source is invalid') from None
+        return None
 
     def node_verification_prepare(self, snapshot, state, lease, request):
         """Freeze the authority checked before unlocked local verification."""
@@ -5406,6 +5910,27 @@ class Workflow:
         """Format the same readiness and authority boundaries for both callers."""
         number = snapshot['number']
         resolution_steps = []
+        cutover = snapshot.get('policy_dag_cutover')
+        if cutover:
+            prepare = {'operation': 'policy_dag_cutover_prepare',
+                'request_id': '<stable request id>', 'actor': '<authenticated root>',
+                'expected_goal_revision': snapshot['envelope']['revision'],
+                'expected_goal_payload': copy.deepcopy(snapshot['envelope']['payload']),
+                'old_graph': copy.deepcopy(cutover['old_graph']),
+                'new_graph': copy.deepcopy(cutover['new_graph']),
+                'old_policy_digest': cutover['old_policy_revision'],
+                'new_policy_digest': cutover['new_policy_revision'],
+                'mapping': '<explicit reviewed mapping>'}
+            return [{'kind': 'policy_dag_cutover', 'assignment': 'root',
+                     'goal': number,
+                     'reason': ('The reviewed policy DAG differs from the authenticated goal graph; '
+                                'old Results cannot enter the new frontier without an explicit mapping.'),
+                     'contract': {**copy.deepcopy(cutover),
+                         'mapping': '<explicit old node/output/attempt to new contract mapping>',
+                         'receipt': '<authenticated idempotent cutover receipt>'},
+                     'prepare': prepare,
+                     'action': ('Review the old/new graph mapping, evidence equivalence, in-flight leases '
+                                'and invalidated consumers before recording one revision-pinned cutover.')}]
         context = snapshot.get('goal_context')
         original = snapshot.get('original_goal_context')
         context_ref = snapshot.get('goal_context_ref')
@@ -5432,11 +5957,43 @@ class Workflow:
                     'action': ('Root must judge whether immutable current evidence satisfies this exact obligation. '
                                'Human-action blockers also require explicit user approval attribution.'),
                     'submission': submission})
+                if blocker.get('category') == 'external-dependency':
+                    for prerequisite in context.get('depends_on', []):
+                        resolution_steps.append({'kind': 'goal_external_blocker_prepare',
+                            'assignment': 'root', 'goal': number,
+                            'blocker': copy.deepcopy(blocker), 'prerequisite': prerequisite,
+                            'action': 'Inspect the exact archived prerequisite and linked merged PR; this preview grants no authority.',
+                            'submission': {'operation': 'goal_external_blocker_prepare',
+                                'request_id': '<unique request id>', 'context_hash': context_ref['hash'],
+                                'blocker_hash': identity, 'prerequisite': prerequisite,
+                                'pull_number': '<linked PR number>'}})
         if snapshot.get('workflow_migration_blocker'):
             return [*resolution_steps, {'kind': 'blocker', 'goal': number,
                      'reason': snapshot['workflow_migration_blocker'],
                      'action': 'Preserve history and resolve the exact ownership or phase-data mapping; do not amend the goal graph.'}]
         projection = snapshot['projection']; steps = []
+        cutover_gate = None
+        for row in reversed(snapshot['payload']['operational']['receipts']):
+            try:
+                recorded = snapshot['resolve'](row['result'])
+                applied = next((step for step in recorded.get('next_steps', [])
+                                if step.get('kind') == 'policy_dag_cutover_applied'), None)
+                if applied is None:
+                    continue
+                receipt = snapshot['resolve'](applied['receipt'])['content']
+                old_graph = snapshot['resolve'](receipt['old_graph'])
+                new_graph = snapshot['resolve'](receipt['new_graph'])
+                mapped = {item['old']['node'] for item in receipt['mapping']}
+                added = {node['id'] for node in new_graph['nodes']} - {
+                    node['id'] for node in old_graph['nodes']}
+                terminal_nodes = {selector.get('node') for selector in old_graph['terminals']
+                                  if selector.get('kind') == 'node'}
+                cutover_gate = {'old_unmapped': ({
+                    node['id'] for node in old_graph['nodes']} - mapped).intersection(terminal_nodes),
+                    'added': added}
+                break
+            except (KeyError, TypeError, ValueError):
+                continue
         merged_publication = self.node_has_merged_publication(snapshot, number)
         if merged_publication and resolution_steps:
             resolution_steps = [{'kind': 'blocker', 'goal': number,
@@ -5452,6 +6009,10 @@ class Workflow:
                         'recovery_contract': {'operation': 'recover', 'node': state['node'],
                             'lease': owned['token'], 'actor': owned['worker'],
                             'worker_status': '<observed stopped status>', 'evidence': '<terminal observation>'}})
+                continue
+            if (cutover_gate and state['node']['node'] in cutover_gate['old_unmapped']
+                    and any((number, node, None, 1) not in projection['current']
+                            for node in cutover_gate['added'])):
                 continue
             # A reviewed additive member-route recovery preserves the legacy
             # contract and its historical Results, but only the exact upgraded
@@ -8023,6 +8584,304 @@ class Workflow:
             return self.node_mutate_phase(
                 number, request, prepared_verification=context['identity'])
 
+    def node_external_blocker_candidate(self, snapshot, request):
+        """Preview one historical prerequisite without evaluating its phase DAG."""
+        proposal = self.node_external_blocker_proposal(snapshot, request)
+        return {'next_steps': [{'kind': 'archived_prerequisite_preview',
+            'assignment': 'root', 'goal': snapshot['number'],
+            'blocker_hash': request['blocker_hash'],
+            'context_hash': request['context_hash'],
+            'prerequisite': request['prerequisite'],
+            'candidate': proposal['candidate'], 'proposal': proposal,
+            'action': 'Give this exact candidate and preserved obligation to an independent reviewer; it grants no resource or completion authority.',
+            'submission': {'operation': 'goal_external_blocker_review',
+                'request_id': 'archived-prerequisite-review-' + digest(proposal)[7:],
+                'actor': '<independent reviewer thread>', 'proposal': proposal,
+                'decision': '<approved or changes_requested>',
+                'report': '<independent review report>',
+                'adoption': {'manual_request': 'opaque',
+                    'terminal_equivalence': '<why merged work satisfies the exact old prerequisite>',
+                    'retained_obligations': '<how missing migration obligations remain gated>'}}}]}
+
+    def node_archived_migration_transaction(self, number, envelope, payload,
+                                            receipt, response, target_intent,
+                                            source_bytes):
+        """Bind the manual receipt to its complete provider comment transaction.
+
+        The old manual converter did not publish its request body. Its request
+        fingerprint remains opaque and must receive explicit reviewed adoption.
+        """
+        rows = payload.get('operational', {}).get('receipts', [])
+        if not isinstance(rows, list) or len(rows) != 1:
+            raise ValueError('Archived migration requires one committed request receipt')
+        row = rows[0]
+        receipt_ref = self.node_ref(digest(receipt), number)
+        response_ref = self.node_ref(digest(response), number)
+        if (not isinstance(row, dict) or set(row) != {'request', 'payload', 'result'}
+                or not isinstance(row['request'], str)
+                or re.fullmatch(r'manual-migrate-[0-9a-f]{64}', row['request']) is None
+                or not isinstance(row['payload'], str)
+                or re.fullmatch(r'sha256:[0-9a-f]{64}', row['payload']) is None
+                or row['result'] != response_ref):
+            raise ValueError('Archived migration request fingerprint is malformed')
+        index = self.artifact_index(number)
+        heads = [part for part in index.envelopes
+                 if (part.get('context') or {}).get('request_id') == row['request']]
+        if not heads or len({part.get('transaction') for part in heads}) != 1:
+            raise ValueError('Archived migration has no unique committed comment transaction')
+        transaction = heads[0]['transaction']
+        matching = [comment_store.decode_envelope(comment['body'])
+                    for comment, part in index.envelope_comments
+                    if part.get('transaction') == transaction]
+        if len(matching) != len(heads):
+            raise ValueError('Archived migration transaction has conflicting request identities')
+        comment_store.verify_manifest(matching)
+        if not isinstance(transaction, str) or re.fullmatch(r'sha256:[0-9a-f]{64}', transaction) is None:
+            raise ValueError('Archived migration transaction identity is malformed')
+        context = matching[0].get('context')
+        expected_hashes = {envelope['payload']['hash'], receipt_ref['hash'],
+                           response_ref['hash'], target_intent['payload']['hash'],
+                           digest(target_intent)}
+        included = {record['hash'] for part in matching for record in part['artifacts']}
+        source_envelope = context.get('source_envelope') if isinstance(context, dict) else None
+        source = self.api._archived_prerequisites._published_json(source_bytes, receipt['source'])
+        source_issue = source.get('content') if isinstance(source, dict) else None
+        source_body = source_issue.get('body') if isinstance(source_issue, dict) else None
+        if not isinstance(source_body, str):
+            raise ValueError('Archived migration published source has no issue body')
+        prefix, suffix = self.api._migration_batch.human_parts(self, source_body)
+        if (any(part.get('goal') != number or part.get('context') != context for part in matching)
+                or not expected_hashes <= included
+                or context.get('request_hash') != row['payload']
+                or context.get('response') != response_ref
+                or context.get('migration', {}).get('receipt') != receipt_ref
+                or context.get('target_envelope') != {
+                    **target_intent, 'payload': envelope['payload']}
+                or context.get('entry_payload') != envelope['payload']
+                or context.get('payload') != envelope['payload']
+                or source_envelope != {**target_intent,
+                                       'revision': target_intent['revision'] - 1}
+                or context.get('source_hash') != digest(source_body)
+                or context.get('human_hash') != digest(prefix + suffix)):
+            raise ValueError('Archived migration comment transaction does not bind exact source and target')
+        return transaction
+
+    def node_external_blocker_proposal(self, snapshot, request, *, historical_edge=False):
+        """Reobserve the named archived issue, transaction and integration commit."""
+        required = {'operation', 'request_id', 'context_hash', 'blocker_hash',
+                    'prerequisite', 'pull_number'}
+        if set(request) != required or request['operation'] != 'goal_external_blocker_prepare':
+            raise ValueError('Archived blocker preview requires one exact blocker and prerequisite')
+        number = snapshot['number']
+        context = snapshot.get('goal_context') or {}
+        original = snapshot.get('original_goal_context') or {}
+        context_ref = snapshot.get('goal_context_ref')
+        if (not isinstance(request['request_id'], str)
+                or re.fullmatch(r'[A-Za-z0-9._:-]{1,128}', request['request_id']) is None
+                or context_ref is None or request['context_hash'] != context_ref['hash']):
+            raise ValueError('Archived blocker preview request or context is stale')
+        matches = [row for row in original.get('blockers', [])
+                   if digest(row) == request['blocker_hash']]
+        if (len(matches) != 1 or matches[0].get('category') != 'external-dependency'
+                or not any(digest(row) == request['blocker_hash']
+                           for row in context.get('blockers', []))):
+            raise ValueError('Archived blocker preview identifies no unique open external obligation')
+        prerequisite = request['prerequisite']
+        declared = context.get('depends_on', [])
+        if historical_edge:
+            declared = original.get('depends_on', [])
+        if (type(prerequisite) is not int or prerequisite <= 0 or prerequisite == number
+                or prerequisite not in declared):
+            raise ValueError('Archived blocker preview requires one declared same-goal-context prerequisite')
+        pull_number = request['pull_number']
+        if type(pull_number) is not int or pull_number <= 0:
+            raise ValueError('Archived blocker preview requires an exact linked PR number')
+        issue = self.adapter.get_issue(prerequisite)
+        envelope = self.api.parse_managed_goal(issue.get('body', ''), prerequisite)
+        if not envelope or envelope.get('schema_version') != 2:
+            raise ValueError('Archived prerequisite has no readable v2 envelope')
+        archived_payload = self.read_artifact(prerequisite, envelope['payload'])
+        candidates = []
+        for committed in archived_payload.get('operational', {}).get('receipts', []):
+            response = self.read_artifact(prerequisite, committed['result'])
+            steps = response.get('next_steps', []) if isinstance(response, dict) else []
+            if len(steps) != 1 or steps[0].get('kind') != 'schema_migration':
+                continue
+            receipt = self.read_artifact(prerequisite, steps[0]['receipt'])
+            if receipt.get('converter') == 'manual-reconciliation-522/1':
+                candidates.append((receipt, response))
+        if len(candidates) != 1:
+            raise ValueError('Archived prerequisite has no unique supported migration receipt')
+        receipt, response = candidates[0]
+        source, source_bytes = self.node_published_artifact(receipt['source'])
+        policy, policy_bytes = self.node_published_artifact(receipt['policy'])
+        del source, policy  # The candidate validates the published bytes itself.
+        target_intent = self.read_artifact(prerequisite, receipt['target_intent'])
+        target_payload = self.read_artifact(prerequisite, receipt['target_payload'])
+        transaction = self.node_archived_migration_transaction(
+            prerequisite, envelope, archived_payload, receipt, response,
+            target_intent, source_bytes)
+        pull = self.adapter.archived_prerequisite_pull(pull_number)
+        merge = (pull.get('mergeCommit') or {}).get('oid')
+        branch = (policy_section(self.project, 'git_review_release')['configuration'].get(
+            'release_planning') or {}).get('integration_branch')
+        if not isinstance(merge, str) or not isinstance(branch, str) or not branch:
+            raise ValueError('Archived prerequisite has no exact merge and integration identities')
+        reachable = self.adapter.archived_prerequisite_reachable(merge, branch)
+        candidate = self.api._archived_prerequisites.candidate(
+            repository=self.repository, goal=prerequisite, integration_branch=branch,
+            issue=issue, envelope=envelope, archived_payload=archived_payload,
+            receipt=receipt, migration_response=response, target_intent=target_intent,
+            target_payload=target_payload, source_bytes=source_bytes,
+            policy_bytes=policy_bytes, pull_number=pull_number, pull=pull,
+            merge_reachable=reachable)
+        return {'kind': 'archived_prerequisite_proposal', 'repository': self.repository,
+            'goal': number, 'context_hash': context_ref['hash'],
+            'blocker_hash': request['blocker_hash'], 'prerequisite': prerequisite,
+            'pull_number': pull_number, 'candidate': candidate,
+            'migration_transaction': transaction,
+            'manual_request': 'opaque_requires_reviewed_adoption',
+            'source_envelope': copy.deepcopy(snapshot['envelope']),
+            'policy': self.node_evidence_policy()}
+
+    def node_external_blocker_review(self, snapshot, payload, request):
+        if set(request) != {'operation', 'request_id', 'actor', 'proposal',
+                            'decision', 'report', 'adoption'}:
+            raise ValueError('Archived prerequisite review requires exact fields')
+        root = (self.runtime or {}).get('root_id')
+        invoking = os.environ.get('CODEX_THREAD_ID')
+        if (not root or not explicit_approval(request['actor']) or request['actor'] == root
+                or invoking != request['actor']):
+            raise ValueError('Archived prerequisite review requires the authenticated independent thread')
+        if (request['decision'] not in {'approved', 'changes_requested'}
+                or not isinstance(request['report'], str) or not request['report'].strip()):
+            raise ValueError('Archived prerequisite review requires decision and report')
+        adoption = request['adoption']
+        if (not isinstance(adoption, dict)
+                or set(adoption) != {'manual_request', 'terminal_equivalence', 'retained_obligations'}
+                or adoption['manual_request'] != 'opaque'
+                or not all(isinstance(adoption[key], str) and adoption[key].strip()
+                           for key in ('terminal_equivalence', 'retained_obligations'))):
+            raise ValueError('Archived prerequisite requires explicit reviewed adoption of opaque manual request')
+        proposal = request['proposal']
+        if (not isinstance(proposal, dict) or proposal.get('kind') != 'archived_prerequisite_proposal'
+                or proposal.get('manual_request') != 'opaque_requires_reviewed_adoption'):
+            raise ValueError('Archived prerequisite review requires the exact proposal')
+        prepared = {'operation': 'goal_external_blocker_prepare', 'request_id': request['request_id'],
+            'context_hash': proposal.get('context_hash'), 'blocker_hash': proposal.get('blocker_hash'),
+            'prerequisite': proposal.get('prerequisite'), 'pull_number': proposal.get('pull_number')}
+        if proposal != self.node_external_blocker_proposal(snapshot, prepared):
+            raise ValueError('Archived prerequisite proposal changed before review')
+        policy = self.node_evidence_policy()
+        proposal_artifact = {'type': 'archived_prerequisite_proposal',
+            'content': copy.deepcopy(proposal), 'producer': None,
+            'provenance': {'actor': root, 'source': snapshot['goal_context_ref'], 'policy': policy}}
+        proposal_ref = self.node_ref(digest(proposal_artifact), snapshot['number'])
+        snapshot['artifacts'][proposal_ref['hash']] = proposal_artifact
+        review_artifact = {'type': 'archived_prerequisite_review',
+            'content': {'decision': request['decision'], 'report': request['report'],
+                        'adoption': copy.deepcopy(adoption)},
+            'producer': None, 'provenance': {'actor': request['actor'],
+                'source': proposal_ref, 'policy': policy, 'request_id': request['request_id']}}
+        review_ref = self.node_ref(digest(review_artifact), snapshot['number'])
+        snapshot['artifacts'][review_ref['hash']] = review_artifact
+        if request['decision'] == 'approved':
+            step = {'kind': 'human_approval', 'assignment': 'root',
+                'goal': snapshot['number'], 'proposal': proposal_ref, 'review': review_ref,
+                'action': 'Approve the exact independently reviewed archived prerequisite equivalence.',
+                'submission': {'operation': 'goal_external_blocker_apply',
+                    'request_id': 'archived-prerequisite-apply-' + digest(review_ref)[7:],
+                    'actor': root, 'proposal': proposal_ref, 'review': review_ref,
+                    'human_approval': {'approved_by': '<user>', 'attribution': '<exact approval>'}}}
+        else:
+            step = {'kind': 'changes_requested', 'goal': snapshot['number'],
+                'proposal': proposal_ref, 'review': review_ref,
+                'action': 'Reconsider the archived evidence; this review grants no authority.'}
+        return self.node_persist(snapshot, payload, {'next_steps': [step]}, request)
+
+    def node_external_blocker_apply(self, snapshot, payload, request):
+        if set(request) != {'operation', 'request_id', 'actor', 'proposal',
+                            'review', 'human_approval'}:
+            raise ValueError('Archived prerequisite application requires exact fields')
+        root = (self.runtime or {}).get('root_id')
+        invoking = os.environ.get('CODEX_THREAD_ID')
+        if not root or request['actor'] != root or (invoking and invoking != root):
+            raise ValueError('Only the coordinating root may apply archived prerequisite evidence')
+        approval = request['human_approval']
+        if (not isinstance(approval, dict) or set(approval) != {'approved_by', 'attribution'}
+                or not all(explicit_approval(approval[key]) for key in approval)):
+            raise ValueError('Archived prerequisite application requires explicit human approval')
+        if payload['operational']['leases']:
+            raise ValueError('Active ownership must be reconciled before archived prerequisite application')
+        for name in ('proposal', 'review'):
+            self.api._phase_evidence.validate_ref(request[name])
+            if self.node_ref_goal(request[name], snapshot['number']) != snapshot['number']:
+                raise ValueError('Archived prerequisite review belongs to another goal')
+        proposal_artifact = snapshot['resolve'](request['proposal'])
+        review_artifact = snapshot['resolve'](request['review'])
+        proposal = proposal_artifact.get('content', {})
+        review = review_artifact.get('content', {})
+        provenance = review_artifact.get('provenance', {})
+        if (proposal_artifact.get('type') != 'archived_prerequisite_proposal'
+                or proposal_artifact.get('provenance', {}).get('actor') != root
+                or not self.node_same_local_ref(
+                    proposal_artifact.get('provenance', {}).get('source'),
+                    snapshot.get('goal_context_ref'), snapshot['number'], snapshot['resolve'])
+                or review_artifact.get('type') != 'archived_prerequisite_review'
+                or not explicit_approval(provenance.get('actor')) or provenance['actor'] == root
+                or provenance.get('source') != request['proposal']
+                or review.get('decision') != 'approved'
+                or not isinstance(review.get('report'), str) or not review['report'].strip()):
+            raise ValueError('Exact independent approved archived prerequisite review is required')
+        adoption = review.get('adoption')
+        if (not isinstance(adoption, dict)
+                or set(adoption) != {'manual_request', 'terminal_equivalence', 'retained_obligations'}
+                or adoption['manual_request'] != 'opaque'
+                or not all(isinstance(adoption.get(key), str) and adoption[key].strip()
+                           for key in ('terminal_equivalence', 'retained_obligations'))):
+            raise ValueError('Archived prerequisite review lacks explicit manual request adoption')
+        review_request = {'operation': 'goal_external_blocker_review',
+            'request_id': provenance.get('request_id'), 'actor': provenance['actor'],
+            'proposal': proposal, 'decision': review['decision'], 'report': review['report'],
+            'adoption': review['adoption']}
+        receipts = [row for row in payload['operational']['receipts']
+                    if row['request'] == review_request['request_id']
+                    and row['payload'] == digest(review_request)]
+        edge = (self.node_receipt_edge(snapshot['number'], self.artifact_index(snapshot['number']),
+                                      receipts[0]) if len(receipts) == 1 else None)
+        if (edge is None or edge['source'] != proposal.get('source_envelope')
+                or edge['target'] != snapshot['envelope']
+                or edge['response'].get('next_steps', [{}])[0].get('review') != request['review']):
+            raise ValueError('Archived prerequisite review lacks its exact committed receipt')
+        prepared = {'operation': 'goal_external_blocker_prepare', 'request_id': request['request_id'],
+            'context_hash': proposal.get('context_hash'), 'blocker_hash': proposal.get('blocker_hash'),
+            'prerequisite': proposal.get('prerequisite'), 'pull_number': proposal.get('pull_number')}
+        expected = self.node_external_blocker_proposal(snapshot, prepared)
+        expected['source_envelope'] = proposal['source_envelope']
+        if proposal != expected or proposal.get('policy') != self.node_evidence_policy():
+            raise ValueError('Archived prerequisite candidate, policy or blocker changed after review')
+        event = {'type': 'archived_prerequisite_resolution',
+            'content': {'context_hash': proposal['context_hash'],
+                'blocker_hash': proposal['blocker_hash'],
+                'prerequisite': proposal['prerequisite'],
+                'candidate': copy.deepcopy(proposal['candidate']),
+                'proposal': request['proposal'], 'review': request['review'],
+                'human_approval': copy.deepcopy(approval)},
+            'producer': None, 'provenance': {'actor': root, 'repository': self.repository,
+                'goal': snapshot['number'], 'request_id': request['request_id']}}
+        reference = self.node_ref(digest(event), snapshot['number'])
+        snapshot['artifacts'][reference['hash']] = event
+        journal = payload.setdefault('goal_context_archived_prerequisites',
+                                     {'version': 1, 'events': []})
+        if (not isinstance(journal, dict) or set(journal) != {'version', 'events'}
+                or journal['version'] != 1 or not isinstance(journal['events'], list)):
+            raise ValueError('Unsupported archived prerequisite journal')
+        journal['events'].append(reference)
+        response = {'next_steps': [{'kind': 'archived_prerequisite_applied',
+            'goal': snapshot['number'], 'prerequisite': proposal['prerequisite'],
+            'resolution': reference}]}
+        return self.node_persist(snapshot, payload, response, request)
+
     def node_resolve_goal_blocker(self, snapshot, payload, request):
         """Append one authenticated resolution without rewriting migration history."""
         common = {'operation', 'request_id', 'actor', 'context_hash', 'blocker_hash',
@@ -8276,6 +9135,207 @@ class Workflow:
             'before': proposal['before'], 'after': proposal['after']}]}
         return self.node_persist(snapshot, payload, response, request)
 
+    def node_policy_cutover_mapping(self, snapshot, mapping, old_graph, new_graph):
+        """Validate a finite exact Result mapping between two reviewed graphs."""
+        if not isinstance(mapping, list) or not mapping:
+            raise ValueError('Policy DAG cutover mapping must be a non-empty array')
+        old_nodes = {node['id']: node for node in old_graph['nodes']}
+        new_nodes = {node['id']: node for node in new_graph['nodes']}
+        current = {}
+        for reference in reversed(snapshot['payload']['evidence']):
+            result_artifact = snapshot['resolve'](reference)
+            result = result_artifact.get('content', {})
+            if result_artifact.get('type') != 'result':
+                continue
+            key = self.api._phase_evidence.task_key(result['node'])
+            current.setdefault(key, (reference, result))
+        seen_old, seen_new = set(), set()
+        required = {'inputs', 'outputs', 'scope', 'role', 'independence', 'approval'}
+        for row in mapping:
+            if not isinstance(row, dict) or set(row) != {'old', 'new', 'result', 'equivalence'}:
+                raise ValueError('Policy DAG cutover mapping row is malformed')
+            for side, nodes in (('old', old_nodes), ('new', new_nodes)):
+                target = row[side]
+                if not isinstance(target, dict) or set(target) != {'node', 'output'}:
+                    raise ValueError('Policy DAG cutover mapping target is malformed')
+                node = nodes.get(target['node'])
+                if node is None or target['output'] not in node['outputs']:
+                    raise ValueError('Policy DAG cutover mapping names a missing output')
+            old_key = (row['old']['node'], row['old']['output'])
+            new_key = (row['new']['node'], row['new']['output'])
+            if old_key in seen_old or new_key in seen_new:
+                raise ValueError('Policy DAG cutover mapping is ambiguous')
+            seen_old.add(old_key); seen_new.add(new_key)
+            equivalence = row['equivalence']
+            if not isinstance(equivalence, dict) or set(equivalence) != required or not all(
+                    equivalence[name] is True for name in required):
+                raise ValueError('Policy DAG cutover evidence equivalence is incomplete')
+            old_node, new_node = old_nodes[old_key[0]], new_nodes[new_key[0]]
+            comparable_old = _rename_node_selectors(old_node, old_key[0], new_key[0])
+            derived = {
+                'inputs': comparable_old['inputs'] == new_node['inputs'],
+                'outputs': comparable_old['outputs'][old_key[1]] == new_node['outputs'][new_key[1]],
+                'scope': (comparable_old['executor'].get('authority') == new_node['executor'].get('authority')
+                          and comparable_old.get('permits', []) == new_node.get('permits', [])),
+                'role': comparable_old['executor'].get('role') == new_node['executor'].get('role'),
+                'independence': comparable_old.get('independent_of', []) == new_node.get('independent_of', []),
+                'approval': comparable_old.get('gates', []) == new_node.get('gates', []),
+            }
+            changed = sorted(name for name, equivalent in derived.items() if not equivalent)
+            if changed:
+                raise ValueError('Policy DAG cutover equivalence changed: ' + ', '.join(changed))
+            self.api._phase_evidence.validate_ref(row['result'])
+            if self.node_ref_goal(row['result'], snapshot['number']) != snapshot['number']:
+                raise ValueError('Policy DAG cutover Result belongs to another goal')
+            artifact = snapshot['resolve'](row['result'])
+            result = artifact.get('content', {})
+            if (artifact.get('type') != 'result' or result.get('node', {}).get('node') != old_key[0]
+                    or result.get('outputs', {}).get(old_key[1]) is None):
+                raise ValueError('Policy DAG cutover mapping Result/output identity differs')
+            old_task = (snapshot['number'], old_key[0], result['node'].get('item'),
+                        result['node'].get('generation', 1))
+            if old_task not in current or current[old_task][0] != row['result']:
+                raise ValueError('Policy DAG cutover mapping Result is superseded or not current')
+        mapped_old = {(row['old']['node'], row['old']['output']) for row in mapping}
+        reusable = set()
+        for key, (_reference, result) in current.items():
+            if key[0] != snapshot['number'] or key[2] is not None:
+                continue
+            old_node = old_nodes.get(key[1]); new_node = new_nodes.get(key[1])
+            if old_node is None or new_node is None:
+                continue
+            for output in result['outputs']:
+                if (output in old_node['outputs'] and output in new_node['outputs']
+                        and old_node['inputs'] == new_node['inputs']
+                        and old_node['outputs'][output] == new_node['outputs'][output]
+                        and old_node['executor'] == new_node['executor']
+                        and old_node.get('independent_of', []) == new_node.get('independent_of', [])
+                        and old_node.get('gates', []) == new_node.get('gates', [])
+                        and old_node.get('permits', []) == new_node.get('permits', [])):
+                    reusable.add((key[1], output))
+        omitted = sorted(reusable - mapped_old)
+        if omitted:
+            raise ValueError('Policy DAG cutover mapping omitted reusable current outputs: ' +
+                             ', '.join(node + '/' + output for node, output in omitted))
+        return copy.deepcopy(mapping)
+
+    def node_policy_cutover_prepare(self, snapshot, payload, request):
+        expected = {'operation', 'request_id', 'actor', 'expected_goal_revision',
+                    'expected_goal_payload', 'old_graph', 'new_graph',
+                    'old_policy_digest', 'new_policy_digest', 'mapping'}
+        if set(request) != expected:
+            raise ValueError('Policy DAG cutover prepare requires exact returned fields')
+        root = (self.runtime or {}).get('root_id')
+        if not root or request['actor'] != root:
+            raise ValueError('Only the coordinating root may prepare a policy DAG cutover')
+        cutover = snapshot.get('policy_dag_cutover')
+        if (cutover is None or request['expected_goal_revision'] != snapshot['envelope']['revision']
+                or request['expected_goal_payload'] != snapshot['envelope']['payload']
+                or any(request[name] != cutover[name] for name in (
+                    'old_graph', 'new_graph'))
+                or request['old_policy_digest'] != cutover['old_policy_revision']
+                or request['new_policy_digest'] != cutover['new_policy_revision']):
+            raise ValueError('Policy DAG cutover goal revision, payload, graph or policy changed')
+        old_graph = snapshot['resolve'](cutover['old_graph'])
+        new_graph = snapshot['resolve'](cutover['new_graph'])
+        mapping = self.node_policy_cutover_mapping(snapshot, request['mapping'], old_graph, new_graph)
+        if payload['operational']['leases']:
+            raise ValueError('Policy DAG cutover requires every old-policy lease owner to be resolved')
+        proposal = {'old_graph': cutover['old_graph'], 'new_graph': cutover['new_graph'],
+            'old_execution_graph': cutover['old_execution_graph'],
+            'new_policy_graph': cutover['new_policy_graph'],
+            'old_policy_digest': cutover['old_policy_revision'],
+            'new_policy_digest': cutover['new_policy_revision'], 'mapping': mapping,
+            'source_revision': snapshot['envelope']['revision'],
+            'source_payload': copy.deepcopy(snapshot['envelope']['payload'])}
+        artifact = {'type': 'policy_dag_cutover_proposal', 'content': proposal,
+            'producer': None, 'provenance': {'actor': root, 'request_id': request['request_id']}}
+        reference = self.node_ref(digest(artifact), snapshot['number'])
+        snapshot['artifacts'][reference['hash']] = artifact
+        snapshot['workflow_definition'] = None
+        response = {'next_steps': [{'kind': 'policy_dag_cutover_proposed',
+            'goal': snapshot['number'], 'proposal': reference,
+            'review': {'operation': 'policy_dag_cutover_review',
+                'request_id': '<stable request id>', 'actor': '<independent reviewer>',
+                'proposal': reference, 'decision': '<approved or changes_requested>',
+                'report': '<exact review report>'}}]}
+        return self.node_persist(snapshot, payload, response, request)
+
+    def node_policy_cutover_review(self, snapshot, payload, request):
+        if set(request) != {'operation', 'request_id', 'actor', 'proposal', 'decision', 'report'}:
+            raise ValueError('Policy DAG cutover review requires exact returned fields')
+        root = (self.runtime or {}).get('root_id')
+        if (not isinstance(request['actor'], str) or not request['actor'].strip()
+                or request['actor'] == root or request['decision'] not in {'approved', 'changes_requested'}
+                or not isinstance(request['report'], str) or not request['report'].strip()):
+            raise ValueError('Policy DAG cutover requires an independent substantive review')
+        self.api._phase_evidence.validate_ref(request['proposal'])
+        proposal_artifact = snapshot['resolve'](request['proposal'])
+        proposal = proposal_artifact.get('content', {})
+        if (proposal_artifact.get('type') != 'policy_dag_cutover_proposal'
+                or proposal_artifact.get('provenance', {}).get('actor') != root
+                or snapshot.get('policy_dag_cutover') is None
+                or proposal.get('old_graph') != snapshot['policy_dag_cutover']['old_graph']
+                or proposal.get('new_graph') != snapshot['policy_dag_cutover']['new_graph']):
+            raise ValueError('Policy DAG cutover proposal is stale or unauthenticated')
+        review = {'type': 'policy_dag_cutover_review',
+            'content': {'decision': request['decision'], 'report': request['report']},
+            'producer': None, 'provenance': {'actor': request['actor'],
+                'source': request['proposal'], 'request_id': request['request_id']}}
+        reference = self.node_ref(digest(review), snapshot['number'])
+        snapshot['artifacts'][reference['hash']] = review
+        snapshot['workflow_definition'] = None
+        step = {'kind': 'policy_dag_cutover_reviewed', 'goal': snapshot['number'],
+            'proposal': request['proposal'], 'review': reference}
+        if request['decision'] == 'approved':
+            step['apply'] = {'operation': 'policy_dag_cutover_apply',
+                'request_id': '<stable request id>', 'actor': root,
+                'proposal': request['proposal'], 'review': reference,
+                'expected_goal_revision': snapshot['envelope']['revision'] + 1}
+        return self.node_persist(snapshot, payload, {'next_steps': [step]}, request)
+
+    def node_policy_cutover_apply(self, snapshot, payload, request):
+        if set(request) != {'operation', 'request_id', 'actor', 'proposal', 'review',
+                            'expected_goal_revision'}:
+            raise ValueError('Policy DAG cutover apply requires exact returned fields')
+        root = (self.runtime or {}).get('root_id')
+        if (not root or request['actor'] != root
+                or request['expected_goal_revision'] != snapshot['envelope']['revision']):
+            raise ValueError('Policy DAG cutover apply goal revision is stale or actor is not root')
+        if payload['operational']['leases']:
+            raise ValueError('Policy DAG cutover cannot apply while an old-policy lease is active')
+        proposal_artifact = snapshot['resolve'](request['proposal'])
+        review_artifact = snapshot['resolve'](request['review'])
+        proposal = proposal_artifact.get('content', {})
+        review = review_artifact.get('content', {})
+        if (proposal_artifact.get('type') != 'policy_dag_cutover_proposal'
+                or review_artifact.get('type') != 'policy_dag_cutover_review'
+                or review_artifact.get('provenance', {}).get('source') != request['proposal']
+                or review_artifact.get('provenance', {}).get('actor') == root
+                or review.get('decision') != 'approved'):
+            raise ValueError('Policy DAG cutover requires the exact independent approved review')
+        cutover = snapshot.get('policy_dag_cutover')
+        if (cutover is None or proposal.get('old_graph') != cutover['old_graph']
+                or proposal.get('new_graph') != cutover['new_graph']):
+            raise ValueError('Policy DAG cutover proposal no longer matches current old/new policy')
+        old_graph = snapshot['resolve'](proposal['old_graph'])
+        new_graph = snapshot['resolve'](proposal['new_graph'])
+        self.node_policy_cutover_mapping(snapshot, proposal.get('mapping'), old_graph, new_graph)
+        payload['workflow'] = {'version': self.api._static_workflow.VERSION,
+                               'graph': copy.deepcopy(proposal['new_graph'])}
+        receipt_artifact = {'type': 'policy_dag_cutover_receipt',
+            'content': {'old_graph': proposal['old_execution_graph'], 'new_graph': proposal['new_graph'],
+                'new_policy_graph': proposal['new_policy_graph'],
+                'proposal': request['proposal'], 'review': request['review'],
+                'mapping': proposal['mapping']}, 'producer': None,
+            'provenance': {'actor': root, 'request_id': request['request_id']}}
+        receipt = self.node_ref(digest(receipt_artifact), snapshot['number'])
+        snapshot['artifacts'][receipt['hash']] = receipt_artifact
+        response = {'next_steps': [{'kind': 'policy_dag_cutover_applied',
+            'goal': snapshot['number'], 'old_graph': proposal['old_execution_graph'],
+            'new_graph': proposal['new_graph'], 'receipt': receipt}]}
+        return self.node_persist(snapshot, payload, response, request)
+
     def node_phase_finding(self, snapshot, payload, request):
         """Record diagnostic phase data; independent review/admission grants work."""
         fields = {'operation', 'request_id', 'actor', 'target', 'subject', 'source', 'rationale', 'id'}
@@ -8365,6 +9425,14 @@ class Workflow:
                                 and request.get('operation') not in {'stack_status', 'stack_advance', 'integrate'}
                                 and not any(step.get('provider_state') == 'closed' for step in response['next_steps'])):
                             raise ValueError('Closed goal cannot resume an execution receipt without explicit reopening')
+                        if request.get('operation') == 'submit':
+                            submitted = response.get('submitted', {})
+                            result_ref = submitted.get('result')
+                            if isinstance(result_ref, dict):
+                                result_artifact = self.artifact_index(number).resolve(result_ref['hash'])[0]
+                                if result_artifact.get('content', {}).get('supersedes_result') is not None:
+                                    response = {'next_steps': [{'kind': 'checkpoint', 'goal': number,
+                                        'action': 'Replacement Result is already committed; observe the current authenticated frontier.'}]}
                         return self.stop_completed_heartbeat(number, request, durable['operational'], response)
             ownership_graph = None
             if request.get('operation') in {'recover', 'release', 'renew'} and envelope.get('schema_version') == 2:
@@ -8380,7 +9448,28 @@ class Workflow:
                         or not snapshot['payload'].get('stack_integration', {}).get('plan')):
                     raise ValueError('Archived goal cannot execute or mutate')
                 snapshot['closed_administration'] = True
-            if snapshot.get('workflow_migration_blocker') and request.get('operation') not in {'recover', 'release', 'renew'}:
+            if snapshot.get('policy_dag_cutover'):
+                cutover_operations = {
+                    'policy_dag_cutover_prepare', 'policy_dag_cutover_review',
+                    'policy_dag_cutover_apply',
+                }
+                ownership_operations = {'bind', 'block', 'recover', 'release', 'renew', 'submit'}
+                operation = request.get('operation')
+                if operation in ownership_operations:
+                    requested = request.get('node')
+                    owned = (isinstance(requested, dict) and any(
+                        lease.get('node') == requested
+                        for lease in snapshot['payload']['operational']['leases']))
+                    if not owned:
+                        raise ValueError('Pending policy DAG cutover permits only an exact old-lease operation')
+                elif operation not in cutover_operations:
+                    raise ValueError('Pending policy DAG cutover blocks semantic mutation until reviewed mapping is applied')
+            # Archived-prerequisite administration repairs an exact migrated
+            # blocker without running or accepting any retired phase. Keep the
+            # old phase mapping debt on the execution frontier after the write.
+            if snapshot.get('workflow_migration_blocker') and request.get('operation') not in {
+                    'recover', 'release', 'renew',
+                    'goal_external_blocker_review', 'goal_external_blocker_apply'}:
                 raise ValueError(snapshot['workflow_migration_blocker'])
             payload = copy.deepcopy(snapshot['payload']); projection = snapshot['projection']
             for receipt in payload['operational']['receipts']:
@@ -8393,12 +9482,22 @@ class Workflow:
                 if not self.node_postmerge_operation_allowed(request['operation'], terminal_observation):
                     raise ValueError('Merged goal permits observation and reconciliation only; substantive tasks cannot start after merge')
             pending = self.node_pending(snapshot, request)
+            if request['operation'] == 'policy_dag_cutover_prepare':
+                return self.node_policy_cutover_prepare(snapshot, payload, request)
+            if request['operation'] == 'policy_dag_cutover_review':
+                return self.node_policy_cutover_review(snapshot, payload, request)
+            if request['operation'] == 'policy_dag_cutover_apply':
+                return self.node_policy_cutover_apply(snapshot, payload, request)
             if request['operation'] == 'resolve_goal_blocker':
                 return self.node_resolve_goal_blocker(snapshot, payload, request)
             if request['operation'] == 'goal_dependency_review':
                 return self.node_dependency_review(snapshot, payload, request)
             if request['operation'] == 'goal_dependency_apply':
                 return self.node_dependency_apply(snapshot, payload, request)
+            if request['operation'] == 'goal_external_blocker_review':
+                return self.node_external_blocker_review(snapshot, payload, request)
+            if request['operation'] == 'goal_external_blocker_apply':
+                return self.node_external_blocker_apply(snapshot, payload, request)
             if request['operation'] == 'phase_finding':
                 return self.node_phase_finding(snapshot, payload, request)
             if request['operation'] == 'graph_normalize':
@@ -8439,7 +9538,89 @@ class Workflow:
             operation = request['operation']; leases = payload['operational']['leases']
             lease = next((item for item in leases if item['node'] == node), None)
             root = (self.runtime or {}).get('root_id')
-            if operation == 'route_choice':
+            if operation in {'restack_continue', 'restack_abort'}:
+                allowed = {'operation', 'request_id', 'node', 'lease', 'actor', 'plan_hash'}
+                restack = lease.get('restack') if lease else None
+                if (set(request) != allowed or not lease or not restack
+                        or request.get('lease') != lease.get('token')
+                        or request.get('actor') != lease.get('worker')
+                        or not lease.get('worker')
+                        or request.get('plan_hash') != restack.get('plan_hash')
+                        or restack.get('plan_hash') != digest(restack.get('plan'))
+                        or restack.get('pending') is not None):
+                    raise ValueError('Unsupported restack operation or exact lease, actor, and plan changed')
+                restack['pending'] = {'operation': operation,
+                    'request': request['request_id'], 'actor': request['actor']}
+                response = {'next_steps': [{'kind': operation + '_authorized',
+                    'goal': number, 'node': node, 'lease': lease['token'],
+                    'actor': lease['worker'], 'attempt': lease['attempt'],
+                    'plan_hash': restack['plan_hash'],
+                    'plan': copy.deepcopy(restack['plan'])}]}
+            elif operation == 'restack_intent':
+                allowed = {'operation', 'request_id', 'node', 'lease', 'actor',
+                           'plan_hash', 'authorized_request', 'candidate_commit', 'result_tree'}
+                restack = lease.get('restack') if lease else None
+                pending_restack = restack.get('pending') if restack else None
+                intent = ({'candidate_commit': request.get('candidate_commit'),
+                           'result_tree': request.get('result_tree')})
+                if (set(request) != allowed or not lease or not restack
+                        or request.get('lease') != lease.get('token')
+                        or request.get('actor') != lease.get('worker')
+                        or request.get('plan_hash') != restack.get('plan_hash')
+                        or pending_restack != {'operation': 'restack_continue',
+                            'request': request.get('authorized_request'), 'actor': request.get('actor')}
+                        or any(re.fullmatch(r'[0-9a-f]{40}', value or '') is None
+                               for value in intent.values())
+                        or restack.get('candidate_intent') not in (None, intent)):
+                    raise ValueError('Restack candidate intent differs from provider-authorized continuation')
+                restack['candidate_intent'] = intent
+                response = {'next_steps': [{'kind': 'restack_intent_confirmed',
+                    'goal': number, 'node': node, 'lease': lease['token'],
+                    'actor': lease['worker'], 'plan_hash': restack['plan_hash'], **intent}]}
+            elif operation == 'restack_finalize':
+                allowed = {'operation', 'request_id', 'node', 'lease', 'actor',
+                           'plan_hash', 'authorized_request', 'status', 'head_commit'}
+                restack = lease.get('restack') if lease else None
+                pending_restack = restack.get('pending') if restack else None
+                if (set(request) != allowed or not lease or not restack
+                        or request.get('lease') != lease.get('token')
+                        or request.get('actor') != lease.get('worker')
+                        or request.get('plan_hash') != restack.get('plan_hash')
+                        or pending_restack != {'operation': 'restack_' + request.get('status', ''),
+                            'request': request.get('authorized_request'), 'actor': request.get('actor')}
+                        or request.get('status') not in {'continue', 'abort'}):
+                    raise ValueError('Restack finalization differs from its provider-confirmed operation')
+                workspace = snapshot['workspaces'].get(key, {})
+                observed = managed_worktrees.inspect_attempt_worktree(self.repo,
+                    goal=number, node=node['node'], attempt=lease['attempt'])
+                if (not workspace.get('git_workspace') or 'entry' not in workspace
+                        or observed.get('status') != 'clean'
+                        or observed.get('head') != request.get('head_commit')):
+                    raise ValueError('Restack finalization requires the exact clean managed worktree')
+                plan = restack['plan']
+                git_phase_state.verify_attempt_ref(self.repo, remote='origin',
+                    ref=restack['source']['ref'], commit=restack['source']['commit'])
+                if request['status'] == 'continue':
+                    checkpoint = git_phase_state.validate_checkpoint(Path(observed['path']),
+                        base_commit=plan['new_base'], result_commit=observed['head'],
+                        owned_paths=workspace['entry']['owned'])
+                    restack.update(status='ready', result_commit=observed['head'],
+                                   result_tree=checkpoint['result_tree'])
+                    restack.pop('pending')
+                    response = {'next_steps': [{'kind': 'restack_continued',
+                        'goal': number, 'node': node, 'lease': lease['token'],
+                        'actor': lease['worker'], 'plan_hash': restack['plan_hash'],
+                        'result_commit': observed['head'],
+                        'submission': {'operation': 'submit', 'node': node}}]}
+                else:
+                    if observed['head'] != plan['new_base']:
+                        raise ValueError('Restack abort did not restore the exact new base')
+                    leases.remove(lease)
+                    response = {'next_steps': [{'kind': 'restack_aborted',
+                        'goal': number, 'node': node, 'lease': lease['token'],
+                        'actor': lease['worker'], 'plan_hash': restack['plan_hash'],
+                        'head_commit': observed['head']}]}
+            elif operation == 'route_choice':
                 allowed = {'operation', 'request_id', 'node', 'root_pair', 'requested_pair', 'choice', 'approved_by'}
                 if set(request) != allowed or request.get('choice') != 'downgrade_to_root' or not explicit_approval(request.get('approved_by')):
                     raise ValueError('Root capability downgrade requires the exact returned choice and explicit human approval')
@@ -8459,6 +9640,27 @@ class Workflow:
             elif operation == 'start':
                 if lease: raise ValueError('Task already has an owner; observed-stop recovery is required')
                 if state['state'] != 'ready' or request.get('input_hash') != state.get('input_hash'): raise ValueError('Stale input or prerequisite prevents acquisition')
+                # Broadphase intentionally avoids serialising a merely-ready
+                # legacy sibling. Once that exact legacy task is selected,
+                # materialise its raw baseline before issuing ownership.
+                selected_workspace = self.node_workspace_context(
+                    snapshot['evaluation_context']['goals'], projection,
+                    snapshot['artifacts'], workspace_target=key).get(key)
+                if isinstance(selected_workspace, dict) and 'error' in selected_workspace:
+                    raise ValueError(selected_workspace['error'])
+                if 'repository_workspace' in state['contract']['executor']['resources']:
+                    if (not isinstance(selected_workspace, dict)
+                            or 'files' not in selected_workspace
+                            or 'entry' not in selected_workspace):
+                        raise ValueError('Selected legacy workspace baseline is unavailable')
+                if (selected_workspace is not None and 'files' in selected_workspace
+                        and 'entry' in selected_workspace):
+                    selected_workspace = copy.deepcopy(selected_workspace)
+                    for path in (selected_workspace['entry']['owned']
+                                 + selected_workspace['entry']['consumed']):
+                        selected_workspace['files'].setdefault(path, 'missing')
+                    selected_workspace['acquisition']['workspace_digest'] = digest(
+                        selected_workspace['files'])
                 if node['node'] == 'publish' and self.node_native_delivery(snapshot):
                     if self.node_candidate_state(snapshot)['status'] != 'ready':
                         raise ValueError('Git-native candidate must be compacted before publication acquisition')
@@ -8473,7 +9675,10 @@ class Workflow:
                 if request.get('policy_receipt') != receipt: raise ValueError('Exact policy receipt is required')
                 lease = {'node': node, 'attempt': uuid.uuid4().hex, 'token': uuid.uuid4().hex, 'owner': root,
                          'worker': root if step['assignment'] == 'root' else None, 'fingerprint': state['input_hash'], 'expires_at': time.time() + 600,
-                         'selection': step['selection'], 'acquisition': {'resolutions': state['resolutions'], 'inputs': state['inputs'], 'contract': state['contract_hash']}}
+                         'selection': step['selection'], 'acquisition': {
+                             'resolutions': state['resolutions'], 'inputs': state['inputs'],
+                             'contract': state['contract_hash'],
+                             'expected_goal_revision': snapshot['envelope']['revision']}}
                 aggregates = {}
                 for binding in state['inputs']:
                     declared = state['contract']['inputs'].get(binding['name'], {})
@@ -8481,13 +9686,17 @@ class Workflow:
                     if selector.get('goal') == '#children' or selector.get('kind') == 'join':
                         aggregates[binding['name']] = copy.deepcopy(snapshot['artifacts'][binding['source']['hash']]['content']['sources'])
                 if aggregates: lease['acquisition']['aggregate_sources'] = aggregates
-                if 'workspace' in state:
-                    workspace = state['workspace']
+                if selected_workspace is not None:
+                    workspace = selected_workspace
                     lease['acquisition'].update(copy.deepcopy(workspace['acquisition']))
                     if 'files' in workspace:
                         lease['acquisition']['files'] = copy.deepcopy(workspace['files'])
                     lease['acquisition']['input_hash'] = state['input_hash']
                 lease['acquisition'].update(inputs=copy.deepcopy(state['inputs']), resolutions=copy.deepcopy(state['resolutions']), contract=state['contract_hash'])
+                restack = self.node_attempt_restack_plan(
+                    snapshot, state, selected_workspace)
+                if restack is not None:
+                    lease['restack'] = restack
                 if pending: lease.update(copy.deepcopy(pending['response']['next_steps'][0]['lease']))
                 leases.append(lease)
                 # Reserve local capacity before the durable provider write. A
@@ -8570,6 +9779,31 @@ class Workflow:
                     'workspace_draft': self.node_ref(identity, number),
                     'action': 'Historical stopped bytes are preserved as unaccepted work; reacquire through the normal current task contract.'}]}
             else:
+                if not lease and operation == 'submit':
+                    acquired = None
+                    for historical_receipt in payload['operational']['receipts']:
+                        historical_response = snapshot['resolve'](historical_receipt['result'])
+                        acquired = next((step.get('lease') for step in historical_response.get('next_steps', [])
+                                         if isinstance(step.get('lease'), dict)
+                                         and step['lease'].get('token') == request.get('lease')), None)
+                        if acquired:
+                            break
+                    current = projection['current'].get(key)
+                    mapped_results = set()
+                    for receipt_row in reversed(payload['operational']['receipts']):
+                        try:
+                            prior = snapshot['resolve'](receipt_row['result'])
+                            applied = next(item for item in prior.get('next_steps', [])
+                                           if item.get('kind') == 'policy_dag_cutover_applied')
+                            cutover_receipt = snapshot['resolve'](applied['receipt'])['content']
+                            mapped_results = {item['result']['hash'] for item in cutover_receipt['mapping']}
+                            break
+                        except (KeyError, StopIteration, TypeError, ValueError):
+                            continue
+                    if (acquired and current and current[0]['hash'] in mapped_results
+                            and current[1]['attempt'] == acquired.get('attempt')):
+                        return {'next_steps': [{'kind': 'checkpoint', 'goal': number,
+                            'action': 'The reviewed cutover retained this completed attempt; observe the current frontier.'}]}
                 if not lease or request.get('lease') != lease['token'] or lease['owner'] != root: raise ValueError('Exact current owner/lease token required')
                 if operation == 'recover':
                     if request.get('worker_status') != 'stopped' or not isinstance(request.get('evidence'), str) or not request['evidence'].strip(): raise ValueError('Observed stopped worker evidence required; unknown liveness cannot recover')
@@ -8635,13 +9869,22 @@ class Workflow:
                     response = {'next_steps': [{'kind': 'perform', 'goal': number, 'node': node, 'lease': lease}]}
                 else:
                     if request.get('actor') != lease['worker'] or not lease['worker']: raise ValueError('Exact bound actor required')
-                    if state.get('input_hash') != lease['fingerprint'] or state['state'] != 'ready': raise ValueError('Stale substantive input/contract/prerequisite; owner remains bound: ' + state.get('reason', 'workspace or input identity drift'))
-                    if lease['expires_at'] <= time.time() and operation not in {'renew', 'release'}:
-                        raise ValueError('Lease expired; observe stopped owner before recovery')
                     if operation == 'renew':
+                        current = (state.get('input_hash') == lease['fingerprint']
+                                   and state['state'] == 'ready')
                         lease['expires_at'] = pending['response']['next_steps'][0]['lease']['expires_at'] if pending else time.time() + 600
-                        response = {'next_steps': [{'kind': 'renewed', 'goal': number, 'node': node, 'lease': lease['token'], 'actor': lease['worker'], 'expires_at': lease['expires_at']}]}
-                    elif operation == 'release':
+                        step = {'kind': 'renewed', 'goal': number, 'node': node,
+                            'lease': lease['token'], 'actor': lease['worker'],
+                            'expires_at': lease['expires_at'], 'current': current}
+                        if not current:
+                            step.update(reason=state.get('reason', 'workspace or input identity drift'),
+                                action='Custody only: preserve the owned attempt; current review and input authority are still required before submission.')
+                        response = {'next_steps': [step]}
+                    elif operation != 'release':
+                        if state.get('input_hash') != lease['fingerprint'] or state['state'] != 'ready': raise ValueError('Stale substantive input/contract/prerequisite; owner remains bound: ' + state.get('reason', 'workspace or input identity drift'))
+                        if lease['expires_at'] <= time.time() and operation != 'release':
+                            raise ValueError('Lease expired; observe stopped owner before recovery')
+                    if operation == 'release':
                         if set(request) - {'operation', 'node', 'lease', 'actor', 'request_id'}:
                             raise ValueError('Lease release accepts only the exact owner identity')
                         leases.remove(lease)
@@ -8705,15 +9948,36 @@ class Workflow:
                         outputs = {}
                         previous = next((snapshot['artifacts'][ref['hash']]['content']['outputs'] for ref in reversed(snapshot['payload']['evidence']) if snapshot['artifacts'][ref['hash']]['content']['node'] == node), {})
                         for slot, content in bundle.items():
-                            output = {'type': contracts[slot]['type'], 'content': content, 'producer': lease['attempt'], 'provenance': {'actor': lease['worker'], 'source': proof_ref, 'policy': digest(self.project['policy'])}}
+                            output = {'type': contracts[slot]['type'], 'content': content, 'producer': lease['attempt'], 'provenance': {'actor': lease['worker'], 'source': proof_ref, 'policy': self.node_evidence_policy(), 'approved_policy': digest(self.project['policy'])}}
                             identity = digest(output); snapshot['artifacts'][identity] = output; outputs[slot] = self.node_ref(identity, number)
                             if slot in previous: snapshot.setdefault('output_bases', {})[identity] = previous[slot]['hash']
                         result = {'node': node, 'attempt': lease['attempt'], 'contract': state['contract_hash'], 'inputs': lease['acquisition']['inputs'], 'executor': lease['worker'], 'outputs': outputs, 'resolutions': lease['acquisition']['resolutions']}
-                        artifact = {'type': 'result', 'content': result, 'producer': lease['attempt'], 'provenance': {'actor': lease['worker'], 'source': None, 'policy': digest(self.project['policy'])}}
+                        predecessor = snapshot['projection']['current'].get(
+                            self.api._phase_evidence.task_key(node))
+                        if predecessor is None:
+                            predecessor = next(((reference, value['content'])
+                                for reference in reversed(snapshot['payload']['evidence'])
+                                if (value := snapshot['artifacts'][reference['hash']]).get('type') == 'result'
+                                and value.get('content', {}).get('node') == node), None)
+                        if predecessor is not None:
+                            expected_revision = lease['acquisition'].get('expected_goal_revision')
+                            if (type(expected_revision) is not int
+                                    or expected_revision >= snapshot['envelope']['revision']):
+                                raise ValueError('Replacement Result goal revision CAS precondition changed')
+                            observed = next(((reference, value['content'])
+                                for reference in reversed(snapshot['payload']['evidence'])
+                                if (value := snapshot['artifacts'][reference['hash']]).get('type') == 'result'
+                                and value.get('content', {}).get('node') == node), None)
+                            if observed is None or observed[0] != predecessor[0]:
+                                raise ValueError('Replacement Result predecessor CAS precondition changed')
+                            result['supersedes_result'] = predecessor[0]
+                            result['expected_goal_revision'] = expected_revision
+                        artifact = {'type': 'result', 'content': result, 'producer': lease['attempt'], 'provenance': {'actor': lease['worker'], 'source': None, 'policy': self.node_evidence_policy(), 'approved_policy': digest(self.project['policy'])}}
                         identity = digest(artifact); snapshot['artifacts'][identity] = artifact
                         ref = self.node_ref(identity, number); payload['evidence'].append(ref); leases.remove(lease)
                         response = self.node_continuation(snapshot, payload, node, ref)
-                    else: raise ValueError('Unsupported generic operation; semantic evidence uses submit')
+                    elif operation != 'renew':
+                        raise ValueError('Unsupported generic operation; semantic evidence uses submit')
             return self.node_persist(snapshot, payload, response, request)
 
     def node_validate_bundle(self, snapshot, state, bundle, actor):
@@ -8721,6 +9985,10 @@ class Workflow:
         ev = self.api._phase_evidence; projection = snapshot['projection']; artifacts = snapshot['artifacts']
         current = {ref['hash']: result for ref, result in projection['current'].values()}
         subject_results = {ref['hash']: result for result in current.values() for ref in result['outputs'].values()}
+        historical_subject_results = {ref['hash']: result
+            for result_ref in snapshot['payload']['evidence']
+            for result in [artifacts[result_ref['hash']]['content']]
+            for ref in result['outputs'].values()}
         history = [(ref, artifacts[ref['hash']]) for item in snapshot['payload']['evidence'] for ref in artifacts[item['hash']]['content']['outputs'].values()]
         proposed = [(state['contract']['outputs'][slot]['type'], value) for slot, value in bundle.items()]
         def nullable_supersession(contract):
@@ -8921,12 +10189,12 @@ class Workflow:
                         outputs = {}
                         for slot, original in mapping['outputs'].items():
                             output = {'type': mapped_state['contract']['outputs'][slot]['type'], 'content': load(original), 'producer': attempt,
-                                      'provenance': {'actor': historical['actor'], 'source': mapping_ref, 'policy': digest(self.project['policy'])}}
+                                      'provenance': {'actor': historical['actor'], 'source': mapping_ref, 'policy': self.node_evidence_policy(), 'approved_policy': digest(self.project['policy'])}}
                             identity = digest(output); artifacts[identity] = output; outputs[slot] = self.node_ref(identity, snapshot['number'])
                         mapped = {'node': mapping['target'], 'attempt': attempt, 'contract': mapped_state['contract_hash'], 'inputs': mapped_state['inputs'],
                                   'executor': historical['actor'], 'outputs': outputs, 'resolutions': mapped_state['resolutions']}
                         result_blob = {'type': 'result', 'content': mapped, 'producer': attempt,
-                                       'provenance': {'actor': historical['actor'], 'source': None, 'policy': digest(self.project['policy'])}}
+                                       'provenance': {'actor': historical['actor'], 'source': None, 'policy': self.node_evidence_policy(), 'approved_policy': digest(self.project['policy'])}}
                         identity = digest(result_blob); artifacts[identity] = result_blob
                         payload['evidence'].append(self.node_ref(identity, snapshot['number']))
                 snapshot['activation'] = {'envelope': target, 'payload': payload, 'graph': graph, 'conversion': conversion_blob['content'], 'review': reviews[0], 'approval': value['approval']}
@@ -9058,8 +10326,10 @@ class Workflow:
                     raise ValueError('Applicability assessment must classify the obligation with evidence rationale')
                 if not exact_obligation_input(value['admission']) or not exact_obligation_input(value['finding']):
                     raise ValueError('Applicability assessment must bind the exact admission and finding')
-                if not value['subjects'] or any(ref['hash'] not in subject_results or not exact_input(ref) for ref in value['subjects']):
-                    raise ValueError('Applicability assessment requires exact current corrected subjects')
+                if (value['subjects'] != finding.get('subjects') or not value['subjects']
+                        or any(ref['hash'] not in historical_subject_results or not exact_input(ref)
+                               for ref in value['subjects'])):
+                    raise ValueError('Applicability assessment requires the finding-bound exact historical subjects')
                 reviewer = read(value['reviewer_result'], 'result')
                 if value['reviewer_result']['hash'] not in current:
                     raise ValueError('Applicability assessment requires the exact current reviewer Result')
@@ -9073,10 +10343,11 @@ class Workflow:
                 independent_targets = [target for row in reviewer_state['resolutions']
                     if row['selector'] in reviewer_state['contract']['independent_of']
                     for target in row['targets']]
-                if any(subject_results[ref['hash']]['node'] not in independent_targets
+                if any(historical_subject_results[ref['hash']]['node'] not in independent_targets
                        for ref in value['subjects']):
                     raise ValueError('Applicability reviewer requires declared exact subject independence')
-                if any(subject_results[ref['hash']]['executor'] == reviewer['executor'] for ref in value['subjects']):
+                if any(historical_subject_results[ref['hash']]['executor'] == reviewer['executor']
+                       for ref in value['subjects']):
                     raise ValueError('Applicability reviewer must be independent of corrected subjects')
             elif kind == 'supersession':
                 if value is None:
@@ -9116,6 +10387,16 @@ class Workflow:
             for node in resolution['targets']:
                 current = snapshot['projection']['current'].get(self.api._phase_evidence.task_key(node))
                 if current and current[1]['executor'] == actor: raise ValueError('Independent reviewer cannot be the actual subject executor')
+                exact_subjects = {item['source']['hash'] for item in state['inputs']
+                                  if item['name'] == 'subject' and item['mode'] == 'identity'
+                                  and not item['path']}
+                if exact_subjects:
+                    for reference in snapshot['payload']['evidence']:
+                        result = snapshot['artifacts'][reference['hash']]['content']
+                        if (result['node'] == node and result['executor'] == actor
+                                and any(ref['hash'] in exact_subjects
+                                        for ref in result['outputs'].values())):
+                            raise ValueError('Independent reviewer cannot be the historical subject executor')
 
 
 def capacity_step(active_leases, limit):
@@ -9703,6 +10984,11 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                            'actor': '<independent reviewer thread>', 'proposal': proposal,
                            'decision': '<approved or changes_requested>',
                            'report': '<independent review report>'}}]}
+    if operation == 'goal_external_blocker_prepare' and number is not None:
+        snapshot = engine.node_snapshot(number)
+        return engine.node_external_blocker_candidate(snapshot, payload)
+    if operation in {'goal_external_blocker_review', 'goal_external_blocker_apply'} and number is not None:
+        return engine.node_mutate_phase(number, payload)
     if operation == 'checkpoint_reconcile_prepare' and number is not None:
         if set(payload) != {'operation', 'transaction', 'rationale', 'request_id'}:
             raise ValueError('Checkpoint reconciliation preparation requires exact transaction and rationale')
@@ -9893,6 +11179,57 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                     if step.get('kind') == 'checkpoint' and step.get('goal') == terminal_goal:
                         step['provider_state'] = 'closed'
                         step['action'] = 'Exact provider merge observed and goal terminal evidence closed.'
+        if operation in {'restack_continue', 'restack_abort'}:
+            authorization = next((step for step in result.get('next_steps', [])
+                                  if step.get('kind') == operation + '_authorized'), None)
+            if (authorization is None or authorization.get('lease') != payload.get('lease')
+                    or authorization.get('actor') != payload.get('actor')
+                    or authorization.get('plan_hash') != payload.get('plan_hash')
+                    or authorization.get('plan_hash') != digest(authorization.get('plan'))):
+                raise ValueError('Provider-confirmed restack authorization changed')
+            current = engine.node_snapshot(number)
+            key = api._phase_evidence.task_key(payload['node'])
+            authority = current['workspaces'].get(key, {})
+            if not authority.get('git_workspace') or 'entry' not in authority:
+                raise ValueError('Provider-confirmed restack authority changed')
+            local = managed_worktrees.inspect_attempt_worktree(repo, goal=number,
+                node=payload['node']['node'], attempt=authorization['attempt'])
+            if local['status'] == 'missing':
+                raise ValueError('Provider-confirmed restack managed worktree is missing')
+            path = Path(local['path']); plan = authorization['plan']
+            if operation == 'restack_continue':
+                lease = next((item for item in current['payload']['operational']['leases']
+                              if item.get('token') == authorization['lease']), None)
+                intent = lease.get('restack', {}).get('candidate_intent') if lease else None
+                if intent is None:
+                    intent = git_phase_state.prepare_attempt_restack_continue(
+                        path, plan, authority['entry']['owned'])
+                    intent_request = {'operation': 'restack_intent',
+                        'request_id': payload['request_id'] + '-intent',
+                        'node': payload['node'], 'lease': payload['lease'],
+                        'actor': payload['actor'], 'plan_hash': payload['plan_hash'],
+                        'authorized_request': payload['request_id'], **intent}
+                    confirmation = engine.mutate(number, intent_request)
+                    confirmed = next((step for step in confirmation.get('next_steps', [])
+                                      if step.get('kind') == 'restack_intent_confirmed'), None)
+                    if (confirmed is None or any(confirmed.get(name) != value
+                            for name, value in intent.items())):
+                        raise ValueError('Provider did not confirm the exact restack candidate intent')
+                outcome = git_phase_state.complete_attempt_restack_continue(
+                    path, plan, authority['entry']['owned'], intent)
+                head = outcome['result_commit']
+                status = 'continue'
+            else:
+                outcome = git_phase_state.abort_attempt_restack(
+                    path, plan, authority['entry']['owned'])
+                head = outcome['head_commit']; status = 'abort'
+            finalize = {'operation': 'restack_finalize',
+                'request_id': payload['request_id'] + '-finalize',
+                'node': payload['node'], 'lease': payload['lease'],
+                'actor': payload['actor'], 'plan_hash': payload['plan_hash'],
+                'authorized_request': payload['request_id'],
+                'status': status, 'head_commit': head}
+            result = engine.mutate(number, finalize)
         if operation == 'integrate':
             cleanup = None
             try:
@@ -9928,13 +11265,44 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
                             or active[0].get('acquisition') != acquisition
                             or active[0].get('expires_at', 0) <= time.time()):
                         raise ValueError('Original Git workspace lease is no longer active; recover through the current workflow')
+                    durable_lease = active[0]
                     node = lease['node']
-                    workspace = managed_worktrees.prepare_worktree(
-                        repo, goal=number, node=node['node'], attempt=lease['attempt'],
-                        base_commit=acquisition.get('git_commit', acquisition.get('read_commit')),
-                        resume_dirty='git_commit' in acquisition)
+                    restack = durable_lease.get('restack')
+                    if restack is not None:
+                        local = managed_worktrees.inspect_attempt_worktree(
+                            repo, goal=number, node=node['node'], attempt=lease['attempt'])
+                        workspace = (managed_worktrees.prepare_worktree(
+                            repo, goal=number, node=node['node'], attempt=lease['attempt'],
+                            base_commit=acquisition['git_commit'], resume_dirty=True)
+                            if local['status'] == 'missing' else
+                            {**local, 'outcome': ('existing_dirty'
+                                                 if local['status'] == 'dirty'
+                                                 else 'existing')})
+                        key = api._phase_evidence.task_key(node)
+                        authority = current['workspaces'].get(key, {})
+                        if (not authority.get('git_workspace') or 'entry' not in authority
+                                or restack.get('plan_hash') != digest(restack.get('plan'))):
+                            raise ValueError('Persisted restack lease differs from current reviewed workspace authority')
+                        applied = git_phase_state.apply_attempt_restack(
+                            Path(workspace['path']), restack['plan'],
+                            authority['entry']['owned'])
+                        actor = lease.get('worker') or '<actual worker>'
+                        common = {'node': node, 'lease': lease['token'], 'actor': actor,
+                                  'plan_hash': restack['plan_hash'],
+                                  'request_id': '<unique request>'}
+                        step['restack'] = {**restack, 'status': applied['status'],
+                            'conflicts': applied.get('conflicts', []),
+                            'continue': {'operation': 'restack_continue', **common},
+                            'abort': {'operation': 'restack_abort', **common}}
+                    else:
+                        workspace = managed_worktrees.prepare_worktree(
+                            repo, goal=number, node=node['node'], attempt=lease['attempt'],
+                            base_commit=acquisition.get('git_commit', acquisition.get('read_commit')),
+                            resume_dirty='git_commit' in acquisition)
                     step['managed_worktree'] = workspace
-                    step['action'] = ('Resume this leased dirty draft in the managed worktree at '
+                    step['action'] = ('Resolve only the exact reported owned conflicts, then use the returned continue or abort contract.'
+                        if step.get('restack', {}).get('status') == 'conflict' else
+                        'Resume this leased dirty draft in the managed worktree at '
                         + workspace['path'] + '; verify and commit only authorized outputs before submission.'
                         if workspace['outcome'] == 'existing_dirty' else
                         'Run this leased task in the managed worktree at '
