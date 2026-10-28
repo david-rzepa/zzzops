@@ -1076,6 +1076,140 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
     def test_remote_movement_after_owner_sync_cannot_reacquire_prior_attempt(self):
         self.upstream_reacquisition_case(unsafe='remote_moved')
 
+    def accepted_alpha_for_owner_context(self):
+        fixture = self.fixture_with_git_workspace()
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        bare = Path(remote_dir.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
+        fixture.session.git('remote', 'add', 'origin', str(bare))
+        work = fixture.acquire_workspace('alpha')
+        tree = Path(work['managed_worktree']['path'])
+        (tree / 'behavior_test.py').write_text('assert True\n')
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=tree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: accepted exact alpha'],
+                       cwd=tree, check=True)
+        request = fixture.session.submission(
+            work, {'value': 'Exact independently inspectable source'},
+            'accepted-alpha-for-owner-context')
+        request.update(workspace_checks=[[sys.executable, '-B', 'behavior_test.py']],
+                       verification_expectation='passed')
+        fixture.session.call(100, request)
+        proof = fixture.read_blob(
+            fixture.read_blob(fixture.produced('alpha'))['provenance']['source'])
+        self.assertEqual(0, proof['commands'][0]['exit_code'])
+        source = proof['checkpoint']['result_commit']
+        self.assertEqual(source, fixture.session.git(
+            'ls-remote', 'origin', proof['retained_ref']).split()[0])
+        return fixture, source
+
+    def test_public_submit_finishes_dirty_owned_file_with_one_verified_commit(self):
+        fixture = self.fixture_with_git_workspace()
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        bare = Path(remote_dir.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
+        fixture.session.git('remote', 'add', 'origin', str(bare))
+        work = fixture.acquire_workspace('alpha')
+        tree = Path(work['managed_worktree']['path'])
+        base = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=tree,
+                              capture_output=True, text=True, check=True).stdout.strip()
+        (tree / 'behavior_test.py').write_text('assert True\n')
+        request = fixture.session.submission(
+            work, {'value': 'Verified owned alpha edit'}, 'finish-dirty-owned-alpha')
+        request.update(workspace_checks=[[sys.executable, '-B', 'behavior_test.py']],
+                       verification_expectation='passed')
+        first = fixture.session.call(100, request)
+        self.assertIsNotNone(first.get('submitted'),
+                             'Returned submit must finish an ordinary owned edit')
+        commit = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=tree,
+                                capture_output=True, text=True, check=True).stdout.strip()
+        self.assertNotEqual(base, commit)
+        self.assertEqual(base, subprocess.run(['git', 'rev-parse', 'HEAD^'],
+            cwd=tree, capture_output=True, text=True, check=True).stdout.strip())
+        changed = subprocess.run(['git', 'diff-tree', '--no-commit-id', '--name-only',
+                                  '-r', commit], cwd=tree, capture_output=True,
+                                 text=True, check=True).stdout.splitlines()
+        self.assertEqual(['behavior_test.py'], changed)
+        subject = subprocess.run(['git', 'log', '-1', '--format=%s'], cwd=tree,
+                                 capture_output=True, text=True, check=True).stdout.strip()
+        self.assertRegex(subject,
+                         r'^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)\([^)]+\): .+')
+        proof = fixture.read_blob(
+            fixture.read_blob(fixture.produced('alpha'))['provenance']['source'])
+        self.assertEqual(0, proof['commands'][0]['exit_code'])
+        self.assertEqual(commit, proof['checkpoint']['result_commit'])
+        self.assertEqual(commit, fixture.session.git(
+            'ls-remote', 'origin', proof['retained_ref']).split()[0])
+        evidence = len(fixture.payload()[1]['evidence'])
+        replay = fixture.session.call(100, request)
+        self.assertEqual(first.get('submitted'), replay.get('submitted'))
+        self.assertEqual(evidence, len(fixture.payload()[1]['evidence']))
+        self.assertEqual(commit, subprocess.run(['git', 'rev-parse', 'HEAD'],
+            cwd=tree, capture_output=True, text=True, check=True).stdout.strip())
+
+    def test_independent_review_worktree_reads_exact_accepted_subject_commit(self):
+        fixture, source = self.accepted_alpha_for_owner_context()
+        review = fixture.session.acquire('observe_alpha', actor='independent-reviewer')
+        tree = Path(review['managed_worktree']['path'])
+        actual = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=tree,
+                                capture_output=True, text=True, check=True).stdout.strip()
+        self.assertEqual(source, review['lease']['acquisition']['read_commit'])
+        self.assertEqual(source, actual)
+        self.assertEqual('assert True\n', (tree / 'behavior_test.py').read_text())
+
+    def test_clean_divergent_sibling_keeps_registered_owner_frontier(self):
+        fixture, source = self.accepted_alpha_for_owner_context()
+        before = fixture.session.ready()
+        self.assertIn('observe_alpha', {step['node']['node'] for step in before})
+        sibling_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(sibling_dir.cleanup)
+        sibling = Path(sibling_dir.name) / 'unmanaged'
+        fixture.session.git('worktree', 'add', '-q', '--detach', str(sibling), 'HEAD')
+        (sibling / 'sibling-only.txt').write_text('unrelated clean sibling commit\n')
+        subprocess.run(['git', 'add', 'sibling-only.txt'], cwd=sibling, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: divergent unmanaged sibling'],
+                       cwd=sibling, check=True)
+        fixture.session.repo = sibling
+        frontier = fixture.session.checkpoint(100)
+        self.assertTrue(any(step.get('kind') == 'execute'
+                            and step.get('node', {}).get('node') == 'observe_alpha'
+                            for step in frontier),
+                        'Unrelated clean sibling must retain owner review frontier')
+        review = fixture.session.acquire('observe_alpha', actor='independent-sibling-reviewer',
+                                         frontier=frontier)
+        review_tree = Path(review['managed_worktree']['path'])
+        self.assertEqual(source, review['lease']['acquisition']['read_commit'])
+        self.assertEqual(source, subprocess.run(['git', 'rev-parse', 'HEAD'],
+            cwd=review_tree, capture_output=True, text=True, check=True).stdout.strip())
+        self.assertEqual('assert True\n', (review_tree / 'behavior_test.py').read_text())
+        self.assertEqual(source, fixture.read_blob(
+            fixture.read_blob(fixture.produced('alpha'))['provenance']['source'])[
+                'checkpoint']['result_commit'])
+
+    def test_fresh_linked_checkout_acquisition_uses_its_intentional_head(self):
+        fixture = self.fixture_with_git_workspace()
+        sibling_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(sibling_dir.cleanup)
+        sibling = Path(sibling_dir.name) / 'fresh-linked'
+        fixture.session.git('worktree', 'add', '-qb', 'fresh-linked-fixture',
+                            str(sibling), 'HEAD')
+        (sibling / 'fresh-input.txt').write_text('intentional linked base\n')
+        subprocess.run(['git', 'add', 'fresh-input.txt'], cwd=sibling, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: intentional linked base'],
+                       cwd=sibling, check=True)
+        intended = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=sibling,
+                                  capture_output=True, text=True, check=True).stdout.strip()
+        self.assertNotEqual(intended, fixture.session.git('rev-parse', 'HEAD').strip())
+        fixture.session.repo = sibling
+        work = fixture.acquire_workspace('alpha')
+        self.assertEqual(intended, work['lease']['acquisition']['git_commit'])
+        tree = Path(work['managed_worktree']['path'])
+        self.assertEqual(intended, subprocess.run(['git', 'rev-parse', 'HEAD'],
+            cwd=tree, capture_output=True, text=True, check=True).stdout.strip())
+        self.assertEqual('intentional linked base\n',
+                         (tree / 'fresh-input.txt').read_text())
+
 
 class GitWorkspaceJourneyTests(unittest.TestCase):
     fixture_with_git_workspace = GitWorkspaceAcquisitionTests.fixture_with_git_workspace
