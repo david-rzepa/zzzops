@@ -151,6 +151,33 @@ class PolicyCiTransitionTests(dag.DagFixture):
                              if row["node"]["node"] == "synthesize")
         self.assertNotEqual("complete", changed_state["state"])
 
+    def test_git_base_bridge_requires_only_authenticated_compatible_policy_changes(self):
+        self.reviewed_policy("disabled", initial=True)
+        base = self.git("rev-parse", "HEAD")
+        self.reviewed_policy("existing_only")
+        head = self.git("rev-parse", "HEAD")
+        engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
+        self.assertTrue(engine.node_policy_only_base(base, head))
+        (self.fixture.repo / "unrelated.py").write_text("changed = True\n")
+        self.git("add", "unrelated.py")
+        self.git("commit", "-qm", "unrelated code change")
+        self.assertFalse(engine.node_policy_only_base(base, self.git("rev-parse", "HEAD")))
+        self.git("reset", "--hard", head)
+        with (self.fixture.repo / ".zzzops" / "PROJECT.md").open("a") as stream:
+            stream.write("\nUnreviewed instruction change\n")
+        self.git("add", ".zzzops/PROJECT.md")
+        self.git("commit", "-qm", "invalid policy binding")
+        self.assertFalse(engine.node_policy_only_base(base, self.git("rev-parse", "HEAD")))
+
+    def test_git_base_bridge_rejects_substantive_policy_change(self):
+        self.reviewed_policy("disabled", initial=True)
+        base = self.git("rev-parse", "HEAD")
+        section = z._workflow_section(self.session.project, "verification_testing")
+        section["instructions"] += " Require an additional independent test."
+        self.reviewed_policy("existing_only")
+        engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
+        self.assertFalse(engine.node_policy_only_base(base, self.git("rev-parse", "HEAD")))
+
     def test_reviewed_ci_loosening_keeps_prior_result(self):
         self.reviewed_policy("inspect_exact_pr_head", initial=True)
         self.install(self.graph)
@@ -532,7 +559,9 @@ class PolicyCiDefaultDagTests(dag.DagFixture):
         remote = Path(remote_dir.name) / "remote.git"
         subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
         self.session.git("remote", "add", "origin", str(remote))
-        self.default_decomposition()
+        self.default_decomposition(implementation_review_members={
+            "items": {"acceptance_contracts": "Review the exact implementation and test evidence"},
+            "rationale": "Independent implementation review is required before compaction"})
         self.session.finish(self.session.acquire("decomposition_review"), {
             "value": self.review("approved", "Atomic disposition accepted"),
             "authorization": self.decomposition_authorization()})
@@ -581,16 +610,22 @@ class PolicyCiDefaultDagTests(dag.DagFixture):
         self.assertEqual(1, len(self.provider.issues))
 
         consumed = self.fixture.repo / "product.txt"
-        original = consumed.read_bytes()
+        baseline = self.git("rev-parse", "HEAD")
         try:
             consumed.write_text("changed consumed workspace input\n")
+            # A dirty coordinator checkout cannot replace pinned attempt input.
+            dirty = self.session.checkpoint(100)
+            self.assertFalse({step.get("node", {}).get("node") for step in dirty
+                              if step.get("kind") == "execute"} & prior.keys())
+            self.git("add", "product.txt")
+            self.git("commit", "-qm", "change declared candidate base input")
             drifted = self.session.checkpoint(100)
             self.assertTrue(any(step.get("node", {}).get("node") in {"test_design", "implement"}
                                 and step.get("kind") in {"execute", "dependency", "repair"}
                                 for step in drifted), drifted)
             self.assertEqual(evidence, self.payload()[1]["evidence"])
         finally:
-            consumed.write_bytes(original)
+            self.git("reset", "--hard", baseline)
         restored = self.session.checkpoint(100)
         self.assertFalse({step.get("node", {}).get("node") for step in restored
                           if step.get("kind") == "execute"} & prior.keys())
@@ -617,6 +652,9 @@ class PolicyCiDefaultDagTests(dag.DagFixture):
         if "retain_migration_findings" in self.names():
             self.session.finish(self.session.acquire("retain_migration_findings"), {
                 "value": {"items": {}, "rationale": "No admitted findings"}})
+        self.session.finish(self.session.acquire("implementation_review", item="acceptance_contracts",
+                                               actor="independent-ci-implementation-reviewer"), {
+            "value": self.review("approved", "Exact implementation and red/green evidence reviewed")})
         for registry in ("retain_implementation_review_findings",
                          "retain_integration_review_findings"):
             if registry in self.names():
@@ -626,12 +664,20 @@ class PolicyCiDefaultDagTests(dag.DagFixture):
                   "tasks": [{"goal": 100, "node": "publish", "item": None, "generation": 1}],
                   "policy": dag.content_hash(self.session.project["policy"]),
                   "decision": "approved"}
-        self.session.finish(self.session.acquire("authorize_repository"), {
+        authorized = self.session.finish(self.session.acquire("authorize_repository"), {
             "authorization": permit})
-        head = self.git("rev-parse", "HEAD")
-        self.git("branch", "-f", "goal-child", head)
+        steps = authorized["next_steps"]
+        if not any(step.get("kind") == "compact_candidate" for step in steps):
+            steps = self.session.checkpoint(100)
+        compaction = next((step for step in steps if step.get("kind") == "compact_candidate"), None)
+        self.assertIsNotNone(compaction, [(step.get("kind"), step.get("node"), step.get("reason"))
+                                         for step in steps])
+        compacted = self.session.call(100, compaction["submission"])["next_steps"][0]
+        self.assertEqual("candidate_compacted", compacted["kind"])
+        head, branch = compacted["head_oid"], compacted["branch"]
+        self.assertEqual(head, self.git("rev-parse", branch))
         self.fixture.head_oid = head
-        self.fixture.base_oid = head
+        self.fixture.base_oid = self.git("rev-parse", "dev")
         def pinned_pr_states(_repo, executable, selected, _bodies):
             self.assertEqual("gh", executable)
             self.assertEqual([100], [item["number"] for item in selected])
@@ -646,7 +692,7 @@ class PolicyCiDefaultDagTests(dag.DagFixture):
         z._github_pull_request_states.side_effect = pinned_pr_states
         published = self.session.acquire("publish")
         publication = self.session.submission(published, {"value": {
-            "repository": "owner/repo", "branch": "goal-child", "base": "dev",
+            "repository": "owner/repo", "branch": branch, "base": "dev",
             "pr": "https://github.com/owner/repo/pull/9", "head_oid": head}},
             "pinned-head-publication")
         first = self.session.call(100, publication)
