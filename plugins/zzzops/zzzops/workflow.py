@@ -6477,7 +6477,7 @@ class Workflow:
                     response = {'next_steps': [{'kind': 'perform', 'goal': number, 'node': node, 'lease': lease}]}
                 else:
                     if request.get('actor') != lease['worker'] or not lease['worker']: raise ValueError('Exact bound actor required')
-                    if state.get('input_hash') != lease['fingerprint'] or state['state'] != 'ready': raise ValueError('Stale substantive input/contract/prerequisite; owner remains bound: ' + state.get('reason', 'workspace or input identity drift'))
+                    if operation != 'release' and (state.get('input_hash') != lease['fingerprint'] or state['state'] != 'ready'): raise ValueError('Stale substantive input/contract/prerequisite; owner remains bound: ' + state.get('reason', 'workspace or input identity drift'))
                     if lease['expires_at'] <= time.time() and operation not in {'renew', 'release'}:
                         raise ValueError('Lease expired; observe stopped owner before recovery')
                     if operation == 'renew':
