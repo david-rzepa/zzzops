@@ -381,7 +381,8 @@ def _from_text(kind, text):
     if kind != 'json':
         raise ValueError('Unsupported artifact type')
     value = strict_json(text)
-    if canonical(value) != text:
+    if json.dumps(value, ensure_ascii=False, sort_keys=True,
+                  separators=(',', ':'), allow_nan=False) != text:
         raise ValueError('Noncanonical structured artifact serialization')
     return value
 
