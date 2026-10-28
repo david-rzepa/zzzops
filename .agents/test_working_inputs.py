@@ -870,6 +870,95 @@ with s.reference('process-lock', 'reader'):
             self.assertIsNone(self.module.github_provider_check(
                 self.repo, "owner/project", "restart-request", "digest", action))
 
+    def test_deleted_label_reconciliation_uses_exact_authenticated_observation(self):
+        self.require_behavior("exact deleted-label reconciliation")
+        node = "LA_kwDOTasXu88AAAAC_0HWUA"
+        action = {"operation": "delete_label", "target": {"node_id": node}, "arguments": {}}
+        repository = {"id": "R_kgDOTasXuw", "nameWithOwner": "owner/project",
+                      "hasIssuesEnabled": True, "viewerPermission": "ADMIN"}
+        missing = {"data": {"repository": repository, "node": None},
+                   "errors": [{"type": "NOT_FOUND", "path": ["node"],
+                               "message": f"Could not resolve to a node with the global id of '{node}'."}]}
+        def check(payload, code=0, stderr=""):
+            with mock.patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
+                    [], code, json.dumps(payload), stderr)):
+                return self.module.github_provider_check(
+                    self.repo, "owner/project", "deleted-label-request", "digest", action)
+        for bad in ({}, {"data": {}},
+                    {"data": {"repository": {**repository, "viewerPermission": "READ"}, "node": None}},
+                    {"data": {"repository": {**repository, "nameWithOwner": "other/repo"}, "node": None}},
+                    {"data": {"repository": repository, "node": None},
+                     "errors": missing["errors"] + [{"type": "FORBIDDEN", "path": ["repository"]}]}):
+            with self.subTest(bad=bad):
+                self.assertIsNone(check(bad), "unknown observation must never issue an applied receipt")
+        self.assertIsNone(check({"data": {"repository": repository, "node": None}},
+                                code=1, stderr="gh: transport failed"))
+        outcome = check(missing, code=1, stderr="gh: Could not resolve exact node")
+        self.assertTrue(outcome and outcome.get("applied") is True, outcome)
+        self.assertEqual({"deleted": node}, outcome["result"])
+        self.assertTrue(outcome["receipt"]["authenticated"])
+        live = {"__typename": "Label", "id": node, "name": "lease", "description": "held",
+                "repository": {"nameWithOwner": "owner/project"}}
+        self.assertEqual({"applied": False}, check({"data": {"repository": repository, "node": live}}))
+
+    def test_interrupted_deleted_label_reconciles_once_and_exact_replay_does_not_dispatch(self):
+        self.require_behavior("interrupted deleted-label reconciliation")
+        node = "LA_kwDOTasXu88AAAAC_0HWUA"
+        action = {"operation": "delete_label", "target": {"node_id": node}, "arguments": {}}
+        store = self.store()
+        request = "deleted-label-lost-response"
+        store.write("provider:" + request, "provider-mutation", action)
+        row = store.freeze("provider:" + request, "provider-mutation", request, action)
+        state = store._load()
+        state["requests"][request]["state"] = "uncertain"
+        store._save(state)
+        observation = {"data": {"repository": {"id": "R_kgDOTasXuw",
+                       "nameWithOwner": "owner/project", "hasIssuesEnabled": True,
+                       "viewerPermission": "ADMIN"}, "node": None},
+                       "errors": [{"type": "NOT_FOUND", "path": ["node"],
+                                   "message": f"Could not resolve to a node with the global id of '{node}'."}]}
+        checks = []
+        def provider_check(request_id, digest):
+            checks.append(request_id)
+            with mock.patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
+                    [], 1, json.dumps(observation), "gh: exact node not found")):
+                return self.module.github_provider_check(
+                    self.repo, "owner/project", request_id, digest, action)
+        store.provider_check = provider_check
+        try:
+            reconciled = store.reconcile(request)
+        except self.module.WorkingInputUncertain as exc:
+            self.fail(f"authenticated deleted-label observation remained uncertain: {exc}")
+        self.assertEqual("reconciled", reconciled["state"])
+        replay = store.dispatch(request, lambda *_: self.fail("exact replay dispatched a second delete"))
+        self.assertEqual({"deleted": node}, replay["result"])
+        self.assertEqual(row["digest"], replay["receipt"]["digest"])
+        self.assertEqual([request], checks)
+
+    def test_label_update_requires_exact_description_and_current_repository_authority(self):
+        self.require_behavior("authenticated label update observation")
+        node = "LA_kwDOTasXu88AAAAC_0HWUA"
+        action = {"operation": "update_label", "target": {"node_id": node},
+                  "arguments": {"description": "renewed"}}
+        repository = {"id": "R_kgDOTasXuw", "nameWithOwner": "owner/project",
+                      "hasIssuesEnabled": True, "viewerPermission": "ADMIN"}
+        label = {"__typename": "Label", "id": node, "name": "lease",
+                 "description": "renewed", "repository": {"nameWithOwner": "owner/project"}}
+        def check(repo_facts, label_facts):
+            body = {"data": {"repository": repo_facts, "node": label_facts}}
+            with mock.patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
+                    [], 0, json.dumps(body), "")):
+                return self.module.github_provider_check(
+                    self.repo, "owner/project", "update-request", "digest", action)
+        self.assertTrue(check(repository, label)["applied"])
+        self.assertEqual({"applied": False}, check(repository, {**label, "description": "old"}))
+        for repo_facts, label_facts in (({**repository, "viewerPermission": "READ"}, label),
+                                        ({**repository, "nameWithOwner": "other/repo"}, label),
+                                        (repository, {**label, "repository": {"nameWithOwner": "other/repo"}}),
+                                        (repository, {**label, "__typename": "Issue"})):
+            with self.subTest(repo=repo_facts, node=label_facts):
+                self.assertIsNone(check(repo_facts, label_facts))
+
     def test_reconciled_provider_result_replays_same_envelope_for_create_and_cleanup(self):
         for operation, result in (("create_issue", {"number": 42, "body": "marked"}),
                                   ("cleanup_created_issue", {"number": 42, "body": "clean"})):
@@ -938,13 +1027,19 @@ with s.reference('process-lock', 'reader'):
                 mutations["delete"] += 1
                 labels.clear()
                 raise RuntimeError("delete applied but response was lost")
-            if "node(id:" in joined:
+            if arguments[:2] == ["api", "graphql"] and any(
+                    value == "-F" for value in arguments) and any(
+                    value.startswith("id=") for value in arguments):
                 label = next(iter(labels.values()), None)
                 node = None if label is None else {
-                    "id": label["node_id"], "name": label["name"],
-                    "description": label["description"]}
+                    "__typename": "Label", "id": label["node_id"],
+                    "name": label["name"], "description": label["description"],
+                    "repository": {"nameWithOwner": "owner/repo"}}
                 return subprocess.CompletedProcess(
-                    arguments, 0, stdout=json.dumps({"data": {"node": node}}), stderr="")
+                    arguments, 0, stdout=json.dumps({"data": {"repository": {
+                        "id": "R_owner_repo", "nameWithOwner": "owner/repo",
+                        "hasIssuesEnabled": True, "viewerPermission": "ADMIN"},
+                        "node": node}}), stderr="")
             label = labels.get("lease")
             if label is None:
                 return subprocess.CompletedProcess(arguments, 1, stdout="", stderr="404 Not Found")
