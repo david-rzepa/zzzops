@@ -1252,6 +1252,79 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
                          (tree / 'fresh-input.txt').read_text())
 
 
+    def nonapplicable_git_fixture(self, allocate_optional=True):
+        f = journeys.WorkspaceAuthorityPublicTests('runTest')
+        f.setUp()
+        self.addCleanup(f.doCleanups)
+        f.session.git('config', 'gc.auto', '0')
+        def graph_changes(graph, allocations):
+            for node in graph['nodes']:
+                if 'repository_workspace' in node['executor']['resources']:
+                    node['executor']['resources']=['repository_git_workspace']
+            choose=journeys.task('choose', ['accept_alpha'])
+            optional=journeys.task('optional_git', ['choose'])
+            optional['executor'].update(resources=['repository_git_workspace'],
+                                        authority=journeys.scope('charter','grant'))
+            optional['inputs']={'choice':journeys.subject_input('choose')}
+            alpha=next(node for node in graph['nodes'] if node['id']=='alpha')
+            optional['inputs'].update(copy.deepcopy(alpha['inputs']))
+            optional['inputs']['allocation']['path']=['allocations','optional_git']
+            if allocate_optional:
+                allocations['allocations']['optional_git']={'task':{'goal':100,'node':'optional_git','item':None,'generation':1},'owned':['optional_test.py'],'consumed':['source.py','behavior_test.py','read_dependency.txt']}
+            optional['applicability']={'input':{'producer':{'node':journeys.selector('choose')},
+                'output':'value','path':[],'mode':'content','type':{'kind':'string'}},
+                'values':['composition'],'outputs':{'value':'not applicable'},
+                'rationale':'Leaf topology does not acquire optional Git workspace'}
+            graph['nodes'].extend([choose,optional])
+            graph['terminals'].append(journeys.selector('optional_git'))
+        f.setup_workspace(graph_changes)
+        d=tempfile.TemporaryDirectory();self.addCleanup(d.cleanup)
+        bare=Path(d.name)/'remote.git'
+        subprocess.run(['git','init','--bare','-q',str(bare)],check=True)
+        f.session.git('remote', 'add', 'origin', str(bare))
+        return f
+    def accepted_alpha(self, f):
+        w=f.acquire_workspace('alpha'); tree=Path(w['managed_worktree']['path'])
+        (tree/'behavior_test.py').write_text('assert True\n')
+        subprocess.run(['git','add','behavior_test.py'],cwd=tree,check=True)
+        subprocess.run(['git','commit','-qm','test: accepted alpha'],cwd=tree,check=True)
+        req=f.session.submission(w,{'value':'Reviewed alpha'},'nonapp-alpha')
+        req.update(workspace_checks=[[sys.executable,'-B','behavior_test.py']],verification_expectation='passed')
+        f.session.call(100,req);f.review_candidate('alpha',0)
+        return f.result('alpha')[0]
+    def test_nonapplicable_git_result_keeps_owner_and_sibling_frontier(self):
+        f = self.nonapplicable_git_fixture()
+        accepted = self.accepted_alpha(f)
+        f.session.finish(f.session.acquire('choose'),{'value':'leaf'})
+        # The host, not this fixture, must create the non-applicability Result.
+        rows=f.session.checkpoint(100)
+        current=f.result('optional_git')[1]
+        self.assertEqual('leaf',current['non_applicability'])
+        self.assertEqual(['__applicability'],[row['name'] for row in current['inputs']])
+        self.assertEqual(accepted,f.result('alpha')[0])
+        self.assertFalse(any(row.get('kind')=='repair' for row in rows),rows)
+        self.assertTrue(any(row.get('kind')=='execute' and row.get('node',{}).get('node')=='beta' for row in rows),rows)
+        d=tempfile.TemporaryDirectory();self.addCleanup(d.cleanup)
+        sibling=Path(d.name)/'sibling'
+        f.session.git('worktree','add','-q','--detach',str(sibling),'HEAD')
+        (sibling/'sibling-only.txt').write_text('clean divergent sibling\n')
+        subprocess.run(['git','add','sibling-only.txt'],cwd=sibling,check=True)
+        subprocess.run(['git','commit','-qm','test: sibling'],cwd=sibling,check=True)
+        f.session.repo=sibling
+        sibling_rows=f.session.checkpoint(100)
+        self.assertTrue(any(row.get('kind')=='execute' and row.get('node',{}).get('node')=='beta' for row in sibling_rows),sibling_rows)
+
+    def test_applicable_git_without_allocation_remains_blocked(self):
+        f = self.nonapplicable_git_fixture(allocate_optional=False)
+        self.accepted_alpha(f)
+        choose=f.session.acquire('choose')
+        request=f.session.submission(choose,{'value':'composition'},'choose-composition')
+        response=f.session.call(100,request)
+        self.assertIsNotNone(response.get('submitted'))
+        self.assertFalse(any(row.get('kind')=='execute' and row.get('node',{}).get('node')=='optional_git' for row in response['next_steps']))
+        self.assertTrue(any(row.get('node',{}).get('node')=='optional_git' and row.get('kind') in ('blocked','dependency') for row in response['next_steps']))
+
+
 class GitWorkspaceJourneyTests(unittest.TestCase):
     fixture_with_git_workspace = GitWorkspaceAcquisitionTests.fixture_with_git_workspace
 
