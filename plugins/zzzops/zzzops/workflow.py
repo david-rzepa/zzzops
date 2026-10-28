@@ -4923,10 +4923,35 @@ class Workflow:
                 advertised = remote.returncode == 0 and remote.stdout.splitlines() == [f'{head}\t{ref}']
             if not advertised:
                 managed_root = owner / '.zzzops' / 'worktrees'
+                managed_identities = {
+                    (*ev.task_key(lease['node']), lease['attempt'])
+                    for goal_snapshot in snapshots.values()
+                    for lease in goal_snapshot['payload']['operational']['leases']
+                }
+                managed_identities.update(
+                    (*ev.task_key(result['node']), result['attempt'])
+                    for _reference, result in all_results)
+                def authenticated_managed_attempt(row, path):
+                    if not path.is_relative_to(managed_root):
+                        return False
+                    parts = path.relative_to(managed_root).parts
+                    if len(parts) != 3:
+                        return False
+                    goal_text, node, attempt = parts
+                    if (not goal_text.isdecimal() or not re.fullmatch(r'[0-9a-f]{32}', attempt)
+                            or not re.fullmatch(r'[A-Za-z0-9_-]+', node)):
+                        return False
+                    goal = int(goal_text)
+                    expected_path, branch = managed_worktrees._managed(owner, goal, node, attempt)
+                    known = [identity for identity in managed_identities
+                             if identity[0] == goal and identity[1] == node
+                             and identity[4] == attempt]
+                    return (path == expected_path and row.get('branch') == 'refs/heads/' + branch
+                            and len(known) == 1)
                 candidates = []
                 for row in managed_worktrees._worktrees(self.repo):
                     path = Path(row['worktree']).resolve()
-                    if path.is_relative_to(managed_root) or not path.is_dir():
+                    if authenticated_managed_attempt(row, path) or not path.is_dir():
                         continue
                     commit = row.get('HEAD')
                     if commit in recorded_bases:
