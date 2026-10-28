@@ -190,6 +190,27 @@ class GenericRenewalTests(DagFixture):
         self.assertIn("produce", {v["node"]["node"] for v in self.session.ready()})
         self.assertEqual(1, stop.call_count)
 
+    def test_exact_owner_can_release_stale_inputs_without_accepting_evidence(self):
+        work = self.session.acquire("produce")
+        original = z._workflow.Workflow.node_snapshot
+        def stale(engine, *args, **kwargs):
+            snapshot = original(engine, *args, **kwargs)
+            state = snapshot["projection"]["states"][z._phase_evidence.task_key(work["node"])]
+            state.update(state="blocked", input_hash="sha256:" + "0" * 64, reason="base moved")
+            return snapshot
+        request = {"operation": "release", "node": work["node"], "lease": work["lease"]["token"],
+                   "actor": work["bound_actor"], "request_id": "stale-owner-release"}
+        before = copy.deepcopy(self.payload()[1]["evidence"])
+        with mock.patch.object(z._workflow.Workflow, "node_snapshot", stale):
+            denied = {**request, "actor": "intruder", "request_id": "stale-intruder"}
+            self.session.call(100, denied, expected=2)
+            response = self.session.call(100, request)
+            self.assertEqual("released", response["next_steps"][0]["kind"])
+            self.assertEqual(response, self.session.call(100, request))
+        payload = self.payload()[1]
+        self.assertEqual(before, payload["evidence"])
+        self.assertNotIn(work["lease"]["token"], {v["token"] for v in payload["operational"]["leases"]})
+
     def test_release_replay_after_lost_provider_response_does_not_rewrite(self):
         work = self.session.acquire("produce")
         request = {"operation": "release", "node": work["node"], "lease": work["lease"]["token"],
