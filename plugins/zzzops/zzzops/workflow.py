@@ -11,6 +11,7 @@ import json
 import math
 import os
 import subprocess
+import tempfile
 import threading
 import time
 import uuid
@@ -1564,6 +1565,7 @@ class Workflow:
             return copy.deepcopy(cache[commit])
         result = {}
         raw = subprocess.run(['git', 'ls-tree', '-rz', '--full-tree', commit], cwd=self.repo, capture_output=True, check=True).stdout
+        blobs = []
         for entry in raw.split(b'\0'):
             if not entry:
                 continue
@@ -1574,8 +1576,54 @@ class Workflow:
             _, kind, oid = metadata.split()
             if kind != b'blob':
                 raise ValueError('Acquisition snapshot requires ordinary Git file entries')
-            content = subprocess.run(['git', 'cat-file', 'blob', oid.decode()], cwd=self.repo, capture_output=True, check=True).stdout
-            result[path] = 'sha256:' + hashlib.sha256(content).hexdigest()
+            blobs.append((path, oid))
+        if blobs:
+            # One object may be outstanding at a time.  Git writes each reply
+            # only after its request is flushed, so neither pipe can grow with
+            # the repository's total blob content.
+            with tempfile.TemporaryFile() as errors:
+                process = subprocess.Popen(['git', 'cat-file', '--batch'], cwd=self.repo,
+                                           stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                           stderr=errors)
+                try:
+                    if process.stdin is None or process.stdout is None:
+                        raise ValueError('Acquisition Git blob stream is unavailable')
+                    for path, oid in blobs:
+                        process.stdin.write(oid + b'\n')
+                        process.stdin.flush()
+                        header = process.stdout.readline(128)
+                        parts = header[:-1].split(b' ') if header.endswith(b'\n') and len(header) < 128 else []
+                        if (len(parts) != 3 or parts[0] != oid or parts[1] != b'blob'
+                                or not parts[2].isdigit()):
+                            raise ValueError('Acquisition Git blob response has an invalid header')
+                        remaining = int(parts[2]); blob_hash = hashlib.sha256()
+                        while remaining:
+                            chunk = process.stdout.read(min(65536, remaining))
+                            if not chunk:
+                                raise ValueError('Acquisition Git blob response is truncated')
+                            blob_hash.update(chunk); remaining -= len(chunk)
+                        if process.stdout.read(1) != b'\n':
+                            raise ValueError('Acquisition Git blob response lacks a terminator')
+                        result[path] = 'sha256:' + blob_hash.hexdigest()
+                    process.stdin.close()
+                    if process.stdout.read(1):
+                        raise ValueError('Acquisition Git blob response has trailing output')
+                    returncode = process.wait()
+                    if returncode:
+                        errors.seek(0)
+                        raise subprocess.CalledProcessError(returncode,
+                            ['git', 'cat-file', '--batch'], stderr=errors.read(65536))
+                except BaseException:
+                    if process.poll() is None:
+                        process.kill()
+                    process.wait()
+                    raise
+                finally:
+                    if process.stdin is not None and not process.stdin.closed:
+                        try: process.stdin.close()
+                        except OSError: pass
+                    if process.stdout is not None:
+                        process.stdout.close()
         self._git_snapshots = {**cache, commit: result}
         if len(_GIT_ARTIFACT_SNAPSHOTS) >= 32: _GIT_ARTIFACT_SNAPSHOTS.pop(next(iter(_GIT_ARTIFACT_SNAPSHOTS)))
         _GIT_ARTIFACT_SNAPSHOTS[identity] = dict(result)
