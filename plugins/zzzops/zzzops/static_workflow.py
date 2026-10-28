@@ -313,7 +313,21 @@ def _canonical(graph, compiler):
             continue
         scopes = node['resolves']
         subjects = [scope['subject'] for scope in scopes]
-        if (not scopes or any(scope['subject']['kind'] != 'node' for scope in scopes)
+        reference = compiler._ref_type()
+        resolution_schema = {'kind': 'object', 'fields': {
+            'finding': reference, 'subjects': {'kind': 'array', 'items': reference},
+            'reviewer_result': reference, 'decision': {'kind': 'enum', 'values': ['resolved']},
+            'rationale': {'kind': 'string'}}}
+        supported_outputs = [{'value': {'type': 'resolution', 'schema': copy.deepcopy(resolution_schema)}}]
+        resolution_schema['fields']['decision']['values'] = ['resolved', 'unresolved']
+        supported_outputs.append({'value': {'type': 'resolution', 'schema': resolution_schema}})
+        registry_schema = {'kind': 'object', 'fields': {
+            'items': {'kind': 'map', 'values': reference}, 'rationale': {'kind': 'string'}}}
+        if (set(node) != {'id', 'prompt', 'inputs', 'outputs', 'requires', 'executor',
+                         'independent_of', 'gates', 'resolves', 'permits'}
+                or node['outputs'] not in supported_outputs or finding.get('type') != reference
+                or registry['outputs'][finding['output']]['schema'] != registry_schema
+                or not scopes or any(scope['subject']['kind'] != 'node' for scope in scopes)
                 or set(node['outputs']) != {'value'} or node['outputs']['value']['type'] != 'resolution'
                 or node['gates'] or node['executor']['capability'] not in ('bounded', 'reasoning')
                 or {**node['executor'], 'capability': 'reasoning'} != {'role': 'worker', 'capability': 'reasoning',
@@ -360,7 +374,8 @@ def _canonical(graph, compiler):
                 if binding.get('producer') == {'node': scope['subject']} and binding.get('output') == scope['output']
                 and binding.get('mode') == 'identity' and binding.get('path') == [])
             identity = digest(scope)
-            group = groups.setdefault(identity, {'scope': scope, 'subject': subject_binding, 'reviews': {}, 'independent': []})
+            group = groups.setdefault(identity, {'scope': scope, 'subject': subject_binding, 'reviews': {}, 'independent': [], 'bounded': False})
+            group['bounded'] = group['bounded'] or node['executor']['capability'] == 'bounded'
             for selector in node['independent_of']:
                 if selector not in group['independent']: group['independent'].append(copy.deepcopy(selector))
             if group['subject'] != subject_binding:
@@ -384,6 +399,13 @@ def _canonical(graph, compiler):
         generated.append(compiler.resolution_batch_family(
             group['scope'], group['subject'], dict(sorted(group['reviews'].items())),
             sorted(group['independent'], key=digest)))
+    # Existing reasoning families retain their positions; bounded lanes append
+    # after them and can never change their required executor capability.
+    for identity, group in sorted(groups.items()):
+        if group['bounded']:
+            generated.append(compiler.resolution_batch_family(
+                group['scope'], group['subject'], dict(sorted(group['reviews'].items())),
+                sorted(group['independent'], key=digest), capability='bounded'))
     if batch_rows and sorted(batch_rows, key=lambda row: row['id']) != sorted(generated, key=lambda row: row['id']):
         raise ValueError('Unsupported or altered resolution batch contract; exact policy compiler definition required')
     result['task_sets'].extend(generated)

@@ -1430,7 +1430,7 @@ def _derive_task_steps(graph, payload, context):
                                         raise ValueError('Unsupported resolution overlap: static resolver ' + custom['id']
                                             + ' and registry batch cover the same admitted finding scope; explicitly reconcile their reviewed requirements.')
                             reviews = [reviewer_refs[key] for key in sorted(reviewer_refs)]
-                            findings, opportunities = {}, {}
+                            findings, opportunities, capabilities = {}, {}, []
                             for debt in debts:
                                 finding = debt['content']
                                 key = 'finding_' + semantic_hash([number, finding['id'], finding['revision'], debt['finding']])[7:]
@@ -1443,11 +1443,37 @@ def _derive_task_steps(graph, payload, context):
                                     or task_key(current_result_by_ref(reference)['node']) in source_owners]
                                 if not relevant:
                                     raise ValueError('Finding has no exact qualifying independent review route')
+                                requirements = {}
+                                for original in snapshots[number]['graph']['task_sets']:
+                                    if original['source']['producer'] != {'slot': 'retired_resolution_members'}:
+                                        continue
+                                    declared = materialized(original['template'])
+                                    matching = []
+                                    for candidate_scope in declared['resolves']:
+                                        candidate_scope = copy.deepcopy(candidate_scope)
+                                        if candidate_scope['subject']['goal'] == '#this': candidate_scope['subject']['goal'] = number
+                                        if candidate_scope == exact_scope: matching.append(candidate_scope)
+                                    if not matching: continue
+                                    if declared['inputs']['finding']['producer'] == {'slot': 'phase_event_obligations'}:
+                                        review_expansion = declared['inputs']['review']['producer']['node']['expansion']
+                                        review_name = expansions[(number, review_expansion)][0]['template']['id']
+                                        if not any(owner[1] == review_name for owner in source_owners): continue
+                                    requirement = declared['executor']['capability']
+                                    if requirement not in ('bounded', 'reasoning'):
+                                        raise ValueError('Unsupported resolution capability requirement')
+                                    requirements[semantic_hash(declared)] = requirement
+                                if not requirements:
+                                    raise ValueError('Unsupported resolution batch without original entry requirements')
+                                capability = 'reasoning' if 'reasoning' in requirements.values() else 'bounded'
+                                capabilities.append(capability)
                                 findings[key] = {'id': finding['id'], 'revision': finding['revision'],
                                     'finding': debt['finding'], 'admission': debt['admission'], 'reviews': relevant}
                                 opportunities[key] = semantic_hash({'finding': debt['finding'],
                                     'scope': finding['target'], 'subject': subject, 'reviews': relevant,
-                                    'context': context_hashes, 'contract': {'node': template, 'policy': policy}})
+                                    'context': context_hashes, 'requirements': requirements, 'policy': policy})
+                            required_capability = 'reasoning' if 'reasoning' in capabilities else 'bounded'
+                            if template['executor']['capability'] != required_capability:
+                                continue
                             if exact_subject['kind'] == 'node':
                                 target = {'node': exact_subject['node'], 'output': scope['output']}
                             else:
@@ -1465,8 +1491,11 @@ def _derive_task_steps(graph, payload, context):
                     # and exact stopped-owner recovery when its live inputs drift.
                     # It cannot create a historical resolution effect or bypass
                     # the ordinary acquisition fingerprint check at submit.
+                    sibling_lanes = {row['template']['id'] for row in snapshots[number]['graph']['task_sets']
+                        if row['source']['producer'] == {'slot': 'resolution_batches'}
+                        and row['template']['resolves'] == template['resolves']}
                     for lease in snapshots[number]['payload']['operational']['leases']:
-                        if lease['node']['node'] != template['id']: continue
+                        if lease['node']['node'] not in sibling_lanes: continue
                         bindings = [entry for entry in lease['acquisition']['inputs'] if entry['name'] == 'batch']
                         if len(bindings) != 1:
                             raise ValueError('Owned resolution batch lacks its captured manifest')
@@ -1477,7 +1506,8 @@ def _derive_task_steps(graph, payload, context):
                         if lease['node']['item'] != 'batch_' + semantic_hash(manifest)[7:]:
                             raise ValueError('Owned resolution batch identity differs from its captured manifest')
                         items = {key: value for key, value in items.items() if value['target'] != manifest['target']}
-                        items[lease['node']['item']] = manifest
+                        if lease['node']['node'] == template['id']:
+                            items[lease['node']['item']] = manifest
                     batch_selections[cache_key] = {'items': items,
                         'rationale': 'All exact unresolved findings with a new reviewed resolution opportunity.'}
                 value = {expansion_id: batch_selections[cache_key]}

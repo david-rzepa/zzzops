@@ -662,22 +662,27 @@ class Workflow:
         except (OSError, UnicodeError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
             return False
 
-    def node_historical_policies(self, snapshots, artifacts):
-        """Authenticate bounded first-parent policy history for recorded Results."""
+    def node_historical_policies(self, snapshots, artifacts, *, compatible_only=True, required_hashes=None):
+        """Authenticate policy history; current reuse additionally requires compatibility.
+
+        Lifecycle callers request exact hashes without the optional-reuse horizon.
+        This mode authenticates old approval and instruction bindings, never currentness.
+        """
         forms = ("full", "pre_static", "current", "normalized")
         projection = self.api._policy.phase_policy_projection
         current = self.project['policy']
         current_hashes = {digest(projection(current, form)) for form in forms}
-        recorded = {value for snapshot in snapshots.values() for ref in snapshot['payload']['evidence']
-                    for value in (artifacts[ref['hash']].get('provenance', {}).get('policy'),
-                                  artifacts[ref['hash']].get('provenance', {}).get('approved_policy'))}
+        recorded = (set(required_hashes) if required_hashes is not None else
+                    {value for snapshot in snapshots.values() for ref in snapshot['payload']['evidence']
+                     for value in (artifacts[ref['hash']].get('provenance', {}).get('policy'),
+                                   artifacts[ref['hash']].get('provenance', {}).get('approved_policy'))})
         needed = {value for value in recorded if isinstance(value, str) and value not in current_hashes}
         if not needed:
             return {}, None
         accepted = {}
         # Preserve the pre-existing phase-DAG adapter: an authenticated graph
         # Ref may reconstruct the sole excluded workflow field exactly.
-        for snapshot in snapshots.values():
+        for snapshot in (snapshots.values() if compatible_only else ()):
             graph_ref = snapshot['payload'].get('graph')
             old_graph = artifacts.get(graph_ref.get('hash')) if isinstance(graph_ref, dict) else None
             if not isinstance(old_graph, dict):
@@ -694,38 +699,42 @@ class Workflow:
         needed -= set(accepted)
         if not needed:
             return accepted, None
-        command = ['git', 'rev-list', '--max-count=65', '--first-parent', 'HEAD', '--', '.zzzops/POLICY.json']
+        command = ['git', 'rev-list', *(['--max-count=65'] if compatible_only else []),
+                   '--first-parent', 'HEAD', '--', '.zzzops/POLICY.json']
         commits = subprocess.run(command, cwd=self.repo, capture_output=True, text=True, check=True).stdout.splitlines()
         matches = {value: [] for value in needed}
         errors = []
         cache = getattr(self, '_historical_policy_cache', None)
         if cache is None:
             cache = self._historical_policy_cache = {}
-        for commit in commits[:64]:
+        for commit in (commits[:64] if compatible_only else commits):
             try:
                 cache_key = (commit, digest(current))
                 old = cache.get(cache_key)
                 if old is None:
                     old = self.node_policy_at_commit(commit)
                     cache[cache_key] = old
-                if not self.api._policy.phase_policy_ci_compatible(old, current):
+                if compatible_only and not self.api._policy.phase_policy_ci_compatible(old, current):
                     continue
                 for form in forms:
                     fingerprint = digest(projection(old, form))
                     if fingerprint in needed:
                         matches[fingerprint].append((commit, form, old))
+                if not compatible_only and all(matches.values()):
+                    break
             except (OSError, UnicodeError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as exc:
                 errors.append(f'historical policy ancestor {commit} is unavailable or malformed: {exc}')
         for fingerprint, candidates in matches.items():
             # One approved snapshot may naturally expose multiple historical
             # forms with the same digest; ambiguity concerns distinct commits.
             commits_found = {row[0] for row in candidates}
-            if len(commits_found) == 1:
+            if len(commits_found) == 1 or (candidates and not compatible_only):
                 accepted[fingerprint] = candidates[0][2]
             elif candidates:
                 errors.append('Ambiguous approved historical policy ancestors match the Result')
             else:
-                errors.append('No authenticated matching historical policy ancestor within 64 policy changes')
+                errors.append('No authenticated matching historical policy ancestor within 64 policy changes'
+                              if compatible_only else 'No authenticated historical policy ancestor for ' + fingerprint)
         return accepted, '; '.join(errors) if errors else None
 
     def node_authorization_policy_matches(self, value, artifact, result, artifacts):
@@ -3550,7 +3559,9 @@ class Workflow:
                 or result != self.node_ref(result.get('hash'), number)):
             return None
         matching = [(comment, item) for comment, item in index.envelope_comments
-                    if (item.get('context') or {}).get('response') == result]
+                    if (item.get('context') or {}).get('response') == result
+                    and (item.get('context') or {}).get('request_id') == receipt['request']
+                    and (item.get('context') or {}).get('request_hash') == receipt['payload']]
         if not matching:
             return None
         transactions = {item.get('transaction') for _, item in matching}

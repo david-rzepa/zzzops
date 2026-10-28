@@ -7,8 +7,14 @@ unchanged. If a ready registry batch overlaps such a custom resolver at the same
 exact scope, the host reports an unsupported overlap rather than bypassing its
 additional requirements. Supported registry executors have worker role, empty
 resources and self/value authority, with the historical `bounded` or `reasoning`
-capability; the generic batch uses `reasoning`. Other executor contracts require
-a reviewed policy mapping and fail closed. The host deduplicates exact finding
+capability. Static bounded/reasoning lanes preserve those requirements: the host
+selects only one lane, at the maximum capability required by the original contracts
+covering the exact findings. Unrelated late-event routes do not raise a bounded
+finding’s floor; an admitted late finding retains its reasoning requirement.
+Other executor contracts require a reviewed policy mapping and fail closed.
+Supported registry node fields, finding Ref schemas and resolution output schemas
+are recognized exactly; extra required output fields, narrowed finding filters or
+applicability conditions receive a specific unsupported-contract diagnostic. The host deduplicates exact finding
 identities and revisions across routes; it does not infer equivalence from similar text.
 
 Follow the returned task, acquire and bind its lease, and read its `batch` input.
@@ -43,8 +49,10 @@ An unresolved entry keeps its obligation open. An identical opportunity is not
 offered forever: another attempt requires a changed exact finding, corrected
 subject, qualifying reviewer, required decision/authority context binding, or
 policy contract. Context fingerprints use each input's identity/content mode.
-Operational lease renewals and model availability refreshes do not by themselves
-create another opportunity. Closed finding revisions stay closed when later
+Opportunity identity includes each entry’s applicable original contracts and
+required capability, not its peers or selected lane. Resolving reasoning entries
+does not reoffer unchanged bounded debt. Operational lease renewals and model
+availability refreshes do not by themselves create another opportunity. Closed finding revisions stay closed when later
 subjects or reviews change. A newly admitted superseding revision is a new debt.
 
 ## Historical acceptance and recovery
@@ -55,8 +63,14 @@ singular resolutions and new batches. It authenticates their actual submit on th
 current receipt lineage, source evidence prefix, consumed lease/acquisition and
 worker, exact appended Result, lease removal, captured policy contract, and prior
 independent review Results. Renewal may advance the source revision: the Result's
-expected revision remains tied to its acquisition. Historical model pairs need
-not be available today. This trusts the host/provider journal; it is not a
+expected revision remains tied to its acquisition. Receipt lookup binds the exact
+request ID, request hash and response Ref: different recover transactions may
+legitimately share one identical response artifact. Historical model pairs need
+not be available today. Historical closure authenticates the exact recorded policy
+against approved first-parent snapshots and their PROJECT/AUDIT bindings, without
+requiring compatibility with today’s policy. This demand-driven lookup has no
+policy-commit horizon. Current Result reuse keeps its separate compatibility checks
+and existing bounded historical lookup. This trusts the host/provider journal; it is not a
 cryptographic defense against an adversary rewriting that trust boundary.
 
 The fold does not reexecute historical DAGs or mark old reviews current. A prepared

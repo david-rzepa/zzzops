@@ -175,13 +175,23 @@ def fold(engine, snapshot, historical_policies):
     def policy_contract(row):
         provenance = row['blob'].get('provenance', {})
         approved, recorded = provenance.get('approved_policy'), provenance.get('policy')
-        matching = []
-        for policy in policies:
-            forms = {digest(engine.api._policy.phase_policy_projection(policy, form))
-                     for form in ('full', 'pre_static', 'current', 'normalized')}
-            if recorded in forms and (approved is None or approved == digest(policy)):
-                matching.append(forms)
-        require(matching, 'historical approved policy is not authenticated')
+        def authenticated_matches():
+            matches = []
+            for policy in policies:
+                forms = {digest(engine.api._policy.phase_policy_projection(policy, form))
+                         for form in ('full', 'pre_static', 'current', 'normalized')}
+                if recorded in forms and (approved is None or approved == digest(policy)):
+                    matches.append(forms)
+            return matches
+        matching = authenticated_matches()
+        error = None
+        if not matching:
+            recovered, error = engine.node_historical_policies({}, {}, compatible_only=False,
+                required_hashes={value for value in (recorded, approved) if isinstance(value, str)})
+            policies.extend(recovered.values())
+            matching = authenticated_matches()
+        require(matching, 'historical approved policy is not authenticated for ' + row['reference']['hash']
+                + (': ' + error if error else ''))
         require(any(row['result']['contract'] == digest({'node': row['contract'], 'policy': form})
                     for forms in matching for form in forms),
                 'Result contract does not match the exact captured policy/node')
@@ -195,7 +205,7 @@ def fold(engine, snapshot, historical_policies):
     folded = []
     for reference, output_ref in candidates:
         row = accepted.get(reference['hash'])
-        require(row is not None, 'resolution Result lacks an exact committed submit lineage')
+        require(row is not None, 'resolution Result lacks an exact committed submit lineage: ' + reference['hash'])
         result, output = row['result'], resolve(output_ref)
         contract = policy_contract(row)
         require(output.get('producer') == result['attempt'] and

@@ -321,6 +321,56 @@ class ResolutionBatchPublicTests(dag.DagFixture):
         self.assertFalse(any(step.get('kind') in ('execute', 'blocker', 'repair')
                              for step in self.session.checkpoint(100)))
 
+    def test_distinct_recover_receipts_with_identical_response_preserve_historical_closure(self):
+        self.load_legacy()
+        reference, original = self.result('produce')
+        self.record_phase_finding(reference, original['outputs']['value'], 'recovery-event', 'recovery-event')
+        item = dag.z._static_workflow.event_key({'id': 'recovery-event', 'revision': 1})
+        name = dag.z._static_workflow.review_name('produce', 'value')
+        for attempt in range(2):
+            work = self.session.acquire(name, item=item, actor='stopped-reviewer-' + str(attempt))
+            self.session.call(100, {'operation': 'recover', 'node': work['node'],
+                'lease': work['lease']['token'], 'actor': work['bound_actor'], 'worker_status': 'stopped',
+                'evidence': 'Synthetic exact worker terminal observation', 'request_id': 'identical-recover-' + str(attempt)})
+        steps = self.session.checkpoint(100)
+        self.assertFalse(any(step['kind'] in ('blocker', 'repair') for step in steps), steps)
+        self.assertTrue(any(step.get('kind') == 'execute' and step.get('node', {}).get('node') == name for step in steps), steps)
+        self.assertFalse(any(step.get('node', {}).get('node', '').startswith('gc_resolve_batch_') for step in steps))
+        receipts = [row for row in self.payload()[1]['operational']['receipts']
+                    if row['request'].startswith('identical-recover-')]
+        self.assertEqual(2, len(receipts))
+        self.assertEqual(receipts[0]['result'], receipts[1]['result'])
+        pristine = copy.deepcopy((self.provider.issues, self.provider.comments))
+        store = dag.z._workflow.comment_store
+        index = store.ArtifactIndex(self.provider.comments[100])
+        transaction = next(row for row in index.envelopes
+            if row.get('context', {}).get('request_id') == 'identical-recover-1')
+        selected = [row for row in index.envelopes if row['transaction'] == transaction['transaction']]
+        records = [record for row in selected for record in row['artifacts']]
+        for mutation in ('request_id', 'request_hash', 'ambiguous_identity'):
+            with self.subTest(mutation=mutation):
+                self.provider.issues, self.provider.comments = copy.deepcopy(pristine)
+                context = copy.deepcopy(transaction['context'])
+                identity = transaction['transaction']
+                if mutation == 'request_id': context['request_id'] = 'different-request'
+                elif mutation == 'request_hash': context['request_hash'] = 'sha256:' + 'f' * 64
+                else: identity = 'sha256:' + hashlib.sha256(b'ambiguous transaction').hexdigest()
+                bodies = store.pack_envelopes({'goal': 100, 'transaction': identity, 'context': context}, records)
+                if mutation == 'ambiguous_identity':
+                    for body in bodies: self.provider.create_issue_comment(100, body)
+                else:
+                    positions = [i for i, row in enumerate(self.provider.comments[100])
+                        if (store.decode_envelope(row['body']) or {}).get('transaction') == identity]
+                    self.assertEqual(len(positions), len(bodies))
+                    for i, body in zip(positions, bodies): self.provider.comments[100][i]['body'] = body
+                before = copy.deepcopy((self.provider.issues, self.provider.comments))
+                blocked = self.session.checkpoint(100)
+                self.assertTrue(any(step.get('kind') == 'blocker' and 'committed submit lineage' in step.get('reason', '')
+                                    for step in blocked), blocked)
+                self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        self.provider.issues, self.provider.comments = copy.deepcopy(pristine)
+        self.assertFalse(any(step['kind'] in ('blocker', 'repair') for step in self.session.checkpoint(100)))
+
     def test_batch_lost_body_response_is_observed_and_replayed_once(self):
         self.four_findings_three_overlapping_routes()
         work, manifest = self.acquire_batch()
@@ -564,6 +614,150 @@ class ResolutionBatchPublicTests(dag.DagFixture):
                              for step in steps if step['kind'] == 'execute'))
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
+    def registry_capability_fixture(self, capability='bounded', before_work=None):
+        graph = copy.deepcopy(self.graph)
+        dag.z._graph_compiler._append_static(graph, 'produce', 'value', 'review', 'value')
+        graph['task_sets'][0]['template']['executor']['capability'] = capability
+        self.install(graph)
+        if before_work is not None: before_work()
+        self.produce()
+        self.session.finish(self.session.acquire('review', actor='first-reviewer'),
+            {'value': {'decision': 'changes_requested', 'report': 'One exact registry defect'}})
+        original = self.result('produce')[1]
+        interpret = next(node['id'] for node in graph['nodes'] if any(
+            output['type'] == 'finding' for output in node['outputs'].values()))
+        self.session.finish(self.session.acquire(interpret), {'value': {
+            'id': 'registry-debt', 'revision': 1, 'source': self.produced('review'),
+            'subjects': [original['outputs']['value']], 'target': dag.scope('produce'),
+            'request': 'Fix exact registry defect', 'rationale': 'Exact correction', 'supersedes': None}})
+        finding = self.produced(interpret)
+        admit = next(node['id'] for node in graph['nodes'] if any(
+            output['type'] == 'admission' for output in node['outputs'].values()))
+        self.session.finish(self.session.acquire(admit), {'value': {'finding': finding,
+            'target_inputs': original['inputs'], 'authority': self.result(interpret)[0],
+            'applicability': 'applicable', 'rationale': 'In scope'}, 'transfer': None})
+        self.session.finish(self.session.acquire('produce'), {'value': 'corrected registry subject'})
+        self.session.finish(self.session.acquire('review', actor='approved-reviewer'),
+            {'value': {'decision': 'approved', 'report': 'Exact corrected subject inspected'}})
+        retain = next(node['id'] for node in graph['nodes'] if any(
+            output['type'] == 'finding_registry' for output in node['outputs'].values()))
+        self.session.finish(self.session.acquire(retain), {'value': {
+            'items': {'registry-debt': finding}, 'rationale': 'Retain exact debt'}})
+        return finding
+
+    def historical_policy_resolution(self, corruption=None):
+        from test_policy_ci_transition import PolicyCiTransitionTests
+        self.git = self.session.git
+        self.commit_policy = PolicyCiTransitionTests.commit_policy.__get__(self)
+        def reviewed_prefix():
+            PolicyCiTransitionTests.reviewed_policy(self, 'disabled', initial=True)
+            self.install(self.graph)
+            if corruption:
+                paths = [self.fixture.repo / '.zzzops' / name for name in
+                         ('POLICY.json', 'PROJECT.md', 'PROJECT_AUDIT.md')]
+                valid = {path: path.read_bytes() for path in paths}
+                path = self.fixture.repo / '.zzzops' / corruption
+                if corruption == 'POLICY.json':
+                    state = json.loads(path.read_text())
+                    state['approval']['digest'] = 'sha256:' + '0' * 64
+                    path.write_text(json.dumps(state))
+                else: path.write_text(path.read_text() + '\nUnapproved historical alteration.\n')
+                self.git('add', '-A', '.zzzops')
+                self.git('commit', '--amend', '-qm', 'synthetic invalid historical policy proof')
+                for path, data in valid.items(): path.write_bytes(data)
+        self.registry_capability_fixture(before_work=reviewed_prefix)
+        work, manifest = self.acquire_batch()
+        self.session.finish(work, self.batch_output(manifest))
+        old_policy = copy.deepcopy(self.session.project['policy'])
+        prior = self.result('produce')[0]
+        dag.z._workflow_section(self.session.project, 'code_quality')['instructions'] += ' Require an additional substantive source check.'
+        PolicyCiTransitionTests.reviewed_policy(self, 'disabled')
+        self.assertFalse(dag.z._policy.phase_policy_ci_compatible(old_policy, self.session.project['policy']))
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        steps = self.session.checkpoint(100)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        if corruption:
+            self.assertTrue(any(step['kind'] == 'blocker' and 'historical approved policy' in step.get('reason', '') for step in steps), steps)
+            return
+        self.assertFalse(any(step['kind'] in ('blocker', 'repair') for step in steps), steps)
+        ready = {step.get('node', {}).get('node') for step in steps if step['kind'] == 'execute'}
+        self.assertIn('produce', ready)
+        self.assertNotIn('review', ready)
+        self.assertFalse(any(name.startswith('gc_resolve_batch_') for name in ready))
+        self.assertEqual(prior, self.result('produce')[0])
+        restarted = self.session.acquire('produce')
+        self.session.finish(restarted, {'value': 'Current policy requirement satisfied'})
+        self.assertIn('review', self.names())
+        self.session.finish(self.session.acquire('review', actor='new-policy-reviewer'),
+            {'value': {'decision': 'approved', 'report': 'Current policy and changed subject independently checked'}})
+        final = self.session.checkpoint(100)
+        self.assertFalse(any(step.get('node', {}).get('node', '').startswith('gc_resolve_batch_') for step in final), final)
+        self.assertFalse(any('Explicitly unresolved' in step.get('reason', '') for step in final), final)
+
+    def test_authenticated_incompatible_policy_keeps_closure_but_not_old_result_current(self):
+        self.historical_policy_resolution()
+
+    def test_historical_closure_rejects_forged_policy_approval(self):
+        self.historical_policy_resolution('POLICY.json')
+
+    def test_historical_closure_rejects_changed_project_binding(self):
+        self.historical_policy_resolution('PROJECT.md')
+
+    def test_historical_closure_rejects_changed_audit_binding(self):
+        self.historical_policy_resolution('PROJECT_AUDIT.md')
+
+    def bounded_runtime(self):
+        pair = {'model': 'worker-bounded', 'effort': 'medium'}
+        self.session.runtime['root_pair'] = pair
+        self.session.runtime['available_pairs'] = [pair]
+        return pair
+
+    def test_bounded_registry_batch_preserves_actual_bounded_only_model_selection(self):
+        finding = self.registry_capability_fixture()
+        pair = self.bounded_runtime()
+        work, manifest = self.acquire_batch()
+        self.assertEqual(pair, work['lease']['selection'])
+        self.assertEqual([finding], [entry['finding'] for entry in manifest['findings'].values()])
+        self.session.finish(work, self.batch_output(manifest))
+        self.assertFalse(any(step.get('kind') in ('execute', 'blocker', 'repair')
+                             for step in self.session.checkpoint(100)))
+
+    def test_reasoning_registry_requirement_cannot_be_lowered_for_bounded_root(self):
+        self.registry_capability_fixture('reasoning')
+        self.bounded_runtime()
+        steps = self.session.checkpoint(100)
+        self.assertFalse(any(step['kind'] == 'execute' and step.get('node', {}).get('node', '').startswith('gc_resolve_batch_') for step in steps))
+        self.assertTrue(any('Reviewed capability/model inventory unavailable' in step.get('reason', '') for step in steps), steps)
+
+    def test_mixed_capability_batch_shrinking_to_bounded_debt_does_not_reoffer(self):
+        self.registry_capability_fixture()
+        source, original = self.result('produce')
+        self.record_phase_finding(source, original['outputs']['value'], 'mixed-late', 'mixed-late')
+        item = dag.z._static_workflow.event_key({'id': 'mixed-late', 'revision': 1})
+        name = dag.z._static_workflow.review_name('produce', 'value')
+        self.session.finish(self.session.acquire(name, item=item, actor='late-reviewer'),
+            {'value': {'decision': 'changes_requested', 'report': 'Exact late defect'}})
+        self.admit_rejection(name, item, 'late-reasoning-debt')
+        self.session.finish(self.session.acquire('produce'), {'value': 'both defects corrected'})
+        for reviewer, member in [('review', None), (name, item)]:
+            self.session.finish(self.session.acquire(reviewer, item=member, actor='final-' + reviewer),
+                {'value': {'decision': 'approved', 'report': 'Exact corrected subject inspected'}})
+        high_runtime = copy.deepcopy(self.session.runtime)
+        self.bounded_runtime()
+        blocked = self.session.checkpoint(100)
+        self.assertTrue(any('Reviewed capability/model inventory unavailable' in step.get('reason', '') for step in blocked), blocked)
+        self.assertFalse(any(step['kind'] == 'execute' and step.get('node', {}).get('node', '').startswith('gc_resolve_batch_') for step in blocked))
+        self.session.runtime = high_runtime
+        work, manifest = self.acquire_batch()
+        self.assertEqual({'model': 'worker-reasoning', 'effort': 'high'}, work['lease']['selection'])
+        self.assertEqual({'registry-debt', 'late-reasoning-debt'}, {entry['id'] for entry in manifest['findings'].values()})
+        self.session.finish(work, self.batch_output(manifest, unresolved={'registry-debt'}))
+        for low_root in (False, True):
+            if low_root: self.bounded_runtime()
+            steps = self.session.checkpoint(100)
+            self.assertFalse(any(step.get('kind') == 'execute' and step.get('node', {}).get('node', '').startswith('gc_resolve_batch_') for step in steps), steps)
+            self.assertTrue(any('Explicitly unresolved' in step.get('reason', '') for step in steps), steps)
+
     def test_zero_findings_offer_no_resolution_work(self):
         self.assertFalse(any('resolve' in step['node']['node'] for step in self.session.ready()))
 
@@ -587,6 +781,30 @@ class ResolutionBatchPublicTests(dag.DagFixture):
 
 
 class ResolutionBatchContractTests(unittest.TestCase):
+    def test_lifecycle_policy_authentication_searches_beyond_current_reuse_horizon(self):
+        policy = json.loads((Path(__file__).parents[1] / 'plugins/zzzops/zzzops/templates/project-goals/INIT_PLAN.json').read_text())['policy']
+        current = copy.deepcopy(policy)
+        next(row for row in current['sections'] if row['id'] == 'code_quality')['instructions'] += ' New substantive requirement.'
+        intermediate = copy.deepcopy(policy)
+        next(row for row in intermediate['sections'] if row['id'] == 'code_quality')['instructions'] += ' Intermediate requirement.'
+        wanted = dag.z._workflow.digest(policy)
+        commits = [format(index + 1, '040x') for index in range(82)]
+        engine = dag.SimpleNamespace(api=dag.z, repo=Path('/synthetic-policy-history'), project={'policy': current})
+        engine.node_policy_at_commit = mock.Mock(side_effect=lambda commit: policy if commit == commits[80] else intermediate)
+        result = dag.subprocess.CompletedProcess([], 0, stdout='\n'.join(commits), stderr='')
+        with mock.patch.object(dag.z._workflow.subprocess, 'run', return_value=result) as command:
+            accepted, _ = dag.z._workflow.Workflow.node_historical_policies(engine, {}, {}, required_hashes={wanted})
+            self.assertNotIn(wanted, accepted)
+            self.assertIn('--max-count=65', command.call_args.args[0])
+            accepted, error = dag.z._workflow.Workflow.node_historical_policies(engine, {}, {},
+                compatible_only=False, required_hashes={wanted})
+            self.assertIn(wanted, accepted)
+            self.assertIsNone(error)
+            self.assertNotIn('--max-count=65', command.call_args.args[0])
+        self.assertEqual(policy, accepted[wanted])
+        self.assertIn(mock.call(commits[80]), engine.node_policy_at_commit.call_args_list)
+        self.assertNotIn(mock.call(commits[81]), engine.node_policy_at_commit.call_args_list)
+
     def test_shared_entry_validator_requires_every_review_and_exact_member_scope(self):
         ref = lambda name: {'hash': 'sha256:' + hashlib.sha256(name.encode()).hexdigest(), 'uri': 'urn:' + name}
         subject, finding_ref, producer_ref = ref('subject'), ref('finding'), ref('producer')
@@ -655,6 +873,25 @@ class ResolutionBatchContractTests(unittest.TestCase):
         self.assertEqual(len(scopes), len(set(scopes)))
         self.assertEqual(compiled, dag.z._static_workflow.canonical(compiled, dag.z._graph_compiler))
         dag.z._phase_evidence.validate_graph(compiled)
+
+    def test_registry_resolution_schema_binding_and_applicability_are_not_dropped(self):
+        original = json.loads((Path(__file__).parent / 'fixtures/legacy_evidence_dag.json').read_text())
+        for mutation in ('output_field', 'finding_filter', 'applicability'):
+            with self.subTest(mutation=mutation):
+                graph = copy.deepcopy(original)
+                resolver = next(row['template'] for row in graph['task_sets'] if any(
+                    value['type'] == 'resolution' for value in row['template']['outputs'].values()))
+                if mutation == 'output_field':
+                    resolver['outputs']['value']['schema']['fields']['approval_ticket'] = {'kind': 'string'}
+                elif mutation == 'finding_filter':
+                    resolver['inputs']['finding']['type']['fields']['uri'] = {'kind': 'enum', 'values': ['zzzops:only-approved-finding']}
+                else:
+                    resolver['applicability'] = {'input': dag.spec_input(), 'values': ['enabled'],
+                        'outputs': {'value': {'finding': dag.REF, 'subjects': [dag.REF], 'reviewer_result': dag.REF,
+                            'decision': 'resolved', 'rationale': 'Explicitly inactive'}}, 'rationale': 'Preserve reviewed condition'}
+                dag.z._phase_evidence.validate_graph(graph)
+                with self.assertRaisesRegex(ValueError, 'Unsupported custom resolution batching contract'):
+                    dag.z._static_workflow.canonical(graph, dag.z._graph_compiler)
 
     def test_registry_executor_capability_cannot_be_silently_downgraded(self):
         graph = json.loads((Path(__file__).parent / 'fixtures/legacy_evidence_dag.json').read_text())

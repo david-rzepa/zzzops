@@ -904,13 +904,15 @@ def validate_recovery(graph, local_goal=None, compiler_version=None):
         raise RecoveryError('Correction route recovery incomplete: canonical additions required')
 
 
-def resolution_batch_family(scope, subject_binding, reviews, independent):
+def resolution_batch_family(scope, subject_binding, reviews, independent, capability="reasoning"):
     """One policy-time resolver family; membership remains authenticated host data.
 
     ``reviews`` retains every exact approved route input. No reviewer is chosen
     by the worker, by a convenient finding, or by a naming convention.
     """
-    key = digest(['resolution-batch-v1', scope, subject_binding, reviews, independent])[7:]
+    identity = ['resolution-batch-v1', scope, subject_binding, reviews, independent]
+    if capability != 'reasoning': identity.append(capability)
+    key = digest(identity)[7:]
     name, expansion = 'gc_resolve_batch_' + key, 'gc_resolution_batches_' + key
     ref = _ref_type()
     entry = {'kind': 'object', 'fields': {
@@ -947,7 +949,7 @@ def resolution_batch_family(scope, subject_binding, reviews, independent):
         'outputs': {'value': {'type': 'resolution_batch', 'schema': {
             'kind': 'object', 'fields': {'entries': {'kind': 'map', 'values': decision}}}}},
         'requires': [],
-        'executor': {'role': 'worker', 'capability': 'reasoning', 'resources': [],
+        'executor': {'role': 'worker', 'capability': capability, 'resources': [],
                      'authority': {'subject': {'kind': 'self'}, 'output': 'value'}},
         'independent_of': independent, 'gates': [],
         'resolves': [copy.deepcopy(scope)],
