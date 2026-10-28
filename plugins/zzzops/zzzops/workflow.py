@@ -619,7 +619,7 @@ class Workflow:
     def node_evidence_policy(self):
         return digest(self.api._phase_evidence.evidence_policy(self.project['policy']))
 
-    def node_policy_at_commit(self, commit):
+    def node_policy_at_commit(self, commit, *, lifecycle_only=False):
         """Authenticate a committed policy and both bound instruction files."""
         if not isinstance(commit, str) or not re.fullmatch('[0-9a-f]{40}', commit):
             raise ValueError('Exact policy commit is required')
@@ -630,7 +630,9 @@ class Workflow:
         state = json.loads(files['POLICY.json'])
         if not isinstance(state, dict):
             raise ValueError('Historical policy state must be an object')
-        invalid = self.api._policy.validate_project_state(state)
+        validate = (self.api._policy.validate_historical_project_state if lifecycle_only
+                    else self.api._policy.validate_project_state)
+        invalid = validate(state)
         if invalid:
             raise ValueError('; '.join(invalid))
         if state.get('initialized') is not True:
@@ -709,10 +711,11 @@ class Workflow:
             cache = self._historical_policy_cache = {}
         for commit in (commits[:64] if compatible_only else commits):
             try:
-                cache_key = (commit, digest(current))
+                cache_key = (commit, digest(current), compatible_only)
                 old = cache.get(cache_key)
                 if old is None:
-                    old = self.node_policy_at_commit(commit)
+                    old = (self.node_policy_at_commit(commit) if compatible_only else
+                           self.node_policy_at_commit(commit, lifecycle_only=True))
                     cache[cache_key] = old
                 if compatible_only and not self.api._policy.phase_policy_ci_compatible(old, current):
                     continue
