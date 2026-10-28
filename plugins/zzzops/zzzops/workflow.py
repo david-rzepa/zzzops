@@ -4931,6 +4931,67 @@ class Workflow:
                 managed_identities.update(
                     (*ev.task_key(result['node']), result['attempt'])
                     for _reference, result in all_results)
+                historical_attempts = {}
+                def committed_terminal_attempt(goal, node, attempt):
+                    marker = (goal, node, attempt)
+                    if marker in historical_attempts:
+                        return historical_attempts[marker]
+                    goal_snapshot = snapshots.get(goal)
+                    if goal_snapshot is None:
+                        historical_attempts[marker] = False
+                        return False
+                    index = self.artifact_index(goal)
+                    edges = [edge for receipt in goal_snapshot['payload']['operational']['receipts']
+                             if (edge := self.node_receipt_edge(goal, index, receipt)) is not None]
+                    starts = []
+                    for edge in edges:
+                        for step in edge['response'].get('next_steps', []):
+                            lease = step.get('lease') if step.get('kind') == 'perform' and step.get('bind') else None
+                            if (not isinstance(lease, dict) or lease.get('attempt') != attempt
+                                    or lease.get('node', {}).get('goal') != goal
+                                    or lease['node'].get('node') != node
+                                    or not edge['context'].get('acquisition')
+                                    or edge['context'].get('ownership', {}).get('token') != lease.get('token')
+                                    or not any(name in lease.get('acquisition', {})
+                                               for name in ('read_commit', 'git_commit'))):
+                                continue
+                            starts.append((edge, lease))
+                    def reaches(start, target):
+                        pending, seen = [start], set()
+                        while pending:
+                            current = pending.pop()
+                            if current == target:
+                                return True
+                            identity = digest(current)
+                            if identity in seen:
+                                continue
+                            seen.add(identity)
+                            pending.extend(edge['target'] for edge in edges
+                                           if edge['source'] == current)
+                        return False
+                    valid = []
+                    for start, lease in starts:
+                        token = lease['token']
+                        for terminal in edges:
+                            if not reaches(start['target'], terminal['source']):
+                                continue
+                            step = next(iter(terminal['response'].get('next_steps', [])), {})
+                            if (step.get('kind') not in {'released', 'checkpoint'}
+                                    or step.get('goal') != goal
+                                    or step.get('kind') == 'released'
+                                    and (step.get('lease') != token or step.get('node') != lease['node'])):
+                                continue
+                            source_payload = index.resolve(terminal['source']['payload']['hash'])[0]
+                            target_payload = index.resolve(terminal['target']['payload']['hash'])[0]
+                            before = [row for row in source_payload['operational']['leases']
+                                      if row.get('token') == token and row.get('attempt') == attempt
+                                      and row.get('node') == lease['node']]
+                            after = [row for row in target_payload['operational']['leases']
+                                     if row.get('token') == token]
+                            if len(before) == 1 and not after:
+                                valid.append((start, terminal))
+                    historical_attempts[marker] = len(starts) == 1 and len(valid) == 1
+                    return historical_attempts[marker]
                 def authenticated_managed_attempt(row, path):
                     if not path.is_relative_to(managed_root):
                         return False
@@ -4947,7 +5008,8 @@ class Workflow:
                              if identity[0] == goal and identity[1] == node
                              and identity[4] == attempt]
                     return (path == expected_path and row.get('branch') == 'refs/heads/' + branch
-                            and len(known) == 1)
+                            and (len(known) == 1 or not known
+                                 and committed_terminal_attempt(goal, node, attempt)))
                 candidates = []
                 for row in managed_worktrees._worktrees(self.repo):
                     path = Path(row['worktree']).resolve()
