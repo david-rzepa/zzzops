@@ -2339,6 +2339,7 @@ class Workflow:
         ev = self.api._phase_evidence
         snapshots, artifacts, issues, bootstrap = {}, dict((prospective or {}).get('artifacts', {})), {}, {}
         published, validated = {}, set()
+        observed_artifacts = {}
         def remember(value):
             key = digest(value); artifacts[key] = value
             return {'hash': key, 'uri': 'urn:' + key}
@@ -2374,11 +2375,28 @@ class Workflow:
                     if ref['uri'].startswith('git:'):
                         artifacts[ref['hash']], published[ref['hash']] = self.node_published_artifact(ref)
                     else:
-                        artifacts[ref['hash']] = self.artifact_index(owner).observe(ref['hash'])[0]
+                        value = self.artifact_index(owner).observe(ref['hash'])[0]
+                        artifacts[ref['hash']] = value
+                        observed_artifacts[(owner, ref['hash'])] = value
                 value = artifacts[ref['hash']]
                 if ref['hash'] not in published and ref['hash'] not in validated:
                     if digest(value) != ref['hash']: raise ValueError('Artifact checksum mismatch')
                     validated.add(ref['hash'])
+                return value
+            def resolve_observed(ref):
+                # Prospective artifacts are useful for projection, but cannot
+                # substitute for persisted custody when authenticating receipts.
+                ev.validate_ref(ref)
+                owner = self.node_ref_goal(ref, n)
+                key = (owner, ref['hash'])
+                if key not in observed_artifacts:
+                    observed_artifacts[key] = self.artifact_index(owner).observe(ref['hash'])[0]
+                value = observed_artifacts[key]
+                artifacts.setdefault(ref['hash'], value)
+                # Keep the observed object separate from independently replaced
+                # prospective entries, and reject in-place mutation on reuse.
+                if digest(value) != ref['hash']:
+                    raise ValueError('Observed artifact checksum mismatch')
                 return value
             payload = resolve(envelope['payload'])
             ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'} | (set(payload) & {'phase_data', 'goal_context', 'goal_context_resolutions', 'goal_context_dependency_events', 'goal_context_archived_prerequisites', 'workflow', 'stack_integration', 'publication_certificate'}), 'Payload')
@@ -2430,6 +2448,7 @@ class Workflow:
                 definition = None
             ev.validate_graph(graph)
             snapshot = {'envelope': envelope, 'payload': payload, 'graph': graph, 'resolve': resolve,
+                        'resolve_observed': resolve_observed,
                         'historical_graph': historical_graph, 'workflow_definition': definition}
             batch_adoption = (definition is not None and stored_workflow_graph is not None
                 and self.api._static_workflow.resolution_batch_adoption(
@@ -3550,8 +3569,15 @@ class Workflow:
                                     'action': 'Exact stale checkpoint reconciled; immutable history was preserved.'}]}
         return self.node_persist(snapshot, payload, response, request)
 
-    def node_receipt_edge(self, number, index, receipt):
-        """Authenticate one ordinary persisted mutation edge and its provider rows."""
+    def node_receipt_edge(self, number, index, receipt, *, resolve=None):
+        """Authenticate one ordinary persisted mutation edge and its provider rows.
+
+        Lifecycle callers may reuse their current snapshot's provider-observed
+        full-Ref resolver. Other callers retain detached index reads; neither path skips
+        receipt, manifest or continuation authentication.
+        """
+        if resolve is None:
+            resolve = lambda reference: index.resolve(reference['hash'])[0]
         if (not isinstance(receipt, dict) or set(receipt) != {'request', 'payload', 'result'}
                 or not isinstance(receipt.get('request'), str) or not receipt['request']
                 or not isinstance(receipt.get('payload'), str)
@@ -3594,7 +3620,7 @@ class Workflow:
         identities = [comment.get('id') for comment, _ in selected]
         if any(type(identity) is not int or identity <= 0 for identity in identities) or len(identities) != len(set(identities)):
             return None
-        try: response = index.resolve(result['hash'])[0]
+        try: response = resolve(result)
         except (KeyError, ValueError): return None
         edge_response = response
         if isinstance(response, dict) and response.get('type') == 'submission_continuation':
@@ -3624,8 +3650,8 @@ class Workflow:
                            for binding in response['bindings'])):
                 return None
             try:
-                candidate = copy.deepcopy(index.resolve(response['candidate_payload']['hash'])[0])
-                entry = copy.deepcopy(index.resolve(response['entry_candidate_payload']['hash'])[0])
+                candidate = copy.deepcopy(resolve(response['candidate_payload']))
+                entry = copy.deepcopy(resolve(response['entry_candidate_payload']))
                 if (not isinstance(candidate.get('operational'), dict)
                         or not isinstance(candidate['operational'].get('receipts'), list)
                         or not isinstance(entry.get('operational'), dict)
@@ -3648,7 +3674,7 @@ class Workflow:
                                       and step['submission'].get('expected_digest', 'missing') is None)
             except (AttributeError, KeyError, TypeError, ValueError):
                 return None
-            try: published_candidate = index.resolve(target['payload']['hash'])[0]
+            try: published_candidate = resolve(target['payload'])
             except (KeyError, TypeError, ValueError): return None
             if (not valid_bindings or continuation_target != target
                     or context.get('payload') != target.get('payload')
