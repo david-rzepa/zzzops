@@ -75,12 +75,23 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
         self.pids.add(result["pid"])
         return result
 
-    def _wait(self, predicate, timeout=3):
+    def _wait(self, predicate, timeout=3, *, retry_permission_errors=False):
         deadline = time.monotonic() + timeout
+        denial = None
         while time.monotonic() < deadline:
-            if predicate():
-                return
+            try:
+                result = predicate()
+            except PermissionError as error:
+                if not retry_permission_errors:
+                    raise
+                denial = error
+            else:
+                denial = None
+                if result:
+                    return result
             time.sleep(.02)
+        if denial is not None:
+            raise denial
         self.fail("timed out waiting for heartbeat process")
 
     def test_local_capacity_inventory_is_exact_and_independent_of_renewal(self):
@@ -134,8 +145,13 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
         )
         self.assertNotIn("probe_argv", renew)
 
-        self._wait(lambda: [lease['token'] for lease in json.loads(Path(first['config']).read_text(encoding='utf-8'))['leases']] == ['token-a'])
-        config = json.loads(Path(first["config"]).read_text(encoding="utf-8"))
+        def remaining_config():
+            config = json.loads(Path(first["config"]).read_text(encoding="utf-8"))
+            return config if [lease["token"] for lease in config["leases"]] == ["token-a"] else None
+
+        # Windows can briefly deny this observer access during atomic replacement.
+        # Keep both the read retry and lease-state polling within the same deadline.
+        config = self._wait(remaining_config, retry_permission_errors=True)
         if os.name != "nt":
             self.assertEqual(0o700, Path(first["config"]).parent.stat().st_mode & 0o777)
             self.assertEqual(0o600, Path(first["config"]).stat().st_mode & 0o777)
@@ -146,6 +162,41 @@ raise SystemExit({'active': 0, 'stopped': 1}.get(mode, 2))
             state_dir=self.state,
         )
         self._wait(lambda: not heartbeat._pid_alive(first["pid"]))
+
+    def test_coordinator_state_observation_retries_transient_read_denial(self):
+        original_read = Path.read_text
+        denials = []
+
+        def read_with_denial(path, *args, **kwargs):
+            # Inject only in the test observer, never in production state access.
+            if sys._getframe(1).f_code.co_name == "remaining_config" and len(denials) < 2:
+                self.assertTrue(any(heartbeat._pid_alive(pid) for pid in self.pids))
+                denials.append(path)
+                raise PermissionError(13, "simulated Windows sharing denial", str(path))
+            return original_read(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "read_text", read_with_denial):
+            self.test_one_coordinator_renews_multiple_leases_and_stops_tracking_workers()
+        self.assertEqual(2, len(denials))
+        self.assertEqual(denials[0], denials[1])
+
+    def test_state_observation_preserves_persistent_read_denial_at_deadline(self):
+        denial = PermissionError(13, "persistent sharing denial")
+        predicate = mock.Mock(side_effect=denial)
+        with mock.patch.object(time, "monotonic", side_effect=[0, .01, .03]), \
+                mock.patch.object(time, "sleep"):
+            with self.assertRaises(PermissionError) as caught:
+                self._wait(predicate, timeout=.02, retry_permission_errors=True)
+        self.assertIs(denial, caught.exception)
+        predicate.assert_called_once_with()
+
+    def test_state_observation_does_not_retry_other_errors_or_unopted_denials(self):
+        for error, retry in ((PermissionError("not opted in"), False),
+                             (json.JSONDecodeError("invalid state", "", 0), True)):
+            predicate = mock.Mock(side_effect=error)
+            with self.subTest(error=type(error).__name__), self.assertRaises(type(error)):
+                self._wait(predicate, retry_permission_errors=retry)
+            predicate.assert_called_once_with()
 
     def test_module_imports_without_platform_lock_and_reports_actionable_blocker(self):
         original_import = builtins.__import__
