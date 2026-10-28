@@ -139,6 +139,7 @@ def _capture(api: Any, payload: dict[str, Any] | None) -> dict[str, Any] | None:
     return {"next_steps": [{
         "kind": "capture", "assignment": "root", "instruction": api.workflow_instruction(CAPTURE_SOURCE),
         "action": "Interview the user and submit one approved goal using the public create schema.",
+        "acceptance_criteria_syntax": " ".join(api._goals.goal_acceptance_criteria.__doc__.split()),
         "schema": {"schema_version": version, "fields": fields},
         "request_schema_version": version, "request_fields": fields,
         "submission": {"operation": "capture_propose", "request": "<validated goal-create request>"},

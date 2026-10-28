@@ -11019,13 +11019,17 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
         if errors:
             raise ValueError('; '.join(errors))
         if not api._goals.goal_acceptance_criteria(request['body']):
-            raise ValueError('Goal design must contain explicit acceptance bullets covering its required behavior')
+            raise ValueError('Goal design has no required acceptance criteria. '
+                             + ' '.join(api._goals.goal_acceptance_criteria.__doc__.split()))
         return {'next_steps': [{'kind': 'human_approval', 'assignment': 'root', 'action': 'Review the captured goal design with the user, then approve these exact contents.', 'proposal': request, 'proposal_hash': digest(request), 'submission': {'operation': 'capture', 'request': request, 'proposal_hash': digest(request), 'approved_by': '<user>'}}]}
     if operation == 'capture':
         payload = {**payload, 'request': api._goals.normalize_deferred_goal_create(payload.get('request'))}
         capture_errors = api.validate_goal_create(payload.get('request'), allow_deferred=True)
         if capture_errors:
             raise ValueError('; '.join(capture_errors))
+        if not api._goals.goal_acceptance_criteria(payload['request']['body']):
+            raise ValueError('Goal design has no required acceptance criteria. '
+                             + ' '.join(api._goals.goal_acceptance_criteria.__doc__.split()))
         if not (runtime or {}).get('root_id'):
             raise ValueError('Goal design approval must be coordinated by root')
         if not explicit_approval(payload.get('approved_by')) or payload.get('proposal_hash') != digest(payload['request']):

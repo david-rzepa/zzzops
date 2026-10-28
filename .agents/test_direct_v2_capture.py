@@ -202,6 +202,75 @@ class DirectV2CaptureTests(dag.DagFixture):
         self.assertEqual(before_comments, self.provider.comments)
         self.assertEqual(before_updates, self.provider.updates)
 
+    def test_acceptance_forms_share_preview_write_and_preserve_approved_bytes(self):
+        checkpoint = self.session.call(100, intent="capture")["next_steps"][0]
+        self.assertEqual(" ".join(dag.z._goals.goal_acceptance_criteria.__doc__.split()),
+                         checkpoint["acceptance_criteria_syntax"])
+        forms = ("# Acceptance criteria", "## Acceptance criteria",
+                 "### Acceptance criteria", "Acceptance criteria:",
+                 "  ACCEPTANCE CRITERIA:  ", "## Acceptance")
+        for heading in forms:
+            for bullet in ("- ", "* ", "- [ ] ", "- [x] ", "* [X] "):
+                with self.subTest(heading=heading, bullet=bullet):
+                    body = ("## Outcome\n- Context only.\n\n" + heading + "\n"
+                            + bullet + "Required behavior passes.\n\n"
+                            + "Optional TODOs:\n- [ ] An optional idea.\n  \t\n")
+                    request = self.request()
+                    request["body"] = body
+                    proposal = self.session.call(100, {"operation": "capture_propose", "request": request})
+                    submission = copy.deepcopy(proposal["next_steps"][0]["submission"])
+                    self.assertEqual(body, submission["request"]["body"])
+                    self.assertEqual(["Required behavior passes."], dag.z._goals.goal_acceptance_criteria(body))
+        # One public write also verifies the canonical proposal is the exact
+        # approved specification, including trailing whitespace and labels.
+        submission["approved_by"] = "approved-user"
+        self.session.call(100, submission)
+        self.assert_pending_create(request)
+        number = self.created_number()
+        self.session.call(100, submission)
+        self.assertEqual(1, len(self.created_payloads))
+        self.assert_first_managed_write_is_v2(number)
+        engine = self.session.api.workflow_engine(self.fixture.repo, self.session.project, self.fixture.runtime)
+        snapshot = engine.node_snapshot(number)
+        spec = engine.read_artifact(number, snapshot["payload"]["spec"])
+        self.assertEqual(request["body"], spec["content"])
+
+    def test_acceptance_missing_and_malformed_have_actionable_public_repair(self):
+        for body in ("## Outcome\n- Behavior passes.\n",
+                     "Acceptance criteria:\nBehavior passes.\n",
+                     "Acceptance criteria:\n-\n*\n- [ ]\n- [q] Broken checkbox.\n",
+                     "Acceptance criteria:\n## Optional TODOs\n- [ ] Optional idea.\n",
+                     "Acceptance criteria:\n#### Optional TODOs\n- Optional idea.\n"):
+            with self.subTest(body=body):
+                request = self.request()
+                request["body"] = body
+                response = self.session.call(100, {"operation": "capture_propose", "request": request}, expected=2)
+                reason = response["next_steps"][0]["reason"]
+                self.assertIn(" ".join(dag.z._goals.goal_acceptance_criteria.__doc__.split()), reason)
+                self.assertIn("'## Acceptance criteria'", reason)
+                self.assertIn("'Acceptance criteria:'", reason)
+                self.assertEqual([], self.created_payloads)
+                before = copy.deepcopy((self.provider.issues, self.provider.comments, self.provider.updates))
+                direct = self.session.call(100, {
+                    "operation": "capture", "request": request,
+                    "proposal_hash": dag.z._workflow.digest(request), "approved_by": "approved-user",
+                }, expected=2)
+                self.assertEqual(reason, direct["next_steps"][0]["reason"])
+                self.assertEqual(before, (self.provider.issues, self.provider.comments, self.provider.updates))
+
+    def test_headingless_legacy_acceptance_checkboxes_remain_supported(self):
+        body = "Legacy specification.\n- [ ] Required behavior passes.\n* [X] Already observed.\n"
+        self.assertEqual(["Required behavior passes.", "Already observed."],
+                         dag.z._goals.goal_acceptance_criteria(body))
+        request = self.request()
+        request["body"] = body
+        self.session.call(100, {"operation": "capture_propose", "request": request})
+
+    def test_plain_markdown_link_criterion_remains_supported(self):
+        body = "## Acceptance\n- [Documented behavior](https://example.test) passes.\n"
+        self.assertEqual(["[Documented behavior](https://example.test) passes."],
+                         dag.z._goals.goal_acceptance_criteria(body))
+
     def test_unreviewed_risk_category_fails_before_pending_issue(self):
         request = self.request()
         request["goal"]["engineering_rigor"]["risk_categories"] = ["unreviewed"]
