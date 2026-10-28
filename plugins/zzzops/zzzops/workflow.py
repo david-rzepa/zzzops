@@ -4908,8 +4908,6 @@ class Workflow:
             recorded_bases.add(proof['checkpoint']['base_commit'])
         if recorded_bases and head not in recorded_bases:
             owner = managed_worktrees._primary(self.repo)
-            owner_head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=owner,
-                capture_output=True, text=True, check=True).stdout.strip()
             planning = policy_section(self.project, 'git_review_release')['configuration'].get('release_planning', {})
             caller_branch = subprocess.run(['git', 'symbolic-ref', '-q', '--short', 'HEAD'],
                 cwd=self.repo, capture_output=True, text=True).stdout.strip()
@@ -4923,9 +4921,23 @@ class Workflow:
                 remote = subprocess.run(['git', 'ls-remote', '--refs', 'origin', ref],
                     cwd=self.repo, capture_output=True, text=True, timeout=30)
                 advertised = remote.returncode == 0 and remote.stdout.splitlines() == [f'{head}\t{ref}']
-            if (owner != self.repo.resolve() and owner_head in recorded_bases
-                    and not advertised):
-                head = owner_head
+            if not advertised:
+                managed_root = owner / '.zzzops' / 'worktrees'
+                candidates = []
+                for row in managed_worktrees._worktrees(self.repo):
+                    path = Path(row['worktree']).resolve()
+                    if path.is_relative_to(managed_root) or not path.is_dir():
+                        continue
+                    commit = row.get('HEAD')
+                    if commit in recorded_bases:
+                        candidates.append((path, commit))
+                if len(candidates) > 1:
+                    raise ValueError('Authenticated Git goal base has multiple registered checkout owners')
+                if candidates:
+                    owner_path, owner_commit = candidates[0]
+                    if not managed_worktrees._clean(owner_path):
+                        raise ValueError('Authenticated Git goal owner checkout is dirty')
+                    head = owner_commit
         git_edges = {}; policy_base_bridges = {}
         def connected_git_head(start, goal):
             start_tree = subprocess.run(['git', 'rev-parse', start + '^{tree}'], cwd=self.repo,
@@ -5145,10 +5157,15 @@ class Workflow:
                         proof = checked_git_proof(state, grant, result)
                         base = proof['checkpoint']['base_commit']
                         transition = captured_transition(result['inputs'], base, key)
-                        if (transition is None and head != base and
+                        if (head != base and
                                 subprocess.run(['git', 'merge-base', '--is-ancestor', base, head],
                                                cwd=self.repo, capture_output=True).returncode == 0):
-                            transition = proposed_transition(key, result_ref, result, proof)
+                            # A prior transition is provenance for this Result,
+                            # not a permanent pin on every later attempt.  A
+                            # second base advance needs a new authenticated
+                            # source Result, reviews and remote observation.
+                            if transition is None or transition['selected_oid'] != head:
+                                transition = proposed_transition(key, result_ref, result, proof)
                         if transition is not None:
                             base = transition['selected_oid']
                         elif not connected_git_head(proof['checkpoint']['result_commit'], key[0]):
