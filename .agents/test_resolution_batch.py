@@ -780,6 +780,97 @@ class ResolutionBatchPublicTests(dag.DagFixture):
                              step.get('node', {}).get('node', '').startswith('gc_resolve_') for step in steps))
 
 
+class HistoricalResolutionPolicyTests(dag.DagFixture):
+    def historical_policy(self, corruption=None):
+        from test_policy_ci_transition import PolicyCiTransitionTests
+        self.git = self.session.git
+        self.commit_policy = PolicyCiTransitionTests.commit_policy.__get__(self)
+        if not hasattr(self, '_current_policy'):
+            self._current_policy = PolicyCiTransitionTests.reviewed_policy(self, 'disabled', initial=True)
+        current = copy.deepcopy(self._current_policy)
+        historical = copy.deepcopy(current)
+        section = next(row for row in historical['policy']['sections']
+                       if row['id'] == 'git_review_release')
+        del section['configuration']['release_planning']
+        # Author a synthetic historical approval, never amend real goal history.
+        historical['approval']['digest'] = dag.z._policy.policy_review_digest(historical)
+        if corruption == 'policy':
+            section['instructions'] += ' Unapproved change.'
+        elif corruption == 'approval':
+            historical['approval']['digest'] = 'sha256:' + '0' * 64
+        elif corruption == 'repository':
+            historical['repository']['identity'] = 'foreign/repository'
+            historical['approval']['digest'] = dag.z._policy.policy_review_digest(historical)
+        elif corruption == 'missing_setting':
+            del section['configuration']['pull_request_mode']
+            historical['approval']['digest'] = dag.z._policy.policy_review_digest(historical)
+        elif corruption == 'unknown_setting':
+            section['configuration']['unreviewed_authority'] = True
+            historical['approval']['digest'] = dag.z._policy.policy_review_digest(historical)
+        elif corruption == 'malformed_release_planning':
+            section['configuration']['release_planning'] = {'enabled': 'yes'}
+            historical['approval']['digest'] = dag.z._policy.policy_review_digest(historical)
+        path = self.fixture.repo / '.zzzops/POLICY.json'
+        altered = (self.fixture.repo / '.zzzops' / corruption
+                   if corruption in ('PROJECT.md', 'PROJECT_AUDIT.md') else None)
+        original = altered.read_bytes() if altered else None
+        if altered:
+            altered.write_bytes(original + b'\nUnapproved historical instruction.\n')
+        path.write_text(json.dumps(historical))
+        self.commit_policy('synthetic approved policy before release planning')
+        commit = self.git('rev-parse', 'HEAD')
+        path.write_text(json.dumps(current))
+        if altered:
+            altered.write_bytes(original)
+        self.commit_policy('restore current approved policy')
+        engine = dag.SimpleNamespace(api=dag.z, repo=self.fixture.repo,
+                                     project=current)
+        engine.node_policy_at_commit = dag.z._workflow.Workflow.node_policy_at_commit.__get__(engine)
+        return engine, historical, commit
+
+    def test_authenticate_pre_release_planning_policy_only_for_resolution_history(self):
+        engine, historical, commit = self.historical_policy()
+        before = self.git('show', commit + ':.zzzops/POLICY.json')
+        wanted = dag.z._workflow.digest(historical['policy'])
+        accepted, error = dag.z._workflow.Workflow.node_historical_policies(
+            engine, {}, {}, compatible_only=False, required_hashes={wanted})
+        self.assertIn(wanted, accepted, error)
+        self.assertEqual(historical['policy'], accepted[wanted])
+        self.assertEqual(before, self.git('show', commit + ':.zzzops/POLICY.json'))
+        self.assertTrue(dag.z._policy.validate_project_state(historical))
+        with self.assertRaisesRegex(ValueError, 'release_planning'):
+            engine.node_policy_at_commit(commit)
+        reusable, _ = dag.z._workflow.Workflow.node_historical_policies(
+            engine, {}, {}, required_hashes={wanted})
+        self.assertNotIn(wanted, reusable, 'Lifecycle cache must not admit current reuse')
+
+    def test_historical_authentication_rejects_tampering_and_unsupported_grammars(self):
+        for corruption, reason in (
+                ('policy', 'approval digest'), ('approval', 'approval digest'),
+                ('PROJECT.md', 'project policy artifact binding'),
+                ('PROJECT_AUDIT.md', 'audit policy artifact binding'),
+                ('repository', 'repository identity'),
+                ('missing_setting', 'pull_request_mode'),
+                ('unknown_setting', 'unreviewed_authority'),
+                ('malformed_release_planning', 'release_planning')):
+            with self.subTest(corruption=corruption):
+                engine, historical, commit = self.historical_policy(corruption)
+                before = self.git('show', commit + ':.zzzops/POLICY.json')
+                with self.assertRaisesRegex(ValueError, reason):
+                    engine.node_policy_at_commit(commit, lifecycle_only=True)
+                self.assertEqual(before, self.git('show', commit + ':.zzzops/POLICY.json'))
+
+    def test_lifecycle_rejects_policy_outside_selected_ancestor_history(self):
+        engine, historical, commit = self.historical_policy()
+        wanted = dag.z._workflow.digest(historical['policy'])
+        # A readable side commit is not an ancestor of the selected goal context.
+        self.git('checkout', '--detach', commit + '^')
+        accepted, error = dag.z._workflow.Workflow.node_historical_policies(
+            engine, {}, {}, compatible_only=False, required_hashes={wanted})
+        self.assertNotIn(wanted, accepted)
+        self.assertIn('No authenticated historical policy ancestor for ' + wanted, error)
+
+
 class ResolutionBatchContractTests(unittest.TestCase):
     def test_lifecycle_policy_authentication_searches_beyond_current_reuse_horizon(self):
         policy = json.loads((Path(__file__).parents[1] / 'plugins/zzzops/zzzops/templates/project-goals/INIT_PLAN.json').read_text())['policy']
@@ -790,7 +881,7 @@ class ResolutionBatchContractTests(unittest.TestCase):
         wanted = dag.z._workflow.digest(policy)
         commits = [format(index + 1, '040x') for index in range(82)]
         engine = dag.SimpleNamespace(api=dag.z, repo=Path('/synthetic-policy-history'), project={'policy': current})
-        engine.node_policy_at_commit = mock.Mock(side_effect=lambda commit: policy if commit == commits[80] else intermediate)
+        engine.node_policy_at_commit = mock.Mock(side_effect=lambda commit, **kwargs: policy if commit == commits[80] else intermediate)
         result = dag.subprocess.CompletedProcess([], 0, stdout='\n'.join(commits), stderr='')
         with mock.patch.object(dag.z._workflow.subprocess, 'run', return_value=result) as command:
             accepted, _ = dag.z._workflow.Workflow.node_historical_policies(engine, {}, {}, required_hashes={wanted})
@@ -802,8 +893,8 @@ class ResolutionBatchContractTests(unittest.TestCase):
             self.assertIsNone(error)
             self.assertNotIn('--max-count=65', command.call_args.args[0])
         self.assertEqual(policy, accepted[wanted])
-        self.assertIn(mock.call(commits[80]), engine.node_policy_at_commit.call_args_list)
-        self.assertNotIn(mock.call(commits[81]), engine.node_policy_at_commit.call_args_list)
+        self.assertIn(mock.call(commits[80], lifecycle_only=True), engine.node_policy_at_commit.call_args_list)
+        self.assertNotIn(mock.call(commits[81], lifecycle_only=True), engine.node_policy_at_commit.call_args_list)
 
     def test_policy_lookup_requires_exact_approval_when_snapshots_share_projection(self):
         policy = json.loads((Path(__file__).parents[1] / 'plugins/zzzops/zzzops/templates/project-goals/INIT_PLAN.json').read_text())['policy']
@@ -820,7 +911,7 @@ class ResolutionBatchContractTests(unittest.TestCase):
         self.assertNotEqual(approved, dag.z._workflow.digest(wrong))
         commits = ['1' * 40, '2' * 40, '3' * 40]
         engine = dag.SimpleNamespace(api=dag.z, repo=Path('/synthetic-policy-history'), project={'policy': current})
-        engine.node_policy_at_commit = mock.Mock(side_effect=lambda commit: wrong if commit == commits[0] else policy)
+        engine.node_policy_at_commit = mock.Mock(side_effect=lambda commit, **kwargs: wrong if commit == commits[0] else policy)
         result = dag.subprocess.CompletedProcess([], 0, stdout='\n'.join(commits), stderr='')
         with mock.patch.object(dag.z._workflow.subprocess, 'run', return_value=result):
             accepted, error = dag.z._workflow.Workflow.node_historical_policies(engine, {}, {},
@@ -828,7 +919,8 @@ class ResolutionBatchContractTests(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual(wrong, accepted[recorded])
         self.assertEqual(policy, accepted[approved])
-        self.assertEqual([mock.call(commits[0]), mock.call(commits[1])], engine.node_policy_at_commit.call_args_list)
+        self.assertEqual([mock.call(commits[0], lifecycle_only=True),
+                          mock.call(commits[1], lifecycle_only=True)], engine.node_policy_at_commit.call_args_list)
 
     def test_shared_entry_validator_requires_every_review_and_exact_member_scope(self):
         ref = lambda name: {'hash': 'sha256:' + hashlib.sha256(name.encode()).hexdigest(), 'uri': 'urn:' + name}
