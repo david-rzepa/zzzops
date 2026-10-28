@@ -58,7 +58,8 @@ def compiled_family(case, target):
     return observation, context, assessment
 
 
-def prepare_compiled_assessment(case, target, finding_id, admission, finding, classification):
+def prepare_compiled_assessment(case, target, finding_id, admission, finding, classification,
+                                expected_subject=None):
     observation, context, assessment = compiled_family(case, target)
     for row, actor, text in ((observation, "independent-applicability", "Inspected exact obligation"),
                              (context, "root-thread", "Root bounded classification context")):
@@ -68,6 +69,9 @@ def prepare_compiled_assessment(case, target, finding_id, admission, finding, cl
     subject = next(binding["source"] for binding in work["input_envelope"]["inputs"]
                    if binding["name"] == "subject" and binding["mode"] == "identity"
                    and binding["path"] == [])
+    if expected_subject is not None:
+        case.assertEqual(expected_subject, subject,
+                         "the host must bind the exact subject admitted with this finding revision")
     case.assertEqual(subject, next(binding["source"] for binding in work["lease"]["acquisition"]["inputs"]
                                    if binding["name"] == "subject"))
     value = {"admission": admission, "finding": finding, "subjects": [subject],
@@ -235,6 +239,7 @@ class CompiledConfiguredMemberApplicabilityTests(member.RepeatedConfiguredMember
     def test_member_origin_reclassification_after_atomic_same_id_revision(self):
         self.requirements()
         _specification, allocation = self.specification({"data_residency": "configured risk"})
+        subject_a = self.produced("spec")
         first = self.reject_and_interpret(1, None)
         admission = self.admission(first); admission["applicability"] = "unresolved"
         self.session.finish(self.session.acquire("admit_spec_review_correction", item="data_residency"),
@@ -242,12 +247,15 @@ class CompiledConfiguredMemberApplicabilityTests(member.RepeatedConfiguredMember
         identity = "data-residency-region"
         family_ids = [row["id"] for row in compiled_family(self, "spec")]
         work, slot, old = prepare_compiled_assessment(self, "spec", identity,
-            self.produced("admit_spec_review_correction", item="data_residency"), first, "applicable")
+            self.produced("admit_spec_review_correction", item="data_residency"), first, "applicable",
+            subject_a)
         self.session.finish(work, {slot: old})
         old_result = self.result(compiled_family(self, "spec")[2]["template"]["id"], item=identity)[0]
         self.assertFalse(any(step["node"]["node"] == compiled_family(self, "spec")[2]["template"]["id"]
                              and step["node"].get("item") == identity for step in self.session.ready()))
         self.corrected_specification(allocation, 2)
+        subject_b = self.produced("spec")
+        self.assertNotEqual(subject_a, subject_b)
         second = self.reject_and_interpret(2, first)
         revised = self.admission(second); revised["applicability"] = "unresolved"
         authority = revised["authority"]
@@ -255,12 +263,23 @@ class CompiledConfiguredMemberApplicabilityTests(member.RepeatedConfiguredMember
             {"value": revised, "transfer": {"prior": first, "replacement": second,
              "coverage": "carried", "coverage_evidence": authority, "authority": authority}})
         self.assertEqual(family_ids, [row["id"] for row in compiled_family(self, "spec")])
-        historical_subject = self.produced("spec")
+        self.assertEqual([subject_b], self.read_blob(second)["content"]["subjects"])
+        projection = dag.z.workflow_engine(self.fixture.repo, self.session.project,
+            self.session.runtime).node_snapshot(100)["projection"]
+        current_outputs = [ref for _key, (_result_ref, result) in projection["current"].items()
+                           for ref in result["outputs"].values()]
+        self.assertNotIn(subject_a, current_outputs)
+        self.assertNotIn(subject_b, current_outputs)
         work2, slot2, fresh = prepare_compiled_assessment(self, "spec", identity,
-            self.produced("admit_spec_review_correction", item="data_residency"), second, "not_applicable")
-        self.assertNotEqual([historical_subject], fresh["subjects"],
-                            "same-ID revision must not reuse historical enumeration")
+            self.produced("admit_spec_review_correction", item="data_residency"), second, "not_applicable",
+            subject_b)
+        wrong_subject = copy.deepcopy(fresh); wrong_subject["subjects"] = [subject_a]
+        same_executor = copy.deepcopy(fresh); same_executor["reviewer_result"] = fresh["authority"]
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        self.session.call(100, self.session.submission(work2, {slot2: wrong_subject},
+            "reject-wrong-historical-subject"), expected=2)
+        self.session.call(100, self.session.submission(work2, {slot2: same_executor},
+            "reject-root-as-independent-reviewer"), expected=2)
         self.session.call(100, self.session.submission(work2, {slot2: old}, "reject-old-revision"), expected=2)
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
         self.session.finish(work2, {slot2: fresh})
@@ -272,6 +291,16 @@ class CompiledConfiguredMemberApplicabilityTests(member.RepeatedConfiguredMember
         self.assertIn(old_result, self.payload()[1]["evidence"])
         self.assertEqual(1, self.read_blob(first)["content"]["revision"])
         self.assertEqual(2, self.read_blob(second)["content"]["revision"])
+        self.corrected_specification(allocation, 3)
+        subject_c = self.produced("spec")
+        self.assertNotIn(subject_c, (subject_a, subject_b))
+        projection = dag.z.workflow_engine(self.fixture.repo, self.session.project,
+            self.session.runtime).node_snapshot(100)["projection"]
+        current_outputs = [ref for _key, (_result_ref, result) in projection["current"].items()
+                           for ref in result["outputs"].values()]
+        self.assertIn(subject_c, current_outputs)
+        self.assertNotIn(subject_a, current_outputs)
+        self.assertNotIn(subject_b, current_outputs)
 
 _REAL_TRANSPORT_ADAPTER = dag.z.GitHubGoalTransitionAdapter
 

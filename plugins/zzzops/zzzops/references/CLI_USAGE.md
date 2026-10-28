@@ -3,9 +3,10 @@
 Use package-local [`zzzops.py`](../zzzops.py), never globally. Use the skill's
 semantic `--intent` with `workflow --intent INTENT` and returned `--goal`, runtime and input.
 
-Checkpoints/reads default to a 90-second provider budget. Set positive finite
-`workflow --timeout SECONDS` for one invocation; renewal keeps separate work and
-cleanup budgets.
+Workflow checkpoints and reads have a 90-second provider budget by default.
+Use `workflow --timeout SECONDS` for a slower repository; the override must be
+a positive finite provider deadline for that invocation. Renewal keeps its
+separate work and cleanup budgets.
 
 Stdout is compact; `--response full` preserves JSON. [Selective reads](CLI_BOUNDARY.md).
 
@@ -28,6 +29,8 @@ Policy enables [release planning](RELEASES.md).
 `stack_prepare` authenticates pages of at most 50 PRs and seals topology before effects.
 `stack_status` pages progress; `stack_advance` performs one authorized transition.
 Replay uncertainty unchanged. See [stack integration](STACK_INTEGRATION.md).
+
+For policy-DAG transitions, read [Git workspace cutover](GIT_WORKSPACES.md#reviewed-policy-dag-cutover).
 
 Execution migrates supported open v1 goals automatically, preserving history
 without granting authority. Preview/historical reads never migrate or reopen.

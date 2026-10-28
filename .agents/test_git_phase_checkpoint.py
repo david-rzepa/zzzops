@@ -132,6 +132,174 @@ class GitPhaseCheckpointTests(unittest.TestCase):
         self.assertEqual(conflicted, self.git('rev-parse', 'HEAD').strip())
         self.assertEqual(attempt, self.git('rev-parse', 'attempt').strip())
 
+    def restack_case(self, *, conflict=False):
+        self.git('checkout', '-q', '-b', 'original-attempt', self.base)
+        source = self.result('input.txt', 'attempt result\n')
+        source_tree = self.git('rev-parse', source + '^{tree}').strip()
+        self.git('checkout', '-q', '-b', 'moved-base', self.base)
+        if conflict:
+            new_base = self.result('input.txt', 'upstream result\n')
+        else:
+            new_base = self.result('upstream.txt', 'upstream result\n')
+        self.git('checkout', '-q', '-b', 'replacement-attempt', new_base)
+        preview = git_phase_state.preview_attempt_restack(
+            self.repo, old_base=self.base, new_base=new_base,
+            attempt_commit=source, owned_paths=['input.txt'])
+        return preview, source, source_tree, new_base
+
+    def begin_restack_conflict(self):
+        preview, source, source_tree, new_base = self.restack_case(conflict=True)
+        applied = git_phase_state.apply_attempt_restack(
+            self.repo, preview, owned_paths=['input.txt'])
+        self.assertEqual('conflict', applied['status'])
+        self.assertEqual(['input.txt'], applied['conflicts'])
+        self.assertEqual(source, self.git('rev-parse', 'CHERRY_PICK_HEAD').strip())
+        return preview, source, source_tree, new_base
+
+    def test_apply_attempt_restack_replays_one_exact_commit_on_moved_base(self):
+        preview, source, source_tree, new_base = self.restack_case()
+
+        result = git_phase_state.apply_attempt_restack(
+            self.repo, preview, owned_paths=['input.txt'])
+
+        restacked = result['result_commit']
+        self.assertEqual('clean', result['status'])
+        self.assertEqual(restacked, self.git('rev-parse', 'HEAD').strip())
+        self.assertEqual(new_base, self.git('rev-parse', restacked + '^').strip())
+        self.assertEqual(preview['proposed_tree'],
+                         self.git('rev-parse', restacked + '^{tree}').strip())
+        self.assertEqual(1, int(self.git('rev-list', '--count',
+                                         new_base + '..' + restacked).strip()))
+        self.assertEqual(source_tree, self.git('rev-parse', source + '^{tree}').strip())
+        self.assertEqual(source, self.git('rev-parse', 'original-attempt').strip())
+
+        replay = git_phase_state.apply_attempt_restack(
+            self.repo, preview, owned_paths=['input.txt'])
+        self.assertEqual(restacked, replay['result_commit'])
+        self.assertEqual(restacked, self.git('rev-parse', 'HEAD').strip())
+        self.assertEqual(1, int(self.git('rev-list', '--count',
+                                         new_base + '..' + restacked).strip()))
+
+    def test_apply_attempt_restack_preserves_owned_conflict_and_sequencer(self):
+        preview, source, source_tree, new_base = self.restack_case(conflict=True)
+
+        result = git_phase_state.apply_attempt_restack(
+            self.repo, preview, owned_paths=['input.txt'])
+
+        self.assertEqual('conflict', result['status'])
+        self.assertEqual(['input.txt'], result['conflicts'])
+        self.assertEqual(source, self.git('rev-parse', 'CHERRY_PICK_HEAD').strip())
+        self.assertEqual(new_base, self.git('rev-parse', 'HEAD').strip())
+        self.assertEqual(['input.txt'], [line[3:] for line in
+            self.git('status', '--short').splitlines()])
+        self.assertEqual(source_tree, self.git('rev-parse', source + '^{tree}').strip())
+        self.assertEqual(source, self.git('rev-parse', 'original-attempt').strip())
+
+    def test_continue_attempt_restack_rejects_unowned_and_symlink_dirt_then_verifies(self):
+        preview, source, source_tree, new_base = self.begin_restack_conflict()
+        (self.repo / 'input.txt').write_text('resolved result\n')
+        (self.repo / 'unowned.txt').write_text('unreviewed dirt\n')
+        with self.assertRaisesRegex(ValueError, 'unowned|outside reviewed owned paths'):
+            git_phase_state.continue_attempt_restack(
+                self.repo, preview, owned_paths=['input.txt'])
+        (self.repo / 'unowned.txt').unlink()
+        (self.repo / 'input.txt').unlink()
+        (self.repo / 'input.txt').symlink_to('upstream.txt')
+        with self.assertRaisesRegex(ValueError, 'ordinary|symlink'):
+            git_phase_state.continue_attempt_restack(
+                self.repo, preview, owned_paths=['input.txt'])
+        (self.repo / 'input.txt').unlink()
+        (self.repo / 'input.txt').write_text('resolved result\n')
+
+        result = git_phase_state.continue_attempt_restack(
+            self.repo, preview, owned_paths=['input.txt'])
+
+        restacked = result['result_commit']
+        self.assertEqual('clean', result['status'])
+        self.assertEqual(new_base, self.git('rev-parse', restacked + '^').strip())
+        self.assertEqual(1, int(self.git('rev-list', '--count',
+                                         new_base + '..' + restacked).strip()))
+        self.assertFalse((self.repo / '.git/CHERRY_PICK_HEAD').exists())
+        git_phase_state.validate_checkpoint(
+            self.repo, base_commit=new_base, result_commit=restacked,
+            owned_paths=['input.txt'])
+        self.assertEqual(source_tree, self.git('rev-parse', source + '^{tree}').strip())
+
+    def test_abort_attempt_restack_restores_new_base_and_original_attempt(self):
+        preview, source, source_tree, new_base = self.begin_restack_conflict()
+
+        result = git_phase_state.abort_attempt_restack(
+            self.repo, preview, owned_paths=['input.txt'])
+
+        self.assertEqual('aborted', result['status'])
+        self.assertEqual(new_base, result['head_commit'])
+        self.assertEqual(new_base, self.git('rev-parse', 'HEAD').strip())
+        self.assertEqual('', self.git('status', '--porcelain'))
+        self.assertFalse((self.repo / '.git/CHERRY_PICK_HEAD').exists())
+        self.assertEqual(source_tree, self.git('rev-parse', source + '^{tree}').strip())
+        self.assertEqual(source, self.git('rev-parse', 'original-attempt').strip())
+
+        replay = git_phase_state.abort_attempt_restack(
+            self.repo, preview, owned_paths=['input.txt'])
+        self.assertEqual(result, replay)
+        self.assertEqual(new_base, self.git('rev-parse', 'HEAD').strip())
+        self.assertEqual('', self.git('status', '--porcelain'))
+
+    def test_restack_rejects_arbitrary_owned_child_without_exact_replay_sequencer(self):
+        preview, _, _, new_base = self.restack_case(conflict=True)
+        arbitrary = self.result('input.txt', 'arbitrary owned result\n')
+        self.assertEqual(new_base, self.git('rev-parse', arbitrary + '^').strip())
+        self.assertNotEqual(preview['proposed_tree'],
+                            self.git('rev-parse', arbitrary + '^{tree}').strip())
+        self.assertNotEqual(0, subprocess.run(
+            ['git', 'rev-parse', '--verify', 'CHERRY_PICK_HEAD'], cwd=self.repo,
+            capture_output=True).returncode)
+
+        accepted = []
+        for name, operation in (
+                ('apply', git_phase_state.apply_attempt_restack),
+                ('continue', git_phase_state.continue_attempt_restack)):
+            self.git('reset', '--hard', arbitrary)
+            try:
+                operation(self.repo, preview, owned_paths=['input.txt'])
+            except ValueError:
+                pass
+            else:
+                accepted.append(name)
+
+        self.assertEqual([], accepted,
+                         'An arbitrary child is not proof of the exact previewed replay')
+
+    def test_restack_rejects_owned_scope_substitution_for_apply_and_continue(self):
+        preview, _, _, _ = self.restack_case(conflict=True)
+        expanded = ['input.txt', 'extra.txt']
+        accepted = []
+        try:
+            git_phase_state.apply_attempt_restack(
+                self.repo, preview, owned_paths=expanded)
+        except ValueError:
+            pass
+        else:
+            accepted.append('apply')
+
+        git_phase_state.abort_attempt_restack(
+            self.repo, preview, owned_paths=['input.txt'])
+        git_phase_state.apply_attempt_restack(
+            self.repo, preview, owned_paths=['input.txt'])
+        (self.repo / 'input.txt').write_text('resolved result\n')
+        (self.repo / 'extra.txt').write_text('scope substitution dirt\n')
+        self.git('add', 'extra.txt')
+        try:
+            git_phase_state.continue_attempt_restack(
+                self.repo, preview, owned_paths=expanded)
+        except ValueError:
+            pass
+        else:
+            accepted.append('continue')
+
+        self.assertEqual([], accepted,
+                         'Restack execution must retain the exact previewed owned scope')
+
     def test_unowned_change_and_dirty_worktree_are_rejected(self):
         result = self.result()
         with self.assertRaisesRegex(ValueError, 'outside reviewed owned paths'):

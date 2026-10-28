@@ -687,6 +687,45 @@ class WorkflowPublicationContractTests(unittest.TestCase):
         self.assertEqual('repair_stack', same_lane['kind'])
         self.assertIn('multiple successors', same_lane['action'])
 
+    def test_reviewed_release_assignment_selects_release_lane_trunk(self):
+        engine, api, _run = self.publication_engine(
+            local_head='a' * 40, local_base='b' * 40,
+            provider_head='a' * 40, provider_base='b' * 40)
+        engine.repository = 'owner/repo'
+        engine.portfolio = lambda: [
+            {'key': 7, 'implementation': {'branch': 'goal-7'}}]
+        plan = {'next_release': 1, 'assignments': {'7': 2}}
+        api._releases = SimpleNamespace(
+            target_release=lambda value, goal: value['assignments'][str(goal)])
+        api.GitHubReleasePlanAdapter = lambda *_args: SimpleNamespace(
+            read=lambda *_args: plan)
+        rows = [{'number': 7, 'headRefName': 'goal-7',
+                 'baseRefName': 'release/2', 'headRefOid': 'a' * 40}]
+        def run(command, **_kwargs):
+            if command[:3] == ['gh', 'pr', 'list']:
+                return SimpleNamespace(stdout=json.dumps(rows))
+            if command[:3] == ['git', 'fetch', '--no-tags']:
+                return SimpleNamespace(returncode=1, stdout='', stderr='wrong trunk')
+            raise AssertionError(command)
+
+        with mock.patch.object(workflow, 'policy_section', return_value={
+                'configuration': {'release_planning': {
+                    'enabled': True, 'integration_branch': 'dev',
+                    'release_branch_prefix': 'release/'}}}), \
+             mock.patch.object(workflow.subprocess, 'run', side_effect=run):
+            self.assertIsNone(engine.publication_topology(
+                {'branch': 'goal-7', 'base': 'release/2',
+                 'target': 'release/2', 'pr': None},
+                {'head_oid': 'a' * 40, 'base_oid': 'b' * 40,
+                 'base_ref': 'release/2'},
+                {'goal-7'}, goal_number=7))
+
+        self.assertEqual(1, len(api.calls))
+        ordered, candidate, trunk = api.calls[0]
+        self.assertEqual([], ordered)
+        self.assertEqual('release/2', trunk)
+        self.assertEqual('release/2', candidate['base'])
+
     def test_native_published_heads_participate_in_their_release_stack(self):
         engine = workflow.Workflow.__new__(workflow.Workflow)
         engine.runtime = {'root_id': 'root'}
@@ -754,6 +793,64 @@ class WorkflowPublicationContractTests(unittest.TestCase):
                     self.assertNotIn('publication_directive', result)
                     self.assertIn('missing', result['action'])
                 self.assertEqual([], api.calls)
+
+    def test_published_candidate_adopts_only_exact_oid_retarget_to_policy_trunk(self):
+        old_base = 'main'
+        new_base = 'dev'
+        base_oid = 'b' * 40
+        head_oid = 'a' * 40
+        reference = {'hash': 'published', 'uri': 'urn:published'}
+        authorization = {'hash': 'authorization', 'uri': 'urn:authorization'}
+        historical = {'repository': 'owner/repo', 'branch': 'goal-1',
+                      'base': old_base, 'pr': 'https://github.com/owner/repo/pull/2',
+                      'head_oid': head_oid}
+        facts = {'repository': 'owner/repo', 'base_ref': new_base,
+                 'base_oid': base_oid, 'head_oid': head_oid,
+                 'checks_present': False, 'merged': False}
+        engine = workflow.Workflow.__new__(workflow.Workflow)
+        engine.repo = Path('/repo')
+        engine.repository = 'owner/repo'
+        engine.runtime = {'root_id': 'root'}
+        engine.project = {'policy': {'sections': [
+            {'id': 'git_review_release', 'configuration': {'release_planning': {
+                'enabled': False, 'integration_branch': new_base}}},
+            {'id': 'verification_testing', 'configuration': {'required_ci': 'disabled'}},
+        ]}}
+        engine.api = SimpleNamespace(_phase_evidence=None,
+                                     _github_pull_request_states=lambda *_args:
+                                     ({1: facts}, None, None))
+        engine.node_evidence_policy = lambda: 'sha256:' + 'c' * 64
+        engine.node_managed_publication_branches = lambda *_args: set()
+        engine.publication_topology = lambda *_args, **_kwargs: None
+        publisher = {'executor': 'root', 'outputs': {'value': reference},
+                     'inputs': [{'source': authorization, 'mode': 'identity', 'path': []}]}
+        projection = {'current': {'publish': (reference, publisher)}, 'states': {
+            'publish': {'state': 'done', 'contract': {'executor': {'role': 'root',
+                                                                 'resources': []}}},
+            (1, 'integrate'): {'state': 'ready', 'contract': {'executor': {
+                'resources': ['repository_publication']}},
+                'inputs': [{'source': reference, 'mode': 'identity', 'path': []}]},
+        }}
+        artifacts = {'published': {'type': 'published_candidate', 'content': historical},
+                     'authorization': {'type': 'repository_authorization',
+                                       'content': {'decision': 'approved'}}}
+
+        def observe(old_oid):
+            output = f'{old_oid}\trefs/heads/main\n{base_oid}\trefs/heads/dev\n'
+            with mock.patch.object(workflow.subprocess, 'run',
+                                   return_value=SimpleNamespace(returncode=0, stdout=output)):
+                return engine.node_publication_context({}, projection, artifacts)
+
+        adopted = observe(base_oid)[(1, 'integrate')]
+        self.assertNotIn('error', adopted)
+        self.assertEqual(new_base, adopted['observed']['base_ref'])
+        self.assertEqual(new_base, adopted['context']['base'])
+        self.assertEqual(old_base, artifacts['published']['content']['base'])
+        rejected = observe('d' * 40)[(1, 'integrate')]
+        self.assertIn('base identity mismatch', rejected['error'])
+        engine.project['policy']['sections'][0]['configuration']['release_planning'] = None
+        unsupported = observe(base_oid)[(1, 'integrate')]
+        self.assertIn('base identity mismatch', unsupported['error'])
 
 
 from test_evidence_dag_journeys import DagFixture, REF_TYPE, FINDING_TYPE, ADMISSION_TYPE, content_hash, output, shape, spec_input, z

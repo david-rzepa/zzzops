@@ -25,6 +25,49 @@ class FreshGoalGitCheckpointTests(DagFixture):
                                side_effect=AssertionError('inactive legacy phase scanned files')):
             self.session.acquire('requirements')
 
+    def test_fresh_commit_only_acquisition_is_bounded_with_active_legacy_sibling(self):
+        paths = self.fixture.repo / 'large-coexistence'
+        paths.mkdir()
+        for index in range(2200):
+            (paths / f'fixture_{index:04d}.txt').write_text(f'file {index}\n')
+        self.session.git('add', 'large-coexistence')
+        self.session.git('commit', '-qm', 'large mixed workspace base')
+        template = json.loads((fixtures.PLUGIN_ROOT /
+                               'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
+        graph = z._workflow_section(
+            template, 'workflow_adherence')['configuration']['phase_dag']
+        legacy = journeys.task('legacy_sibling')
+        legacy['executor']['resources'] = ['repository_workspace']
+        graph['nodes'].append(legacy)
+        graph['terminals'].append(journeys.selector('legacy_sibling'))
+        z._workflow_section(self.session.project, 'workflow_adherence')[
+            'configuration']['phase_dag'] = graph
+        self.install(graph)
+        frontier = self.session.ready()
+        self.assertIn('requirements', {step['node']['node'] for step in frontier})
+        self.assertEqual([], legacy['requires'])
+        self.assertIn(journeys.selector('legacy_sibling'), graph['terminals'])
+
+        original = z._workflow.Workflow.workspace_files
+        scans = []
+        def observe_legacy_scan(engine):
+            scans.append(True)
+            return original(engine)
+        with mock.patch.object(z._workflow.Workflow, 'workspace_files',
+                               autospec=True, side_effect=observe_legacy_scan):
+            work = self.session.acquire('requirements', frontier=frontier)
+
+        acquisition = work['lease']['acquisition']
+        self.assertEqual(self.session.git('rev-parse', 'HEAD').strip(),
+                         acquisition['read_commit'])
+        self.assertNotIn('files', acquisition)
+        self.assertNotIn('read_files', acquisition)
+        self.assertEqual([], scans, 'Fresh commit-only acquisition scanned active legacy scope')
+        serialized = json.dumps(self.provider.comments[100], sort_keys=True)
+        self.assertNotIn('fixture_2199.txt', serialized)
+        self.assertTrue(all(len(comment['body']) <= 65536
+                            for comment in self.provider.comments[100]))
+
     def test_fresh_readonly_acquisition_skips_future_legacy_scopes_and_dirty_primary(self):
         paths = self.fixture.repo / 'many'
         paths.mkdir()
@@ -52,6 +95,30 @@ class FreshGoalGitCheckpointTests(DagFixture):
         self.assertEqual([100], sorted(self.provider.issues))
         self.assertTrue(all(len(comment['body']) <= 65536
                             for comment in self.provider.comments[100]))
+
+    def test_fresh_readonly_acquisition_from_nonowning_checkout_uses_registered_owner(self):
+        sibling_root = tempfile.TemporaryDirectory()
+        self.addCleanup(sibling_root.cleanup)
+        sibling = Path(sibling_root.name) / 'unmanaged-sibling'
+        self.session.git('worktree', 'add', '-q', '--detach', str(sibling), 'HEAD')
+        self.addCleanup(subprocess.run, ['git', '-C', str(self.fixture.repo),
+                                        'worktree', 'remove', '--force', str(sibling)],
+                        capture_output=True)
+        (sibling / 'local-review-notes.txt').write_text('not part of the committed input\n')
+        self.session.repo = sibling
+        self.default_graph()
+
+        work = self.session.acquire('requirements')
+
+        self.assertEqual(self.session.git('rev-parse', 'HEAD').strip(),
+                         work['lease']['acquisition']['read_commit'])
+        self.assertEqual(self.fixture.repo / '.zzzops/worktrees/100/requirements' /
+                         work['lease']['attempt'], Path(work['managed_worktree']['path']))
+        self.assertFalse((Path(work['managed_worktree']['path']) /
+                          'local-review-notes.txt').exists())
+        self.assertTrue((sibling / 'local-review-notes.txt').exists())
+        self.assertNotIn('files', work['lease']['acquisition'])
+        self.assertEqual([100], sorted(self.provider.issues))
 
     def test_first_acquisition_with_many_files_is_bounded_and_replayable(self):
         paths = self.fixture.repo / 'many'
@@ -83,6 +150,49 @@ class FreshGoalGitCheckpointTests(DagFixture):
         next_work = self.session.acquire('spec')
         self.assertEqual(acquisition['read_commit'], next_work['lease']['acquisition']['read_commit'])
         self.assertTrue(all(len(comment['body']) <= 65536 for comment in self.provider.comments[100]))
+
+    def test_literal_shipped_dag_uses_reviewed_cutover_contract(self):
+        template = json.loads((fixtures.PLUGIN_ROOT /
+                               'zzzops/templates/project-goals/INIT_PLAN.json').read_text())
+        shipped = copy.deepcopy(z._workflow_section(
+            template, 'workflow_adherence')['configuration']['phase_dag'])
+        self.install(shipped)
+        work = self.session.acquire('requirements')
+        self.session.finish(work, {'value': {
+            'statements': ['Retain exact shipped-DAG evidence.'], 'questions': [],
+            'investigations': {'items': {}, 'rationale': 'No unknowns.'},
+        }}, 'shipped-cutover-requirements')
+        result = self.result('requirements')[0]
+
+        changed = copy.deepcopy(shipped)
+        audit = journeys.task('shipped_cutover_audit', ['requirements'])
+        audit['inputs'] = {'subject': journeys.subject_input('requirements')}
+        audit['independent_of'] = [journeys.selector('requirements')]
+        changed['nodes'].append(audit)
+        changed['terminals'].append(journeys.selector('shipped_cutover_audit'))
+        z._workflow_section(self.session.project, 'workflow_adherence')[
+            'configuration']['phase_dag'] = changed
+        cutover = self.session.checkpoint(100)[0]
+        self.assertEqual('policy_dag_cutover', cutover['kind'])
+        compiled = z._static_workflow.definition(shipped, z._graph_compiler)['graph']
+        self.assertEqual(compiled, self.read_blob(cutover['contract']['old_graph']))
+        self.assertIn('prepare', cutover)
+        mapping = [{'old': {'node': 'requirements', 'output': 'value'},
+                    'new': {'node': 'requirements', 'output': 'value'},
+                    'result': result, 'equivalence': {
+                        'inputs': True, 'outputs': True, 'scope': True,
+                        'role': True, 'independence': True, 'approval': True}}]
+        proposed = self.session.call(100, {**cutover['prepare'], 'actor': 'root-thread',
+            'mapping': mapping, 'request_id': 'prepare-shipped-cutover'})['next_steps'][0]
+        reviewed = self.session.call(100, {**proposed['review'],
+            'actor': 'independent-shipped-cutover-reviewer', 'decision': 'approved',
+            'report': 'Literal shipped result retains its exact contract',
+            'request_id': 'review-shipped-cutover'})['next_steps'][0]
+        applied = self.session.call(100, {**reviewed['apply'], 'actor': 'root-thread',
+            'request_id': 'apply-shipped-cutover'})['next_steps'][0]
+        self.assertEqual('policy_dag_cutover_applied', applied['kind'])
+        self.assertEqual(result, self.result('requirements')[0])
+        self.assertIn('shipped_cutover_audit', self.names())
 
     def test_readonly_managed_worktree_must_remain_at_exact_clean_commit(self):
         self.default_graph()
@@ -183,6 +293,34 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         self.assertNotIn('workspace_digest', acquisition)
         self.assertEqual([100], sorted(fixture.provider.issues))
         self.assertTrue(all(len(comment['body']) <= 65536 for comment in fixture.provider.comments[100]))
+
+    def test_large_workspace_does_not_scale_first_acquisition_provider_writes(self):
+        observations = []
+        for many_files in (0, 2200):
+            fixture = self.fixture_with_git_workspace(many_files=many_files)
+            work = fixture.acquire_workspace('alpha')
+            comments = fixture.provider.comments[100]
+            serialized = json.dumps({
+                'issue': fixture.provider.issues[100],
+                'comments': comments,
+            }, sort_keys=True, separators=(',', ':'))
+            observations.append({
+                'writes': len(comments),
+                'acquisition_bytes': len(json.dumps(
+                    work['lease']['acquisition'], sort_keys=True,
+                    separators=(',', ':')).encode()),
+                'acquisition': work['lease']['acquisition'],
+                'serialized': serialized,
+            })
+
+        small, large = observations
+        self.assertEqual(small['writes'], large['writes'])
+        self.assertEqual(small['acquisition_bytes'], large['acquisition_bytes'])
+        self.assertNotIn('files', large['acquisition'])
+        self.assertNotIn('workspace_digest', large['acquisition'])
+        self.assertNotIn('fixture_2199.txt', large['serialized'])
+        self.assertTrue(all(len(comment['body']) <= 65536
+                            for comment in fixture.provider.comments[100]))
 
     def test_dirty_primary_checkout_does_not_enter_isolated_git_attempt(self):
         fixture = self.fixture_with_git_workspace()
@@ -471,6 +609,285 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         self.assertEqual('created', recovered['retained_attempt']['outcome'])
         self.assertEqual([], fixture.payload()[1]['operational']['leases'])
 
+    def public_same_node_conflicting_restack(self):
+        fixture = journeys.WorkspaceAuthorityPublicTests('runTest')
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        original_install = fixture.install
+        def install_git_graph(graph):
+            for node in graph['nodes']:
+                resources = node['executor']['resources']
+                if 'repository_workspace' in resources:
+                    resources[resources.index(
+                        'repository_workspace')] = 'repository_git_workspace'
+            return original_install(graph)
+        fixture.install = install_git_graph
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        bare = Path(remote_dir.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
+        fixture.session.git('remote', 'add', 'origin', str(bare))
+        fixture.setup_workspace_corrections(target='alpha')
+
+        first = fixture.acquire_workspace('alpha')
+        first_tree = Path(first['managed_worktree']['path'])
+        (first_tree / 'behavior_test.py').write_text('assert True\n')
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=first_tree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: verified source attempt'],
+                       cwd=first_tree, check=True)
+        source_commit = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=first_tree,
+            capture_output=True, text=True, check=True).stdout.strip()
+        submission = fixture.session.submission(
+            first, {'value': 'Verified alpha source'}, 'verified-source-before-restack')
+        submission['workspace_checks'] = [[sys.executable, '-B', 'behavior_test.py']]
+        submission['verification_expectation'] = 'passed'
+        fixture.session.call(100, submission)
+        result_ref, _ = fixture.result('alpha')
+        proof_ref = fixture.read_blob(fixture.produced('alpha'))['provenance']['source']
+        proof = fixture.read_blob(proof_ref)
+        self.assertTrue(proof['passed'])
+        self.assertEqual(0, proof['commands'][0]['exit_code'])
+        self.assertEqual(source_commit, proof['checkpoint']['result_commit'])
+        expected_ref = (f"refs/heads/zzzops/attempts/100/alpha/"
+                        f"{first['lease']['attempt']}")
+        self.assertEqual(expected_ref, proof['retained_ref'])
+        self.assertEqual(source_commit, fixture.session.git(
+            'ls-remote', 'origin', expected_ref).split()[0])
+        fixture.review_candidate('alpha', 0)
+
+        fixture.admit_workspace_correction('alpha')
+        moved_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(moved_dir.cleanup)
+        moved = Path(moved_dir.name) / 'moved-base'
+        fixture.session.git('worktree', 'add', '-q', '--detach', str(moved),
+                            fixture.session.git('rev-parse', 'HEAD').strip())
+        (moved / 'behavior_test.py').write_text('moved accepted base\n')
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=moved, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: conflicting accepted base'],
+                       cwd=moved, check=True)
+        new_base = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=moved,
+            capture_output=True, text=True, check=True).stdout.strip()
+        workspace_context = z._workflow.Workflow.node_workspace_context
+        def accepted_moved_base(engine, snapshots, projection, artifacts,
+                                *, workspace_target=None):
+            contexts = workspace_context(
+                engine, snapshots, projection, artifacts,
+                workspace_target=workspace_target)
+            for key, context in contexts.items():
+                if key[1] == 'alpha' and context.get('git_workspace'):
+                    context['acquisition']['git_commit'] = new_base
+            return contexts
+        observations = []
+        apply_restack = z._workflow.git_phase_state.apply_attempt_restack
+        def observe_committed_start(repo, plan, owned_paths):
+            payload = fixture.payload()[1]
+            leases = [lease for lease in payload['operational']['leases']
+                      if lease['node'] == step['node']]
+            receipts = [row for row in payload['operational']['receipts']
+                        if row['request'] == request['request_id']]
+            observations.append({
+                'leases': copy.deepcopy(leases),
+                'receipts': copy.deepcopy(receipts),
+                'plan': copy.deepcopy(plan),
+                'owned_paths': copy.deepcopy(owned_paths),
+            })
+            return apply_restack(repo, plan, owned_paths)
+
+        with mock.patch.object(z._workflow.Workflow, 'node_workspace_context',
+                               autospec=True, side_effect=accepted_moved_base):
+            step = next(s for s in fixture.session.ready()
+                        if s['node']['node'] == 'alpha')
+            receipt = json.loads(Path(step['policy']['path']).read_text())['policy_receipt']
+            request = {**step['start'], 'policy_receipt': receipt,
+                       'request_id': 'start-conflicting-restack'}
+            with mock.patch.object(z._workflow.git_phase_state, 'apply_attempt_restack',
+                                   side_effect=observe_committed_start):
+                started = fixture.session.call(100, request)['next_steps'][0]
+
+        self.assertEqual(1, len(observations),
+                         'Public start must apply its host-derived restack plan')
+        observed = observations[0]
+        self.assertEqual(1, len(observed['leases']))
+        self.assertEqual(started['lease']['token'], observed['leases'][0]['token'])
+        self.assertEqual(1, len(observed['receipts']))
+        self.assertEqual(['behavior_test.py'], observed['owned_paths'])
+        expected_plan = z._git_phase_state.preview_attempt_restack(
+            Path(started['managed_worktree']['path']),
+            old_base=first['lease']['acquisition']['git_commit'],
+            new_base=new_base, attempt_commit=source_commit,
+            owned_paths=['behavior_test.py'])
+        self.assertEqual(expected_plan, observed['plan'])
+        self.assertEqual('conflict', started['restack']['status'])
+        self.assertEqual({'result': result_ref, 'proof': proof_ref,
+                          'ref': expected_ref, 'commit': source_commit},
+                         started['restack']['source'])
+        self.assertEqual(expected_plan, started['restack']['plan'])
+        self.assertEqual(['behavior_test.py'], started['restack']['conflicts'])
+        common = {'node': started['node'], 'lease': started['lease']['token'],
+                  'actor': '<actual worker>',
+                  'plan_hash': journeys.content_hash(expected_plan)}
+        self.assertEqual({'operation': 'restack_continue', **common,
+                          'request_id': '<unique request>'},
+                         started['restack']['continue'])
+        self.assertEqual({'operation': 'restack_abort', **common,
+                          'request_id': '<unique request>'},
+                         started['restack']['abort'])
+        self.assertNotEqual(first['lease']['attempt'], started['lease']['attempt'])
+        self.assertEqual(source_commit, subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=first_tree,
+            capture_output=True, text=True, check=True).stdout.strip())
+        self.assertEqual(source_commit, fixture.session.git(
+            'ls-remote', 'origin', expected_ref).split()[0])
+        self.assertEqual([100], sorted(fixture.provider.issues))
+        fixture.session.call(100, {**started['bind'], 'actor': 'restack-worker',
+            'selection': started['lease']['selection'], 'policy_receipt': receipt})
+        started['bound_actor'] = 'restack-worker'
+        return fixture, first, started, expected_plan, expected_ref, source_commit
+
+    def test_public_same_node_start_commits_lease_before_conflicting_restack(self):
+        self.public_same_node_conflicting_restack()
+
+    def test_public_restack_continue_binds_exact_contract_and_replays_one_candidate(self):
+        fixture, first, started, plan, source_ref, source_commit = \
+            self.public_same_node_conflicting_restack()
+        template = {**started['restack']['continue'], 'actor': 'restack-worker',
+                    'request_id': 'continue-exact-restack'}
+        provider_before = copy.deepcopy(
+            (fixture.provider.issues, fixture.provider.comments))
+        for label, changes in (
+                ('lease', {'lease': 'wrong-lease'}),
+                ('actor', {'actor': 'wrong-actor'}),
+                ('plan', {'plan_hash': 'sha256:' + '0' * 64})):
+            rejected = fixture.session.call(100, {
+                **template, **changes, 'request_id': 'reject-' + label}, expected=2)
+            self.assertIn('unsupported', json.dumps(rejected).lower())
+        self.assertEqual(provider_before,
+                         (fixture.provider.issues, fixture.provider.comments))
+        worktree = Path(started['managed_worktree']['path'])
+        (worktree / 'behavior_test.py').write_text('assert True\n')
+        evidence_before = len(fixture.payload()[1]['evidence'])
+
+        continued = fixture.session.call(100, template)['next_steps'][0]
+        candidate = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=worktree,
+            capture_output=True, text=True, check=True).stdout.strip()
+        replay = fixture.session.call(100, template)['next_steps'][0]
+
+        self.assertEqual(continued, replay)
+        self.assertEqual(candidate, continued['result_commit'])
+        self.assertEqual(plan['new_base'], subprocess.run(
+            ['git', 'rev-parse', candidate + '^'], cwd=worktree,
+            capture_output=True, text=True, check=True).stdout.strip())
+        self.assertEqual(1, int(subprocess.run(
+            ['git', 'rev-list', '--count', plan['new_base'] + '..' + candidate],
+            cwd=worktree, capture_output=True, text=True, check=True).stdout.strip()))
+        self.assertEqual(evidence_before, len(fixture.payload()[1]['evidence']))
+        self.assertEqual(source_commit, subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=first['managed_worktree']['path'],
+            capture_output=True, text=True, check=True).stdout.strip())
+        self.assertEqual(source_commit, fixture.session.git(
+            'ls-remote', 'origin', source_ref).split()[0])
+        self.assertEqual([100], sorted(fixture.provider.issues))
+
+    def test_public_restack_abort_restores_new_base_and_preserves_source_attempt(self):
+        fixture, first, started, plan, source_ref, source_commit = \
+            self.public_same_node_conflicting_restack()
+        template = {**started['restack']['abort'], 'actor': 'restack-worker',
+                    'request_id': 'abort-exact-restack'}
+
+        aborted = fixture.session.call(100, template)['next_steps'][0]
+        replay = fixture.session.call(100, template)['next_steps'][0]
+        worktree = Path(started['managed_worktree']['path'])
+
+        self.assertEqual(aborted, replay)
+        self.assertEqual('restack_aborted', aborted['kind'])
+        self.assertEqual(plan['new_base'], aborted['head_commit'])
+        self.assertEqual(plan['new_base'], subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=worktree,
+            capture_output=True, text=True, check=True).stdout.strip())
+        self.assertEqual('', subprocess.run(
+            ['git', 'status', '--porcelain'], cwd=worktree,
+            capture_output=True, text=True, check=True).stdout)
+        self.assertEqual(source_commit, subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=first['managed_worktree']['path'],
+            capture_output=True, text=True, check=True).stdout.strip())
+        self.assertEqual(source_commit, fixture.session.git(
+            'ls-remote', 'origin', source_ref).split()[0])
+        self.assertEqual([100], sorted(fixture.provider.issues))
+
+    def test_public_restack_continue_rejects_clean_child_without_replay_proof(self):
+        fixture, _first, started, plan, _source_ref, _source_commit = \
+            self.public_same_node_conflicting_restack()
+        worktree = Path(started['managed_worktree']['path'])
+        z._git_phase_state.abort_attempt_restack(
+            worktree, plan, owned_paths=['behavior_test.py'])
+        (worktree / 'behavior_test.py').write_text('assert True\n')
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=worktree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: arbitrary clean child'],
+                       cwd=worktree, check=True)
+        arbitrary = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=worktree,
+            capture_output=True, text=True, check=True).stdout.strip()
+        self.assertEqual(plan['new_base'], subprocess.run(
+            ['git', 'rev-parse', arbitrary + '^'], cwd=worktree,
+            capture_output=True, text=True, check=True).stdout.strip())
+        self.assertNotEqual(0, subprocess.run(
+            ['git', 'rev-parse', '--verify', 'CHERRY_PICK_HEAD'], cwd=worktree,
+            capture_output=True).returncode)
+        template = {**started['restack']['continue'], 'actor': 'restack-worker',
+                    'request_id': 'reject-unproven-clean-restack'}
+        evidence_before = copy.deepcopy(fixture.payload()[1]['evidence'])
+
+        rejected = fixture.session.call(100, template, expected=2)
+
+        self.assertRegex(json.dumps(rejected), r'(?i)replay|sequencer|restack|proof')
+        self.assertEqual(evidence_before, fixture.payload()[1]['evidence'])
+        lease = next(item for item in fixture.payload()[1]['operational']['leases']
+                     if item['token'] == started['lease']['token'])
+        self.assertNotEqual('ready', lease['restack'].get('status'))
+        self.assertNotIn('result_commit', lease['restack'])
+        self.assertEqual([100], sorted(fixture.provider.issues))
+
+    def test_public_restack_continue_rejects_worker_forged_replay_trailer(self):
+        fixture, _first, started, plan, _source_ref, _source_commit = \
+            self.public_same_node_conflicting_restack()
+        worktree = Path(started['managed_worktree']['path'])
+        z._git_phase_state.abort_attempt_restack(
+            worktree, plan, owned_paths=['behavior_test.py'])
+        template = {**started['restack']['continue'], 'actor': 'restack-worker',
+                    'request_id': 'forged-clean-restack-proof'}
+        replay_proof = journeys.content_hash({
+            'lease': template['lease'], 'actor': template['actor'],
+            'attempt': started['lease']['attempt'],
+            'plan_hash': template['plan_hash'],
+            'authorized_request': template['request_id'],
+        })
+        trailer = 'ZzzOps-Restack-Proof: ' + replay_proof
+        (worktree / 'behavior_test.py').write_text('assert True\n')
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=worktree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: arbitrary forged child',
+                        '-m', trailer], cwd=worktree, check=True)
+        message = subprocess.run(
+            ['git', 'show', '-s', '--format=%B', 'HEAD'], cwd=worktree,
+            capture_output=True, text=True, check=True).stdout.splitlines()
+        self.assertEqual(1, message.count(trailer))
+        self.assertNotEqual(0, subprocess.run(
+            ['git', 'rev-parse', '--verify', 'CHERRY_PICK_HEAD'], cwd=worktree,
+            capture_output=True).returncode)
+        evidence_before = copy.deepcopy(fixture.payload()[1]['evidence'])
+
+        rejected = fixture.session.call(100, template, expected=2)
+
+        self.assertRegex(json.dumps(rejected), r'(?i)replay|sequencer|restack|proof')
+        self.assertEqual(evidence_before, fixture.payload()[1]['evidence'])
+        lease = next(item for item in fixture.payload()[1]['operational']['leases']
+                     if item['token'] == started['lease']['token'])
+        self.assertNotEqual('ready', lease['restack'].get('status'))
+        self.assertNotIn('result_commit', lease['restack'])
+        self.assertEqual([100], sorted(fixture.provider.issues))
+
     def test_submission_uses_managed_worktree_commit_and_checks(self):
         fixture = self.fixture_with_git_workspace()
         remote_dir = tempfile.TemporaryDirectory()
@@ -496,6 +913,110 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
 
 class GitWorkspaceJourneyTests(unittest.TestCase):
     fixture_with_git_workspace = GitWorkspaceAcquisitionTests.fixture_with_git_workspace
+
+    def test_same_owner_can_renew_stale_implement_lease_after_late_test_review(self):
+        case = journeys.DefaultCorrectionPublicTests('runTest')
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        bare = Path(remote_dir.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
+        case.session.git('remote', 'add', 'origin', str(bare))
+        z._workflow_section(
+            case.session.project, 'autonomy_approval_parallelism')[
+                'configuration']['max_workers'] = 2
+        case.default_decomposition()
+        case.session.finish(case.session.acquire('decomposition_review'), {
+            'value': case.review('approved', 'Atomic disposition accepted'),
+            'authorization': case.decomposition_authorization()})
+        case.session.finish(case.session.acquire('retain_decomposition_findings'), {
+            'value': {'items': {}, 'rationale': 'No decomposition findings'}})
+
+        test_work = case.session.acquire('test_design')
+        test_tree = Path(test_work['managed_worktree']['path'])
+        (test_tree / 'behavior_test.py').write_text(
+            "from pathlib import Path\nassert Path('source.py').is_file()\n")
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=test_tree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: first red'], cwd=test_tree, check=True)
+        test_request = case.session.submission(
+            test_work, {'value': 'Initial RED contract'}, 'initial-red-contract')
+        test_request['workspace_checks'] = [[sys.executable, '-B', 'behavior_test.py']]
+        test_request['verification_expectation'] = 'observed'
+        case.session.call(100, test_request)
+        case.verify_test_design(test_tree / 'behavior_test.py', 'initial-red-proof')
+        case.session.finish(case.session.acquire('test_design_review'), {
+            'value': case.review('approved', 'Initial RED proof accepted')})
+        case.session.finish(case.session.acquire('retain_test_design_findings'), {
+            'value': {'items': {}, 'rationale': 'No initial findings'}})
+
+        implementation = case.session.acquire('implement', actor='bound-implementer')
+        lease = implementation['lease']
+        implementation_tree = Path(implementation['managed_worktree']['path'])
+        (implementation_tree / 'unowned-local-note.txt').write_text(
+            'This dirty unowned path must not silently transfer custody.\n')
+
+        test_result, test_record = case.result('test_design')
+        test_subject = test_record['outputs']['value']
+        finding_request = {
+            'operation': 'phase_finding', 'request_id': 'late-test-after-implement-start',
+            'actor': 'root-thread',
+            'target': {'node': 'test_design', 'output': 'value'},
+            'subject': test_subject, 'source': test_result,
+            'rationale': 'The accepted test misses a behavior regression.',
+            'id': 'late-test-defect',
+        }
+        original_phase_finding = z._workflow.Workflow.node_phase_finding
+        class ConcurrentLeases(list):
+            def __bool__(self):
+                return False
+        def record_concurrent_finding(engine, snapshot, payload, request):
+            payload['operational']['leases'] = ConcurrentLeases(
+                payload['operational']['leases'])
+            return original_phase_finding(engine, snapshot, payload, request)
+        with (mock.patch.dict('os.environ', {'CODEX_THREAD_ID': 'root-thread'}),
+              mock.patch.object(z._workflow.Workflow, 'node_phase_finding', autospec=True,
+                                side_effect=record_concurrent_finding)):
+            response = case.session.call(100, finding_request)
+        review_step = next(
+            step for step in response['next_steps']
+            if step.get('kind') == 'execute'
+            and step.get('node', {}).get('node', '').startswith('sw_review_'))
+        review = case.session.acquire(
+            review_step['node']['node'], item=review_step['node']['item'],
+            actor='late-reviewer', frontier=response)
+        case.session.finish(review, {'value': {
+            'decision': 'changes_requested',
+            'report': 'Add the missing regression assertion.'}})
+
+        renewal = {
+            'operation': 'renew', 'node': implementation['node'],
+            'lease': lease['token'], 'actor': implementation['bound_actor'],
+            'worker_status': 'active', 'request_id': 'renew-stale-implement',
+        }
+        case.session.call(100, {**renewal, 'request_id': 'wrong-renewal-token',
+                               'lease': 'wrong-token'}, expected=2)
+        case.session.call(100, {**renewal, 'request_id': 'wrong-renewal-actor',
+                               'actor': 'wrong-actor'}, expected=2)
+
+        renewed = case.session.call(100, renewal)['next_steps'][0]
+
+        self.assertEqual('renewed', renewed['kind'])
+        self.assertEqual(lease['token'], renewed['lease'])
+        self.assertEqual(implementation['bound_actor'], renewed['actor'])
+        current_lease = case.payload()[1]['operational']['leases'][0]
+        self.assertEqual(lease['token'], current_lease['token'])
+        self.assertEqual(implementation['bound_actor'], current_lease['worker'])
+        self.assertTrue((implementation_tree / 'unowned-local-note.txt').is_file())
+
+        stale_submission = case.session.submission(
+            implementation, {'value': 'Must not submit stale work'},
+            'stale-implement-result')
+        case.session.call(100, stale_submission, expected=2)
+        frontier = case.session.checkpoint(100)
+        self.assertNotIn('publish', {
+            step.get('node', {}).get('node') for step in frontier
+            if step.get('kind') in {'execute', 'perform'}})
 
     def acceptance_late_test_finding_rebases_t2_on_i1_then_i2_on_t2(self):
         """Opt-in full shipped-DAG journey; focused CI contracts cover each boundary."""
@@ -857,6 +1378,45 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
         steps = fixture.session.checkpoint(100)
         self.assertIn('Retained attempt ref is missing or moved', json.dumps(steps))
         self.assertEqual(before, (fixture.provider.issues, fixture.provider.comments))
+
+    def test_retry_after_git_retention_before_provider_result_adopts_exact_commit(self):
+        fixture = self.fixture_with_git_workspace()
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        bare = Path(remote_dir.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
+        fixture.session.git('remote', 'add', 'origin', str(bare))
+        work = fixture.acquire_workspace('alpha')
+        path = Path(work['managed_worktree']['path'])
+        (path / 'behavior_test.py').write_text('assert True\n')
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=path, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: crash boundary result'],
+                       cwd=path, check=True)
+        head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=path,
+                              capture_output=True, text=True, check=True).stdout.strip()
+        request = fixture.session.submission(
+            work, {'value': 'Result surviving provider interruption'},
+            'git-retained-provider-interrupted')
+        request['workspace_checks'] = [[sys.executable, '-B', 'behavior_test.py']]
+        request['verification_expectation'] = 'passed'
+
+        with mock.patch.object(fixture.provider, 'create_issue_comment',
+                               side_effect=z.GoalTransitionProviderError(
+                                   'Provider unavailable after Git retention')):
+            fixture.session.call(100, request, expected=None)
+
+        ref = f"refs/heads/zzzops/attempts/100/alpha/{work['lease']['attempt']}"
+        self.assertEqual(head, fixture.session.git('ls-remote', 'origin', ref).split()[0])
+        before_retry_comments = len(fixture.provider.comments[100])
+        first = fixture.session.call(100, request)
+        comments = len(fixture.provider.comments[100])
+        second = fixture.session.call(100, request)
+        self.assertEqual(first, second)
+        self.assertEqual(comments, len(fixture.provider.comments[100]))
+        self.assertGreater(comments, before_retry_comments)
+        output = fixture.read_blob(fixture.produced('alpha'))
+        proof = fixture.read_blob(output['provenance']['source'])
+        self.assertEqual(head, proof['checkpoint']['result_commit'])
 
     def test_red_test_commit_then_green_implementation_commit(self):
         fixture = self.fixture_with_git_workspace()
