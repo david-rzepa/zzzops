@@ -183,18 +183,25 @@ class PolicyCiTransitionTests(dag.DagFixture):
         z._workflow_section(self.session.project, "workflow_adherence")["configuration"]["phase_dag"] = changed
         self.reviewed_policy("disabled")
         steps = self.session.checkpoint(100)
-        producer = next(step for step in steps if step.get("node", {}).get("node") == "produce")
-        self.assertEqual("execute", producer["kind"])
-        self.assertNotEqual(self.result("produce")[1]["contract"],
-                            producer["input_envelope"]["contract"])
-        downstream = next(step for step in steps if step.get("node", {}).get("node") == "review_a")
-        self.assertEqual("dependency", downstream["kind"])
-        self.assertRegex(downstream["reason"], r"produce.*required evidence is stale or missing")
-        self.assertNotIn("review_a", {step.get("node", {}).get("node") for step in steps
-                                      if step.get("kind") == "execute"})
+        cutover = next(step for step in steps if step.get("kind") == "policy_dag_cutover")
+        self.assertNotEqual(cutover["prepare"]["old_graph"], cutover["prepare"]["new_graph"])
+        self.assertEqual("policy_dag_cutover_prepare", cutover["prepare"]["operation"])
+        self.assertFalse(any(step.get("kind") == "execute" for step in steps))
         self.assertEqual(before, self.payload()[1]["evidence"])
 
         self.replace_spec("A revised request changes the declared source input.")
+        self.assertNotIn("review_a", self.executable())
+        self.assertEqual(before, self.payload()[1]["evidence"])
+
+    def test_declared_goal_input_change_stales_result_without_graph_cutover(self):
+        self.graph["nodes"][0]["inputs"] = {"request": dag.spec_input()}
+        z._workflow_section(self.session.project, "workflow_adherence")["configuration"]["phase_dag"] = self.graph
+        before = self.initial_result()
+        self.replace_spec("A revised request changes the declared source input.")
+        steps = self.session.checkpoint(100)
+        self.assertFalse(any(step.get("kind") == "policy_dag_cutover" for step in steps))
+        self.assertIn("produce", {step.get("node", {}).get("node") for step in steps
+                                  if step.get("kind") == "execute"})
         self.assertNotIn("review_a", self.executable())
         self.assertEqual(before, self.payload()[1]["evidence"])
 
