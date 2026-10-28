@@ -805,6 +805,31 @@ class ResolutionBatchContractTests(unittest.TestCase):
         self.assertIn(mock.call(commits[80]), engine.node_policy_at_commit.call_args_list)
         self.assertNotIn(mock.call(commits[81]), engine.node_policy_at_commit.call_args_list)
 
+    def test_policy_lookup_requires_exact_approval_when_snapshots_share_projection(self):
+        policy = json.loads((Path(__file__).parents[1] / 'plugins/zzzops/zzzops/templates/project-goals/INIT_PLAN.json').read_text())['policy']
+        wrong = copy.deepcopy(policy)
+        routing = next(row for row in wrong['sections'] if row['id'] == 'model_routing')['configuration']
+        routing['allow_above_root_delegation'] = not routing.get('allow_above_root_delegation', False)
+        current = copy.deepcopy(policy)
+        next(row for row in current['sections'] if row['id'] == 'code_quality')['instructions'] += ' Current incompatible requirement.'
+        projection = dag.z._policy.phase_policy_projection
+        recorded = dag.z._workflow.digest(projection(policy, 'current'))
+        approved = dag.z._workflow.digest(policy)
+        self.assertEqual(approved, dag.z._workflow.digest(projection(policy, 'full')))
+        self.assertEqual(recorded, dag.z._workflow.digest(projection(wrong, 'current')))
+        self.assertNotEqual(approved, dag.z._workflow.digest(wrong))
+        commits = ['1' * 40, '2' * 40, '3' * 40]
+        engine = dag.SimpleNamespace(api=dag.z, repo=Path('/synthetic-policy-history'), project={'policy': current})
+        engine.node_policy_at_commit = mock.Mock(side_effect=lambda commit: wrong if commit == commits[0] else policy)
+        result = dag.subprocess.CompletedProcess([], 0, stdout='\n'.join(commits), stderr='')
+        with mock.patch.object(dag.z._workflow.subprocess, 'run', return_value=result):
+            accepted, error = dag.z._workflow.Workflow.node_historical_policies(engine, {}, {},
+                compatible_only=False, required_hashes={recorded, approved})
+        self.assertIsNone(error)
+        self.assertEqual(wrong, accepted[recorded])
+        self.assertEqual(policy, accepted[approved])
+        self.assertEqual([mock.call(commits[0]), mock.call(commits[1])], engine.node_policy_at_commit.call_args_list)
+
     def test_shared_entry_validator_requires_every_review_and_exact_member_scope(self):
         ref = lambda name: {'hash': 'sha256:' + hashlib.sha256(name.encode()).hexdigest(), 'uri': 'urn:' + name}
         subject, finding_ref, producer_ref = ref('subject'), ref('finding'), ref('producer')
