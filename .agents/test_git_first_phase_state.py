@@ -939,13 +939,14 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         fixture.session.call(100, request)
         fixture.review_candidate('alpha', 0)
         accepted = fixture.result('alpha')[0]
+        accepted_record = copy.deepcopy(fixture.read_blob(accepted))
         proof = fixture.read_blob(
             fixture.read_blob(fixture.produced('alpha'))['provenance']['source'])
+        original_proof = copy.deepcopy(proof)
         source_commit = proof['checkpoint']['result_commit']
         source_ref = proof['retained_ref']
         self.assertEqual(source_commit, fixture.session.git(
             'ls-remote', 'origin', source_ref).split()[0])
-
         held = fixture.acquire_workspace('beta') if unsafe == 'live_lease' else None
         upstream = Path(remote_dir.name) / 'external'
         fixture.session.git('worktree', 'add', '-qb', 'external-fixture',
@@ -1036,16 +1037,13 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         self.assertNotEqual(first['lease']['attempt'], second['lease']['attempt'])
         self.assertEqual(source_commit, fixture.session.git(
             'ls-remote', 'origin', source_ref).split()[0])
-        receipt = json.loads(Path(second['policy']['path']).read_text())['policy_receipt']
-        fixture.session.call(100, {**second['bind'], 'actor': 'restack-worker',
-            'selection': second['lease']['selection'], 'policy_receipt': receipt})
         second_tree = Path(second['managed_worktree']['path'])
         (second_tree / 'behavior_test.py').write_text('assert True\n')
         continued = fixture.session.call(100, {
-            **second['restack']['continue'], 'actor': 'restack-worker',
+            **second['restack']['continue'], 'actor': second['bound_actor'],
             'request_id': 'continue-upstream-owner-conflict'})['next_steps'][0]
         replayed = fixture.session.call(100, {
-            **second['restack']['continue'], 'actor': 'restack-worker',
+            **second['restack']['continue'], 'actor': second['bound_actor'],
             'request_id': 'continue-upstream-owner-conflict'})['next_steps'][0]
         self.assertEqual(continued, replayed)
         self.assertEqual('restack_continued', continued['kind'])
@@ -1054,6 +1052,49 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
             capture_output=True, text=True, check=True).stdout.strip())
         self.assertEqual(accepted, fixture.result('alpha')[0],
                          'Restack alone must not silently replace reviewed Result')
+        self.assertFalse(any(step.get('kind') == 'execute'
+                             and step.get('node', {}).get('node') == 'beta'
+                             for step in fixture.session.checkpoint(100)))
+        submission = fixture.session.submission(
+            second, {'value': 'Fresh verified alpha after upstream restack'},
+            'verified-upstream-restack-alpha')
+        submission.update(workspace_checks=[[sys.executable, '-B', 'behavior_test.py']],
+                          verification_expectation='passed')
+        response = fixture.session.call(100, submission)
+        self.assertIsNotNone(response.get('submitted'))
+        corrected = fixture.result('alpha')[0]
+        self.assertNotEqual(accepted, corrected)
+        corrected_proof = fixture.read_blob(
+            fixture.read_blob(fixture.produced('alpha'))['provenance']['source'])
+        self.assertEqual(0, corrected_proof['commands'][0]['exit_code'])
+        self.assertEqual(advanced, corrected_proof['checkpoint']['base_commit'])
+        self.assertEqual(continued['result_commit'],
+                         corrected_proof['checkpoint']['result_commit'])
+        corrected_ref = (f"refs/heads/zzzops/attempts/100/alpha/"
+                         f"{second['lease']['attempt']}")
+        self.assertEqual(corrected_ref, corrected_proof['retained_ref'])
+        self.assertEqual(continued['result_commit'], fixture.session.git(
+            'ls-remote', 'origin', corrected_ref).split()[0])
+        self.assertFalse(any(step.get('kind') == 'execute'
+                             and step.get('node', {}).get('node') == 'beta'
+                             for step in fixture.session.checkpoint(100)))
+        fixture.review_candidate('alpha', 0)
+        for review_name in ('observe_alpha', 'accept_alpha'):
+            review_inputs = fixture.result(review_name)[1]['inputs']
+            self.assertTrue(any(row.get('name') == 'subject'
+                                and row.get('source') == fixture.produced('alpha')
+                                for row in review_inputs),
+                            'Fresh review must bind corrected alpha output')
+        self.assertTrue(any(step.get('kind') == 'execute'
+                            and step.get('node', {}).get('node') == 'beta'
+                            for step in fixture.session.checkpoint(100)))
+        self.assertEqual([100], sorted(fixture.provider.issues))
+        self.assertEqual(source_commit, fixture.session.git(
+            'ls-remote', 'origin', source_ref).split()[0])
+        self.assertEqual(accepted_record, fixture.read_blob(accepted))
+        self.assertEqual(original_proof, fixture.read_blob(
+            fixture.read_blob(accepted_record['content']['outputs']['value'])[
+                'provenance']['source']))
 
     def test_reviewed_upstream_dev_advance_reacquires_owned_conflict(self):
         self.upstream_reacquisition_case()
