@@ -1479,8 +1479,8 @@ def _derive_task_steps(graph, payload, context):
             else:
                 if len(selected) != 1: raise ValueError('Required singular artifact is missing')
                 path = binding['path']
-        if (not value_matches(binding['type'], value)
-                and ref.get('hash') not in context.get('cutover_outputs', set())):
+        # Retaining a producer at cutover never waives a current consumer's gate.
+        if not value_matches(binding['type'], value):
             raise ValueError('Selected input violates its aggregate type contract')
         return ref, value, path, selected
     def expand(key):
