@@ -257,11 +257,10 @@ class AcceptedTestRecoveryTests(unittest.TestCase):
         c.session.finish(c.session.acquire("retain_test_design_findings"), {"value": {
             "items": {"accepted_test_conditional_iam": finding}, "rationale": "Retain exact defect"}})
         self.assertNotIn("implement", c.names())
-        c.session.finish(c.session.acquire("resolve_test_design_finding", item="accepted_test_conditional_iam",
-                                           actor="fresh-independent-resolver"), {"value": {
-            "finding": finding, "subjects": [c.produced("test_design")],
-            "reviewer_result": c.result("review_test_design")[0], "decision": "resolved",
-            "rationale": "Fresh review covers the exact corrected accepted test"}})
+        c.resolve_exact_batch({'accepted_test_conditional_iam': finding}, c.produced('test_design'),
+                              c.result('review_test_design')[0],
+                              'Fresh review covers the exact corrected accepted test',
+                              actor='fresh-independent-resolver')
         self.assertIn("implement", c.names())
         for ref in history.values():
             c.read_blob(ref)

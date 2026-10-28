@@ -223,6 +223,24 @@ class DagFixture(unittest.TestCase):
     def names(self):
         return {step["node"]["node"] for step in self.session.ready()}
 
+    def resolve_exact_batch(self, findings, subject, reviewer_result, rationale, *, actor=None, required_reviews=()):
+        batches = [step for step in self.session.ready()
+                   if step['node']['node'].startswith('gc_resolve_batch_')]
+        self.assertEqual(1, len(batches), 'Exactly one batch must cover the admitted findings')
+        step = batches[0]
+        work = self.session.acquire(step['node']['node'], item=step['node']['item'], actor=actor)
+        binding = next(row for row in work['input_envelope']['inputs'] if row['name'] == 'batch')
+        manifest = z._phase_evidence.selected_path(self.read_blob(binding['source'])['content'], binding['path'])
+        self.assertEqual(findings, {row['id']: row['finding'] for row in manifest['findings'].values()})
+        self.assertEqual(subject, manifest['subject'])
+        for row in manifest['findings'].values():
+            for required in (reviewer_result, *required_reviews):
+                self.assertIn(required, row['reviews'])
+        return self.session.finish(work, {'value': {'entries': {key: {
+            'finding': row['finding'], 'subjects': [subject],
+            'reviewer_result': reviewer_result, 'decision': 'resolved', 'rationale': rationale}
+            for key, row in manifest['findings'].items()}}})
+
     def names_after_confirmed_normalization(self):
         """A fixed-policy checkpoint never writes graph normalization history."""
         def receipts():
@@ -2795,8 +2813,12 @@ class WorkspaceAuthorityPublicTests(DagFixture):
                 self.session.finish(self.session.acquire("accept_root_beta"),
                                     {"value": "Root accepts exact correction " + str(iteration)})
                 if iteration == 2:
-                    self.assertNotIn("gamma", self.names(), "Retained distinct findings still block the join")
-                    self.resolve_workspace_pair(0, self.retained_correction_admissions[0])
+                    self.assertTrue(all(
+                        old['finding'] != new['finding']
+                        for old in self.retained_correction_admissions[0].values()
+                        for new in admissions.values()), 'The second round admits distinct findings')
+                    self.assertIn("gamma", self.names(),
+                                  "Exact findings resolved in round one stay closed after the new candidate")
                 self.assertNotEqual(prior_root, self.result("accept_root_beta")[0])
                 self.assertIn("gamma", self.names())
                 self.session.git("add", "source.py", "behavior_test.py")
@@ -5706,13 +5728,9 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
             "items": {"data-residency-region": finding_ref},
             "rationale": "Retain the configured-domain correction",
         }})
-        resolver = self.session.acquire("resolve_spec_review_finding",
-                                        item="data-residency-region")
-        self.session.finish(resolver, {"value": {
-            "finding": finding_ref, "subjects": [self.produced("spec")],
-            "reviewer_result": self.result("spec_review", item="data_residency")[0],
-            "decision": "resolved", "rationale": "Fresh configured-domain review approved",
-        }})
+        self.resolve_exact_batch({'data-residency-region': finding_ref}, self.produced('spec'),
+                                 self.result('spec_review', item='data_residency')[0],
+                                 'Fresh configured-domain review approved')
         self.assertIn("approve_spec", self.names())
 
 
