@@ -2309,6 +2309,11 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.acquire_workspace("alpha")
 
     def test_workspace_authorization_preserves_its_exact_policy_input_across_settings_changes(self):
+        from test_policy_ci_transition import PolicyCiTransitionTests
+        self.git = self.session.git
+        self.commit_policy = PolicyCiTransitionTests.commit_policy.__get__(self)
+        self.install(self.workspace_graph())
+        PolicyCiTransitionTests.reviewed_policy(self, "disabled", initial=True)
         self.setup_workspace(defer_authorization=True)
         review = self.session.acquire("inspect_charter", actor="allocation-reviewer")
         policy = next(row["source"]["hash"] for row in review["lease"]["acquisition"]["inputs"]
@@ -2320,6 +2325,10 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         parallelism = z._workflow_section(
             self.session.project, "autonomy_approval_parallelism")["configuration"]
         parallelism["max_workers"] += 1
+        autonomy = z._workflow_section(self.session.project, "autonomy_approval_parallelism")
+        autonomy["default_disposition"] = "changed"
+        autonomy.pop("default_provenance", None)
+        PolicyCiTransitionTests.reviewed_policy(self, "disabled")
 
         self.acquire_workspace("alpha")
 
@@ -4538,8 +4547,12 @@ class GenericStoragePublicTests(DagFixture):
                 self.assertEqual(artifact, self.session.read(100, reference))
 
     def test_unfavorable_output_delta_is_independent_full_record(self):
-        first, _artifact, _before = self.versioned_output("a" * 20000)
-        changed, artifact, _before = self.versioned_output("z" * 20000)
+        original = "".join(hashlib.sha256(("first-%d" % i).encode()).hexdigest() for i in range(16))
+        divergent = list(original)
+        for index in range(0, len(divergent), 2):
+            divergent[index] = "X" if divergent[index] != "X" else "Y"
+        first, _artifact, _before = self.versioned_output(original)
+        changed, artifact, _before = self.versioned_output("".join(divergent))
         self.assertEqual("full", self.records(changed)[0][2]["kind"])
         self.remove_output_record(first)
         self.assertEqual(artifact, self.session.read(100, changed))
