@@ -29,9 +29,8 @@ Policy enables [release planning](RELEASES.md).
 
 ## Pull-request stacks
 
-`stack_prepare` authenticates pages of at most 50 PRs and seals topology before effects.
-`stack_status` pages progress; `stack_advance` performs one authorized transition.
-Replay uncertainty unchanged. See [stack integration](STACK_INTEGRATION.md).
+For `stack_prepare`, `stack_status`, `stack_advance`, exact-head gates and recovery,
+follow [stack integration](STACK_INTEGRATION.md).
 
 For policy-DAG transitions, read [Git workspace cutover](GIT_WORKSPACES.md#reviewed-policy-dag-cutover).
 
