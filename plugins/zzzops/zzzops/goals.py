@@ -642,7 +642,19 @@ def github_archived_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def normalize_deferred_goal_create(request: Any) -> Any:
+    """Fill administrative capture defaults without replacing explicit state."""
+    value = copy.deepcopy(request)
+    if isinstance(value, dict) and isinstance(value.get("goal"), dict):
+        goal = value["goal"]
+        for key, default in (("revision", 1), ("claim", None), ("implementation", None)):
+            goal.setdefault(key, default)
+    return value
+
+
 def validate_goal_create(request: Any, *, allow_deferred: bool = False) -> list[str]:
+    if allow_deferred:
+        request = normalize_deferred_goal_create(request)
     if not isinstance(request, dict):
         return ["goal create request must be an object"]
     errors = []
@@ -724,6 +736,8 @@ def load_goal_create(path: Path) -> dict[str, Any]:
 
 
 def apply_goal_create(adapter: Any, repository: str, request: dict[str, Any], *, allow_deferred: bool = False) -> dict[str, Any]:
+    if allow_deferred:
+        request = normalize_deferred_goal_create(request)
     errors = validate_goal_create(request, allow_deferred=allow_deferred)
     if allow_deferred:
         goal = request.get("goal")

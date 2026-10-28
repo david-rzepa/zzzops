@@ -214,6 +214,44 @@ class DirectV2CaptureTests(dag.DagFixture):
         self.assertIn("unknown_risk_categories", str(response))
         self.assertEqual(before, (self.provider.issues, self.provider.comments, self.provider.updates))
 
+    def test_minimal_deferred_capture_normalizes_only_administrative_defaults(self):
+        request = self.request()
+        for key in ("revision", "claim", "implementation"):
+            request["goal"].pop(key)
+        original = copy.deepcopy(request)
+        proposed = self.session.call(100, {"operation": "capture_propose", "request": request})
+        submission = copy.deepcopy(proposed["next_steps"][0]["submission"])
+        canonical = submission["request"]
+        self.assertEqual((1, None, None), tuple(canonical["goal"][key]
+                         for key in ("revision", "claim", "implementation")))
+        self.assertEqual(original, request)
+        self.assertEqual(request["goal"]["blockers"], canonical["goal"]["blockers"])
+        self.assertEqual(request["goal"]["evidence"], canonical["goal"]["evidence"])
+        submission["approved_by"] = "approved-user"
+        self.session.call(100, submission)
+        number = self.created_number()
+        retry = copy.deepcopy(submission)
+        retry["request"] = request
+        self.session.call(100, retry)
+        self.assertEqual(1, len(self.created_payloads))
+        envelope = self.assert_first_managed_write_is_v2(number)
+        payload = self.session.read(number, envelope["payload"])
+        self.assertEqual(request["body"], self.session.read(number, payload["spec"])["content"])
+        context = self.session.read(number, payload["goal_context"])["content"]
+        self.assertEqual(request["goal"]["blockers"], context["blockers"])
+        self.assertFalse(any(step.get("kind") in {"migration", "migrate", "repair"}
+                             for step in self.session.checkpoint(number)))
+
+    def test_capture_defaults_never_replace_explicit_invalid_administration(self):
+        for field, value in (("revision", None), ("revision", 2),
+                             ("claim", {"owner": "unexpected"}),
+                             ("implementation", {"branch": "unexpected"})):
+            with self.subTest(field=field, value=value):
+                request = self.request()
+                request["goal"][field] = value
+                self.session.call(100, {"operation": "capture_propose", "request": request}, expected=2)
+        self.assertEqual([], self.created_payloads)
+
     def test_public_capture_first_managed_state_is_current_and_freshly_executable(self):
         request, submission = self.approved_submission()
         self.session.call(100, submission)
