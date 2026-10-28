@@ -11014,7 +11014,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             'action': 'Observe actual worker liveness; while running renew this same ownership through the returned public contract. Recovery requires observed stopped evidence.',
             'renewal': {'operation': 'renew', 'node': lease['node'], 'lease': lease['token'], 'actor': lease['worker'], 'request_id': '<unique renewal request>'}}]}
     if operation == 'capture_propose':
-        request = payload['request']
+        request = api._goals.normalize_deferred_goal_create(payload['request'])
         errors = api.validate_goal_create(request, allow_deferred=True)
         if errors:
             raise ValueError('; '.join(errors))
@@ -11022,6 +11022,7 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             raise ValueError('Goal design must contain explicit acceptance bullets covering its required behavior')
         return {'next_steps': [{'kind': 'human_approval', 'assignment': 'root', 'action': 'Review the captured goal design with the user, then approve these exact contents.', 'proposal': request, 'proposal_hash': digest(request), 'submission': {'operation': 'capture', 'request': request, 'proposal_hash': digest(request), 'approved_by': '<user>'}}]}
     if operation == 'capture':
+        payload = {**payload, 'request': api._goals.normalize_deferred_goal_create(payload.get('request'))}
         capture_errors = api.validate_goal_create(payload.get('request'), allow_deferred=True)
         if capture_errors:
             raise ValueError('; '.join(capture_errors))
