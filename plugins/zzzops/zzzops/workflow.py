@@ -4854,6 +4854,269 @@ class Workflow:
             git_phase_state.verify_attempt_ref(self.repo, remote='origin',
                 ref=proof['retained_ref'], commit=result_commit)
             return proof
+        def captured_transition(bindings, base, key):
+            bound = [item for item in bindings if item['name'] == '__workspace']
+            if len(bound) != 1:
+                return None
+            value = content(bound[0]['source'])
+            if value.get('type') != 'workspace_snapshot':
+                raise ValueError('Git workspace input snapshot identity changed')
+            transition = value.get('content', {}).get('upstream_transition')
+            if transition is None:
+                return None
+            if (not isinstance(transition, dict) or
+                    value['content'].get('git_commit') != base or
+                    transition.get('selected_oid') != base):
+                raise ValueError('Git upstream transition differs from captured acquisition')
+            source_ref = transition.get('source_result')
+            ev.validate_ref(source_ref)
+            if self.node_ref_goal(source_ref, key[0]) != key[0]:
+                raise ValueError('Git upstream transition source belongs to another goal')
+            source_artifact = content(source_ref)
+            source_result = source_artifact.get('content', {})
+            if (source_artifact.get('type') != 'result' or
+                    ev.task_key(source_result.get('node', {})) != key):
+                raise ValueError('Git upstream transition source Result differs')
+            source_proof = checked_git_proof(states[key], authority(states[key]), source_result)
+            if (source_proof['checkpoint']['base_commit'] != transition.get('old_base') or
+                    source_proof['checkpoint']['result_commit'] != transition.get('source_commit') or
+                    source_proof['retained_ref'] != transition.get('source_ref')):
+                raise ValueError('Git upstream transition source proof changed')
+            index = self.artifact_index(key[0])
+            for required_ref, required_node in [(source_ref, source_result['node'])] + [
+                    (ref, None) for ref in transition.get('reviews', [])]:
+                ev.validate_ref(required_ref)
+                required_artifact = content(required_ref)
+                required_result = required_artifact.get('content', {})
+                if (required_artifact.get('type') != 'result' or
+                        (required_node is not None and required_result.get('node') != required_node)):
+                    raise ValueError('Git upstream transition retained review/source changed')
+                receipts = [edge for row in snapshots[key[0]]['payload']['operational']['receipts']
+                            if (edge := self.node_receipt_edge(key[0], index, row))
+                            and edge['response'].get('submitted') ==
+                            {'goal': key[0], 'node': required_result['node'], 'result': required_ref}]
+                if len(receipts) != 1:
+                    raise ValueError('Git upstream transition source/review receipt changed')
+            return transition
+        def observed_transition(transition):
+            ref = transition.get('ref')
+            expected = transition.get('selected_oid')
+            if (not isinstance(ref, str) or not re.fullmatch(r'refs/heads/[A-Za-z0-9_./-]+', ref)
+                    or not isinstance(expected, str) or not re.fullmatch(r'[0-9a-f]{40}', expected)):
+                raise ValueError('Git upstream transition has invalid reviewed ref or OID')
+            observed = subprocess.run(['git', 'ls-remote', '--refs', 'origin', ref],
+                cwd=self.repo, capture_output=True, text=True, check=True, timeout=30)
+            if observed.stdout.splitlines() != [f'{expected}\t{ref}']:
+                raise ValueError('Exact reviewed upstream ref moved after acquisition')
+            return transition
+        def proposed_transition(key, result_ref, result, proof):
+            old_base = proof['checkpoint']['base_commit']
+            if head == old_base:
+                return None
+            index = self.artifact_index(key[0])
+            committed = []
+            for receipt in snapshots[key[0]]['payload']['operational']['receipts']:
+                edge = self.node_receipt_edge(key[0], index, receipt)
+                if (edge and edge['response'].get('submitted') ==
+                        {'goal': key[0], 'node': result['node'], 'result': result_ref}):
+                    committed.append(edge)
+            if len(committed) != 1:
+                raise ValueError('Git upstream advance lacks one committed source submission receipt')
+            planning = policy_section(self.project, 'git_review_release')['configuration'].get('release_planning', {})
+            if not isinstance(planning, dict):
+                raise ValueError('Reviewed Git release base authority is unavailable')
+            branches = []
+            if planning.get('enabled'):
+                plan = self.api.GitHubReleasePlanAdapter(self.repo, self.repository).read(self.repository)
+                if plan is None:
+                    raise ValueError('Reviewed Git release plan is unavailable')
+                lane = self.api._releases.target_release(plan, key[0])
+                prefix = planning.get('release_branch_prefix')
+                if isinstance(prefix, str) and prefix and type(lane) is int and lane > 0:
+                    branches.append(prefix + str(lane))
+            branches.append(planning.get('integration_branch'))
+            branches = [branch for branch in branches if isinstance(branch, str)
+                        and re.fullmatch(r'[A-Za-z0-9_./-]+', branch)]
+            if not branches:
+                raise ValueError('Reviewed Git integration/release base ref is unavailable')
+            if snapshots[key[0]]['payload']['operational']['leases']:
+                raise ValueError('Git upstream advance cannot reacquire while an owner lease is live')
+            if subprocess.run(['git', 'status', '--porcelain=v1', '-z', '--untracked-files=all',
+                               '--', '.', ':(exclude).zzzops'], cwd=self.repo,
+                              capture_output=True, check=True).stdout:
+                raise ValueError('Git upstream advance requires a clean owning checkout')
+            if subprocess.run(['git', 'merge-base', '--is-ancestor', old_base, head],
+                              cwd=self.repo, capture_output=True).returncode:
+                raise ValueError('Git upstream advance is not monotonic from accepted base')
+            approved = False
+            approved_reviews = []
+            subjects = set(ref['hash'] for ref in result['outputs'].values())
+            for review_ref, review in all_results:
+                review_key = ev.task_key(review['node'])
+                review_state = states.get(review_key)
+                if (review_state is None or review['executor'] == result['executor']
+                        or review_key not in projection['current']
+                        or projection['current'][review_key][0] != review_ref
+                        or not any(selector.get('goal') in ('#this', key[0])
+                                   and selector.get('node') == key[1]
+                                   for selector in review_state['contract'].get('independent_of', []))
+                        or not any(item['source']['hash'] in subjects for item in review['inputs'])):
+                    continue
+                review_receipts = [edge for row in snapshots[key[0]]['payload']['operational']['receipts']
+                                   if (edge := self.node_receipt_edge(key[0], index, row))
+                                   and edge['response'].get('submitted') ==
+                                   {'goal': key[0], 'node': review['node'], 'result': review_ref}]
+                if len(review_receipts) != 1:
+                    raise ValueError('Git upstream advance lacks committed independent acceptance receipt')
+                decisions = [content(ref).get('content', {}) for ref in review['outputs'].values()
+                             if content(ref).get('type') == 'review_decision']
+                if not decisions or all(value.get('decision') == 'approved' for value in decisions):
+                    approved = True
+                    approved_reviews.append(review_ref)
+            if not approved:
+                raise ValueError('Git upstream advance lacks independent acceptance of its source')
+            for branch in branches:
+                local = subprocess.run(['git', 'rev-parse', '--verify', 'refs/heads/' + branch],
+                    cwd=self.repo, capture_output=True, text=True)
+                if local.returncode or local.stdout.strip() != head:
+                    continue
+                transition = {'source_result': result_ref,
+                              'source_commit': proof['checkpoint']['result_commit'],
+                              'source_ref': proof['retained_ref'], 'old_base': old_base,
+                              'reviews': approved_reviews,
+                              'ref': 'refs/heads/' + branch, 'selected_oid': head}
+                return observed_transition(transition)
+            raise ValueError('Git upstream head is not an exact advertised reviewed base ref')
+        # A sibling caller is only a command surface.  Existing Git goals
+        # retain the clean base authenticated by their accepted attempt; a
+        # fresh goal has no such record and keeps the caller's initial HEAD.
+        recorded_bases = set()
+        for current_key, (_reference, result) in projection['current'].items():
+            current_state = work.get(current_key)
+            if (current_state is None or
+                    'repository_git_workspace' not in current_state['contract']['executor']['resources']):
+                continue
+            proof = checked_git_proof(current_state, authority(current_state), result)
+            recorded_bases.add(proof['checkpoint']['base_commit'])
+        if recorded_bases and head not in recorded_bases:
+            owner = managed_worktrees._primary(self.repo)
+            planning = policy_section(self.project, 'git_review_release')['configuration'].get('release_planning', {})
+            caller_branch = subprocess.run(['git', 'symbolic-ref', '-q', '--short', 'HEAD'],
+                cwd=self.repo, capture_output=True, text=True).stdout.strip()
+            allowed = (isinstance(planning, dict) and
+                       (caller_branch == planning.get('integration_branch') or
+                        bool(planning.get('enabled') and isinstance(planning.get('release_branch_prefix'), str)
+                             and caller_branch.startswith(planning['release_branch_prefix']))))
+            advertised = False
+            if allowed:
+                ref = 'refs/heads/' + caller_branch
+                remote = subprocess.run(['git', 'ls-remote', '--refs', 'origin', ref],
+                    cwd=self.repo, capture_output=True, text=True, timeout=30)
+                advertised = remote.returncode == 0 and remote.stdout.splitlines() == [f'{head}\t{ref}']
+            if not advertised:
+                managed_root = owner / '.zzzops' / 'worktrees'
+                managed_identities = {
+                    (*ev.task_key(lease['node']), lease['attempt'])
+                    for goal_snapshot in snapshots.values()
+                    for lease in goal_snapshot['payload']['operational']['leases']
+                }
+                managed_identities.update(
+                    (*ev.task_key(result['node']), result['attempt'])
+                    for _reference, result in all_results)
+                historical_attempts = {}
+                def committed_terminal_attempt(goal, node, attempt):
+                    marker = (goal, node, attempt)
+                    if marker in historical_attempts:
+                        return historical_attempts[marker]
+                    goal_snapshot = snapshots.get(goal)
+                    if goal_snapshot is None:
+                        historical_attempts[marker] = False
+                        return False
+                    index = self.artifact_index(goal)
+                    edges = [edge for receipt in goal_snapshot['payload']['operational']['receipts']
+                             if (edge := self.node_receipt_edge(goal, index, receipt)) is not None]
+                    starts = []
+                    for edge in edges:
+                        for step in edge['response'].get('next_steps', []):
+                            lease = step.get('lease') if step.get('kind') == 'perform' and step.get('bind') else None
+                            if (not isinstance(lease, dict) or lease.get('attempt') != attempt
+                                    or lease.get('node', {}).get('goal') != goal
+                                    or lease['node'].get('node') != node
+                                    or not edge['context'].get('acquisition')
+                                    or edge['context'].get('ownership', {}).get('token') != lease.get('token')
+                                    or not any(name in lease.get('acquisition', {})
+                                               for name in ('read_commit', 'git_commit'))):
+                                continue
+                            starts.append((edge, lease))
+                    def reaches(start, target):
+                        pending, seen = [start], set()
+                        while pending:
+                            current = pending.pop()
+                            if current == target:
+                                return True
+                            identity = digest(current)
+                            if identity in seen:
+                                continue
+                            seen.add(identity)
+                            pending.extend(edge['target'] for edge in edges
+                                           if edge['source'] == current)
+                        return False
+                    valid = []
+                    for start, lease in starts:
+                        token = lease['token']
+                        for terminal in edges:
+                            if not reaches(start['target'], terminal['source']):
+                                continue
+                            step = next(iter(terminal['response'].get('next_steps', [])), {})
+                            if (step.get('kind') not in {'released', 'checkpoint'}
+                                    or step.get('goal') != goal
+                                    or step.get('kind') == 'released'
+                                    and (step.get('lease') != token or step.get('node') != lease['node'])):
+                                continue
+                            source_payload = index.resolve(terminal['source']['payload']['hash'])[0]
+                            target_payload = index.resolve(terminal['target']['payload']['hash'])[0]
+                            before = [row for row in source_payload['operational']['leases']
+                                      if row.get('token') == token and row.get('attempt') == attempt
+                                      and row.get('node') == lease['node']]
+                            after = [row for row in target_payload['operational']['leases']
+                                     if row.get('token') == token]
+                            if len(before) == 1 and not after:
+                                valid.append((start, terminal))
+                    historical_attempts[marker] = len(starts) == 1 and len(valid) == 1
+                    return historical_attempts[marker]
+                def authenticated_managed_attempt(row, path):
+                    if not path.is_relative_to(managed_root):
+                        return False
+                    parts = path.relative_to(managed_root).parts
+                    if len(parts) != 3:
+                        return False
+                    goal_text, node, attempt = parts
+                    if (not goal_text.isdecimal() or not re.fullmatch(r'[0-9a-f]{32}', attempt)
+                            or not re.fullmatch(r'[A-Za-z0-9_-]+', node)):
+                        return False
+                    goal = int(goal_text)
+                    expected_path, branch = managed_worktrees._managed(owner, goal, node, attempt)
+                    known = [identity for identity in managed_identities
+                             if identity[0] == goal and identity[1] == node
+                             and identity[4] == attempt]
+                    return (path == expected_path and row.get('branch') == 'refs/heads/' + branch
+                            and (len(known) == 1 or not known
+                                 and committed_terminal_attempt(goal, node, attempt)))
+                candidates = []
+                for row in managed_worktrees._worktrees(self.repo):
+                    path = Path(row['worktree']).resolve()
+                    if authenticated_managed_attempt(row, path) or not path.is_dir():
+                        continue
+                    commit = row.get('HEAD')
+                    if commit in recorded_bases:
+                        candidates.append((path, commit))
+                if len(candidates) > 1:
+                    raise ValueError('Authenticated Git goal base has multiple registered checkout owners')
+                if candidates:
+                    owner_path, owner_commit = candidates[0]
+                    if not managed_worktrees._clean(owner_path):
+                        raise ValueError('Authenticated Git goal owner checkout is dirty')
+                    head = owner_commit
         git_edges = {}; policy_base_bridges = {}
         def connected_git_head(start, goal):
             start_tree = subprocess.run(['git', 'rev-parse', start + '^{tree}'], cwd=self.repo,
@@ -5064,16 +5327,35 @@ class Workflow:
                         raise ValueError('Git workspace acquisition requires a clean committed worktree')
                     lease = next((l for l in snapshots[key[0]]['payload']['operational']['leases'] if ev.task_key(l['node']) == key), None)
                     base = lease['acquisition'].get('git_commit') if lease else predecessor_commit(key)
+                    transition = None
                     if lease:
                         base = checked_git_lease(key, state, grant, lease)
+                        transition = captured_transition(lease['acquisition']['inputs'], base, key)
                     elif key in projection['current']:
-                        _, result = projection['current'][key]
+                        result_ref, result = projection['current'][key]
                         proof = checked_git_proof(state, grant, result)
                         base = proof['checkpoint']['base_commit']
-                        if not connected_git_head(proof['checkpoint']['result_commit'], key[0]):
+                        transition = captured_transition(result['inputs'], base, key)
+                        if (head != base and
+                                subprocess.run(['git', 'merge-base', '--is-ancestor', base, head],
+                                               cwd=self.repo, capture_output=True).returncode == 0):
+                            # A prior transition is provenance for this Result,
+                            # not a permanent pin on every later attempt.  A
+                            # second base advance needs a new authenticated
+                            # source Result, reviews and remote observation.
+                            if transition is None or transition['selected_oid'] != head:
+                                transition = proposed_transition(key, result_ref, result, proof)
+                        if transition is not None:
+                            base = transition['selected_oid']
+                        elif not connected_git_head(proof['checkpoint']['result_commit'], key[0]):
                             raise ValueError('Git phase result is disconnected from the current managed head')
+                    else:
+                        transition = captured_transition(state['inputs'], base, key)
+                    if transition is not None:
+                        observed_transition(transition)
                     binding = remember({'type': 'workspace_snapshot', 'content': {
                         'git_commit': base, **{name: grant[name] for name in ('allocation', 'authorization', 'approval')},
+                        **({'upstream_transition': transition} if transition is not None else {}),
                         **({'migration': migration} if migration is not None else {})}, 'producer': None,
                         'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
                     contexts[key] = {'binding': binding, 'acquisition': {'git_commit': base},
@@ -5269,7 +5551,35 @@ class Workflow:
             # Keep historical map-based acquisitions readable until migrated.
             if actual == committed and not (lease and 'files' in lease['acquisition']) and not (previous_content and 'files' in previous_content):
                 pinned = lease['acquisition'].get('read_commit') if lease else None
-                if lease and not same_tree(pinned):
+                # A review of a Git Result reads the authenticated subject,
+                # including when its caller is on a different clean checkout.
+                # Only current declared inputs can select that subject.
+                subjects = []
+                for declared in state['inputs']:
+                    producer = current_outputs.get(declared['source']['hash'])
+                    if producer is None:
+                        continue
+                    producer_key, producer_result = producer
+                    producer_state = work.get(producer_key)
+                    if (producer_state is None or producer_key not in projection['current']
+                            or 'repository_git_workspace' not in producer_state['contract']['executor']['resources']):
+                        continue
+                    proof = checked_git_proof(producer_state, authority(producer_state), producer_result)
+                    subjects.append(proof['checkpoint']['result_commit'])
+                subjects = sorted(set(subjects))
+                if subjects:
+                    tips = [candidate for candidate in subjects if all(
+                        subprocess.run(['git', 'merge-base', '--is-ancestor', other, candidate],
+                                       cwd=self.repo, capture_output=True).returncode == 0
+                        for other in subjects)]
+                    if len(tips) != 1:
+                        contexts[key] = {'error': 'Read-only Git subjects have no unique reviewed commit'}
+                        continue
+                    subject_commit = tips[0]
+                else:
+                    subject_commit = None
+                if lease and ((subject_commit is not None and pinned != subject_commit)
+                              or (subject_commit is None and not same_tree(pinned))):
                     contexts[key] = {'error': 'Read-only task Git commit changed after acquisition'}
                     continue
                 if lease and lease.get('worker') is not None:
@@ -5279,7 +5589,8 @@ class Workflow:
                         contexts[key] = {'error': 'Read-only managed worktree changed; replay the exact start or inspect its local files'}
                         continue
                 historical = previous_content.get('git_commit') if previous_content else None
-                baseline_commit = pinned if lease else historical if same_tree(historical) else head
+                baseline_commit = (pinned if lease else subject_commit if subject_commit is not None
+                                   else historical if same_tree(historical) else head)
                 binding = remember({'type': 'workspace_snapshot', 'content': {'git_commit': baseline_commit}, 'producer': None,
                                     'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
                 contexts[key] = {'binding': binding, 'acquisition': {'read_commit': baseline_commit}, 'readonly': True}
@@ -5447,17 +5758,25 @@ class Workflow:
             observed = managed_worktrees.inspect_attempt_worktree(
                 self.repo, goal=state['node']['goal'], node=state['node']['node'],
                 attempt=lease['attempt'])
-            if observed['status'] != 'clean':
-                raise ValueError('Git phase submission requires its exact clean managed attempt worktree')
+            if observed['status'] not in {'clean', 'dirty'}:
+                raise ValueError('Git phase submission requires its exact managed attempt worktree')
             worktree = Path(observed['path'])
             head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=worktree,
                                   capture_output=True, text=True, check=True).stdout.strip()
-            checkpoint = git_phase_state.validate_checkpoint(worktree, base_commit=base,
-                result_commit=head, owned_paths=workspace['entry']['owned'])
+            frozen = git_phase_state.load_finish_intent(worktree,
+                request_identity=digest(request))
+            if frozen is None:
+                checkpoint = git_phase_state.validate_checkpoint(worktree, base_commit=base,
+                    result_commit=head, owned_paths=workspace['entry']['owned'])
+                before = {'git_commit': head, 'tree': checkpoint['result_tree']}
+            else:
+                if frozen['base_commit'] != base:
+                    raise ValueError('Git finish intent base differs from acquisition')
+                before = {'git_commit': base, 'tree': frozen['tree']}
             pending = snapshot.get('pending')
             if pending and pending.get('proof'):
                 ref = pending['proof']; proof = self.artifact_index(snapshot['number']).resolve(ref['hash'])[0]
-                if (proof.get('kind') != 'git_phase_proof' or proof.get('checkpoint') != checkpoint
+                if (proof.get('kind') != 'git_phase_proof' or (frozen is None and proof.get('checkpoint') != checkpoint)
                         or proof.get('acquisition_hash') != digest(lease['acquisition'])
                         or proof.get('actor') != lease['worker'] or proof.get('lease') != lease['token']):
                     raise ValueError('Pending Git phase proof/acquisition/output drift')
@@ -5471,11 +5790,29 @@ class Workflow:
             commands = request.get('workspace_checks', [])
             if not isinstance(commands, list) or any(not isinstance(c, list) or not c or any(not isinstance(a, str) or not a for a in c) for c in commands):
                 raise ValueError('Workspace checks require nonempty argument arrays')
-            if checkpoint['change_count'] and not commands:
+            if (frozen is not None or checkpoint['change_count']) and not commands:
                 raise ValueError('Changed Git outputs require observed verification checks')
             results = self.node_verification_commands(snapshot, lease, request, commands,
-                {'git_commit': head, 'tree': checkpoint['result_tree']}, reuse_only=reuse_only,
+                before, reuse_only=reuse_only,
                 working_directory=worktree)
+            failed = (len(results) != len(commands)
+                      or any(row.get('timed_out') or row.get('execution_error') for row in results)
+                      or (request.get('verification_expectation') == 'passed'
+                          and any(row['exit_code'] != 0 for row in results)))
+            if failed:
+                proof = {'kind': 'git_phase_verification_failed', 'node': state['node'],
+                         'acquisition': lease['acquisition'], 'acquisition_hash': digest(lease['acquisition']),
+                         'input_hash': lease['fingerprint'], 'actor': lease['worker'],
+                         'lease': lease['token'], 'prospective_tree': before['tree'],
+                         'commands': results, 'passed': False}
+                identity = digest(proof); snapshot['artifacts'][identity] = proof
+                snapshot['workspace_proof'] = self.node_ref(identity, snapshot['number'])
+                return snapshot['workspace_proof']
+            if frozen is not None:
+                head = git_phase_state.finish_owned_tree(worktree, intent=frozen,
+                    owned_paths=workspace['entry']['owned'])
+                checkpoint = git_phase_state.validate_checkpoint(worktree, base_commit=base,
+                    result_commit=head, owned_paths=workspace['entry']['owned'])
             if git_phase_state.validate_checkpoint(worktree, base_commit=base,
                     result_commit=head, owned_paths=workspace['entry']['owned']) != checkpoint:
                 raise ValueError('Workspace checks changed the Git result commit')
@@ -5611,15 +5948,36 @@ class Workflow:
             observed = managed_worktrees.inspect_attempt_worktree(
                 self.repo, goal=state['node']['goal'], node=state['node']['node'],
                 attempt=lease['attempt'])
-            if observed['status'] != 'clean':
-                raise ValueError('Git phase verification requires its exact clean managed attempt worktree')
+            if observed['status'] not in {'clean', 'dirty'}:
+                raise ValueError('Git phase verification requires its exact managed attempt worktree')
             worktree = Path(observed['path'])
             head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=worktree,
                 capture_output=True, text=True, check=True).stdout.strip()
-            checkpoint = git_phase_state.validate_checkpoint(worktree,
-                base_commit=lease['acquisition']['git_commit'], result_commit=head,
-                owned_paths=workspace['entry']['owned'])
-            before = {'git_commit': head, 'tree': checkpoint['result_tree']}
+            base = lease['acquisition']['git_commit']
+            frozen = git_phase_state.load_finish_intent(worktree,
+                request_identity=digest(request))
+            if frozen is not None:
+                if frozen.get('base_commit') != base:
+                    raise ValueError('Git finish intent base changed')
+                if head == base:
+                    projected = git_phase_state.prospective_owned_tree(worktree,
+                        base_commit=base, owned_paths=workspace['entry']['owned'])
+                    if projected['tree'] != frozen['tree']:
+                        raise ValueError('Git finish intent tree drifted')
+                elif head == git_phase_state.intent_commit(worktree, frozen):
+                    git_phase_state.verify_finished_worktree(worktree, head)
+                else:
+                    raise ValueError('Committed finish intent requires its exact managed commit')
+                before = {'git_commit': base, 'tree': frozen['tree']}
+            elif observed['status'] == 'dirty':
+                projected = git_phase_state.prospective_owned_tree(worktree,
+                    base_commit=base, owned_paths=workspace['entry']['owned'])
+                before = {'git_commit': base, 'tree': projected['tree']}
+            else:
+                checkpoint = git_phase_state.validate_checkpoint(worktree,
+                    base_commit=base, result_commit=head,
+                    owned_paths=workspace['entry']['owned'])
+                before = {'git_commit': head, 'tree': checkpoint['result_tree']}
         else:
             worktree = self.repo
             before = self.workspace_files()
@@ -5631,6 +5989,12 @@ class Workflow:
             'workspace_authority': digest(workspace), 'workspace': digest(before),
             'policy': digest(self.project['policy']),
         }
+        if workspace.get('git_workspace') and (frozen is not None or observed['status'] == 'dirty'):
+            message = git_phase_state.semantic_commit_message(
+                request.get('commit_message'), node=state['node']['node'])
+            git_phase_state.finish_intent(worktree,
+                request_identity=digest(request), identity=identity,
+                base_commit=base, tree=before['tree'], message=message)
         return {'identity': identity, 'snapshot': snapshot, 'state': state, 'lease': lease,
                 'commands': commands, 'before': before, 'working_directory': worktree,
                 'pending_proof': bool(snapshot.get('pending') and snapshot['pending'].get('proof'))}
@@ -9758,6 +10122,25 @@ class Workflow:
                     snapshot['artifacts'], workspace_target=key).get(key)
                 if isinstance(selected_workspace, dict) and 'error' in selected_workspace:
                     raise ValueError(selected_workspace['error'])
+                projected_workspace = snapshot['workspaces'].get(key)
+                if (selected_workspace is not None and selected_workspace.get('git_workspace') and
+                        (projected_workspace is None or
+                         selected_workspace.get('binding') != projected_workspace.get('binding') or
+                         selected_workspace.get('acquisition') != projected_workspace.get('acquisition') or
+                         not any(binding['name'] == '__workspace' and
+                                 binding['source'] == selected_workspace.get('binding')
+                                 for binding in state['inputs']))):
+                    raise ValueError('Selected Git workspace binding/acquisition changed after preview')
+                if selected_workspace and selected_workspace.get('git_workspace'):
+                    selected_content = snapshot['artifacts'][selected_workspace['binding']['hash']]['content']
+                    transition = selected_content.get('upstream_transition')
+                    if transition is not None:
+                        ref, oid = transition['ref'], transition['selected_oid']
+                        observed = subprocess.run(['git', 'ls-remote', '--refs', 'origin', ref],
+                            cwd=self.repo, capture_output=True, text=True, check=True, timeout=30)
+                        if (observed.stdout.splitlines() != [f'{oid}\t{ref}'] or
+                                selected_workspace['acquisition'].get('git_commit') != oid):
+                            raise ValueError('Selected Git upstream ref moved before durable acquisition')
                 if 'repository_workspace' in state['contract']['executor']['resources']:
                     if (not isinstance(selected_workspace, dict)
                             or 'files' not in selected_workspace
@@ -10020,7 +10403,7 @@ class Workflow:
                         lease['blocker'] = {'category': request['category'], 'reason': request['reason']}
                         response = {'next_steps': [{'kind': 'await_worker', 'goal': number, 'node': node, 'reason': request['reason'], 'lease': lease}]}
                     elif operation == 'submit':
-                        if set(request) - {'operation', 'node', 'lease', 'actor', 'request_id', 'outputs', 'workspace_checks', 'verification_expectation', 'verification_timeout_seconds'}: raise ValueError('Unknown submission fields; host acquisition cannot be replaced')
+                        if set(request) - {'operation', 'node', 'lease', 'actor', 'request_id', 'outputs', 'workspace_checks', 'verification_expectation', 'verification_timeout_seconds', 'commit_message'}: raise ValueError('Unknown submission fields; host acquisition cannot be replaced')
                         expectation = request.get('verification_expectation', 'observed')
                         if expectation not in {'passed', 'observed'}: raise ValueError('Verification expectation must be passed or observed')
                         if 'verification_expectation' in request and not request.get('workspace_checks'): raise ValueError('Explicit verification expectation requires exact workspace_checks')

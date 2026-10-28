@@ -6,6 +6,16 @@ lease, actor, goal revision, policy revision, and reviewed path allocation
 unchanged. Git identity proves repository content; it does not replace workflow
 authority, independent review, or provider evidence.
 
+For a writable managed attempt, edit only the allocated owned paths and submit
+the returned lease with `workspace_checks`. The host verifies the prospective
+owned tree, creates one semantic commit, and retains its exact remote attempt
+ref before publishing the Result. A clean, already committed attempt keeps its
+existing commit identity. An optional `commit_message` on `submit` must use
+`type(scope): outcome` with a Conventional Commit type; otherwise the host uses
+`feat(<node>): verified workspace outputs`. Retry the exact request after an
+uncertain response. An unexpected path, symlink, changed tree, or moved remote
+ref stops finish and preserves the local worktree for recovery.
+
 ## Reviewed policy-DAG cutover
 
 When a goal has accepted Results under a different reviewed policy graph,
