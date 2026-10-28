@@ -14,12 +14,16 @@ import os
 import re
 import subprocess
 import tempfile
+import time
+import uuid
 
 
 _COMMIT = re.compile(r'[0-9a-f]{40}\Z')
 _NODE = re.compile(r'[A-Za-z0-9_.-]+\Z')
 _ATTEMPT = re.compile(r'[0-9a-f]{32}\Z')
 _ORDINARY_MODES = {b'100644', b'100755'}
+_SEMANTIC_MESSAGE = re.compile(
+    r'(?:build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)\([A-Za-z0-9_.-]+\): [^\r\n]+\Z')
 
 
 def _git(repo: Path, *arguments: str) -> bytes:
@@ -42,6 +46,183 @@ def _owned_path(path: str) -> bool:
     parsed = PurePosixPath(path)
     return (not parsed.is_absolute() and parsed.as_posix() == path
             and all(part not in ('.', '..') for part in path.split('/')))
+
+
+def prospective_owned_tree(repo: Path, *, base_commit: str,
+                           owned_paths: list[str]) -> dict:
+    """Project ordinary local owned edits without touching the caller's index."""
+    repo = Path(repo).resolve()
+    _commit(repo, base_commit)
+    if (_git(repo, 'rev-parse', 'HEAD').decode().strip() != base_commit
+            or not isinstance(owned_paths, list) or not owned_paths
+            or len(set(owned_paths)) != len(owned_paths)
+            or any(not _owned_path(path) for path in owned_paths)):
+        raise ValueError('Scoped finish requires an exact base and reviewed paths')
+    status = _git(repo, 'status', '--porcelain=v1', '-z', '--untracked-files=all',
+                  '--', '.', ':(exclude).zzzops').split(b'\x00')
+    changed = set()
+    index = 0
+    while index < len(status):
+        row = status[index]
+        index += 1
+        if not row:
+            continue
+        if len(row) < 4 or row[2:3] != b' ':
+            raise ValueError('Scoped finish cannot parse Git status')
+        code = row[:2]
+        if b'U' in code or code in {b'AA', b'DD'} or b'R' in code or b'C' in code:
+            raise ValueError('Scoped finish requires resolved ordinary path changes')
+        paths = [row[3:]]
+        if b'R' in code or b'C' in code:
+            paths.append(status[index]); index += 1
+        for raw in paths:
+            try:
+                path = raw.decode('utf-8')
+            except UnicodeDecodeError as exc:
+                raise ValueError('Scoped finish requires UTF-8 paths') from exc
+            if not _owned_path(path) or path not in owned_paths:
+                raise ValueError('Scoped finish found a changed path outside reviewed ownership: ' + path)
+            target = repo / path
+            if target.is_symlink() or target.exists() and not target.is_file():
+                raise ValueError('Scoped finish requires ordinary files, never symlinks')
+            changed.add(path)
+    if not changed:
+        raise ValueError('Scoped finish has no owned changes')
+    with tempfile.TemporaryDirectory(prefix='zzzops-finish-index-') as directory:
+        environment = {**os.environ, 'GIT_INDEX_FILE': str(Path(directory) / 'index')}
+        pathspec = Path(directory) / 'paths'
+        pathspec.write_bytes(b'\x00'.join(path.encode() for path in sorted(changed)) + b'\x00')
+        def isolated(*arguments):
+            result = subprocess.run(['git', *arguments], cwd=repo, env=environment,
+                                    capture_output=True)
+            if result.returncode:
+                raise ValueError('Scoped finish could not project the owned tree')
+            return result.stdout
+        isolated('read-tree', base_commit)
+        isolated('add', '-A', '--pathspec-from-file=' + str(pathspec), '--pathspec-file-nul')
+        tree = isolated('write-tree').decode().strip()
+    if tree == _git(repo, 'rev-parse', base_commit + '^{tree}').decode().strip():
+        raise ValueError('Scoped finish has no resulting tree change')
+    return {'base_commit': base_commit, 'tree': tree}
+
+
+def semantic_commit_message(message: str | None, *, node: str) -> str:
+    if message is None:
+        message = f'feat({node}): verified workspace outputs'
+    if not isinstance(message, str) or not _SEMANTIC_MESSAGE.fullmatch(message):
+        raise ValueError('Git workspace commit_message requires type(scope): outcome')
+    return message
+
+
+def finish_intent(repo: Path, *, request_identity: str, identity: dict,
+                  base_commit: str, tree: str, message: str) -> dict:
+    """Durably freeze one verified tree and deterministic commit identity."""
+    repo = Path(repo).resolve()
+    if not re.fullmatch(r'sha256:[0-9a-f]{64}', request_identity):
+        raise ValueError('Finish intent requires an exact request identity')
+    common = Path(_git(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+                  .decode().strip()).resolve()
+    directory = common / 'zzzops' / 'finish'
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path = directory / (request_identity[7:] + '.json')
+    if path.exists():
+        frozen = json.loads(path.read_text(encoding='utf-8'))
+        if frozen.get('identity') != identity or frozen.get('base_commit') != base_commit or frozen.get('tree') != tree or frozen.get('message') != message:
+            raise ValueError('Frozen Git finish intent differs from this request or owned tree')
+        return frozen
+    name = _git(repo, 'config', 'user.name').decode().strip()
+    email = _git(repo, 'config', 'user.email').decode().strip()
+    if not name or not email:
+        raise ValueError('Git finish requires configured author identity')
+    frozen = {'identity': identity, 'base_commit': base_commit, 'tree': tree,
+              'message': message, 'author': name, 'email': email,
+              'date': str(int(time.time())) + ' +0000'}
+    temporary = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
+    descriptor = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    try:
+        with os.fdopen(descriptor, 'w', encoding='utf-8') as handle:
+            json.dump(frozen, handle, sort_keys=True)
+            handle.flush(); os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+        try: os.fsync(directory_fd)
+        finally: os.close(directory_fd)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return frozen
+
+
+def load_finish_intent(repo: Path, *, request_identity: str) -> dict | None:
+    if not re.fullmatch(r'sha256:[0-9a-f]{64}', request_identity):
+        raise ValueError('Finish intent requires an exact request identity')
+    common = Path(_git(Path(repo).resolve(), 'rev-parse', '--path-format=absolute',
+                       '--git-common-dir').decode().strip()).resolve()
+    path = common / 'zzzops' / 'finish' / (request_identity[7:] + '.json')
+    return json.loads(path.read_text(encoding='utf-8')) if path.exists() else None
+
+
+def intent_commit(repo: Path, intent: dict) -> str:
+    """Reconstruct the one commit OID from frozen content and metadata."""
+    repo = Path(repo).resolve()
+    base, tree = intent['base_commit'], intent['tree']
+    metadata = {'GIT_AUTHOR_NAME': intent['author'], 'GIT_AUTHOR_EMAIL': intent['email'],
+                'GIT_AUTHOR_DATE': intent['date'], 'GIT_COMMITTER_NAME': intent['author'],
+                'GIT_COMMITTER_EMAIL': intent['email'], 'GIT_COMMITTER_DATE': intent['date']}
+    result = subprocess.run(['git', 'commit-tree', tree, '-p', base], cwd=repo,
+                            input=(intent['message'] + '\n').encode(),
+                            capture_output=True, env={**os.environ, **metadata})
+    if result.returncode:
+        raise ValueError('Git finish could not create its frozen semantic commit')
+    return result.stdout.decode().strip()
+
+
+def verify_finished_worktree(repo: Path, commit: str) -> None:
+    """Check actual bytes against a frozen commit despite a stale shared index."""
+    repo = Path(repo).resolve()
+    untracked = _git(repo, 'ls-files', '--others', '--exclude-standard', '-z',
+                     '--', '.', ':(exclude).zzzops')
+    for raw in untracked.split(b'\x00'):
+        if raw and subprocess.run(['git', 'cat-file', '-e', commit + ':' + raw.decode('utf-8')],
+                                  cwd=repo, capture_output=True).returncode:
+            raise ValueError('Finished Git worktree acquired an untracked path')
+    with tempfile.TemporaryDirectory(prefix='zzzops-finish-check-') as directory:
+        environment = {**os.environ, 'GIT_INDEX_FILE': str(Path(directory) / 'index')}
+        subprocess.run(['git', 'read-tree', commit], cwd=repo, env=environment,
+                       capture_output=True, check=True)
+        subprocess.run(['git', 'update-index', '--refresh'], cwd=repo,
+                       env=environment, capture_output=True)
+        check = subprocess.run(['git', 'diff-files', '--name-only', '-z'], cwd=repo,
+                               env=environment, capture_output=True)
+        if check.returncode or check.stdout:
+            raise ValueError('Finished Git worktree changed before index reconciliation')
+
+
+def finish_owned_tree(repo: Path, *, intent: dict, owned_paths: list[str]) -> str:
+    """Observe, create and CAS one exact scoped commit; replay adopts only it."""
+    repo = Path(repo).resolve()
+    base, tree = intent['base_commit'], intent['tree']
+    commit = intent_commit(repo, intent)
+    head = _git(repo, 'rev-parse', 'HEAD').decode().strip()
+    if head == base:
+        if prospective_owned_tree(repo, base_commit=base,
+                                  owned_paths=owned_paths)['tree'] != tree:
+            raise ValueError('Owned worktree drifted after verification')
+        _git(repo, 'update-ref', 'HEAD', commit, base)
+        head = _git(repo, 'rev-parse', 'HEAD').decode().strip()
+    if head != commit:
+        raise ValueError('Managed branch changed before exact finish CAS')
+    # The branch CAS can precede index reconciliation on a crashed request.
+    # Only an index/worktree matching the frozen tree may be reconciled.
+    if _git(repo, 'status', '--porcelain=v1', '-z', '--untracked-files=all',
+            '--', '.', ':(exclude).zzzops'):
+        staged = _git(repo, 'diff', '--cached', '--name-only', '-z').split(b'\x00')
+        if any(raw and raw.decode('utf-8') not in owned_paths for raw in staged):
+            raise ValueError('Unrelated staged index state changed before finish reconciliation')
+        verify_finished_worktree(repo, commit)
+        _git(repo, 'reset', '--mixed', commit)
+    validate_checkpoint(repo, base_commit=base, result_commit=commit,
+                        owned_paths=owned_paths)
+    return commit
 
 
 def validate_checkpoint(repo: Path, *, base_commit: str, result_commit: str,
