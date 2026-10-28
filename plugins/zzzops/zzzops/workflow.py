@@ -5614,7 +5614,25 @@ class Workflow:
                     return step
         return None
 
+    def pending_inventory_review(self):
+        runtime = self.runtime or {}
+        if not runtime.get('delegation', {}).get('discovery_complete'):
+            return None
+        configuration = policy_section(self.project, 'model_routing')['configuration']
+        freshness = self.api._policy.model_inventory_freshness(
+            configuration['model_inventory']['reviewed_pairs'],
+            {'status': 'complete', 'pairs': runtime['available_pairs']})
+        if not freshness['stale']:
+            return None
+        return {'kind': 'policy_review', 'assignment': 'root',
+                'boundary': 'execution_phase_start', 'added': freshness['added'],
+                'action': 'Review policy tier mappings for newly discovered model/effort pairs before acquiring a new execution phase. Existing ownership and administration may continue.',
+                'submission': {'operation': 'policy_propose', 'plan': '<updated reviewed policy plan>'}}
+
     def node_step(self, state, snapshot=None):
+        inventory_review = self.pending_inventory_review()
+        if inventory_review:
+            return {**inventory_review, 'goal': state['node']['goal'], 'node': state['node']}
         executor = state['contract']['executor']; runtime = self.runtime or {}
         config = policy_section(self.project, 'model_routing')['configuration']
         tiers = [row['id'] for row in config['tiers']]
@@ -9638,6 +9656,11 @@ class Workflow:
                     'policy': digest(self.project['policy']),
                     'action': 'Exact root capability downgrade recorded; invoke the checkpoint again to acquire work.'}]}
             elif operation == 'start':
+                # Receipt replay above resumes the exact existing acquisition.
+                # Check again under the storage lock before reserving capacity.
+                inventory_review = self.pending_inventory_review()
+                if inventory_review:
+                    return {'next_steps': [{**inventory_review, 'goal': number, 'node': node}]}
                 if lease: raise ValueError('Task already has an owner; observed-stop recovery is required')
                 if state['state'] != 'ready' or request.get('input_hash') != state.get('input_hash'): raise ValueError('Stale input or prerequisite prevents acquisition')
                 # Broadphase intentionally avoids serialising a merely-ready
@@ -9805,6 +9828,12 @@ class Workflow:
                         return {'next_steps': [{'kind': 'checkpoint', 'goal': number,
                             'action': 'The reviewed cutover retained this completed attempt; observe the current frontier.'}]}
                 if not lease or request.get('lease') != lease['token'] or lease['owner'] != root: raise ValueError('Exact current owner/lease token required')
+                if operation in {'bind', 'submit'}:
+                    selection = lease['selection']
+                    reviewed = policy_section(self.project, 'model_routing')['configuration']['model_inventory']['reviewed_pairs']
+                    if (not any(all(pair.get(field) == selection.get(field) for field in ('model', 'effort')) for pair in reviewed)
+                            or selection not in (self.runtime or {}).get('available_pairs', [])):
+                        raise ValueError('Bound model/effort pair is unavailable or no longer reviewed; preserve ownership and recover or release it')
                 if operation == 'recover':
                     if request.get('worker_status') != 'stopped' or not isinstance(request.get('evidence'), str) or not request['evidence'].strip(): raise ValueError('Observed stopped worker evidence required; unknown liveness cannot recover')
                     if request.get('actor') != lease['worker']: raise ValueError('Exact bound actor required for observed-stop recovery')
@@ -10742,12 +10771,9 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
     project = api.reviewed_project_state(repo)
     if policy_snapshot is not None:
         policy_snapshot['project'] = project
-    if runtime and runtime.get('delegation', {}).get('discovery_complete'):
-        configuration = api._workflow_section(project, 'model_routing')['configuration']
-        freshness = api._policy.model_inventory_freshness(configuration['model_inventory']['reviewed_pairs'], {'status': 'complete', 'pairs': runtime['available_pairs']})
-        if freshness['stale']:
-            return {'next_steps': [{'kind': 'policy_review', 'assignment': 'root', 'action': 'Review policy tier mappings for newly discovered model/effort pairs before proceeding.', 'added': freshness['added'], 'submission': {'operation': 'policy_propose', 'plan': '<updated reviewed policy plan>'}}]}
     engine = Workflow(api, repo, project, runtime)
+    if policy_snapshot is not None:
+        policy_snapshot['inventory_review'] = engine.pending_inventory_review()
     if payload is not None and operation not in {'read', 'heartbeat'}:
         guard_stack = getattr(api, '_guarded_mutations', [])
         active = [record for record in guard_stack
@@ -10797,6 +10823,8 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             current_project = api.reviewed_project_state(repo)
             if digest(current_project) != digest(project):
                 raise ValueError('Reviewed policy changed before provider mutation')
+            if operation == 'start' and engine.pending_inventory_review():
+                raise ValueError('New model/effort pairs require policy review before execution phase start')
             reservation = getattr(engine, '_storage_reservation', None)
             if not isinstance(reservation, dict) or not reservation.get('valid'):
                 raise ValueError('A current workflow storage reservation is required before provider mutation')
@@ -11403,6 +11431,14 @@ def _public_response(api, repo, intent, source, runtime, payload, number, *, ski
     finally:
         if transaction is not None:
             api._WORKING_INPUT_TRANSACTION.reset(transaction)
+    if snapshot.get('inventory_review'):
+        blocked_start = any(step.get('kind') == 'policy_review'
+                            and step.get('boundary') == 'execution_phase_start'
+                            for step in result.get('next_steps', []))
+        result['model_inventory_review'] = {
+            **snapshot['inventory_review'],
+            'status': ('required_before_execution_phase_start' if blocked_start
+                       else 'deferred_until_execution_phase_start')}
     purposes = {
         '$add-zzzops-goal': 'capture', '$execute-zzzops': 'execute',
         '$migrate-to-zzzops': 'migration', '$review-zzzops-policy': 'policy-review',
