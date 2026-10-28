@@ -167,6 +167,8 @@ class FreshGoalGitCheckpointTests(DagFixture):
         changed = copy.deepcopy(shipped)
         audit = journeys.task('shipped_cutover_audit', ['requirements'])
         audit['inputs'] = {'subject': journeys.subject_input('requirements')}
+        requirements = next(node for node in shipped['nodes'] if node['id'] == 'requirements')
+        audit['inputs']['subject']['type'] = copy.deepcopy(requirements['outputs']['value']['schema'])
         audit['independent_of'] = [journeys.selector('requirements')]
         changed['nodes'].append(audit)
         changed['terminals'].append(journeys.selector('shipped_cutover_audit'))
