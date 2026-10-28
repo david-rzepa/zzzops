@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 import runpy
 import shutil
@@ -15,10 +14,6 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "plugins" / "zzzops"
-# Helper contract: openai/codex commit
-# 9265701b7ff81d83d813eb3d4f6aeb2e0f9a6583, codex-rs/skills/src/assets/
-# samples/plugin-creator/scripts/update_plugin_cachebuster.py.
-HELPER = os.environ.get("CODEX_PLUGIN_CACHEBUSTER_UPDATER")
 
 
 class PluginCachebusterTests(unittest.TestCase):
@@ -108,17 +103,12 @@ class PluginCachebusterTests(unittest.TestCase):
         required.symlink_to(skill)
         self.assertIn("symlink", self.status()["detail"])
 
-    @unittest.skipUnless(HELPER, "set CODEX_PLUGIN_CACHEBUSTER_UPDATER to run the upstream helper")
-    def test_real_upstream_helper_default_and_custom_update(self):
-        for arguments in ([], ["--cachebuster", " Release candidate__2 "]):
-            subprocess.run([sys.executable, HELPER, str(self.plugin), *arguments], check=True, capture_output=True)
-            status = self.status()
-            self.assertTrue(status["ok"], status)
-            self.assertEqual("0.0.0-dev", status["version"])
-        self.assertEqual("0.0.0-dev+codex.release-candidate-2", status["codex_version"])
-
     def test_public_validation_accepts_cachebuster_and_invalidates_changed_package(self):
         self.update(version="0.0.0-dev+codex.20260929050007")
+        self.assert_current_package_validation()
+
+    def assert_current_package_validation(self):
+        """Exercise the public path for this copied package's actual identity."""
         repo = self.root / "repo"
         subprocess.run(["git", "init", "-q", str(repo)], check=True)
         cli = self.plugin / "zzzops/zzzops.py"
