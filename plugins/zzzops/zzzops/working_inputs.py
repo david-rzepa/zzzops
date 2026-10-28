@@ -4,6 +4,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 import copy
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -26,6 +27,11 @@ _ACTIVE_LOCK = threading.RLock()
 _ACTIVE: dict[tuple[str, str], dict[str, int]] = {}
 _LOCAL_LOCKS: dict[str, threading.RLock] = {}
 REQUEST_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+_LABEL_SPEC = importlib.util.spec_from_file_location(
+    "zzzops_working_input_label_observation", Path(__file__).with_name("github_label_observation.py"))
+assert _LABEL_SPEC and _LABEL_SPEC.loader
+_label_observation = importlib.util.module_from_spec(_LABEL_SPEC)
+_LABEL_SPEC.loader.exec_module(_label_observation)
 
 
 def _atomic_json(path: Path, value) -> None:
@@ -573,12 +579,22 @@ def github_provider_check(repo: Path, repository: str, request_id: str, digest: 
         if result is ...: return None
         applied = isinstance(result, dict) and result.get("name") == target.get("name") and result.get("description") == arguments.get("description")
     elif operation in {"update_label", "delete_label"}:
-        node = target.get("node_id"); graphql = "query($id:ID!){node(id:$id){... on Label{id name description}}}"
-        payload = query(["api", "graphql", "-F", f"id={node}", "-f", f"query={graphql}"])
-        if payload is ...: return None
-        result = ((payload or {}).get("data") or {}).get("node") if isinstance(payload, dict) else None
-        applied = result is None if operation == "delete_label" else isinstance(result, dict) and result.get("id") == node and result.get("description") == arguments.get("description")
-        if operation == "delete_label" and applied: result = {"deleted": node}
+        node = target.get("node_id")
+        try:
+            label_args = _label_observation.query_arguments(repository, node)
+            observation = subprocess.run(["gh", *label_args], cwd=repo, text=True,
+                                         capture_output=True, check=False)
+        except (ValueError, OSError):
+            return None
+        status, label = _label_observation.classify(observation, repository, node)
+        if status == "unknown": return None
+        if operation == "delete_label":
+            applied = status == "absent"
+            result = {"deleted": node} if applied else label
+        else:
+            if not isinstance(arguments.get("description"), str): return None
+            applied = status == "live" and label["description"] == arguments["description"]
+            result = label
     else:
         return None
     if not applied: return {"applied": False}
