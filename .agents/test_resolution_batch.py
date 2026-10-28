@@ -337,6 +337,57 @@ class ResolutionBatchPublicTests(dag.DagFixture):
                 self.assertEqual('blocker', response['next_steps'][0]['kind'], response)
                 self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
+    def test_prospective_cached_response_cannot_replace_missing_provider_artifact(self):
+        fixture = self.load_legacy()
+        store = dag.z._comment_store
+        index = store.ArtifactIndex(fixture['comments'])
+        artifacts = {record['hash']: index.resolve(record['hash'])[0]
+                     for envelope in index.envelopes for record in envelope['artifacts']}
+        transaction = next(envelope for envelope in index.envelopes
+                           if envelope.get('context', {}).get('request_id') == 'legacy-resolution-submit')
+        context = transaction['context']
+        envelope = dag.z.parse_managed_goal(self.provider.issues[100]['body'], 100)
+        engine = dag.z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
+        valid = engine.node_snapshot(100, prospective={'envelope': envelope, 'artifacts': artifacts})
+        self.assertFalse(valid['projection']['resolution_errors'])
+        missing = context['response']['hash']
+        affected = [row for row in self.provider.comments[100]
+                    if (store.decode_envelope(row['body']) or {}).get('transaction') == transaction['transaction']]
+        records = [record for envelope in index.envelopes
+                   if envelope['transaction'] == transaction['transaction']
+                   for record in envelope['artifacts'] if record['hash'] != missing]
+        # Keep a valid manifest and exact receipt context, but omit the response
+        # artifact. A checksum-valid prospective copy is not provider custody.
+        bodies = store.pack_envelopes({'goal': 100, 'transaction': transaction['transaction'],
+                                      'context': context}, records)
+        self.assertLessEqual(len(bodies), len(affected))
+        for row, body in zip(affected, bodies):
+            row['body'] = body
+        unused = {row['id'] for row in affected[len(bodies):]}
+        self.provider.comments[100] = [row for row in self.provider.comments[100] if row['id'] not in unused]
+        with self.assertRaisesRegex(ValueError, 'Missing artifact/base'):
+            store.ArtifactIndex(self.provider.comments[100]).resolve(missing)
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        engine = dag.z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
+        envelope = dag.z.parse_managed_goal(self.provider.issues[100]['body'], 100)
+        with self.assertRaisesRegex(ValueError, 'Resolution acceptance:.*committed submit lineage'):
+            engine.node_snapshot(100, prospective={'envelope': envelope, 'artifacts': artifacts})
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_observed_receipt_reads_reject_mutation_and_do_not_trust_cache_replacement(self):
+        self.load_legacy()
+        engine = dag.z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
+        snapshot = engine.node_snapshot(100)
+        observed = snapshot['snapshots'][100]['resolve_observed']
+        reference = snapshot['payload']['operational']['receipts'][-1]['result']
+        value = observed(reference)
+        original = copy.deepcopy(value)
+        snapshot['artifacts'][reference['hash']] = {'forged': 'replacement'}
+        self.assertEqual(original, observed(reference))
+        value['forged'] = 'in-place mutation'
+        with self.assertRaisesRegex(ValueError, 'Observed artifact checksum mismatch'):
+            observed(reference)
+
     def test_pre_batch_public_journal_adopts_without_rewriting_and_keeps_old_resolution_closed(self):
         fixture = self.load_legacy()
         before = copy.deepcopy((self.provider.issues, self.provider.comments))

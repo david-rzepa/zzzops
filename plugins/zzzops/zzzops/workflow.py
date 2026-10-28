@@ -2339,6 +2339,7 @@ class Workflow:
         ev = self.api._phase_evidence
         snapshots, artifacts, issues, bootstrap = {}, dict((prospective or {}).get('artifacts', {})), {}, {}
         published, validated = {}, set()
+        observed_artifacts = {}
         def remember(value):
             key = digest(value); artifacts[key] = value
             return {'hash': key, 'uri': 'urn:' + key}
@@ -2374,11 +2375,28 @@ class Workflow:
                     if ref['uri'].startswith('git:'):
                         artifacts[ref['hash']], published[ref['hash']] = self.node_published_artifact(ref)
                     else:
-                        artifacts[ref['hash']] = self.artifact_index(owner).observe(ref['hash'])[0]
+                        value = self.artifact_index(owner).observe(ref['hash'])[0]
+                        artifacts[ref['hash']] = value
+                        observed_artifacts[(owner, ref['hash'])] = value
                 value = artifacts[ref['hash']]
                 if ref['hash'] not in published and ref['hash'] not in validated:
                     if digest(value) != ref['hash']: raise ValueError('Artifact checksum mismatch')
                     validated.add(ref['hash'])
+                return value
+            def resolve_observed(ref):
+                # Prospective artifacts are useful for projection, but cannot
+                # substitute for persisted custody when authenticating receipts.
+                ev.validate_ref(ref)
+                owner = self.node_ref_goal(ref, n)
+                key = (owner, ref['hash'])
+                if key not in observed_artifacts:
+                    observed_artifacts[key] = self.artifact_index(owner).observe(ref['hash'])[0]
+                value = observed_artifacts[key]
+                artifacts.setdefault(ref['hash'], value)
+                # Keep the observed object separate from independently replaced
+                # prospective entries, and reject in-place mutation on reuse.
+                if digest(value) != ref['hash']:
+                    raise ValueError('Observed artifact checksum mismatch')
                 return value
             payload = resolve(envelope['payload'])
             ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'} | (set(payload) & {'phase_data', 'goal_context', 'goal_context_resolutions', 'goal_context_dependency_events', 'goal_context_archived_prerequisites', 'workflow', 'stack_integration', 'publication_certificate'}), 'Payload')
@@ -2430,6 +2448,7 @@ class Workflow:
                 definition = None
             ev.validate_graph(graph)
             snapshot = {'envelope': envelope, 'payload': payload, 'graph': graph, 'resolve': resolve,
+                        'resolve_observed': resolve_observed,
                         'historical_graph': historical_graph, 'workflow_definition': definition}
             batch_adoption = (definition is not None and stored_workflow_graph is not None
                 and self.api._static_workflow.resolution_batch_adoption(
@@ -3553,8 +3572,8 @@ class Workflow:
     def node_receipt_edge(self, number, index, receipt, *, resolve=None):
         """Authenticate one ordinary persisted mutation edge and its provider rows.
 
-        Lifecycle callers may reuse their current snapshot's validated full-Ref
-        resolver. Other callers retain detached index reads; neither path skips
+        Lifecycle callers may reuse their current snapshot's provider-observed
+        full-Ref resolver. Other callers retain detached index reads; neither path skips
         receipt, manifest or continuation authentication.
         """
         if resolve is None:
