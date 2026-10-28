@@ -2,6 +2,7 @@
 
 import json
 import copy
+import re
 import unittest
 from unittest import mock
 from pathlib import Path
@@ -911,6 +912,169 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         ref = f"refs/heads/zzzops/attempts/100/alpha/{work['lease']['attempt']}"
         self.assertEqual(head, fixture.session.git('ls-remote', 'origin', ref).split()[0])
         self.assertNotEqual(head, fixture.session.git('rev-parse', 'HEAD').strip())
+
+
+    def upstream_reacquisition_case(self, *, unsafe=None, race=False):
+        """Exercise the public frontier with an actual owner and remote dev move."""
+        fixture = self.fixture_with_git_workspace()
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        bare = Path(remote_dir.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
+        fixture.session.git('remote', 'add', 'origin', str(bare))
+        fixture.session.git('checkout', '-q', 'dev')
+        fixture.session.git('push', '-qu', 'origin', 'dev')
+        base = fixture.session.git('rev-parse', 'HEAD').strip()
+
+        first = fixture.acquire_workspace('alpha')
+        first_tree = Path(first['managed_worktree']['path'])
+        (first_tree / 'behavior_test.py').write_text('assert True\n')
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=first_tree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: accepted exact source'],
+                       cwd=first_tree, check=True)
+        request = fixture.session.submission(
+            first, {'value': 'Accepted exact source'}, 'accepted-upstream-source')
+        request.update(workspace_checks=[[sys.executable, '-B', 'behavior_test.py']],
+                       verification_expectation='passed')
+        fixture.session.call(100, request)
+        fixture.review_candidate('alpha', 0)
+        accepted = fixture.result('alpha')[0]
+        proof = fixture.read_blob(
+            fixture.read_blob(fixture.produced('alpha'))['provenance']['source'])
+        source_commit = proof['checkpoint']['result_commit']
+        source_ref = proof['retained_ref']
+        self.assertEqual(source_commit, fixture.session.git(
+            'ls-remote', 'origin', source_ref).split()[0])
+
+        held = fixture.acquire_workspace('beta') if unsafe == 'live_lease' else None
+        upstream = Path(remote_dir.name) / 'external'
+        fixture.session.git('worktree', 'add', '-qb', 'external-fixture',
+                            str(upstream), base)
+        (upstream / 'behavior_test.py').write_text('assert 1 == 1\n')
+        subprocess.run(['git', 'add', 'behavior_test.py'], cwd=upstream, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test: equivalent external base'],
+                       cwd=upstream, check=True)
+        advanced = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=upstream,
+                                  capture_output=True, text=True, check=True).stdout.strip()
+        if unsafe != 'unpublished':
+            subprocess.run(['git', 'push', '-q', 'origin', 'HEAD:refs/heads/dev'],
+                           cwd=upstream, check=True)
+        fixture.session.git('merge', '--ff-only', advanced)
+        if unsafe == 'remote_moved':
+            subprocess.run(['git', 'commit', '--allow-empty', '-qm',
+                            'test: remote moved after owner observed base'],
+                           cwd=upstream, check=True)
+            subprocess.run(['git', 'push', '-q', 'origin', 'HEAD:refs/heads/dev'],
+                           cwd=upstream, check=True)
+        if unsafe == 'dirty':
+            (fixture.fixture.repo / 'unowned-draft.txt').write_text('preserve me\n')
+        if unsafe == 'corrupt_receipt':
+            envelope, payload = fixture.payload()
+            payload = copy.deepcopy(payload)
+            payload['operational']['receipts'][-1]['payload'] = 'sha256:' + '0' * 64
+            envelope['payload'] = fixture.blob(payload)
+            fixture.provider.issues[100]['body'] = re.sub(
+                r'<!-- zzzops-goal\s*\n.*?\nzzzops-goal -->',
+                lambda _match: '<!-- zzzops-goal\n' + json.dumps(envelope) +
+                '\nzzzops-goal -->', fixture.provider.issues[100]['body'], flags=re.S)
+
+        before = copy.deepcopy((fixture.provider.issues, fixture.provider.comments))
+        frontier = (fixture.session.call(100, expected=None)['next_steps']
+                    if unsafe == 'corrupt_receipt' else fixture.session.checkpoint(100))
+        self.assertEqual(before, (fixture.provider.issues, fixture.provider.comments))
+        self.assertEqual(accepted, fixture.result('alpha')[0])
+        self.assertEqual(source_commit, fixture.session.git(
+            'ls-remote', 'origin', source_ref).split()[0])
+        ready = [step for step in frontier if step.get('kind') == 'execute'
+                 and step.get('node', {}).get('node') == 'alpha']
+        self.assertFalse(any(step.get('kind') == 'execute'
+                             and step.get('node', {}).get('node') == 'beta'
+                             for step in frontier),
+                         'Old reviewed alpha must not release its affected consumer')
+        if unsafe:
+            self.assertEqual([], ready, 'Unsafe owner/base movement granted work')
+            if held is not None:
+                self.assertTrue(any(lease['token'] == held['lease']['token']
+                                    for lease in fixture.payload()[1]['operational']['leases']))
+            if unsafe == 'dirty':
+                self.assertEqual('preserve me\n',
+                                 (fixture.fixture.repo / 'unowned-draft.txt').read_text())
+            return
+
+        self.assertEqual(1, len(ready),
+                         'Authenticated upstream base advance must offer reacquisition')
+        if race:
+            preview = ready[0]
+            receipt = json.loads(Path(preview['policy']['path']).read_text())[
+                'policy_receipt']
+            subprocess.run(['git', 'commit', '--allow-empty', '-qm',
+                            'test: dev moved between preview and start'],
+                           cwd=upstream, check=True)
+            subprocess.run(['git', 'push', '-q', 'origin', 'HEAD:refs/heads/dev'],
+                           cwd=upstream, check=True)
+            fixture.session.git('merge', '--ff-only', subprocess.run(
+                ['git', 'rev-parse', 'HEAD'], cwd=upstream, capture_output=True,
+                text=True, check=True).stdout.strip())
+            unchanged = copy.deepcopy((fixture.provider.issues,
+                                       fixture.provider.comments))
+            response = fixture.session.call(100, {
+                **preview['start'], 'policy_receipt': receipt,
+                'request_id': 'stale-upstream-preview-start'}, expected=2)
+            self.assertIn('stale', json.dumps(response).lower())
+            self.assertEqual(unchanged, (fixture.provider.issues,
+                                         fixture.provider.comments))
+            self.assertEqual([], fixture.payload()[1]['operational']['leases'])
+            self.assertEqual(accepted, fixture.result('alpha')[0])
+            self.assertEqual(source_commit, fixture.session.git(
+                'ls-remote', 'origin', source_ref).split()[0])
+            return
+        second = fixture.acquire_workspace('alpha')
+        self.assertEqual(advanced, second['lease']['acquisition']['git_commit'])
+        self.assertEqual('conflict', second['restack']['status'])
+        self.assertEqual(['behavior_test.py'], second['restack']['conflicts'])
+        self.assertEqual(accepted, second['restack']['source']['result'])
+        self.assertNotEqual(first['lease']['attempt'], second['lease']['attempt'])
+        self.assertEqual(source_commit, fixture.session.git(
+            'ls-remote', 'origin', source_ref).split()[0])
+        receipt = json.loads(Path(second['policy']['path']).read_text())['policy_receipt']
+        fixture.session.call(100, {**second['bind'], 'actor': 'restack-worker',
+            'selection': second['lease']['selection'], 'policy_receipt': receipt})
+        second_tree = Path(second['managed_worktree']['path'])
+        (second_tree / 'behavior_test.py').write_text('assert True\n')
+        continued = fixture.session.call(100, {
+            **second['restack']['continue'], 'actor': 'restack-worker',
+            'request_id': 'continue-upstream-owner-conflict'})['next_steps'][0]
+        replayed = fixture.session.call(100, {
+            **second['restack']['continue'], 'actor': 'restack-worker',
+            'request_id': 'continue-upstream-owner-conflict'})['next_steps'][0]
+        self.assertEqual(continued, replayed)
+        self.assertEqual('restack_continued', continued['kind'])
+        self.assertEqual(advanced, subprocess.run(
+            ['git', 'rev-parse', continued['result_commit'] + '^'], cwd=second_tree,
+            capture_output=True, text=True, check=True).stdout.strip())
+        self.assertEqual(accepted, fixture.result('alpha')[0],
+                         'Restack alone must not silently replace reviewed Result')
+
+    def test_reviewed_upstream_dev_advance_reacquires_owned_conflict(self):
+        self.upstream_reacquisition_case()
+
+    def test_upstream_dev_move_between_preview_and_start_rejects_stale_lease(self):
+        self.upstream_reacquisition_case(race=True)
+
+    def test_unpublished_owner_advance_cannot_reacquire_prior_attempt(self):
+        self.upstream_reacquisition_case(unsafe='unpublished')
+
+    def test_live_lease_prevents_upstream_reacquisition(self):
+        self.upstream_reacquisition_case(unsafe='live_lease')
+
+    def test_dirty_owner_prevents_upstream_reacquisition_and_preserves_draft(self):
+        self.upstream_reacquisition_case(unsafe='dirty')
+
+    def test_forged_receipt_cannot_reacquire_prior_attempt(self):
+        self.upstream_reacquisition_case(unsafe='corrupt_receipt')
+
+    def test_remote_movement_after_owner_sync_cannot_reacquire_prior_attempt(self):
+        self.upstream_reacquisition_case(unsafe='remote_moved')
 
 
 class GitWorkspaceJourneyTests(unittest.TestCase):
