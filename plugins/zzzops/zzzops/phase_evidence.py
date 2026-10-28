@@ -1447,13 +1447,18 @@ def _derive_task_steps(graph, payload, context):
                                 for original in snapshots[number]['graph']['task_sets']:
                                     if original['source']['producer'] != {'slot': 'retired_resolution_members'}:
                                         continue
-                                    declared = materialized(original['template'])
                                     matching = []
-                                    for candidate_scope in declared['resolves']:
-                                        candidate_scope = copy.deepcopy(candidate_scope)
+                                    for candidate_scope in original['template']['resolves']:
+                                        # An unrelated member contract has no item/generation
+                                        # in this static scope. Match the scope before expanding
+                                        # its captured subject placeholders and other inputs.
+                                        if candidate_scope['subject']['kind'] != exact_subject['kind']:
+                                            continue
+                                        candidate_scope = materialized(copy.deepcopy(candidate_scope))
                                         if candidate_scope['subject']['goal'] == '#this': candidate_scope['subject']['goal'] = number
                                         if candidate_scope == exact_scope: matching.append(candidate_scope)
                                     if not matching: continue
+                                    declared = materialized(original['template'])
                                     if declared['inputs']['finding']['producer'] == {'slot': 'phase_event_obligations'}:
                                         review_expansion = declared['inputs']['review']['producer']['node']['expansion']
                                         review_name = expansions[(number, review_expansion)][0]['template']['id']

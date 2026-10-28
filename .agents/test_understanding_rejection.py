@@ -88,10 +88,9 @@ class UnderstandingRejectionTests(j.DagFixture):
     def resolve(self):
         self.session.finish(self.session.acquire('retain_understand_findings'), {'value': {
             'items': {'private_access': self.finding}, 'rationale': 'Retain the rejected design finding'}})
-        self.session.finish(self.session.acquire('resolve_understand_finding', item='private_access'), {'value': {
-            'finding': self.finding, 'subjects': [self.produced('understand', 'design')],
-            'reviewer_result': self.result('review_understanding')[0], 'decision': 'resolved',
-            'rationale': 'Fresh exact-design independent review covers the correction'}})
+        self.resolve_exact_batch({'private_access': self.finding}, self.produced('understand', 'design'),
+                                 self.result('review_understanding')[0],
+                                 'Fresh exact-design independent review covers the correction')
 
     def test_rejection_revision_independent_review_then_fresh_human_approval(self):
         self.setup_design()
@@ -222,9 +221,8 @@ class UnderstandingRejectionTests(j.DagFixture):
             'review': {'decision': 'approved', 'report': 'Revised exact artifacts approved'}, 'authorization': self.permit()})
         self.session.finish(self.session.acquire('retain_understand_findings'), {'value': {
             'items': {'later_audit': finding}, 'rationale': 'Retain the later audit'}})
-        self.session.finish(self.session.acquire('resolve_understand_finding', item='later_audit'), {'value': {
-            'finding': finding, 'subjects': [self.produced('understand', 'design')],
-            'reviewer_result': self.result('review_understanding')[0], 'decision': 'resolved', 'rationale': 'Verified'}})
+        self.resolve_exact_batch({'later_audit': finding}, self.produced('understand', 'design'),
+                                 self.result('review_understanding')[0], 'Verified')
         self.assertIn('approve_understanding', self.names())
         self.assertNotIn('decompose', self.names())
         self.assertNotIn('test_design', self.names())

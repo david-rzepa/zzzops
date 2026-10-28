@@ -1120,15 +1120,10 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
         case.session.finish(case.session.acquire('retain_test_design_findings'), {
             'value': {'items': {'late-test-defect': finding},
                       'rationale': 'Retain the exact admitted late test finding'}})
-        resolve = acquire_prefix('gc_resolve_')
-        case.session.finish(resolve, {'value': {
-            'finding': finding, 'subjects': [case.produced('test_design')],
-            'reviewer_result': case.result(review_name, item)[0],
-            'decision': 'resolved', 'rationale': 'Independent late review accepted T2'}})
-        case.session.finish(case.session.acquire('resolve_test_design_finding', item='late-test-defect'), {
-            'value': {'finding': finding, 'subjects': [case.produced('test_design')],
-                      'reviewer_result': case.result('test_design_review')[0],
-                      'decision': 'resolved', 'rationale': 'Fresh independent test review accepted T2'}})
+        case.resolve_exact_batch({'late-test-defect': finding}, case.produced('test_design'),
+                                 case.result(review_name, item)[0],
+                                 'Independent late and ordinary reviews accepted T2',
+                                 required_reviews=[case.result('test_design_review')[0]])
         i2 = case.session.acquire('implement')
         self.assertEqual(t2_head, i2['lease']['acquisition']['git_commit'])
         i2_head = commit(i2, 'source.py', 'def value():\n    return 2\n',
@@ -1254,10 +1249,9 @@ class GitWorkspaceJourneyTests(unittest.TestCase):
             'value': case.review('approved', 'Current bounded probe is adequate')})
         case.session.finish(case.session.acquire('retain_test_design_findings'), {
             'value': {'items': {'meaningful_probe': finding}, 'rationale': 'Retain rejected attempt finding'}})
-        case.session.finish(case.session.acquire('resolve_test_design_finding', item='meaningful_probe'), {
-            'value': {'finding': finding, 'subjects': [case.produced('test_design')],
-                      'reviewer_result': case.result('test_design_review')[0],
-                      'decision': 'resolved', 'rationale': 'Fresh independent review resolves this finding'}})
+        case.resolve_exact_batch({'meaningful_probe': finding}, case.produced('test_design'),
+                                 case.result('test_design_review')[0],
+                                 'Fresh independent review resolves this finding')
         self.assertIn('implement', case.names())
         case.read_blob(rejected)
         original_base = first['lease']['acquisition']['git_commit']
