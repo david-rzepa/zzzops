@@ -3550,8 +3550,15 @@ class Workflow:
                                     'action': 'Exact stale checkpoint reconciled; immutable history was preserved.'}]}
         return self.node_persist(snapshot, payload, response, request)
 
-    def node_receipt_edge(self, number, index, receipt):
-        """Authenticate one ordinary persisted mutation edge and its provider rows."""
+    def node_receipt_edge(self, number, index, receipt, *, resolve=None):
+        """Authenticate one ordinary persisted mutation edge and its provider rows.
+
+        Lifecycle callers may reuse their current snapshot's validated full-Ref
+        resolver. Other callers retain detached index reads; neither path skips
+        receipt, manifest or continuation authentication.
+        """
+        if resolve is None:
+            resolve = lambda reference: index.resolve(reference['hash'])[0]
         if (not isinstance(receipt, dict) or set(receipt) != {'request', 'payload', 'result'}
                 or not isinstance(receipt.get('request'), str) or not receipt['request']
                 or not isinstance(receipt.get('payload'), str)
@@ -3594,7 +3601,7 @@ class Workflow:
         identities = [comment.get('id') for comment, _ in selected]
         if any(type(identity) is not int or identity <= 0 for identity in identities) or len(identities) != len(set(identities)):
             return None
-        try: response = index.resolve(result['hash'])[0]
+        try: response = resolve(result)
         except (KeyError, ValueError): return None
         edge_response = response
         if isinstance(response, dict) and response.get('type') == 'submission_continuation':
@@ -3624,8 +3631,8 @@ class Workflow:
                            for binding in response['bindings'])):
                 return None
             try:
-                candidate = copy.deepcopy(index.resolve(response['candidate_payload']['hash'])[0])
-                entry = copy.deepcopy(index.resolve(response['entry_candidate_payload']['hash'])[0])
+                candidate = copy.deepcopy(resolve(response['candidate_payload']))
+                entry = copy.deepcopy(resolve(response['entry_candidate_payload']))
                 if (not isinstance(candidate.get('operational'), dict)
                         or not isinstance(candidate['operational'].get('receipts'), list)
                         or not isinstance(entry.get('operational'), dict)
@@ -3648,7 +3655,7 @@ class Workflow:
                                       and step['submission'].get('expected_digest', 'missing') is None)
             except (AttributeError, KeyError, TypeError, ValueError):
                 return None
-            try: published_candidate = index.resolve(target['payload']['hash'])[0]
+            try: published_candidate = resolve(target['payload'])
             except (KeyError, TypeError, ValueError): return None
             if (not valid_bindings or continuation_target != target
                     or context.get('payload') != target.get('payload')

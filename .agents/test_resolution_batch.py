@@ -306,7 +306,7 @@ class ResolutionBatchPublicTests(dag.DagFixture):
         self.assertEqual(len(set(checked_refs)), len(checked_refs),
                          'lineage repeated checked reads of an already resolved snapshot Ref')
 
-    def test_legacy_closure_rechecks_deleted_and_tampered_rows_on_fresh_observation(self):
+    def test_legacy_closure_rechecks_deleted_tampered_and_conflicting_rows_on_fresh_observation(self):
         fixture = self.load_legacy()
         pristine = copy.deepcopy((self.provider.issues, self.provider.comments))
         store = dag.z._workflow.comment_store
@@ -314,7 +314,7 @@ class ResolutionBatchPublicTests(dag.DagFixture):
                     if (store.decode_envelope(row['body']) or {}).get('context', {}).get('request_id')
                     == 'legacy-resolution-submit']
         self.assertTrue(selected)
-        for mutation in ('delete', 'tamper'):
+        for mutation in ('delete', 'tamper', 'conflict'):
             with self.subTest(mutation=mutation):
                 self.provider.issues, self.provider.comments = copy.deepcopy(pristine)
                 valid = self.session.checkpoint(100)
@@ -322,9 +322,16 @@ class ResolutionBatchPublicTests(dag.DagFixture):
                 if mutation == 'delete':
                     self.provider.comments[100] = [row for row in self.provider.comments[100]
                                                    if row['id'] not in selected]
-                else:
+                elif mutation == 'tamper':
                     row = next(row for row in self.provider.comments[100] if row['id'] in selected)
                     row['body'] = row['body'].replace('"hash":"sha256:', '"hash":"sha256:0', 1)
+                else:
+                    row = copy.deepcopy(next(row for row in self.provider.comments[100] if row['id'] in selected))
+                    envelope = store.decode_envelope(row['body'])
+                    envelope['context']['root'] = 'conflicting-root'
+                    row['body'] = store.encode_envelope(envelope)
+                    row['id'] = max(item['id'] for item in self.provider.comments[100]) + 1
+                    self.provider.comments[100].append(row)
                 before = copy.deepcopy((self.provider.issues, self.provider.comments))
                 response = self.session.call(100)
                 self.assertEqual('blocker', response['next_steps'][0]['kind'], response)
