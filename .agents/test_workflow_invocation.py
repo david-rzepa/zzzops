@@ -164,19 +164,10 @@ class WorkflowInvocationCacheTests(unittest.TestCase):
             {"value": {**value, "head_oid": "a" * 40}}, "wrong-observed-head"), expected=2)
         self.assertEqual(before, (case.provider.issues, case.provider.comments))
         case.session.finish(acquired, {"value": value})
-        self.assertIn("finish", case.names())
-        case.submit_role("finish", "Current observed merge accepted")
+        self.assertNotIn("finish", case.names(),
+                         "An external merge cannot start a new substantive terminal task")
         self.assertFalse(case.session.ready())
-        final = next(step for step in case.session.checkpoint(100) if step.get("kind") == "reconcile")
-        case.session.call(100, final["submission"])
-        self.assertEqual("closed", case.provider.issues[100]["state"])
-        before = copy.deepcopy((case.provider.issues, case.provider.comments))
-        terminal = case.session.checkpoint(100)
-        self.assertEqual(1, len(terminal))
-        self.assertEqual("terminal_report", terminal[0]["kind"])
-        self.assertEqual("complete", terminal[0]["state"])
-        self.assertNotIn("submission", terminal[0])
-        self.assertEqual(before, (case.provider.issues, case.provider.comments))
+        self.assertEqual("open", case.provider.issues[100]["state"])
 
     def api(self, adapter, portfolio):
         return SimpleNamespace(
