@@ -45,6 +45,13 @@ def evidence_policy(policy: dict[str, Any]) -> dict[str, Any]:
                 for field in ("review", "default_digest", "default_hash", "content_hash",
                               "default_id", "default_disposition"):
                     section.pop(field, None)
+            elif section.get("id") == "verification_testing":
+                configuration = section.get("configuration")
+                if isinstance(configuration, dict):
+                    configuration.pop("required_ci", None)
+                for field in ("review", "default_disposition", "default_provenance",
+                              "rationale", "source_ids"):
+                    section.pop(field, None)
     return value
 
 
@@ -1198,6 +1205,31 @@ def _derive_task_steps(graph, payload, context):
         predecessor_policy['sections'] = [row for row in predecessor_policy['sections']
             if row.get('id') not in OPERATIONAL_POLICY_SECTIONS]
     predecessor_policy_hash = semantic_hash(predecessor_policy)
+    policy_forms = {semantic_hash(context['policy']): context['policy'],
+                    predecessor_policy_hash: context['policy'],
+                    semantic_hash(evidence_policy(context['policy'])): context['policy']}
+    current_projection = copy.deepcopy(context['policy'])
+    if isinstance(current_projection.get('sections'), list):
+        current_projection['sections'] = [row for row in current_projection['sections']
+            if row.get('id') not in OPERATIONAL_POLICY_SECTIONS]
+        for row in current_projection['sections']:
+            if row.get('id') == 'workflow_adherence':
+                for field in ('phase_dag', 'migration_entries'): row.get('configuration', {}).pop(field, None)
+                for field in ('review', 'default_digest', 'default_hash', 'content_hash', 'default_id', 'default_disposition'): row.pop(field, None)
+    policy_forms[semantic_hash(current_projection)] = context['policy']
+    for old in context.get('historical_policies', {}).values():
+        full = semantic_hash(old)
+        pre = copy.deepcopy(old)
+        pre['sections'] = [row for row in pre['sections'] if row['id'] not in OPERATIONAL_POLICY_SECTIONS]
+        policy_forms.setdefault(full, old)
+        policy_forms.setdefault(semantic_hash(pre), old)
+        old_current = copy.deepcopy(pre)
+        for row in old_current['sections']:
+            if row['id'] == 'workflow_adherence':
+                for field in ('phase_dag', 'migration_entries'): row['configuration'].pop(field, None)
+                for field in ('review', 'default_digest', 'default_hash', 'content_hash', 'default_id', 'default_disposition'): row.pop(field, None)
+        policy_forms.setdefault(semantic_hash(old_current), old)
+        policy_forms.setdefault(semantic_hash(evidence_policy(old)), old)
     predecessor_policy_context = {'type': 'policy_context',
         'content': {'policy': predecessor_policy_hash}, 'producer': None,
         'provenance': {'actor': 'host', 'source': None, 'policy': predecessor_policy_hash}}
@@ -1238,6 +1270,9 @@ def _derive_task_steps(graph, payload, context):
                 output = artifact(output_ref)
                 if output.get('producer') != result['attempt'] or output.get('provenance', {}).get('actor') != result['executor']:
                     raise ValueError('Result/output producer provenance mismatch')
+                if (output.get('provenance', {}).get('policy') != value.get('provenance', {}).get('policy')
+                        or output.get('provenance', {}).get('approved_policy') != value.get('provenance', {}).get('approved_policy')):
+                    raise ValueError('Result/output policy provenance mismatch')
                 outputs.append((output_ref, output, result))
         for index, node in enumerate(snapshot['graph']['nodes']):
             identity = {'goal': number, 'node': node['id'], 'item': None, 'generation': 1}
@@ -1750,23 +1785,78 @@ def _derive_task_steps(graph, payload, context):
                     'context': snapshots[number].get('context_ref'), 'targets': [instances[k]['node'] for k in selected]})
             resolution_semantics = [{'location': r['location'], 'selector': r['selector'], 'targets': r['targets']} for r in state['resolutions']]
             state.update(input_hash=semantic_hash({'node': instance['node'], 'contract': contract, 'inputs': hashes, 'resolutions': resolution_semantics}), state='ready', prerequisites=prerequisites)
-            # Successor validation above establishes one authenticated history
-            # head. Freshness may reopen that head, but must never resurrect an
-            # older Result merely because external inputs reverted.
+            # Only the authenticated latest Result may be current; never revive an older Result.
             for ref, result in records_by_node.get(key, [])[-1:]:
-                recorded_policy = artifact(ref).get('provenance', {}).get('policy')
-                legacy_contract = semantic_hash({'node': node, 'policy': recorded_policy}) if isinstance(recorded_policy, str) else None
-                predecessor_contract = (semantic_hash({'node': node, 'policy': predecessor_policy_hash})
-                                        if recorded_policy == full_policy else None)
+                provenance = artifact(ref).get('provenance', {})
+                recorded_policy = provenance.get('policy')
+                approved_policy = provenance.get('approved_policy')
+                possible_legacy = (semantic_hash({'node': node, 'policy': recorded_policy})
+                                   if isinstance(recorded_policy, str) else None)
+                allowed_contracts = {contract, possible_legacy,
+                    semantic_hash({'node': node, 'policy': predecessor_policy_hash})}
+                if approved_policy in policy_forms:
+                    approved_snapshot = policy_forms[approved_policy]
+                    allowed_contracts.add(semantic_hash({'node': node,
+                        'policy': semantic_hash(evidence_policy(approved_snapshot))}))
                 cutover_equivalent = ref['hash'] in context.get('cutover_results', set())
                 mapped_node = context.get('cutover_mappings', {}).get(ref['hash'])
-                if (task_key(result['node']) != key
-                        and mapped_node != key[1]
-                        or not cutover_equivalent
-                        and result['contract'] not in {contract, legacy_contract, predecessor_contract}):
+                if task_key(result['node']) != key and mapped_node != key[1]:
+                    if '64 policy' in (context.get('historical_policy_error') or ''):
+                        state['reason'] = context['historical_policy_error']
                     continue
-                predecessor = result['contract'] == predecessor_contract and predecessor_contract != contract
-                legacy = result['contract'] == legacy_contract and result['contract'] != contract
+                if approved_policy is not None:
+                    if approved_policy not in policy_forms:
+                        state['reason'] = context.get('historical_policy_error') or 'Historical approved policy identity does not authenticate normalized Result provenance'
+                        continue
+                if recorded_policy not in policy_forms:
+                    if not (result['contract'] == contract and not (
+                            isinstance(recorded_policy, str) and SHA256.fullmatch(recorded_policy))):
+                        state['reason'] = context.get('historical_policy_error') or 'Historical policy ancestor does not authenticate recorded Result provenance'
+                        continue
+                old_policy = policy_forms.get(approved_policy if approved_policy is not None else recorded_policy,
+                                              context['policy'])
+                historical_form_hashes = {semantic_hash(old_policy),
+                    semantic_hash(evidence_policy(old_policy))}
+                old_pre_static = copy.deepcopy(old_policy)
+                if isinstance(old_pre_static.get('sections'), list):
+                    old_pre_static['sections'] = [row for row in old_pre_static['sections']
+                        if row.get('id') not in OPERATIONAL_POLICY_SECTIONS]
+                    historical_form_hashes.add(semantic_hash(old_pre_static))
+                    for row in old_pre_static['sections']:
+                        if row.get('id') == 'workflow_adherence':
+                            for field in ('phase_dag', 'migration_entries'):
+                                row.get('configuration', {}).pop(field, None)
+                            for field in ('review', 'default_digest', 'default_hash', 'content_hash',
+                                          'default_id', 'default_disposition'):
+                                row.pop(field, None)
+                    historical_form_hashes.add(semantic_hash(old_pre_static))
+                # Authenticate the exact finite historical fingerprint before
+                # comparing its contract. Pre-normalization Results used the
+                # current projection with full-policy provenance.
+                allowed_contracts.update(semantic_hash({'node': node, 'policy': identity})
+                                         for identity in historical_form_hashes)
+                if not cutover_equivalent and result['contract'] not in allowed_contracts:
+                    continue
+                if (approved_policy is not None and
+                        (approved_policy not in historical_form_hashes or recorded_policy not in historical_form_hashes)):
+                    state['reason'] = 'Approved policy identity does not authenticate Result provenance form'
+                    continue
+                def ci_mode(value):
+                    return next((row.get('configuration', {}).get('required_ci') for row in value.get('sections', [])
+                                 if row.get('id') == 'verification_testing'), None)
+                ci_rank = {'disabled': 0, 'existing_only': 1, 'inspect_exact_pr_head': 2}
+                if (ci_rank.get(ci_mode(old_policy), -1) < ci_rank.get(ci_mode(context['policy']), -1)
+                        and any(output.get('type') in {'publication_evidence', 'publication_authorization',
+                                                        'merge_authorization', 'ci_check_result'}
+                                for output in node['outputs'].values())):
+                    state['reason'] = 'Current CI policy requires fresh exact-head observation and authorization'
+                    continue
+                legacy_contract = semantic_hash({'node': node, 'policy': recorded_policy})
+                predecessor_contract = (semantic_hash({'node': node, 'policy': predecessor_policy_hash})
+                                        if recorded_policy == full_policy else None)
+                predecessor = result['contract'] != contract and (
+                    recorded_policy != policy or result['contract'] == predecessor_contract)
+                legacy = result['contract'] != contract and result['contract'] in allowed_contracts
                 old_hashes = {}
                 for binding in result['inputs']:
                     if binding['name'] == '__workspace' and (context.get('workspace_probe') or 'workspaces' not in context or '__workspace' not in hashes): continue
@@ -1778,9 +1868,13 @@ def _derive_task_steps(graph, payload, context):
                     # pre-static fingerprint adapter. Never trust an arbitrary
                     # old digest or alter the durable Result/authorization.
                     bindings = [row for row in result['inputs'] if row['name'] == '__policy']
+                    bound_policy = artifact(bindings[0]['source']).get('content', {}).get('policy') if len(bindings) == 1 else None
+                    recorded_context = {'type': 'policy_context', 'content': {'policy': bound_policy},
+                        'producer': None, 'provenance': {'actor': 'host', 'source': None, 'policy': bound_policy}}
                     if (len(bindings) != 1 or bindings[0]['mode'] != 'identity' or bindings[0]['path']
-                            or artifact(bindings[0]['source']) != predecessor_policy_context
-                            or old_hashes['__policy'] != semantic_hash(predecessor_policy_context)):
+                            or bound_policy not in historical_form_hashes
+                            or artifact(bindings[0]['source']) != recorded_context
+                            or old_hashes['__policy'] != semantic_hash(recorded_context)):
                         continue
                     comparable_hashes['__policy'] = old_hashes['__policy']
                 if predecessor and '__workspace' in old_hashes and '__workspace' in hashes:
@@ -1795,11 +1889,29 @@ def _derive_task_steps(graph, payload, context):
                     if (any(row['mode'] != 'identity' or row['path'] for row in old_bindings + new_bindings)
                             or before.get('type') != 'workspace_snapshot'
                             or after.get('type') != 'workspace_snapshot'
-                            or before.get('provenance') != {'actor': 'host', 'source': None, 'policy': predecessor_policy_hash}
+                            or before.get('provenance', {}).get('policy') not in historical_form_hashes
+                            or {k: v for k, v in before.get('provenance', {}).items() if k != 'policy'} != {'actor': 'host', 'source': None}
                             or after.get('provenance') != {'actor': 'host', 'source': None, 'policy': policy}
                             or {**before, 'provenance': after['provenance']} != after):
                         continue
                     comparable_hashes['__workspace'] = old_hashes['__workspace']
+                if predecessor:
+                    # A host join pins exact values and source Refs. A policy
+                    # fingerprint upgrade alone must not replace that identity.
+                    current_bindings = {row['name']: row for row in state['inputs']}
+                    for binding in result['inputs']:
+                        newer = current_bindings.get(binding['name'])
+                        if (not newer or binding['mode'] != 'identity'
+                                or newer['mode'] != 'identity' or binding['path'] != newer['path']):
+                            continue
+                        before, after = artifact(binding['source']), artifact(newer['source'])
+                        if (before.get('type') == after.get('type') == 'binding'
+                                and before.get('producer') is None and after.get('producer') is None
+                                and before.get('provenance', {}).get('policy') in historical_form_hashes
+                                and {k: v for k, v in before.get('provenance', {}).items() if k != 'policy'} == {'actor': 'host', 'source': None}
+                                and after.get('provenance') == {'actor': 'host', 'source': None, 'policy': policy}
+                                and {**before, 'provenance': after['provenance']} == after):
+                            comparable_hashes[binding['name']] = old_hashes[binding['name']]
                 # Results created before policy_context existed already carry
                 # immutable policy provenance and a legacy contract.  Do not
                 # invalidate them merely because the host later introduced

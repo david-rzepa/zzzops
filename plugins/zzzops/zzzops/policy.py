@@ -1415,6 +1415,52 @@ def project_digest(text: str) -> str:
     return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def phase_policy_projection(policy: dict[str, Any], form: str) -> dict[str, Any]:
+    """Finite, historical Result fingerprints; never infer a form from a digest."""
+    value = copy.deepcopy(policy)
+    if form == "full":
+        return value
+    if form not in {"pre_static", "current", "normalized"}:
+        raise ValueError("Unknown phase policy projection")
+    value["sections"] = [row for row in value["sections"] if row["id"] not in
+                         {"model_routing", "autonomy_approval_parallelism"}]
+    if form == "pre_static":
+        return value
+    for section in value["sections"]:
+        if section["id"] == "workflow_adherence":
+            section["configuration"].pop("phase_dag", None)
+            section["configuration"].pop("migration_entries", None)
+            for key in ("review", "default_digest", "default_hash", "content_hash",
+                        "default_id", "default_disposition"):
+                section.pop(key, None)
+        if form == "normalized" and section["id"] == "verification_testing":
+            section["configuration"].pop("required_ci", None)
+            for key in ("review", "default_disposition", "default_provenance",
+                        "rationale", "source_ids"):
+                section.pop(key, None)
+    return value
+
+
+def phase_policy_ci_compatible(old: dict[str, Any], new: dict[str, Any]) -> bool:
+    """Only CI mode/review changes and append-only policy evidence may differ."""
+    if phase_policy_projection(old, "normalized") == phase_policy_projection(new, "normalized"):
+        return True
+    old_evidence, new_evidence = old.get("evidence"), new.get("evidence")
+    if not isinstance(old_evidence, list) or not isinstance(new_evidence, list):
+        return False
+    old_by_id = {row.get("id"): row for row in old_evidence if isinstance(row, dict)}
+    new_by_id = {row.get("id"): row for row in new_evidence if isinstance(row, dict)}
+    if len(old_by_id) != len(old_evidence) or len(new_by_id) != len(new_evidence):
+        return False
+    if new_evidence[:len(old_evidence)] != old_evidence:
+        return False
+    before = phase_policy_projection(old, "normalized")
+    after = phase_policy_projection(new, "normalized")
+    before.pop("evidence", None)
+    after.pop("evidence", None)
+    return before == after
+
+
 def classify_release_evidence(
     *, visibility: str | None, github_releases: list[dict[str, Any]] | None,
     owner_declaration: str | None = None,

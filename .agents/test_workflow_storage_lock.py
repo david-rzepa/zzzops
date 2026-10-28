@@ -1,4 +1,6 @@
 import importlib.util
+import threading
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -78,6 +80,43 @@ class StorageLockWriteTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "current workflow storage reservation"):
                     self.save(engine)
         self.assertEqual(["renew", "release"], calls)
+
+    def test_long_read_keeps_exact_storage_owner_live_until_write(self):
+        original_expiry = time.time() + .05
+        engine, calls = self.engine(acquired_expiry=original_expiry)
+        renewed = threading.Event()
+        def renew(_adapter, _repository, _key, owner, run, ttl):
+            self.assertEqual(("workflow", 300), (owner, ttl))
+            self.assertTrue(run)
+            calls.append("renew")
+            renewed.set()
+            return {"acquired": True, "outcome": "renewed", "expires_at": time.time() + 300}
+        engine.api.renew_storage_lock = renew
+        with mock.patch.object(workflow, "_STORAGE_RENEW_INTERVAL_SECONDS", .01):
+            with engine.locked():
+                self.assertTrue(renewed.wait(1), "keepalive did not renew during the read")
+                time.sleep(.06)
+                self.assertGreater(time.time(), original_expiry)
+                self.assertGreater(engine._storage_reservation["expires_at"], time.time())
+                self.save(engine)
+        self.assertIn("write", calls)
+        self.assertEqual("release", calls[-1])
+
+    def test_failed_keepalive_cannot_authorize_delayed_write(self):
+        engine, calls = self.engine(acquired_expiry=time.time() + 300)
+        attempted = threading.Event()
+        def lost(*_args):
+            calls.append("renew")
+            attempted.set()
+            return {"acquired": False, "outcome": "not_owned"}
+        engine.api.renew_storage_lock = lost
+        with mock.patch.object(workflow, "_STORAGE_RENEW_INTERVAL_SECONDS", .01):
+            with engine.locked():
+                self.assertTrue(attempted.wait(1), "keepalive did not check ownership")
+                with self.assertRaisesRegex(ValueError, "current workflow storage reservation"):
+                    self.save(engine)
+        self.assertNotIn("write", calls)
+        self.assertEqual("release", calls[-1])
 
 
 if __name__ == "__main__":

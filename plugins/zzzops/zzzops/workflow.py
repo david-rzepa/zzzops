@@ -33,6 +33,7 @@ import zzzops_managed_worktrees as managed_worktrees
 _OBSERVED_ARTIFACT_INDEXES = {}
 _GIT_ARTIFACT_SNAPSHOTS = {}
 _VERIFICATION_LOCKS = {}
+_STORAGE_RENEW_INTERVAL_SECONDS = 90
 
 
 class ContinuationFirstEnvelopeBudget(ValueError):
@@ -615,11 +616,97 @@ class Workflow:
     def node_evidence_policy(self):
         return digest(self.api._phase_evidence.evidence_policy(self.project['policy']))
 
+    def node_historical_policies(self, snapshots, artifacts):
+        """Authenticate bounded first-parent policy history for recorded Results."""
+        forms = ("full", "pre_static", "current", "normalized")
+        projection = self.api._policy.phase_policy_projection
+        current = self.project['policy']
+        current_hashes = {digest(projection(current, form)) for form in forms}
+        recorded = {value for snapshot in snapshots.values() for ref in snapshot['payload']['evidence']
+                    for value in (artifacts[ref['hash']].get('provenance', {}).get('policy'),
+                                  artifacts[ref['hash']].get('provenance', {}).get('approved_policy'))}
+        needed = {value for value in recorded if isinstance(value, str) and value not in current_hashes}
+        if not needed:
+            return {}, None
+        accepted = {}
+        # Preserve the pre-existing phase-DAG adapter: an authenticated graph
+        # Ref may reconstruct the sole excluded workflow field exactly.
+        for snapshot in snapshots.values():
+            graph_ref = snapshot['payload'].get('graph')
+            old_graph = artifacts.get(graph_ref.get('hash')) if isinstance(graph_ref, dict) else None
+            if not isinstance(old_graph, dict):
+                continue
+            reconstructed = copy.deepcopy(current)
+            for section in reconstructed['sections']:
+                if section['id'] == 'workflow_adherence':
+                    section['configuration']['phase_dag'] = old_graph
+            if projection(reconstructed, 'normalized') == projection(current, 'normalized'):
+                for form in forms:
+                    fingerprint = digest(projection(reconstructed, form))
+                    if fingerprint in needed:
+                        accepted[fingerprint] = reconstructed
+        needed -= set(accepted)
+        if not needed:
+            return accepted, None
+        command = ['git', 'rev-list', '--max-count=65', '--first-parent', 'HEAD', '--', '.zzzops/POLICY.json']
+        commits = subprocess.run(command, cwd=self.repo, capture_output=True, text=True, check=True).stdout.splitlines()
+        matches = {value: [] for value in needed}
+        errors = []
+        cache = getattr(self, '_historical_policy_cache', None)
+        if cache is None:
+            cache = self._historical_policy_cache = {}
+        for commit in commits[:64]:
+            try:
+                cache_key = (commit, digest(current))
+                old = cache.get(cache_key)
+                if old is None:
+                    files = {}
+                    for name in ('POLICY.json', 'PROJECT.md', 'PROJECT_AUDIT.md'):
+                        raw = subprocess.run(['git', 'show', f'{commit}:.zzzops/{name}'], cwd=self.repo,
+                                             capture_output=True, check=True).stdout
+                        files[name] = raw.decode('utf-8-sig')
+                    state = json.loads(files['POLICY.json'])
+                    invalid = self.api._policy.validate_project_state(state)
+                    if state.get('initialized') is not True:
+                        invalid.append('historical policy is not initialized')
+                    if state.get('repository', {}).get('identity') != self.project.get('repository', {}).get('identity'):
+                        invalid.append('historical policy repository identity changed')
+                    bindings = state.get('bindings', {})
+                    for name, file in (('project', 'PROJECT.md'), ('audit', 'PROJECT_AUDIT.md')):
+                        if bindings.get(name, {}).get('digest') != self.api._policy.project_digest(files[file]):
+                            invalid.append(f'historical {name} policy artifact binding changed')
+                    if invalid:
+                        errors.extend(invalid)
+                        continue
+                    old = state['policy']
+                    cache[cache_key] = old
+                if not self.api._policy.phase_policy_ci_compatible(old, current):
+                    continue
+                for form in forms:
+                    fingerprint = digest(projection(old, form))
+                    if fingerprint in needed:
+                        matches[fingerprint].append((commit, form, old))
+            except (OSError, UnicodeError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as exc:
+                errors.append(f'historical policy ancestor {commit} is unavailable or malformed: {exc}')
+        for fingerprint, candidates in matches.items():
+            # One approved snapshot may naturally expose multiple historical
+            # forms with the same digest; ambiguity concerns distinct commits.
+            commits_found = {row[0] for row in candidates}
+            if len(commits_found) == 1:
+                accepted[fingerprint] = candidates[0][2]
+            elif candidates:
+                errors.append('Ambiguous approved historical policy ancestors match the Result')
+            else:
+                errors.append('No authenticated matching historical policy ancestor within 64 policy changes')
+        return accepted, '; '.join(errors) if errors else None
+
     def node_authorization_policy_matches(self, value, artifact, result, artifacts):
         """Keep an exact authorization valid across later policy settings changes."""
         accepted = {
             self.node_evidence_policy(),
+            digest(self.project['policy']),
             artifact.get('provenance', {}).get('policy'),
+            artifact.get('provenance', {}).get('approved_policy'),
         }
         bindings = [item for item in result.get('inputs', []) if item.get('name') == '__policy']
         if len(bindings) == 1:
@@ -1171,6 +1258,8 @@ class Workflow:
             adapter.timeout_budget = budget.timeout
         deadline = time.monotonic() + 10
         reservation = None
+        keepalive_stop = threading.Event()
+        keepalive = None
         attempted = False
         observed_adapter = self.adapter
         if isinstance(observed_adapter, ProviderReadGateway): self.adapter = self._mutation_adapter
@@ -1191,12 +1280,38 @@ class Workflow:
                 raise ValueError('Provider did not confirm the storage reservation expiry; no write is allowed')
             reservation = {
                 'adapter': adapter, 'owner': owner, 'run': run,
-                'expires_at': expires_at, 'valid': True,
+                'expires_at': expires_at, 'valid': True, 'mutex': threading.Lock(),
             }
             self._storage_reservation = reservation
+            def maintain_reservation():
+                while not keepalive_stop.wait(_STORAGE_RENEW_INTERVAL_SECONDS):
+                    if keepalive_stop.is_set():
+                        return
+                    with reservation['mutex']:
+                        if not reservation['valid']:
+                            return
+                        try:
+                            renewed = api.renew_storage_lock(
+                                adapter, self.repository, 'workflow', owner, run, 300,
+                            )
+                            renewed_expiry = renewed.get('expires_at')
+                            if (not renewed.get('acquired') or not isinstance(renewed_expiry, (int, float))
+                                    or isinstance(renewed_expiry, bool) or renewed_expiry <= time.time()):
+                                reservation['valid'] = False
+                                return
+                            reservation['expires_at'] = renewed_expiry
+                        except Exception:
+                            # Provider uncertainty never extends write authority.
+                            reservation['valid'] = False
+                            return
+            keepalive = threading.Thread(target=maintain_reservation, daemon=True)
+            keepalive.start()
             self.invalidate()
             yield
         finally:
+            keepalive_stop.set()
+            if keepalive is not None:
+                keepalive.join()
             self.adapter = observed_adapter
             if getattr(self, '_storage_reservation', None) is reservation:
                 self._storage_reservation = None
@@ -1209,23 +1324,24 @@ class Workflow:
     def save(self, issue, goal, desired, *, human_spec=None):
         reservation = getattr(self, '_storage_reservation', None)
         if reservation is not None:
-            if not reservation['valid']:
-                raise ValueError('A current workflow storage reservation is required before writing')
-            if time.time() >= reservation['expires_at']:
-                reservation['valid'] = False
-                raise ValueError('The workflow storage reservation expired before writing; re-read and retry')
-            renewed = self.api.renew_storage_lock(
-                reservation['adapter'], self.repository, 'workflow',
-                reservation['owner'], reservation['run'], 300,
-            )
-            if not renewed.get('acquired'):
-                reservation['valid'] = False
-                raise ValueError('The workflow storage reservation was lost before writing; re-read and retry')
-            expires_at = renewed.get('expires_at')
-            if not isinstance(expires_at, (int, float)) or isinstance(expires_at, bool) or expires_at <= time.time():
-                reservation['valid'] = False
-                raise ValueError('Provider did not confirm a live workflow storage reservation; no write is allowed')
-            reservation['expires_at'] = expires_at
+            with reservation['mutex']:
+                if not reservation['valid']:
+                    raise ValueError('A current workflow storage reservation is required before writing')
+                if time.time() >= reservation['expires_at']:
+                    reservation['valid'] = False
+                    raise ValueError('The workflow storage reservation expired before writing; re-read and retry')
+                renewed = self.api.renew_storage_lock(
+                    reservation['adapter'], self.repository, 'workflow',
+                    reservation['owner'], reservation['run'], 300,
+                )
+                if not renewed.get('acquired'):
+                    reservation['valid'] = False
+                    raise ValueError('The workflow storage reservation was lost before writing; re-read and retry')
+                expires_at = renewed.get('expires_at')
+                if not isinstance(expires_at, (int, float)) or isinstance(expires_at, bool) or expires_at <= time.time():
+                    reservation['valid'] = False
+                    raise ValueError('Provider did not confirm a live workflow storage reservation; no write is allowed')
+                reservation['expires_at'] = expires_at
         desired['revision'] = goal['revision'] + 1
         def before_publish():
             if reservation is not None and (not reservation['valid'] or time.time() >= reservation['expires_at']):
@@ -3034,6 +3150,9 @@ class Workflow:
                 break
             except (KeyError, StopIteration, TypeError, ValueError):
                 continue
+        historical, historical_error = self.node_historical_policies(closure, snapshot['artifacts'])
+        context['historical_policies'] = historical
+        context['historical_policy_error'] = historical_error
         result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
         workspaces = self.node_workspace_context(
             closure, result, result['artifacts'], workspace_target=workspace_target)
@@ -4328,7 +4447,7 @@ class Workflow:
                 reference = next((ref for ref in result['outputs'].values() if ref['hash'] == output_hash), None)
                 if (not isinstance(value, dict) or not reference or value.get('manifest') != manifest or
                         node not in value.get('tasks', []) or value.get('decision') != 'approved' or
-                        value.get('policy') not in {self.node_evidence_policy(), candidate.get('provenance', {}).get('policy')} or
+                        not self.node_authorization_policy_matches(value, candidate, result, artifacts) or
                         not any(binding['source'] == manifest and binding['mode'] == 'identity' for binding in result['inputs'])):
                     continue
                 approvals.append((reference, result, states[owner_key]))
@@ -8231,7 +8350,7 @@ class Workflow:
                             step.update(reason=state.get('reason', 'workspace or input identity drift'),
                                 action='Custody only: preserve the owned attempt; current review and input authority are still required before submission.')
                         response = {'next_steps': [step]}
-                    else:
+                    elif operation != 'release':
                         if state.get('input_hash') != lease['fingerprint'] or state['state'] != 'ready': raise ValueError('Stale substantive input/contract/prerequisite; owner remains bound: ' + state.get('reason', 'workspace or input identity drift'))
                         if lease['expires_at'] <= time.time() and operation != 'release':
                             raise ValueError('Lease expired; observe stopped owner before recovery')
@@ -8299,7 +8418,7 @@ class Workflow:
                         outputs = {}
                         previous = next((snapshot['artifacts'][ref['hash']]['content']['outputs'] for ref in reversed(snapshot['payload']['evidence']) if snapshot['artifacts'][ref['hash']]['content']['node'] == node), {})
                         for slot, content in bundle.items():
-                            output = {'type': contracts[slot]['type'], 'content': content, 'producer': lease['attempt'], 'provenance': {'actor': lease['worker'], 'source': proof_ref, 'policy': digest(self.project['policy'])}}
+                            output = {'type': contracts[slot]['type'], 'content': content, 'producer': lease['attempt'], 'provenance': {'actor': lease['worker'], 'source': proof_ref, 'policy': self.node_evidence_policy(), 'approved_policy': digest(self.project['policy'])}}
                             identity = digest(output); snapshot['artifacts'][identity] = output; outputs[slot] = self.node_ref(identity, number)
                             if slot in previous: snapshot.setdefault('output_bases', {})[identity] = previous[slot]['hash']
                         result = {'node': node, 'attempt': lease['attempt'], 'contract': state['contract_hash'], 'inputs': lease['acquisition']['inputs'], 'executor': lease['worker'], 'outputs': outputs, 'resolutions': lease['acquisition']['resolutions']}
@@ -8323,7 +8442,7 @@ class Workflow:
                                 raise ValueError('Replacement Result predecessor CAS precondition changed')
                             result['supersedes_result'] = predecessor[0]
                             result['expected_goal_revision'] = expected_revision
-                        artifact = {'type': 'result', 'content': result, 'producer': lease['attempt'], 'provenance': {'actor': lease['worker'], 'source': None, 'policy': digest(self.project['policy'])}}
+                        artifact = {'type': 'result', 'content': result, 'producer': lease['attempt'], 'provenance': {'actor': lease['worker'], 'source': None, 'policy': self.node_evidence_policy(), 'approved_policy': digest(self.project['policy'])}}
                         identity = digest(artifact); snapshot['artifacts'][identity] = artifact
                         ref = self.node_ref(identity, number); payload['evidence'].append(ref); leases.remove(lease)
                         response = self.node_continuation(snapshot, payload, node, ref)
@@ -8540,12 +8659,12 @@ class Workflow:
                         outputs = {}
                         for slot, original in mapping['outputs'].items():
                             output = {'type': mapped_state['contract']['outputs'][slot]['type'], 'content': load(original), 'producer': attempt,
-                                      'provenance': {'actor': historical['actor'], 'source': mapping_ref, 'policy': digest(self.project['policy'])}}
+                                      'provenance': {'actor': historical['actor'], 'source': mapping_ref, 'policy': self.node_evidence_policy(), 'approved_policy': digest(self.project['policy'])}}
                             identity = digest(output); artifacts[identity] = output; outputs[slot] = self.node_ref(identity, snapshot['number'])
                         mapped = {'node': mapping['target'], 'attempt': attempt, 'contract': mapped_state['contract_hash'], 'inputs': mapped_state['inputs'],
                                   'executor': historical['actor'], 'outputs': outputs, 'resolutions': mapped_state['resolutions']}
                         result_blob = {'type': 'result', 'content': mapped, 'producer': attempt,
-                                       'provenance': {'actor': historical['actor'], 'source': None, 'policy': digest(self.project['policy'])}}
+                                       'provenance': {'actor': historical['actor'], 'source': None, 'policy': self.node_evidence_policy(), 'approved_policy': digest(self.project['policy'])}}
                         identity = digest(result_blob); artifacts[identity] = result_blob
                         payload['evidence'].append(self.node_ref(identity, snapshot['number']))
                 snapshot['activation'] = {'envelope': target, 'payload': payload, 'graph': graph, 'conversion': conversion_blob['content'], 'review': reviews[0], 'approval': value['approval']}
