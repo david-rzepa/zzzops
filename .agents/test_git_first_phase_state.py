@@ -1298,8 +1298,11 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         f.session.finish(f.session.acquire('choose'),{'value':'leaf'})
         # The host, not this fixture, must create the non-applicability Result.
         rows=f.session.checkpoint(100)
-        current=f.result('optional_git')[1]
-        self.assertEqual('leaf',current['non_applicability'])
+        snapshot=z.workflow_engine(
+            f.session.repo, f.session.project, f.session.runtime).node_snapshot(100)
+        current=snapshot['projection']['current'][(100, 'optional_git', None, 1)][1]
+        self.assertEqual('host',current['executor'])
+        self.assertEqual('leaf',current['non_applicability']['value'])
         self.assertEqual(['__applicability'],[row['name'] for row in current['inputs']])
         self.assertEqual(accepted,f.result('alpha')[0])
         self.assertFalse(any(row.get('kind')=='repair' for row in rows),rows)
