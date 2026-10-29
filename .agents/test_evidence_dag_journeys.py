@@ -4656,7 +4656,6 @@ class GenericStoragePublicTests(DagFixture):
         envelope, payload = self.payload()
         spec = self.read_blob(payload["spec"])
         child = self.blob({"payload": "x" * 40000})
-        self.blob({"payload": "y" * 40000})
         spec["related"] = child
         payload["spec"] = self.blob(spec)
         envelope["payload"] = self.blob(payload)
@@ -4672,6 +4671,7 @@ class GenericStoragePublicTests(DagFixture):
 
     def test_valid_referenced_child_optional_budget_keeps_execute_frontier(self):
         child = self.referenced_child_checkpoint_case()
+        self.blob({"payload": "y" * 40000})
         self.assertEqual({"payload": "x" * 40000}, self.read_blob(child))
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
         store = self.session.api._workflow.comment_store
