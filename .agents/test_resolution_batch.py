@@ -2,6 +2,7 @@
 import copy
 import hashlib
 import json
+import sys
 from pathlib import Path
 from unittest import mock
 import unittest
@@ -270,12 +271,19 @@ class ResolutionBatchPublicTests(dag.DagFixture):
         self.load_legacy()
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
         active = [False]
-        checked_refs, edges = [], []
+        checked_refs, edges, repeated_size_reads = [], [], []
         lifecycle = dag.z._resolution_lifecycle
         workflow = dag.z._workflow
         original = lifecycle.committed_results
         checked = workflow.ObservedArtifactIndex._checked
         receipt_edge = workflow.Workflow.node_receipt_edge
+        canonical = workflow.comment_store.canonical
+
+        def serialize(value):
+            result = canonical(value)
+            if active[0] and sys._getframe(1).f_code.co_name == '_checked':
+                repeated_size_reads.append(len(result.encode('utf-8')))
+            return result
 
         def lineage(engine, snapshot):
             active[0] = True
@@ -296,7 +304,8 @@ class ResolutionBatchPublicTests(dag.DagFixture):
 
         with mock.patch.object(lifecycle, 'committed_results', side_effect=lineage), \
                 mock.patch.object(workflow.ObservedArtifactIndex, '_checked', check), \
-                mock.patch.object(workflow.Workflow, 'node_receipt_edge', edge):
+                mock.patch.object(workflow.Workflow, 'node_receipt_edge', edge), \
+                mock.patch.object(workflow.comment_store, 'canonical', serialize):
             steps = self.session.checkpoint(100)
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
         self.assertFalse(any(step['kind'] in ('execute', 'policy_dag_cutover', 'blocker') for step in steps), steps)
@@ -305,6 +314,8 @@ class ResolutionBatchPublicTests(dag.DagFixture):
         self.assertTrue(checked_refs)
         self.assertEqual(len(set(checked_refs)), len(checked_refs),
                          'lineage repeated checked reads of an already resolved snapshot Ref')
+        self.assertEqual([], repeated_size_reads,
+                         'Cache accounting must reuse the verified reconstruction byte count')
 
     def test_legacy_closure_rechecks_deleted_tampered_and_conflicting_rows_on_fresh_observation(self):
         fixture = self.load_legacy()

@@ -274,6 +274,14 @@ class ArtifactIndex:
         self.decode_work = MAX_RECONSTRUCTION_WORK_BYTES - budget[0]
 
     def resolve(self, identity):
+        return self._resolve_details(identity)[:3]
+
+    def _resolve_details(self, identity):
+        """Return detached value, depth, charged work and verified root byte size.
+
+        Size is taken from the bytes checked for the content identity, and is
+        returned only after every representation and reconstruction guard passes.
+        """
         spent = self.decode_work
         def visit(key, active):
             nonlocal spent
@@ -284,7 +292,7 @@ class ArtifactIndex:
             records = self.records.get(key)
             if not records:
                 raise ValueError('Missing artifact/base; persist the complete immutable content before referencing it')
-            values, depths = [], []
+            values, depths, sizes = [], [], []
             chunks = [record for record in records if record.get('kind') == 'chunk']
             ordinary = [record for record in records if record.get('kind') != 'chunk']
             if chunks:
@@ -312,7 +320,7 @@ class ArtifactIndex:
                     raise ValueError('Artifact decoded/reconstruction size limit exceeded')
                 if 'sha256:' + hashlib.sha256(raw).hexdigest() != key:
                     raise ValueError('Stored artifact content conflicts with its identity')
-                values.append(value); depths.append(0)
+                values.append(value); depths.append(0); sizes.append(len(raw))
             for record in ordinary:
                 spent += len(canonical(record).encode('utf-8'))
                 if spent > MAX_RECONSTRUCTION_WORK_BYTES:
@@ -327,7 +335,7 @@ class ArtifactIndex:
                 elif kind == 'full':
                     value, depth = _from_text(record.get('type'), record.get('text')), 0
                 elif kind == 'delta':
-                    base, depth = visit(record.get('base'), active | {key})
+                    base, depth, _base_size = visit(record.get('base'), active | {key})
                     base_type, base_text = _to_text(base)
                     if base_type != record.get('type'):
                         raise ValueError('Artifact delta base type mismatch')
@@ -343,11 +351,12 @@ class ArtifactIndex:
                     raise ValueError('Stored artifact content conflicts with its identity')
                 values.append(value)
                 depths.append(depth)
+                sizes.append(len(raw))
             if any(value != values[0] for value in values[1:]):
                 raise ValueError('Conflicting stored artifact identity')
-            return values[0], max(depths)
-        value, depth = visit(identity, set())
-        return copy.deepcopy(value), depth, spent
+            return values[0], max(depths), sizes[0]
+        value, depth, size = visit(identity, set())
+        return copy.deepcopy(value), depth, spent, size
 
     def record(self, content, base=None):
         identity = digest(content)
