@@ -222,5 +222,103 @@ class ExactTextPatchContractTests(unittest.TestCase):
                 self.codec.apply_text_patch(before, patch)
 
 
+class VerifiedReconstructionDetailsTests(unittest.TestCase):
+    def setUp(self):
+        self.codec = z._comment_store
+
+    @staticmethod
+    def wire(value):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True,
+                          separators=(',', ':'), allow_nan=False).encode('utf-8')
+
+    def full(self, value):
+        return {'kind': 'full', 'hash': 'sha256:' + hashlib.sha256(self.wire(value)).hexdigest(),
+                'type': 'text' if isinstance(value, str) else 'json',
+                'text': value if isinstance(value, str) else self.wire(value).decode('utf-8')}
+
+    def test_verified_size_and_charged_work_cover_every_representation(self):
+        for value in ('', 'é\n"😀', {'items': ['é', '😀'], 'enabled': True}):
+            full = self.full(value); identity = full['hash']
+            base = self.full({'different': ['base', 123]})
+            # Delta base and root must have different sizes, including UTF-8.
+            if full['type'] == 'text': base = self.full('a different base')
+            delta = {'kind': 'delta', 'hash': identity, 'type': full['type'], 'base': base['hash'],
+                     'patch': self.codec.make_text_patch(base['text'], full['text'])}
+            split = len(full['text']) // 2
+            chunks = [{'kind': 'chunk', 'hash': identity, 'type': full['type'],
+                       'index': i, 'total': 2, 'text': text}
+                      for i, text in enumerate((full['text'][:split], full['text'][split:]))]
+            legacy = {'kind': 'legacy', 'hash': identity, 'content': value}
+            cases = [('full', [full], 0, 1), ('legacy', [legacy], 0, 1),
+                     ('chunk', chunks, 0, 1), ('delta', [delta], 1, 1),
+                     ('competing-valid', [full, legacy, delta, *chunks], 1, 4)]
+            for name, records, depth, representations in cases:
+                with self.subTest(value=value, representation=name):
+                    index = self.codec.ArtifactIndex([])
+                    index.decode_work = 13
+                    index.records = {identity: copy.deepcopy(records), base['hash']: [base]}
+                    charged = 13 + sum(len(self.wire(record)) for record in records)
+                    charged += representations * len(self.wire(value))
+                    if depth:
+                        charged += len(self.wire(base)) + len(self.wire(
+                            'a different base' if full['type'] == 'text' else {'different': ['base', 123]}))
+                    details = index._resolve_details(identity)
+                    self.assertEqual((value, depth, charged, len(self.wire(value))), details)
+                    self.assertEqual((value, depth, charged), index.resolve(identity))
+                    self.assertIs(type(details[3]), int)
+
+    def test_metadata_does_not_short_circuit_bad_competing_representation(self):
+        full = self.full({'items': [1]}); identity = full['hash']
+        corrupt = {**full, 'text': '{"items":[9]}'}
+        incomplete = {'kind': 'chunk', 'hash': identity, 'type': 'json',
+                      'index': 0, 'total': 2, 'text': full['text']}
+        foreign = {**full, 'hash': 'sha256:' + '0' * 64}
+        for bad in (corrupt, incomplete, foreign):
+            with self.subTest(kind=bad['kind'], record_hash=bad['hash']):
+                index = self.codec.ArtifactIndex([])
+                index.records[identity] = [full, bad]
+                for reader in (index.resolve, index._resolve_details):
+                    with self.assertRaises(ValueError): reader(identity)
+
+    def test_metadata_preserves_work_size_depth_and_missing_base_limits(self):
+        base = self.full('base'); full = self.full('changed é😀')
+        delta = {'kind': 'delta', 'hash': full['hash'], 'type': 'text', 'base': base['hash'],
+                 'patch': self.codec.make_text_patch(base['text'], full['text'])}
+        index = self.codec.ArtifactIndex([])
+        index.records = {full['hash']: [delta], base['hash']: [base]}
+        identity = full['hash']; details = index._resolve_details(identity)
+        for constant, limit in (('MAX_RECONSTRUCTION_WORK_BYTES', details[2] - 1),
+                                ('MAX_ARTIFACT_BYTES', details[3] - 1), ('MAX_DELTA_DEPTH', 0)):
+            with self.subTest(limit=constant), mock.patch.object(self.codec, constant, limit):
+                with self.assertRaises(ValueError): index._resolve_details(identity)
+        del index.records[base['hash']]
+        with self.assertRaisesRegex(ValueError, 'Missing artifact/base'):
+            index._resolve_details(identity)
+        delta['base'] = identity
+        with self.assertRaisesRegex(ValueError, 'Cyclic artifact base'):
+            index._resolve_details(identity)
+
+    def test_detached_results_and_observed_cache_keep_mutation_guards(self):
+        value = {'items': ['é', 1]}; full = self.full(value); identity = full['hash']
+        legacy = {'kind': 'legacy', 'hash': identity, 'content': copy.deepcopy(value)}
+        index = self.codec.ArtifactIndex([]); index.records[identity] = [legacy]
+        for reader in (index.resolve, index._resolve_details):
+            returned = reader(identity); returned[0]['items'].append('caller mutation')
+            self.assertEqual(value, reader(identity)[0])
+        observed = z._workflow.ObservedArtifactIndex([])
+        observed.records[identity] = [full]
+        returned = observed.resolve(identity)
+        self.assertEqual(3, len(returned))
+        self.assertEqual(len(self.wire(value)), observed._value_costs[identity])
+        returned[0]['items'].append('detached cache read')
+        self.assertEqual(value, observed.resolve(identity)[0])
+        full['text'] = '{"items":["changed"]}'
+        with self.assertRaisesRegex(ValueError, 'conflicts with its identity'):
+            observed.resolve(identity)
+        legacy['content']['items'].append(float('nan'))
+        with self.assertRaisesRegex(ValueError, 'Nonfinite JSON number'):
+            index._resolve_details(identity)
+
+
 if __name__ == '__main__':
     unittest.main()
