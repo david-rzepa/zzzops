@@ -4651,6 +4651,58 @@ class RelationshipPublicTests(DagFixture):
 class GenericStoragePublicTests(DagFixture):
     """Storage invariants on exact host output Refs from generic submissions."""
 
+    def referenced_child_checkpoint_case(self):
+        """Keep the current spec valid while making optional reconstruction costly."""
+        envelope, payload = self.payload()
+        spec = self.read_blob(payload["spec"])
+        child = self.blob({"payload": "x" * 40000})
+        spec["related"] = child
+        payload["spec"] = self.blob(spec)
+        envelope["payload"] = self.blob(payload)
+        self.provider.issues[100]["body"] = re.sub(
+            r"<!-- zzzops-goal\s*\n.*?\nzzzops-goal -->",
+            "<!-- zzzops-goal\n" + json.dumps(envelope) + "\nzzzops-goal -->",
+            self.provider.issues[100]["body"], flags=re.S)
+        start = max(row["id"] for row in self.provider.comments[100]) + 1
+        self.provider.comments[100].extend(
+            {"id": start + offset, "body": f"retained historical comment {offset}"}
+            for offset in range(40))
+        return child
+
+    def test_valid_referenced_child_optional_budget_keeps_execute_frontier(self):
+        child = self.referenced_child_checkpoint_case()
+        self.assertEqual({"payload": "x" * 40000}, self.read_blob(child))
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        store = self.session.api._workflow.comment_store
+        with mock.patch.object(store, "MAX_RECONSTRUCTION_WORK_BYTES", 90000):
+            response = self.session.call(100, expected=None)
+        self.assertEqual(0, self.session.calls[-1]["code"], response)
+        kinds = [step["kind"] for step in response["next_steps"]]
+        self.assertIn("execute", kinds, response)
+        self.assertNotIn("hydration_checkpoint", kinds, response)
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_corrupt_referenced_child_remains_repair_under_optional_budget(self):
+        child = self.referenced_child_checkpoint_case()
+        row = next(row for row in self.provider.comments[100]
+                   if child["hash"] in row["body"])
+        encoded = row["body"].split("```text\n", 1)[1].split("\n```", 1)[0]
+        artifact = json.loads(zlib.decompress(base64.b64decode(encoded)))
+        artifact["content"]["payload"] = "y" + artifact["content"]["payload"][1:]
+        corrupt = base64.b64encode(zlib.compress(json.dumps(
+            artifact, ensure_ascii=False, sort_keys=True,
+            separators=(",", ":")).encode())).decode()
+        row["body"] = row["body"].replace(encoded, corrupt)
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        store = self.session.api._workflow.comment_store
+        with mock.patch.object(store, "MAX_RECONSTRUCTION_WORK_BYTES", 140000):
+            response = self.session.call(100, expected=None)
+        self.assertEqual(2, self.session.calls[-1]["code"], response)
+        self.assertEqual(["repair"], [step["kind"] for step in response["next_steps"]])
+        self.assertIn("Stored artifact content conflicts with its identity",
+                      response["next_steps"][0]["reason"])
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
     def test_checkpoint_preserves_concurrent_labels_and_exact_retry(self):
         for change_label in (False, True):
             with self.subTest(change_label=change_label):
