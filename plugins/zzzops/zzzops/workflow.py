@@ -4361,8 +4361,25 @@ class Workflow:
         raw snapshots to the same pure evaluator.
         """
         ev = self.api._phase_evidence
-        states = projection['states']; work = {key: state for key, state in states.items()
-            if {'repository_workspace', 'repository_git_workspace'}.intersection(state['contract']['executor']['resources'])}
+        states = projection['states']
+        outstanding_leases = {ev.task_key(lease['node'])
+            for snapshot in snapshots.values()
+            for lease in snapshot['payload']['operational']['leases']}
+        def current_host_nonapplicable(key, state):
+            current = projection['current'].get(key)
+            if current is None or key in outstanding_leases:
+                return False
+            result = current[1]
+            return (state['state'] == 'complete'
+                    and state.get('non_applicability') is not None
+                    and result.get('executor') == 'host'
+                    and result.get('non_applicability') == state['non_applicability']
+                    and [binding.get('name') for binding in result.get('inputs', [])]
+                        == ['__applicability'])
+        work = {key: state for key, state in states.items()
+            if {'repository_workspace', 'repository_git_workspace'}.intersection(
+                state['contract']['executor']['resources'])
+            and not current_host_nonapplicable(key, state)}
         head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
         # A merely-ready legacy sibling must not make a fresh commit-backed
         # task serialize the whole repository. Legacy bytes are observed once
