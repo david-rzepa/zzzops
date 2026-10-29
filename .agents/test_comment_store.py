@@ -237,7 +237,8 @@ class VerifiedReconstructionDetailsTests(unittest.TestCase):
                 'text': value if isinstance(value, str) else self.wire(value).decode('utf-8')}
 
     def test_verified_size_and_charged_work_cover_every_representation(self):
-        for value in ('', 'é\n"😀', {'items': ['é', '😀'], 'enabled': True}):
+        for value in ('', 'é\n"😀', None, False, 17, 1.25, [], {},
+                      {'items': ['é', '😀'], 'enabled': True}):
             full = self.full(value); identity = full['hash']
             base = self.full({'different': ['base', 123]})
             # Delta base and root must have different sizes, including UTF-8.
@@ -266,6 +267,51 @@ class VerifiedReconstructionDetailsTests(unittest.TestCase):
                     self.assertEqual((value, depth, charged, len(self.wire(value))), details)
                     self.assertEqual((value, depth, charged), index.resolve(identity))
                     self.assertIs(type(details[3]), int)
+
+    def test_json_string_base_uses_decoded_text_transport(self):
+        base = self.full('é😀')
+        base.update(type='json', text=self.wire('é😀').decode())
+        target = self.full('changed é😀')
+        delta = {'kind': 'delta', 'hash': target['hash'], 'type': 'text', 'base': base['hash'],
+                 'patch': self.codec.make_text_patch('é😀', target['text'])}
+        index = self.codec.ArtifactIndex([])
+        index.records = {base['hash']: [base], target['hash']: [delta]}
+        self.assertEqual(('é😀', 0), index.resolve(base['hash'])[:2])
+        self.assertEqual((target['text'], 1), index.resolve(target['hash'])[:2])
+        delta['type'] = 'json'
+        with self.assertRaisesRegex(ValueError, 'Artifact delta base type mismatch'):
+            index.resolve(target['hash'])
+
+    def test_reused_text_still_passes_original_decoder_and_legacy_validation(self):
+        valid = self.full({'a': 1})
+        for text in ('{"a": 1}', '{"a":1,"a":1}', 'NaN',
+                     '[' * 102 + '0' + ']' * 102, '"\\ud800"'):
+            for representation in ('full', 'chunk', 'delta'):
+                with self.subTest(text=text[:30], representation=representation):
+                    index = self.codec.ArtifactIndex([])
+                    record = {**valid, 'text': text}
+                    if representation == 'chunk':
+                        record.update(kind='chunk', index=0, total=1)
+                    elif representation == 'delta':
+                        base = self.full({'base': 2})
+                        index.records[base['hash']] = [base]
+                        record = {'kind': 'delta', 'hash': valid['hash'], 'type': 'json',
+                                  'base': base['hash'],
+                                  'patch': self.codec.make_text_patch(base['text'], text)}
+                    index.records[valid['hash']] = [record]
+                    with self.assertRaises(ValueError):
+                        index._resolve_details(valid['hash'])
+        for value in ({1: 'numeric key'}, {'a': float('nan')}, {'a': {1}}, '\ud800'):
+            with self.subTest(legacy=repr(value)):
+                index = self.codec.ArtifactIndex([])
+                index.records[valid['hash']] = [{'kind': 'legacy', 'hash': valid['hash'],
+                                                'content': value}]
+                with self.assertRaises((ValueError, TypeError)):
+                    index.resolve(valid['hash'])
+        index = self.codec.ArtifactIndex([])
+        index.records[valid['hash']] = [{**valid, 'type': 'unsupported'}]
+        with self.assertRaises(ValueError):
+            index.resolve(valid['hash'])
 
     def test_metadata_does_not_short_circuit_bad_competing_representation(self):
         full = self.full({'items': [1]}); identity = full['hash']

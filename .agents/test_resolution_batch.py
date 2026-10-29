@@ -272,6 +272,7 @@ class ResolutionBatchPublicTests(dag.DagFixture):
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
         active = [False]
         checked_refs, edges, repeated_size_reads = [], [], []
+        codec_calls = {'canonical': 0, 'decode': 0, 'transport': 0}
         lifecycle = dag.z._resolution_lifecycle
         workflow = dag.z._workflow
         original = lifecycle.committed_results
@@ -279,7 +280,19 @@ class ResolutionBatchPublicTests(dag.DagFixture):
         receipt_edge = workflow.Workflow.node_receipt_edge
         canonical = workflow.comment_store.canonical
 
+        decode = workflow.comment_store._from_text
+        transport = workflow.comment_store._to_text
+
+        def from_text(kind, text):
+            if active[0]: codec_calls['decode'] += 1
+            return decode(kind, text)
+
+        def to_text(value):
+            if active[0]: codec_calls['transport'] += 1
+            return transport(value)
+
         def serialize(value):
+            if active[0]: codec_calls['canonical'] += 1
             result = canonical(value)
             if active[0] and sys._getframe(1).f_code.co_name == '_checked':
                 repeated_size_reads.append(len(result.encode('utf-8')))
@@ -305,13 +318,18 @@ class ResolutionBatchPublicTests(dag.DagFixture):
         with mock.patch.object(lifecycle, 'committed_results', side_effect=lineage), \
                 mock.patch.object(workflow.ObservedArtifactIndex, '_checked', check), \
                 mock.patch.object(workflow.Workflow, 'node_receipt_edge', edge), \
-                mock.patch.object(workflow.comment_store, 'canonical', serialize):
+                mock.patch.object(workflow.comment_store, 'canonical', serialize), \
+                mock.patch.object(workflow.comment_store, '_from_text', from_text), \
+                mock.patch.object(workflow.comment_store, '_to_text', to_text):
             steps = self.session.checkpoint(100)
         self.assertEqual(before, (self.provider.issues, self.provider.comments))
         self.assertFalse(any(step['kind'] in ('execute', 'policy_dag_cutover', 'blocker') for step in steps), steps)
         self.assertEqual(21, len(edges))
         self.assertEqual(len(edges), len(set(edges)))
-        self.assertTrue(checked_refs)
+        self.assertEqual(29, len(checked_refs))
+        self.assertEqual('0b9d0c2122c091461ac2c09540d256480f9711f024aaff1fbdf3680b9a217461',
+                         hashlib.sha256(json.dumps(steps, sort_keys=True).encode()).hexdigest())
+        self.assertEqual({'canonical': 146, 'decode': 46, 'transport': 0}, codec_calls)
         self.assertEqual(len(set(checked_refs)), len(checked_refs),
                          'lineage repeated checked reads of an already resolved snapshot Ref')
         self.assertEqual([], repeated_size_reads,
