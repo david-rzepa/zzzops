@@ -4656,6 +4656,7 @@ class GenericStoragePublicTests(DagFixture):
         envelope, payload = self.payload()
         spec = self.read_blob(payload["spec"])
         child = self.blob({"payload": "x" * 40000})
+        self.blob({"payload": "y" * 40000})
         spec["related"] = child
         payload["spec"] = self.blob(spec)
         envelope["payload"] = self.blob(payload)
@@ -4674,7 +4675,7 @@ class GenericStoragePublicTests(DagFixture):
         self.assertEqual({"payload": "x" * 40000}, self.read_blob(child))
         before = copy.deepcopy((self.provider.issues, self.provider.comments))
         store = self.session.api._workflow.comment_store
-        with mock.patch.object(store, "MAX_RECONSTRUCTION_WORK_BYTES", 90000):
+        with mock.patch.object(store, "MAX_RECONSTRUCTION_WORK_BYTES", 140000):
             response = self.session.call(100, expected=None)
         self.assertEqual(0, self.session.calls[-1]["code"], response)
         kinds = [step["kind"] for step in response["next_steps"]]
