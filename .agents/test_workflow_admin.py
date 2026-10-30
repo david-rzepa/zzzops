@@ -9,6 +9,8 @@ import tempfile
 import unittest
 from unittest import mock
 
+import test_zzzops as fixtures
+
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "plugins" / "zzzops" / "zzzops" / "workflow_admin.py"
@@ -33,6 +35,7 @@ class WorkflowAdminTests(unittest.TestCase):
             _goals=SimpleNamespace(
                 GOAL_CREATE_SCHEMA_VERSION=7,
                 GOAL_CREATE_FIELDS={"schema_version", "title", "body", "labels", "goal"},
+                goal_acceptance_criteria=fixtures.zzzops._goals.goal_acceptance_criteria,
             ),
         )
 
@@ -46,6 +49,9 @@ class WorkflowAdminTests(unittest.TestCase):
         result = admin.handle(self.api, self.repo, self.project, admin.CAPTURE_SOURCE, None, None)
         step = result["next_steps"][0]
         self.assertEqual("capture", step["kind"])
+        self.assertIn("Acceptance criteria:", step["acceptance_criteria_syntax"])
+        self.assertIn("- [ ] criterion", step["acceptance_criteria_syntax"])
+        self.assertIn("- [x] criterion", step["acceptance_criteria_syntax"])
         self.assertEqual(7, step["schema"]["schema_version"])
         self.assertEqual(sorted(self.api._goals.GOAL_CREATE_FIELDS), step["schema"]["fields"])
         self.assertEqual(7, step["request_schema_version"])

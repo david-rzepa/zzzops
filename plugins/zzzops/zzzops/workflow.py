@@ -619,7 +619,7 @@ class Workflow:
     def node_evidence_policy(self):
         return digest(self.api._phase_evidence.evidence_policy(self.project['policy']))
 
-    def node_policy_at_commit(self, commit):
+    def node_policy_at_commit(self, commit, *, lifecycle_only=False):
         """Authenticate a committed policy and both bound instruction files."""
         if not isinstance(commit, str) or not re.fullmatch('[0-9a-f]{40}', commit):
             raise ValueError('Exact policy commit is required')
@@ -630,7 +630,9 @@ class Workflow:
         state = json.loads(files['POLICY.json'])
         if not isinstance(state, dict):
             raise ValueError('Historical policy state must be an object')
-        invalid = self.api._policy.validate_project_state(state)
+        validate = (self.api._policy.validate_historical_project_state if lifecycle_only
+                    else self.api._policy.validate_project_state)
+        invalid = validate(state)
         if invalid:
             raise ValueError('; '.join(invalid))
         if state.get('initialized') is not True:
@@ -662,22 +664,27 @@ class Workflow:
         except (OSError, UnicodeError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
             return False
 
-    def node_historical_policies(self, snapshots, artifacts):
-        """Authenticate bounded first-parent policy history for recorded Results."""
+    def node_historical_policies(self, snapshots, artifacts, *, compatible_only=True, required_hashes=None):
+        """Authenticate policy history; current reuse additionally requires compatibility.
+
+        Lifecycle callers request exact hashes without the optional-reuse horizon.
+        This mode authenticates old approval and instruction bindings, never currentness.
+        """
         forms = ("full", "pre_static", "current", "normalized")
         projection = self.api._policy.phase_policy_projection
         current = self.project['policy']
         current_hashes = {digest(projection(current, form)) for form in forms}
-        recorded = {value for snapshot in snapshots.values() for ref in snapshot['payload']['evidence']
-                    for value in (artifacts[ref['hash']].get('provenance', {}).get('policy'),
-                                  artifacts[ref['hash']].get('provenance', {}).get('approved_policy'))}
+        recorded = (set(required_hashes) if required_hashes is not None else
+                    {value for snapshot in snapshots.values() for ref in snapshot['payload']['evidence']
+                     for value in (artifacts[ref['hash']].get('provenance', {}).get('policy'),
+                                   artifacts[ref['hash']].get('provenance', {}).get('approved_policy'))})
         needed = {value for value in recorded if isinstance(value, str) and value not in current_hashes}
         if not needed:
             return {}, None
         accepted = {}
         # Preserve the pre-existing phase-DAG adapter: an authenticated graph
         # Ref may reconstruct the sole excluded workflow field exactly.
-        for snapshot in snapshots.values():
+        for snapshot in (snapshots.values() if compatible_only else ()):
             graph_ref = snapshot['payload'].get('graph')
             old_graph = artifacts.get(graph_ref.get('hash')) if isinstance(graph_ref, dict) else None
             if not isinstance(old_graph, dict):
@@ -694,38 +701,43 @@ class Workflow:
         needed -= set(accepted)
         if not needed:
             return accepted, None
-        command = ['git', 'rev-list', '--max-count=65', '--first-parent', 'HEAD', '--', '.zzzops/POLICY.json']
+        command = ['git', 'rev-list', *(['--max-count=65'] if compatible_only else []),
+                   '--first-parent', 'HEAD', '--', '.zzzops/POLICY.json']
         commits = subprocess.run(command, cwd=self.repo, capture_output=True, text=True, check=True).stdout.splitlines()
         matches = {value: [] for value in needed}
         errors = []
         cache = getattr(self, '_historical_policy_cache', None)
         if cache is None:
             cache = self._historical_policy_cache = {}
-        for commit in commits[:64]:
+        for commit in (commits[:64] if compatible_only else commits):
             try:
-                cache_key = (commit, digest(current))
+                cache_key = (commit, digest(current), compatible_only)
                 old = cache.get(cache_key)
                 if old is None:
-                    old = self.node_policy_at_commit(commit)
+                    old = (self.node_policy_at_commit(commit) if compatible_only else
+                           self.node_policy_at_commit(commit, lifecycle_only=True))
                     cache[cache_key] = old
-                if not self.api._policy.phase_policy_ci_compatible(old, current):
+                if compatible_only and not self.api._policy.phase_policy_ci_compatible(old, current):
                     continue
                 for form in forms:
                     fingerprint = digest(projection(old, form))
                     if fingerprint in needed:
                         matches[fingerprint].append((commit, form, old))
+                if not compatible_only and all(matches.values()):
+                    break
             except (OSError, UnicodeError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as exc:
                 errors.append(f'historical policy ancestor {commit} is unavailable or malformed: {exc}')
         for fingerprint, candidates in matches.items():
             # One approved snapshot may naturally expose multiple historical
             # forms with the same digest; ambiguity concerns distinct commits.
             commits_found = {row[0] for row in candidates}
-            if len(commits_found) == 1:
+            if len(commits_found) == 1 or (candidates and not compatible_only):
                 accepted[fingerprint] = candidates[0][2]
             elif candidates:
                 errors.append('Ambiguous approved historical policy ancestors match the Result')
             else:
-                errors.append('No authenticated matching historical policy ancestor within 64 policy changes')
+                errors.append('No authenticated matching historical policy ancestor within 64 policy changes'
+                              if compatible_only else 'No authenticated historical policy ancestor for ' + fingerprint)
         return accepted, '; '.join(errors) if errors else None
 
     def node_authorization_policy_matches(self, value, artifact, result, artifacts):
@@ -2327,6 +2339,7 @@ class Workflow:
         ev = self.api._phase_evidence
         snapshots, artifacts, issues, bootstrap = {}, dict((prospective or {}).get('artifacts', {})), {}, {}
         published, validated = {}, set()
+        observed_artifacts = {}
         def remember(value):
             key = digest(value); artifacts[key] = value
             return {'hash': key, 'uri': 'urn:' + key}
@@ -2362,11 +2375,28 @@ class Workflow:
                     if ref['uri'].startswith('git:'):
                         artifacts[ref['hash']], published[ref['hash']] = self.node_published_artifact(ref)
                     else:
-                        artifacts[ref['hash']] = self.artifact_index(owner).observe(ref['hash'])[0]
+                        value = self.artifact_index(owner).observe(ref['hash'])[0]
+                        artifacts[ref['hash']] = value
+                        observed_artifacts[(owner, ref['hash'])] = value
                 value = artifacts[ref['hash']]
                 if ref['hash'] not in published and ref['hash'] not in validated:
                     if digest(value) != ref['hash']: raise ValueError('Artifact checksum mismatch')
                     validated.add(ref['hash'])
+                return value
+            def resolve_observed(ref):
+                # Prospective artifacts are useful for projection, but cannot
+                # substitute for persisted custody when authenticating receipts.
+                ev.validate_ref(ref)
+                owner = self.node_ref_goal(ref, n)
+                key = (owner, ref['hash'])
+                if key not in observed_artifacts:
+                    observed_artifacts[key] = self.artifact_index(owner).observe(ref['hash'])[0]
+                value = observed_artifacts[key]
+                artifacts.setdefault(ref['hash'], value)
+                # Keep the observed object separate from independently replaced
+                # prospective entries, and reject in-place mutation on reuse.
+                if digest(value) != ref['hash']:
+                    raise ValueError('Observed artifact checksum mismatch')
                 return value
             payload = resolve(envelope['payload'])
             ev.contract_fields(payload, {'spec', 'graph', 'evidence', 'operational'} | (set(payload) & {'phase_data', 'goal_context', 'goal_context_resolutions', 'goal_context_dependency_events', 'goal_context_archived_prerequisites', 'workflow', 'stack_integration', 'publication_certificate'}), 'Payload')
@@ -2418,9 +2448,23 @@ class Workflow:
                 definition = None
             ev.validate_graph(graph)
             snapshot = {'envelope': envelope, 'payload': payload, 'graph': graph, 'resolve': resolve,
+                        'resolve_observed': resolve_observed,
                         'historical_graph': historical_graph, 'workflow_definition': definition}
+            batch_adoption = (definition is not None and stored_workflow_graph is not None
+                and self.api._static_workflow.resolution_batch_adoption(
+                    stored_workflow_graph, definition['graph'], self.api._graph_compiler))
+            if batch_adoption:
+                retired = {row['template']['id'] for row in definition['graph']['task_sets']
+                           if row['source']['producer'] == {'slot': 'retired_resolution_members'}}
+                retained_owners = [lease for lease in payload['operational']['leases']
+                                   if lease['node']['node'] in retired]
+                if retained_owners:
+                    graph = stored_workflow_graph
+                    snapshot.update(graph=graph, workflow_definition=None,
+                                    resolution_batch_recovery=retained_owners)
             if (definition is not None and payload['evidence'] and stored_workflow_graph is not None
-                    and definition['graph'] != stored_workflow_graph):
+                    and definition['graph'] != stored_workflow_graph
+                    and not batch_adoption):
                 recorded_old_graph = remember(stored_workflow_graph)
                 for receipt_row in reversed(payload['operational']['receipts']):
                     try:
@@ -3204,6 +3248,16 @@ class Workflow:
         historical, historical_error = self.node_historical_policies(closure, snapshot['artifacts'])
         context['historical_policies'] = historical
         context['historical_policy_error'] = historical_error
+        accepted_entries = []
+        for n, observed in snapshot['snapshots'].items():
+            if n not in closure: continue
+            accepted_entries.extend(self.api._resolution_lifecycle.fold(self, observed, historical))
+        candidate = snapshot.get('_resolution_candidate')
+        if payload is not None and candidate is not None:
+            if payload['evidence'] != snapshot['payload']['evidence'] + [candidate['result']]:
+                raise ValueError('Resolution provisional acceptance requires the exact validated appended Result')
+            accepted_entries.extend(candidate['entries'])
+        context['accepted_resolution_entries'] = accepted_entries
         result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
         workspaces = self.node_workspace_context(
             closure, result, result['artifacts'], workspace_target=workspace_target)
@@ -3515,8 +3569,15 @@ class Workflow:
                                     'action': 'Exact stale checkpoint reconciled; immutable history was preserved.'}]}
         return self.node_persist(snapshot, payload, response, request)
 
-    def node_receipt_edge(self, number, index, receipt):
-        """Authenticate one ordinary persisted mutation edge and its provider rows."""
+    def node_receipt_edge(self, number, index, receipt, *, resolve=None):
+        """Authenticate one ordinary persisted mutation edge and its provider rows.
+
+        Lifecycle callers may reuse their current snapshot's provider-observed
+        full-Ref resolver. Other callers retain detached index reads; neither path skips
+        receipt, manifest or continuation authentication.
+        """
+        if resolve is None:
+            resolve = lambda reference: index.resolve(reference['hash'])[0]
         if (not isinstance(receipt, dict) or set(receipt) != {'request', 'payload', 'result'}
                 or not isinstance(receipt.get('request'), str) or not receipt['request']
                 or not isinstance(receipt.get('payload'), str)
@@ -3527,7 +3588,9 @@ class Workflow:
                 or result != self.node_ref(result.get('hash'), number)):
             return None
         matching = [(comment, item) for comment, item in index.envelope_comments
-                    if (item.get('context') or {}).get('response') == result]
+                    if (item.get('context') or {}).get('response') == result
+                    and (item.get('context') or {}).get('request_id') == receipt['request']
+                    and (item.get('context') or {}).get('request_hash') == receipt['payload']]
         if not matching:
             return None
         transactions = {item.get('transaction') for _, item in matching}
@@ -3557,7 +3620,7 @@ class Workflow:
         identities = [comment.get('id') for comment, _ in selected]
         if any(type(identity) is not int or identity <= 0 for identity in identities) or len(identities) != len(set(identities)):
             return None
-        try: response = index.resolve(result['hash'])[0]
+        try: response = resolve(result)
         except (KeyError, ValueError): return None
         edge_response = response
         if isinstance(response, dict) and response.get('type') == 'submission_continuation':
@@ -3587,8 +3650,8 @@ class Workflow:
                            for binding in response['bindings'])):
                 return None
             try:
-                candidate = copy.deepcopy(index.resolve(response['candidate_payload']['hash'])[0])
-                entry = copy.deepcopy(index.resolve(response['entry_candidate_payload']['hash'])[0])
+                candidate = copy.deepcopy(resolve(response['candidate_payload']))
+                entry = copy.deepcopy(resolve(response['entry_candidate_payload']))
                 if (not isinstance(candidate.get('operational'), dict)
                         or not isinstance(candidate['operational'].get('receipts'), list)
                         or not isinstance(entry.get('operational'), dict)
@@ -3611,7 +3674,7 @@ class Workflow:
                                       and step['submission'].get('expected_digest', 'missing') is None)
             except (AttributeError, KeyError, TypeError, ValueError):
                 return None
-            try: published_candidate = index.resolve(target['payload']['hash'])[0]
+            try: published_candidate = resolve(target['payload'])
             except (KeyError, TypeError, ValueError): return None
             if (not valid_bindings or continuation_target != target
                     or context.get('payload') != target.get('payload')
@@ -5646,7 +5709,25 @@ class Workflow:
                     return step
         return None
 
+    def pending_inventory_review(self):
+        runtime = self.runtime or {}
+        if not runtime.get('delegation', {}).get('discovery_complete'):
+            return None
+        configuration = policy_section(self.project, 'model_routing')['configuration']
+        freshness = self.api._policy.model_inventory_freshness(
+            configuration['model_inventory']['reviewed_pairs'],
+            {'status': 'complete', 'pairs': runtime['available_pairs']})
+        if not freshness['stale']:
+            return None
+        return {'kind': 'policy_review', 'assignment': 'root',
+                'boundary': 'execution_phase_start', 'added': freshness['added'],
+                'action': 'Review policy tier mappings for newly discovered model/effort pairs before acquiring a new execution phase. Existing ownership and administration may continue.',
+                'submission': {'operation': 'policy_propose', 'plan': '<updated reviewed policy plan>'}}
+
     def node_step(self, state, snapshot=None):
+        inventory_review = self.pending_inventory_review()
+        if inventory_review:
+            return {**inventory_review, 'goal': state['node']['goal'], 'node': state['node']}
         executor = state['contract']['executor']; runtime = self.runtime or {}
         config = policy_section(self.project, 'model_routing')['configuration']
         tiers = [row['id'] for row in config['tiers']]
@@ -5942,6 +6023,14 @@ class Workflow:
         """Format the same readiness and authority boundaries for both callers."""
         number = snapshot['number']
         resolution_steps = []
+        if snapshot.get('resolution_batch_recovery'):
+            return [{'kind': 'await_worker', 'goal': number, 'node': lease['node'], 'lease': lease,
+                     'resume_worker': lease['worker'],
+                     'reason': 'Existing singular resolution ownership must finish or be observed stopped before batch adoption.',
+                     'recovery_contract': {'operation': 'recover', 'node': lease['node'],
+                         'lease': lease['token'], 'actor': lease['worker'],
+                         'worker_status': '<observed stopped status>', 'evidence': '<terminal observation>'}}
+                    for lease in snapshot['resolution_batch_recovery']]
         cutover = snapshot.get('policy_dag_cutover')
         if cutover:
             prepare = {'operation': 'policy_dag_cutover_prepare',
@@ -6114,6 +6203,14 @@ class Workflow:
                         'expected_workspace': recovery['expected_workspace'],
                         'expected_delta': recovery['expected_delta']}})
             elif state['state'] == 'blocked': steps.append({'kind': 'blocked' if state.get('reason', '').startswith('Workspace') else 'dependency', 'goal': number, 'node': state['node'], 'reason': state.get('reason', 'Required evidence unknown')})
+        for error in projection.get('resolution_errors', []):
+            if error['goal'] == number and error['reason'].startswith('Unsupported'):
+                steps.append({'kind': 'blocker', 'goal': number, 'reason': error['reason']})
+        for waiting in projection.get('resolution_waiting', []):
+            if waiting['goal'] == number:
+                steps.append({'kind': 'dependency', 'goal': number,
+                    'reason': 'Explicitly unresolved findings need changed finding, subject, independent review, required context, or policy contract before another resolution assessment.',
+                    'findings': waiting['findings']})
         for step in steps:
             observed = snapshot['workspaces'].get(self.api._phase_evidence.task_key(step['node']), {}) if step.get('node') else {}
             if 'migration' in observed:
@@ -9471,6 +9568,8 @@ class Workflow:
                 ownership_reference = durable.get('workflow', {}).get('graph', durable['graph'])
                 ownership_graph = self.artifact_index(number).resolve(ownership_reference['hash'])[0]
             snapshot = self.node_snapshot(number, graph_override=ownership_graph)
+            if snapshot.get('resolution_batch_recovery') and request.get('operation') == 'start':
+                raise ValueError('Existing singular resolution ownership must finish or be recovered before batch acquisition')
             closed = (snapshot['envelope']['state'] != 'open'
                       or str(snapshot['issue'].get('state', '')).lower() == 'closed')
             if closed:
@@ -9670,6 +9769,11 @@ class Workflow:
                     'policy': digest(self.project['policy']),
                     'action': 'Exact root capability downgrade recorded; invoke the checkpoint again to acquire work.'}]}
             elif operation == 'start':
+                # Receipt replay above resumes the exact existing acquisition.
+                # Check again under the storage lock before reserving capacity.
+                inventory_review = self.pending_inventory_review()
+                if inventory_review:
+                    return {'next_steps': [{**inventory_review, 'goal': number, 'node': node}]}
                 if lease: raise ValueError('Task already has an owner; observed-stop recovery is required')
                 if state['state'] != 'ready' or request.get('input_hash') != state.get('input_hash'): raise ValueError('Stale input or prerequisite prevents acquisition')
                 # Broadphase intentionally avoids serialising a merely-ready
@@ -9837,6 +9941,20 @@ class Workflow:
                         return {'next_steps': [{'kind': 'checkpoint', 'goal': number,
                             'action': 'The reviewed cutover retained this completed attempt; observe the current frontier.'}]}
                 if not lease or request.get('lease') != lease['token'] or lease['owner'] != root: raise ValueError('Exact current owner/lease token required')
+                if operation in {'bind', 'submit'}:
+                    selection = lease['selection']
+                    reviewed = policy_section(self.project, 'model_routing')['configuration']['model_inventory']['reviewed_pairs']
+                    # The current root's observed pair is independent of the
+                    # inventory of pairs the harness can delegate to workers.
+                    if state['contract']['executor']['role'] == 'root':
+                        available = (selection == (self.runtime or {}).get('root_pair')
+                                     and lease['worker'] == root
+                                     and request.get('actor') == root)
+                    else:
+                        available = selection in (self.runtime or {}).get('available_pairs', [])
+                    if (not any(all(pair.get(field) == selection.get(field) for field in ('model', 'effort')) for pair in reviewed)
+                            or not available):
+                        raise ValueError('Bound model/effort pair is unavailable or no longer reviewed; preserve ownership and recover or release it')
                 if operation == 'recover':
                     if request.get('worker_status') != 'stopped' or not isinstance(request.get('evidence'), str) or not request['evidence'].strip(): raise ValueError('Observed stopped worker evidence required; unknown liveness cannot recover')
                     if request.get('actor') != lease['worker']: raise ValueError('Exact bound actor required for observed-stop recovery')
@@ -10007,6 +10125,9 @@ class Workflow:
                         artifact = {'type': 'result', 'content': result, 'producer': lease['attempt'], 'provenance': {'actor': lease['worker'], 'source': None, 'policy': self.node_evidence_policy(), 'approved_policy': digest(self.project['policy'])}}
                         identity = digest(artifact); snapshot['artifacts'][identity] = artifact
                         ref = self.node_ref(identity, number); payload['evidence'].append(ref); leases.remove(lease)
+                        if snapshot.get('_validated_resolution_entries'):
+                            snapshot['_resolution_candidate'] = {'result': ref,
+                                'entries': [{**entry, 'result': ref} for entry in snapshot['_validated_resolution_entries']]}
                         response = self.node_continuation(snapshot, payload, node, ref)
                     elif operation != 'renew':
                         raise ValueError('Unsupported generic operation; semantic evidence uses submit')
@@ -10399,14 +10520,47 @@ class Workflow:
                 finding = read(value['finding'], 'finding'); permit(kind, finding['target']); authority(value['authority'])
                 prior = obligation(finding)
                 if not prior or prior['finding'] != value['finding'] or value['target'] != finding['target']: raise ValueError('Retirement requires exact current finding and target')
-            elif kind == 'resolution':
-                finding = read(value['finding'], 'finding'); permit(kind, finding['target']); prior = obligation(finding)
-                reviewer = read(value['reviewer_result'], 'result')
-                if not prior or prior['finding'] != value['finding'] or value['reviewer_result']['hash'] not in current: raise ValueError('Resolution requires current finding revision and reviewer result')
-                if not value['subjects'] or any(ref['hash'] not in subject_results for ref in value['subjects']): raise ValueError('Resolution subject is stale')
-                inspected = {binding['source']['hash'] for binding in reviewer['inputs']}
-                if any(ref['hash'] not in inspected for ref in value['subjects']): raise ValueError('Reviewer did not inspect exact resolution subjects')
-                if any(subject_results[ref['hash']]['executor'] == reviewer['executor'] for ref in value['subjects']): raise ValueError('Resolution reviewer must be independent of subject executor')
+            elif kind in ('resolution', 'resolution_batch'):
+                lifecycle = self.api._resolution_lifecycle
+                if kind == 'resolution_batch':
+                    manifest = state['values'].get('batch')
+                    if not isinstance(manifest, dict) or set(value['entries']) != set(manifest['findings']):
+                        raise ValueError('Resolution batch must supply every exact required finding entry')
+                    entries = value['entries']
+                    if len({row['finding']['hash'] for row in manifest['findings'].values()}) != len(entries):
+                        raise ValueError('Resolution batch contains duplicate finding identities')
+                    required_reviews = manifest['reviews']
+                    subject = manifest['subject']
+                else:
+                    finding = read(value['finding'], 'finding')
+                    manifest = {'findings': {'legacy': {'finding': value['finding'],
+                        'id': finding['id'], 'revision': finding['revision']}}, 'opportunities': {}}
+                    entries = {'legacy': value}
+                    subject, required_reviews = value['subjects'], [value['reviewer_result']]
+                subjects = subject if isinstance(subject, list) else [subject]
+                if (not subjects or any(reference['hash'] not in subject_results for reference in subjects)
+                        or kind == 'resolution_batch' and not all(exact_input(reference) for reference in subjects)):
+                    raise ValueError('Resolution requires exact current corrected subjects and the batch must bind them')
+                result_map = {reference['hash']: (reference, result)
+                              for reference, result in projection['current'].values()}
+                contracts = {reference['hash']: projection['states'][ev.task_key(result['node'])]['contract']
+                             for reference, result in projection['current'].values()}
+                checked = []
+                for key, entry in entries.items():
+                    expected = manifest['findings'][key]
+                    finding = read(expected['finding'], 'finding')
+                    permit(kind, finding['target'])
+                    prior = obligation(finding)
+                    if not prior or prior['finding'] != expected['finding'] or prior['applicability'] != 'applicable':
+                        raise ValueError('Resolution requires the exact current applicable finding revision')
+                    if 'admission' in expected and prior['admission'] != expected['admission']:
+                        raise ValueError('Resolution batch admission changed')
+                    lifecycle.validate_entry(entry, expected=expected, scope=finding['target'],
+                        goal=snapshot['number'], results=result_map, contracts=contracts,
+                        read=read, ev=ev, required_reviews=expected.get('reviews', required_reviews), subject=subject)
+                    checked.append({'finding': entry['finding'], 'decision': entry['decision'],
+                                    'opportunity': manifest['opportunities'].get(key)})
+                snapshot.setdefault('_validated_resolution_entries', []).extend(checked)
             elif kind == 'source':
                 for _, old in history:
                     if old['type'] == kind and old['content'].get('id') == value.get('id') and old['content'].get('revision') == value.get('revision') and old['content'] != value: raise ValueError('Conflicting immutable source identity/revision')
@@ -10774,12 +10928,9 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
     project = api.reviewed_project_state(repo)
     if policy_snapshot is not None:
         policy_snapshot['project'] = project
-    if runtime and runtime.get('delegation', {}).get('discovery_complete'):
-        configuration = api._workflow_section(project, 'model_routing')['configuration']
-        freshness = api._policy.model_inventory_freshness(configuration['model_inventory']['reviewed_pairs'], {'status': 'complete', 'pairs': runtime['available_pairs']})
-        if freshness['stale']:
-            return {'next_steps': [{'kind': 'policy_review', 'assignment': 'root', 'action': 'Review policy tier mappings for newly discovered model/effort pairs before proceeding.', 'added': freshness['added'], 'submission': {'operation': 'policy_propose', 'plan': '<updated reviewed policy plan>'}}]}
     engine = Workflow(api, repo, project, runtime)
+    if policy_snapshot is not None:
+        policy_snapshot['inventory_review'] = engine.pending_inventory_review()
     if payload is not None and operation not in {'read', 'heartbeat'}:
         guard_stack = getattr(api, '_guarded_mutations', [])
         active = [record for record in guard_stack
@@ -10829,6 +10980,8 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             current_project = api.reviewed_project_state(repo)
             if digest(current_project) != digest(project):
                 raise ValueError('Reviewed policy changed before provider mutation')
+            if operation == 'start' and engine.pending_inventory_review():
+                raise ValueError('New model/effort pairs require policy review before execution phase start')
             reservation = getattr(engine, '_storage_reservation', None)
             if not isinstance(reservation, dict) or not reservation.get('valid'):
                 raise ValueError('A current workflow storage reservation is required before provider mutation')
@@ -11046,17 +11199,22 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             'action': 'Observe actual worker liveness; while running renew this same ownership through the returned public contract. Recovery requires observed stopped evidence.',
             'renewal': {'operation': 'renew', 'node': lease['node'], 'lease': lease['token'], 'actor': lease['worker'], 'request_id': '<unique renewal request>'}}]}
     if operation == 'capture_propose':
-        request = payload['request']
+        request = api._goals.normalize_deferred_goal_create(payload['request'])
         errors = api.validate_goal_create(request, allow_deferred=True)
         if errors:
             raise ValueError('; '.join(errors))
         if not api._goals.goal_acceptance_criteria(request['body']):
-            raise ValueError('Goal design must contain explicit acceptance bullets covering its required behavior')
+            raise ValueError('Goal design has no required acceptance criteria. '
+                             + ' '.join(api._goals.goal_acceptance_criteria.__doc__.split()))
         return {'next_steps': [{'kind': 'human_approval', 'assignment': 'root', 'action': 'Review the captured goal design with the user, then approve these exact contents.', 'proposal': request, 'proposal_hash': digest(request), 'submission': {'operation': 'capture', 'request': request, 'proposal_hash': digest(request), 'approved_by': '<user>'}}]}
     if operation == 'capture':
+        payload = {**payload, 'request': api._goals.normalize_deferred_goal_create(payload.get('request'))}
         capture_errors = api.validate_goal_create(payload.get('request'), allow_deferred=True)
         if capture_errors:
             raise ValueError('; '.join(capture_errors))
+        if not api._goals.goal_acceptance_criteria(payload['request']['body']):
+            raise ValueError('Goal design has no required acceptance criteria. '
+                             + ' '.join(api._goals.goal_acceptance_criteria.__doc__.split()))
         if not (runtime or {}).get('root_id'):
             raise ValueError('Goal design approval must be coordinated by root')
         if not explicit_approval(payload.get('approved_by')) or payload.get('proposal_hash') != digest(payload['request']):
@@ -11430,6 +11588,14 @@ def _public_response(api, repo, intent, source, runtime, payload, number, *, ski
     finally:
         if transaction is not None:
             api._WORKING_INPUT_TRANSACTION.reset(transaction)
+    if snapshot.get('inventory_review'):
+        blocked_start = any(step.get('kind') == 'policy_review'
+                            and step.get('boundary') == 'execution_phase_start'
+                            for step in result.get('next_steps', []))
+        result['model_inventory_review'] = {
+            **snapshot['inventory_review'],
+            'status': ('required_before_execution_phase_start' if blocked_start
+                       else 'deferred_until_execution_phase_start')}
     purposes = {
         '$add-zzzops-goal': 'capture', '$execute-zzzops': 'execute',
         '$migrate-to-zzzops': 'migration', '$review-zzzops-policy': 'policy-review',

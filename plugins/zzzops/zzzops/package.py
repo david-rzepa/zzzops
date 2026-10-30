@@ -40,7 +40,7 @@ REQUIRED_FILES = {
     "rules/INITIALIZATION.md", "zzzops/installation.py", "zzzops/plugin_freshness.py", "zzzops/bootstrap.py", "zzzops/merge_reconciliation.py", "zzzops/entropy.py",
     "zzzops/entropy_review.py", "zzzops/zzzops.py", "zzzops/working_inputs.py",
     "zzzops/stack_integration.py",
-    "zzzops/archived_prerequisites.py",
+    "zzzops/archived_prerequisites.py", "zzzops/resolution_lifecycle.py",
     "zzzops/coaching.py", "zzzops/concepts.py",
     "skills/execute-zzzops/references/ENTROPY_OBSERVATIONS.md",
     "skills/execute-zzzops/references/REVIEW_QUEUE.md",
@@ -189,7 +189,22 @@ def package_status() -> dict[str, Any]:
     try:
         manifest = read_plugin_manifest()
         codex_manifest = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8-sig"))
-        if codex_manifest.get("name") != manifest["name"] or codex_manifest.get("version") != manifest["version"]:
+        codex_version = codex_manifest.get("version") if isinstance(codex_manifest, dict) else None
+        # Codex's update_plugin_cachebuster.py preserves the version before '+'
+        # and emits a lowercase alphanumeric token with single internal hyphens.
+        # Compare only that exact helper shape; arbitrary build metadata is not
+        # a cachebuster. The full manifest remains part of package_provenance.
+        cachebuster = (
+            isinstance(codex_version, str)
+            and re.fullmatch(
+                re.escape(manifest["version"]) + r"\+codex\.[a-z0-9]+(?:-[a-z0-9]+)*",
+                codex_version,
+            ) is not None
+            and "+" not in manifest["version"]
+        )
+        if (not isinstance(codex_manifest, dict)
+                or codex_manifest.get("name") != manifest["name"]
+                or (codex_version != manifest["version"] and not cachebuster)):
             raise PluginPackageError("Agent Plugins and Codex manifests disagree on name or version")
         missing = sorted(relative for relative in REQUIRED_FILES if not (PLUGIN_ROOT / relative).is_file())
         missing.extend(
@@ -225,4 +240,5 @@ def package_status() -> dict[str, Any]:
     return {
         "available": True, "ok": True, "paths": [], "processes": 0,
         "detail": "ok", "version": provenance["version"], "revision": provenance["revision"],
+        "codex_version": codex_version,
     }

@@ -902,3 +902,56 @@ def validate_recovery(graph, local_goal=None, compiler_version=None):
         raise RecoveryError('Correction route recovery contract: ' + canonical(result['diagnostics']))
     if result['graph'] != graph:
         raise RecoveryError('Correction route recovery incomplete: canonical additions required')
+
+
+def resolution_batch_family(scope, subject_binding, reviews, independent, capability="reasoning"):
+    """One policy-time resolver family; membership remains authenticated host data.
+
+    ``reviews`` retains every exact approved route input. No reviewer is chosen
+    by the worker, by a convenient finding, or by a naming convention.
+    """
+    identity = ['resolution-batch-v1', scope, subject_binding, reviews, independent]
+    if capability != 'reasoning': identity.append(capability)
+    key = digest(identity)[7:]
+    name, expansion = 'gc_resolve_batch_' + key, 'gc_resolution_batches_' + key
+    ref = _ref_type()
+    entry = {'kind': 'object', 'fields': {
+        'finding': copy.deepcopy(ref), 'admission': copy.deepcopy(ref),
+        'id': {'kind': 'string'}, 'revision': {'kind': 'integer'},
+        'reviews': {'kind': 'array', 'items': copy.deepcopy(ref)}}}
+    target_schema = {'kind': 'union', 'variants': [
+        {'kind': 'object', 'fields': {'node': {'kind': 'string'}, 'output': {'kind': 'string'}}},
+        {'kind': 'object', 'fields': {'node': {'kind': 'string'}, 'output': {'kind': 'string'},
+            'expansion': {'kind': 'string'}, 'item': {'kind': 'string'}, 'generation': {'kind': 'integer'}}}]}
+    manifest = {'kind': 'object', 'fields': {
+        'target': target_schema,
+        'findings': {'kind': 'map', 'values': entry},
+        'subject': copy.deepcopy(ref),
+        'reviews': {'kind': 'array', 'items': copy.deepcopy(ref)},
+        'opportunities': {'kind': 'map', 'values': {'kind': 'string'}}}}
+    source = {'producer': {'slot': 'resolution_batches'}, 'output': 'content',
+              'path': [expansion], 'mode': 'content',
+              'type': {'kind': 'object', 'fields': {
+                  'items': {'kind': 'map', 'values': copy.deepcopy(manifest)},
+                  'rationale': {'kind': 'string'}}}}
+    decision = {'kind': 'object', 'fields': {
+        'finding': copy.deepcopy(ref), 'subjects': {'kind': 'array', 'items': copy.deepcopy(ref)},
+        'reviewer_result': copy.deepcopy(ref),
+        'decision': {'kind': 'enum', 'values': ['resolved', 'unresolved']},
+        'rationale': {'kind': 'string'}}}
+    inputs = {'batch': {**copy.deepcopy(source),
+        'path': [expansion, 'items', {'item_key': True}], 'type': manifest},
+        'subject': copy.deepcopy(subject_binding)}
+    inputs.update(copy.deepcopy(reviews))
+    node = {'id': name,
+        'prompt': 'Assess every exact finding in batch.findings against the exact corrected subject and all bound independent approved reviews. Return one decision and rationale per exact finding key; unresolved entries remain obligations. Never infer resolution from approval alone.',
+        'inputs': inputs,
+        'outputs': {'value': {'type': 'resolution_batch', 'schema': {
+            'kind': 'object', 'fields': {'entries': {'kind': 'map', 'values': decision}}}}},
+        'requires': [],
+        'executor': {'role': 'worker', 'capability': capability, 'resources': [],
+                     'authority': {'subject': {'kind': 'self'}, 'output': 'value'}},
+        'independent_of': independent, 'gates': [],
+        'resolves': [copy.deepcopy(scope)],
+        'permits': [{'type': 'resolution_batch', 'scope': copy.deepcopy(scope)}]}
+    return {'id': expansion, 'source': source, 'template': node}

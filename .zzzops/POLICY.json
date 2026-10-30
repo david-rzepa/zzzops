@@ -1,17 +1,17 @@
 {
   "approval": {
-    "date": "2026-10-23",
-    "digest": "sha256:cc43d60e04d76df022fb2d31a840a6224cb079f77bf9bee3b1d136fb9c904f33",
-    "reviewer": "User explicitly approved exact proposal on 2026-10-23"
+    "date": "2026-10-26",
+    "digest": "sha256:8c8697bb689a59ec4b2425100d43a042c8d898d74fd4952c3c3f726132930fd3",
+    "reviewer": "David Rzepa"
   },
   "backend": "github_issues",
   "bindings": {
     "audit": {
-      "digest": "sha256:ef16107c6146a7702c139cf483a0580c2f2074f78ac0db4270f4b19b900eb31c",
+      "digest": "sha256:e673dc767b8ae8ff12a4c2b144e1c5a64774cec4941f3b0126b626c2d73206ff",
       "path": ".zzzops/PROJECT_AUDIT.md"
     },
     "project": {
-      "digest": "sha256:76be1e428f19af3fa14a1e2c564f3239d585e3525f75ef3602dd1d5322400f30",
+      "digest": "sha256:17257b6a8001657dd5ed8234f289e2b2c8cbc35ca4ebc3a3e6e7fb7ce8dc7efc",
       "path": ".zzzops/PROJECT.md"
     }
   },
@@ -398,6 +398,18 @@
       "change": "Reviewed policy revision 68",
       "date": "2026-10-23",
       "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:f7b4b48179d9c181cb99cce6ae403a1ad1a5f3d7da9a44f8bce670d32127754a."
+    },
+    {
+      "actor": "ZzzOps initialization",
+      "change": "Created pending revision 69",
+      "date": "2026-10-26",
+      "reason": "Confirmed agent-generated draft; explicit policy review still required."
+    },
+    {
+      "actor": "David Rzepa",
+      "change": "Reviewed policy revision 70",
+      "date": "2026-10-26",
+      "reason": "Approved: backend, git_review_release, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, engineering_rigor, model_routing, workflow_adherence, automated_design, autonomy_approval_parallelism; source digest sha256:d64ef1c64bb1bda167c707b37bd391653531103ed16aca2e80cc7ce0d54de37d."
     }
   ],
   "initialized": true,
@@ -1260,6 +1272,42 @@
                 "effort": "ultra",
                 "model": "gpt-6.1-sol",
                 "tier": "architectural"
+              },
+              {
+                "cost": 140,
+                "effort": "low",
+                "model": "gpt-6.1-terra",
+                "tier": "bounded"
+              },
+              {
+                "cost": 280,
+                "effort": "medium",
+                "model": "gpt-6.1-terra",
+                "tier": "reasoning"
+              },
+              {
+                "cost": 420,
+                "effort": "high",
+                "model": "gpt-6.1-terra",
+                "tier": "reasoning"
+              },
+              {
+                "cost": 560,
+                "effort": "xhigh",
+                "model": "gpt-6.1-terra",
+                "tier": "reasoning"
+              },
+              {
+                "cost": 840,
+                "effort": "max",
+                "model": "gpt-6.1-terra",
+                "tier": "reasoning"
+              },
+              {
+                "cost": 1120,
+                "effort": "ultra",
+                "model": "gpt-6.1-terra",
+                "tier": "reasoning"
               }
             ]
           },
@@ -1297,13 +1345,13 @@
         "exceptions": [],
         "id": "model_routing",
         "instructions": "Route each phase by effective rigor, consequence, boundedness, and phase type. Refresh runtime model and effort availability, select only reviewed pairs at sufficient capability and least cost, keep human interaction on root, allow workers above root capability only when reviewed policy enables allow_above_root_delegation, and persist a blocker when no reviewed capable pair is available.",
-        "rationale": "User approved goal488 policy-controlled stronger delegation while retaining the actual root and reviewed model inventory.",
+        "rationale": "User approved goal488 policy-controlled stronger delegation while retaining the actual root and reviewed model inventory. Observed gpt-6.1-terra efforts are proposed at the same bounded/reasoning tiers and relative cost estimates as the already reviewed Terra family. Runtime observation: local Codex model cache on 2026-10-26 exposes all six gpt-6.1-terra effort pairs.",
         "required": true,
         "review": {
           "approved": true,
-          "date": "2026-10-20",
-          "reviewed_digest": "sha256:f6f5c991288e9765a2349bc3c9163c619f7a108cddb35e748ef55c159341ebbb",
-          "reviewer": "User: Ok now continue, after correcting all four goals550,532,551,490 into Release1; preserve all other policy settings."
+          "date": "2026-10-26",
+          "reviewed_digest": "sha256:d64ef1c64bb1bda167c707b37bd391653531103ed16aca2e80cc7ce0d54de37d",
+          "reviewer": "David Rzepa"
         },
         "source_ids": [
           "E-015",
@@ -3897,6 +3945,6 @@
     "identity": "david-rzepa/zzzops",
     "remote": "https://github.com/david-rzepa/zzzops.git"
   },
-  "revision": 68,
+  "revision": 70,
   "schema_version": 1
 }

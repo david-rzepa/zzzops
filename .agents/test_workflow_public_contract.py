@@ -116,6 +116,8 @@ class PublicWorkflowContractTests(unittest.TestCase):
             update_issue=mock.Mock(),
         )
         engine = SimpleNamespace(
+            # Batch shape/ancestry fixtures provide no model discovery evidence.
+            pending_inventory_review=mock.Mock(return_value=None),
             portfolio=mock.Mock(return_value=[]),
             read=mock.Mock(side_effect=lambda number: ({"number": number}, records[number])),
             mutate=mock.Mock(),
