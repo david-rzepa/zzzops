@@ -310,7 +310,7 @@ class ArtifactIndex:
                 spent += len(raw)
                 if len(raw) > MAX_ARTIFACT_BYTES or spent > MAX_RECONSTRUCTION_WORK_BYTES:
                     raise ValueError('Artifact decoded/reconstruction size limit exceeded')
-                if digest(value) != key:
+                if 'sha256:' + hashlib.sha256(raw).hexdigest() != key:
                     raise ValueError('Stored artifact content conflicts with its identity')
                 values.append(value); depths.append(0)
             for record in ordinary:
@@ -339,7 +339,7 @@ class ArtifactIndex:
                 spent += len(raw)
                 if len(raw) > MAX_ARTIFACT_BYTES or spent > MAX_RECONSTRUCTION_WORK_BYTES:
                     raise ValueError('Artifact decoded/reconstruction size limit exceeded')
-                if digest(value) != key or record.get('hash') != key:
+                if 'sha256:' + hashlib.sha256(raw).hexdigest() != key or record.get('hash') != key:
                     raise ValueError('Stored artifact content conflicts with its identity')
                 values.append(value)
                 depths.append(depth)
@@ -370,8 +370,8 @@ class ArtifactIndex:
 
 
 def _to_text(value):
-    canonical(value)
-    return ('text', value) if isinstance(value, str) else ('json', canonical(value))
+    text = canonical(value)
+    return ('text', value) if isinstance(value, str) else ('json', text)
 
 
 def _from_text(kind, text):
