@@ -5479,11 +5479,9 @@ class Workflow:
                     if typed_selection:
                         source = ev.selected_path(content(source)['content'], declared['path'])
                         ev.validate_ref(source)
-                        if self.node_ref_goal(source, key[0]) != key[0]:
-                            contexts[key] = {'error': 'Selected Git subject belongs to another goal'}
-                            break
+                        selected_goal = self.node_ref_goal(source, key[0])
                         if source['hash'] not in current_outputs:
-                            contexts[key] = {'error': 'Selected Git subject is unresolved or stale'}
+                            contexts[key] = {'error': 'Selected subject is unresolved or stale'}
                             break
                     producer = current_outputs.get(source['hash'])
                     if producer is None:
@@ -5492,10 +5490,13 @@ class Workflow:
                     producer_state = work.get(producer_key)
                     if (producer_state is None or producer_key not in projection['current']
                             or 'repository_git_workspace' not in producer_state['contract']['executor']['resources']):
-                        if typed_selection:
-                            contexts[key] = {'error': 'Selected Git subject has no current authenticated Git producer'}
-                            break
                         continue
+                    if typed_selection and selected_goal != producer_key[0]:
+                        contexts[key] = {'error': 'Selected Git subject locator differs from its producer goal'}
+                        break
+                    if typed_selection and selected_goal != key[0]:
+                        contexts[key] = {'error': 'Selected Git subject belongs to another goal'}
+                        break
                     proof = checked_git_proof(producer_state, authority(producer_state), producer_result)
                     subjects.append(proof['checkpoint']['result_commit'])
                 if key in contexts and 'error' in contexts[key]:
@@ -5560,17 +5561,23 @@ class Workflow:
         common = Path(subprocess.run(
             ['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'],
             cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()).resolve()
-        listed = subprocess.run(['git', 'worktree', 'list', '--porcelain'], cwd=self.repo,
-                                capture_output=True, text=True, check=True).stdout
         directories = {common}
-        for line in listed.splitlines():
-            if line.startswith('worktree '):
-                checkout = Path(line[len('worktree '):])
-                observed = subprocess.run(['git', 'rev-parse', '--absolute-git-dir'],
-                    cwd=checkout, capture_output=True, text=True)
-                if observed.returncode:
-                    raise VerificationUncertain('Registered legacy verification worktree is unavailable')
-                directories.add(Path(observed.stdout.strip()).resolve())
+        admins = common / 'worktrees'
+        if admins.is_symlink() or (admins.exists() and not admins.is_dir()):
+            raise VerificationUncertain('Registered legacy verification admin directory is invalid')
+        if admins.exists():
+            for home in admins.iterdir():
+                marker = home / 'commondir'
+                if (home.is_symlink() or not home.is_dir() or marker.is_symlink()
+                        or not marker.is_file()):
+                    raise VerificationUncertain('Registered legacy verification admin directory is invalid')
+                try:
+                    relative = marker.read_text(encoding='utf-8').strip()
+                    if not relative or (home / relative).resolve() != common:
+                        raise ValueError
+                except (OSError, UnicodeError, ValueError) as exc:
+                    raise VerificationUncertain('Registered legacy verification commondir is invalid') from exc
+                directories.add(home)
         return common, sorted(directories)
 
     @contextmanager
@@ -5650,14 +5657,14 @@ class Workflow:
                 recorded = existing.get('identity')
                 if not isinstance(recorded, dict):
                     raise ValueError('Verification journal identity is invalid')
-                if recorded.get('lease') != lease['token']:
-                    continue
-                if existing.get('status') == 'running':
-                    raise VerificationUncertain('Verification completion is unknown; inspect the exact worker and verifier before observed-stop recovery. Journal: ' + str(candidate))
                 if candidate.name == path.name:
                     if recorded != identity:
                         raise ValueError('Verification request/workspace/acquisition/environment identity changed; use original bytes or a corrected new request')
                     matches.append(candidate)
+                if recorded.get('lease') != lease['token']:
+                    continue
+                if existing.get('status') == 'running':
+                    raise VerificationUncertain('Verification completion is unknown; inspect the exact worker and verifier before observed-stop recovery. Journal: ' + str(candidate))
         if matches:
             originals = {candidate.read_bytes() for candidate in matches}
             if len(originals) != 1:

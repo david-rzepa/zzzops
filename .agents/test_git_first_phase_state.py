@@ -262,6 +262,153 @@ class FreshGoalGitCheckpointTests(DagFixture):
 
 
 class GitWorkspaceAcquisitionTests(unittest.TestCase):
+    def verification_v2_fixture(self, *, linked=False):
+        fixture = self.fixture_with_git_workspace()
+        repo = fixture.fixture.repo
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        checkout = None
+        if linked:
+            checkout = Path(scratch.name) / 'linked'
+            fixture.session.git('worktree', 'add', '-qb',
+                                'linked-' + Path(scratch.name).name, str(checkout))
+            self.addCleanup(fixture.session.git, 'worktree', 'remove', '--force', str(checkout))
+        engine = object.__new__(z._workflow.Workflow)
+        engine.repo = repo
+        engine.repository = 'scratch/no-provider'
+        common = Path(fixture.session.git('rev-parse', '--absolute-git-dir').strip())
+        return fixture, engine, repo, Path(scratch.name), checkout, common
+
+    def test_same_request_id_different_lease_preserves_completed_journal(self):
+        for location in ('common', 'legacy'):
+            with self.subTest(location=location):
+                fixture, engine, repo, scratch, checkout, common = \
+                    self.verification_v2_fixture(linked=True)
+                counter = scratch / 'count.txt'
+                counter.write_text('0')
+                code = ('from pathlib import Path;import sys;'
+                        'p=Path(sys.argv[1]);p.write_text(str(int(p.read_text())+1))')
+                commands = [[sys.executable, '-B', '-c', code, str(counter)]]
+                snapshot = {'number': 993001}
+                old = {'token': '1' * 32, 'worker': 'scratch-worker',
+                       'acquisition': {'git_commit': fixture.session.git('rev-parse', 'HEAD').strip()}}
+                new = {**old, 'token': '2' * 32}
+                before = {'tree': fixture.session.git('rev-parse', 'HEAD^{tree}').strip()}
+                request = {'request_id': 'same-request-' + location, 'operation': 'submit',
+                           'lease': old['token'], 'workspace_checks': commands}
+                first = engine.node_verification_commands(
+                    snapshot, old, request, commands, before, working_directory=repo)
+                self.assertEqual('1', counter.read_text())
+                name = z._workflow.digest(request['request_id'])[7:] + '.json'
+                common_path = common / 'zzzops' / 'verification' / str(snapshot['number']) / name
+                original = common_path.read_bytes()
+                self.assertEqual(z._workflow.digest(json.loads(original)['record']),
+                                 json.loads(original)['hash'])
+                log = Path(first[0]['log'])
+                log_bytes = log.read_bytes()
+                retained = common_path
+                if location == 'legacy':
+                    admin = Path(subprocess.run(['git', 'rev-parse', '--absolute-git-dir'],
+                        cwd=checkout, capture_output=True, text=True, check=True).stdout.strip())
+                    retained = admin / 'zzzops' / 'verification' / str(snapshot['number']) / name
+                    retained.parent.mkdir(parents=True, exist_ok=True)
+                    retained.write_bytes(original)
+                    common_path.unlink()
+                changed_request = {**request, 'lease': new['token']}
+                with self.assertRaises((ValueError, z._workflow.VerificationUncertain)):
+                    engine.node_verification_commands(snapshot, new, changed_request,
+                                                      commands, before, working_directory=repo)
+                self.assertEqual('1', counter.read_text(), 'different lease reran the same request')
+                self.assertEqual(original, retained.read_bytes())
+                if location == 'legacy':
+                    self.assertFalse(common_path.exists(),
+                        'Different lease adopted a legacy journal into the common home')
+                self.assertEqual(log_bytes, log.read_bytes())
+
+    def test_missing_registered_checkout_uses_retained_git_admin_safely(self):
+        for mode in ('reuse', 'held_lock', 'malformed_commondir'):
+            with self.subTest(mode=mode):
+                fixture, engine, repo, scratch, checkout, common = \
+                    self.verification_v2_fixture(linked=True)
+                admin = Path(subprocess.run(['git', 'rev-parse', '--absolute-git-dir'],
+                    cwd=checkout, capture_output=True, text=True, check=True).stdout.strip())
+                counter = scratch / 'count.txt'
+                counter.write_text('0')
+                code = ('from pathlib import Path;import sys;'
+                        'p=Path(sys.argv[1]);p.write_text(str(int(p.read_text())+1))')
+                commands = [[sys.executable, '-B', '-c', code, str(counter)]]
+                snapshot = {'number': 993003}
+                lease = {'token': '3' * 32, 'worker': 'scratch-worker',
+                         'acquisition': {'git_commit': fixture.session.git('rev-parse', 'HEAD').strip()}}
+                before = {'tree': fixture.session.git('rev-parse', 'HEAD^{tree}').strip()}
+                request = {'request_id': 'missing-admin-exact', 'operation': 'submit',
+                           'workspace_checks': commands}
+                first = engine.node_verification_commands(
+                    snapshot, lease, request, commands, before, working_directory=repo)
+                name = z._workflow.digest(request['request_id'])[7:] + '.json'
+                common_path = common / 'zzzops' / 'verification' / str(snapshot['number']) / name
+                original = common_path.read_bytes()
+                legacy = admin / 'zzzops' / 'verification' / str(snapshot['number']) / name
+                legacy.parent.mkdir(parents=True, exist_ok=True)
+                legacy.write_bytes(original)
+                common_path.unlink()
+                log = Path(first[0]['log'])
+                log_hash = hashlib.sha256(log.read_bytes()).hexdigest()
+                if mode == 'malformed_commondir':
+                    original_commondir = (admin / 'commondir').read_bytes()
+                    self.addCleanup((admin / 'commondir').write_bytes, original_commondir)
+                    (admin / 'commondir').write_text('../../../foreign-common\n')
+                else:
+                    retained_checkout = scratch / 'retained-checkout-files'
+                    checkout.rename(retained_checkout)
+                    self.addCleanup(retained_checkout.rename, checkout)
+                    self.assertFalse(checkout.exists())
+                locker = None
+                try:
+                    if mode == 'held_lock':
+                        lock = legacy.parent / ('lease-' + lease['token'] + '.lock')
+                        script = '''import os,sys
+h=open(sys.argv[1],"a+b")
+if os.name == "nt":
+ import msvcrt
+ h.write(b"0");h.flush();h.seek(0)
+ msvcrt.locking(h.fileno(),msvcrt.LK_NBLCK,1)
+else:
+ import fcntl
+ fcntl.flock(h.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+print("locked",flush=True)
+sys.stdin.read()
+'''
+                        locker = subprocess.Popen([sys.executable, '-c', script, str(lock)],
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True)
+                        self.assertEqual('locked', locker.stdout.readline().strip())
+                    if mode == 'malformed_commondir':
+                        with self.assertRaises((ValueError, z._workflow.VerificationUncertain)):
+                            engine.verification_git_dirs()
+                    else:
+                        try:
+                            common_dir, admins = engine.verification_git_dirs()
+                        except FileNotFoundError as exc:
+                            self.fail('Retained Git admin discovery required a missing checkout: ' + str(exc))
+                        self.assertEqual(common, common_dir)
+                        self.assertIn(admin, admins)
+                        if mode == 'held_lock':
+                            with self.assertRaises(z._workflow.VerificationUncertain):
+                                engine.node_verification_commands(snapshot, lease, request,
+                                    commands, before, working_directory=repo)
+                            self.assertFalse(common_path.exists())
+                        else:
+                            self.assertEqual(first, engine.node_verification_commands(
+                                snapshot, lease, request, commands, before, working_directory=repo))
+                            self.assertEqual(original, common_path.read_bytes())
+                finally:
+                    if locker is not None:
+                        locker.communicate('', timeout=10)
+                self.assertEqual('1', counter.read_text())
+                self.assertEqual(original, legacy.read_bytes())
+                self.assertEqual(log_hash, hashlib.sha256(log.read_bytes()).hexdigest())
+
     def test_linked_coordinators_reuse_one_lease_verification_journal(self):
         fixture = self.fixture_with_git_workspace()
         first_repo = fixture.fixture.repo
@@ -524,6 +671,68 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         self.assertFalse(any(step.get('kind') == 'execute' and
             step['node']['node'] == 'review_selected' for step in frontier),
             'Divergent selected code sources granted an ambiguous owner-HEAD worktree')
+
+    def test_typed_selected_metadata_allocation_needs_no_git_proof(self):
+        fixture = journeys.WorkspaceAuthorityPublicTests('runTest')
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        def graph_change(graph, _allocations):
+            for node in graph['nodes']:
+                resources = node['executor']['resources']
+                if 'repository_workspace' in resources:
+                    resources[resources.index('repository_workspace')] = 'repository_git_workspace'
+            charter = next(node for node in graph['nodes'] if node['id'] == 'charter')
+            selector = journeys.task('metadata_selector', ['charter'])
+            selector['inputs'] = {'allocation': {'producer': {'node': journeys.selector('charter')},
+                'output': 'grant', 'path': [], 'mode': 'identity',
+                'type': copy.deepcopy(charter['outputs']['grant']['schema'])}}
+            selector['outputs'] = {'value': journeys.output('selection', {'kind': 'object',
+                'fields': {'items': {'kind': 'map', 'values': journeys.REF_TYPE},
+                           'rationale': {'kind': 'string'}}})}
+            reader = journeys.task('metadata_reader', ['metadata_selector'])
+            reader['inputs'] = {'allocation_reference': {'producer': {
+                'node': journeys.selector('metadata_selector')}, 'output': 'value',
+                'path': ['items', 'allocation'], 'mode': 'identity', 'type': journeys.REF_TYPE}}
+            direct = journeys.task('metadata_direct_control', ['charter'])
+            direct['inputs'] = {'allocation': copy.deepcopy(selector['inputs']['allocation'])}
+            graph['nodes'] += [selector, reader, direct]
+            graph['terminals'] += [journeys.selector('metadata_reader'),
+                                   journeys.selector('metadata_direct_control')]
+        fixture.setup_workspace(graph_change)
+        reference = fixture.produced('charter', 'grant')
+        self.assertEqual('workspace_allocation', fixture.read_blob(reference)['type'])
+        self.assertEqual([], next(node for node in fixture.graph['nodes']
+            if node['id'] == 'charter')['executor']['resources'])
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        marker = Path(scratch.name) / 'must-not-run'
+        def rejected_workspace_checks(work, request_id):
+            request = fixture.session.submission(work, {'value': 'Metadata assessment'}, request_id)
+            request['workspace_checks'] = [[sys.executable, '-B', '-c',
+                'from pathlib import Path;import sys;Path(sys.argv[1]).write_text("executed")',
+                str(marker)]]
+            before = copy.deepcopy((fixture.provider.issues, fixture.provider.comments))
+            rejected = fixture.session.call(100, request, expected=2)
+            self.assertRegex(json.dumps(rejected), r'(?i)workspace.check|read.only|resource|authority')
+            self.assertFalse(marker.exists(), 'Metadata-only reader executed an unauthorized command')
+            self.assertEqual(before, (fixture.provider.issues, fixture.provider.comments))
+        direct = fixture.session.acquire('metadata_direct_control', actor='direct-metadata-reader')
+        rejected_workspace_checks(direct, 'direct-metadata-cannot-run-workspace-checks')
+        selector = fixture.session.acquire('metadata_selector', actor='metadata-selector')
+        fixture.session.finish(selector, {'value': {'items': {'allocation': reference},
+            'rationale': 'Inspect this exact current allocation as metadata'}})
+        selected = fixture.produced('metadata_selector')
+        self.assertEqual(reference, z._phase_evidence.selected_path(
+            fixture.read_blob(selected)['content'], ['items', 'allocation']))
+        frontier = fixture.session.checkpoint(100)
+        self.assertTrue(any(step.get('kind') == 'execute' and
+            step['node']['node'] == 'metadata_reader' for step in frontier),
+            'Valid selected metadata Ref was blocked without a Git producer')
+        reader = fixture.session.acquire('metadata_reader', actor='metadata-reader')
+        self.assertEqual([], next(node for node in fixture.graph['nodes']
+            if node['id'] == 'metadata_reader')['executor']['resources'])
+        self.assertIn('read_commit', reader['lease']['acquisition'])
+        rejected_workspace_checks(reader, 'selected-metadata-cannot-run-workspace-checks')
 
     def fixture_with_git_workspace(self, *, many_files=0):
         fixture = journeys.WorkspaceAuthorityPublicTests('runTest')
