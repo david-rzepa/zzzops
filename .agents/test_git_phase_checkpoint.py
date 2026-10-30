@@ -225,6 +225,39 @@ class GitPhaseCheckpointTests(unittest.TestCase):
             owned_paths=['input.txt'])
         self.assertEqual(source_tree, self.git('rev-parse', source + '^{tree}').strip())
 
+    def test_prepare_restack_retry_after_staging_preserves_exact_head_and_sequencer(self):
+        preview, source, _source_tree, new_base = self.begin_restack_conflict()
+        (self.repo / 'input.txt').write_text(self.git('show', new_base + ':input.txt'))
+        first = git_phase_state.prepare_attempt_restack_continue(
+            self.repo, preview, owned_paths=['input.txt'])
+        self.assertEqual(new_base, self.git('rev-parse', 'HEAD').strip())
+        self.assertEqual(source, self.git('rev-parse', 'CHERRY_PICK_HEAD').strip())
+        self.assertEqual(first['result_tree'], self.git('write-tree').strip())
+        self.assertEqual(first['result_tree'], self.git('rev-parse', 'HEAD^{tree}').strip())
+        retry = git_phase_state.prepare_attempt_restack_continue(
+            self.repo, preview, owned_paths=['input.txt'])
+        self.assertEqual(first, retry)
+        self.assertEqual(new_base, self.git('rev-parse', 'HEAD').strip())
+        self.assertEqual(source, self.git('rev-parse', 'CHERRY_PICK_HEAD').strip())
+        adopted = git_phase_state.complete_attempt_restack_continue(
+            self.repo, preview, owned_paths=['input.txt'], intent=retry)
+        self.assertEqual(first['candidate_commit'], adopted['result_commit'])
+        self.assertFalse((self.repo / '.git/CHERRY_PICK_HEAD').exists())
+
+    def test_worker_prestaged_same_tree_restack_resolution_remains_recoverable(self):
+        preview, source, _source_tree, new_base = self.begin_restack_conflict()
+        (self.repo / 'input.txt').write_text(self.git('show', new_base + ':input.txt'))
+        self.git('add', 'input.txt')
+        self.assertEqual(new_base, self.git('rev-parse', 'HEAD').strip())
+        self.assertEqual(source, self.git('rev-parse', 'CHERRY_PICK_HEAD').strip())
+        self.assertEqual(self.git('rev-parse', 'HEAD^{tree}').strip(),
+                         self.git('write-tree').strip())
+        intent = git_phase_state.prepare_attempt_restack_continue(
+            self.repo, preview, owned_paths=['input.txt'])
+        self.assertEqual(self.git('rev-parse', 'HEAD^{tree}').strip(), intent['result_tree'])
+        self.assertEqual(new_base, self.git('rev-parse', 'HEAD').strip())
+        self.assertEqual(source, self.git('rev-parse', 'CHERRY_PICK_HEAD').strip())
+
     def test_abort_attempt_restack_restores_new_base_and_original_attempt(self):
         preview, source, source_tree, new_base = self.begin_restack_conflict()
 
