@@ -40,7 +40,7 @@ def _atomic_json(path: Path, value) -> None:
     except OSError: pass
     temporary = path.with_name(path.name + ".tmp-" + uuid.uuid4().hex)
     with temporary.open("w", encoding="utf-8") as handle:
-        json.dump(value, handle, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        handle.write(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
         handle.flush(); os.fsync(handle.fileno())
     os.replace(temporary, path)
     try: path.chmod(0o600)
