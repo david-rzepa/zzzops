@@ -45,4 +45,4 @@ Compare default IDs/digests first. Changed/stale: load full old/new snapshots on
 
 If every required section has valid approval, say `The policy is already approved.` Do not ask for approval again. Otherwise require explicit approval of the current digest from the root-mediated human interaction, then submit that approval using the exact returned input contract. Approved policy artifacts may enter ordinary PR review without another conversational gate.
 
-Approved adherence: reconcile a bounded `AGENTS.md` block (`BEGIN ZZZOPS WORKFLOW ADHERENCE`); preserve all unrelated instructions.
+Approved adherence is recorded in the reviewed project policy. Do not create or reconcile a root `AGENTS.md` block during policy review; repository instruction files are optional and separate from policy authority.

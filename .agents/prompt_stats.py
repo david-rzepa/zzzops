@@ -30,10 +30,10 @@ COLD_ONLY_PROMPTS = {
 }
 
 # These limits protect context paid on every Codex turn and the two frequent ZzzOps paths. At the
-# goal #297 baseline, always-loaded/codex is 625 tokens. Goal #302 reduced capture/execution to
-# 3,324/8,452 tokens. Pending the unified workflow CLI, retain modest 3,600/8,800 ceilings so
-# policy and routing work can land without repeated budget-only failures. Cold mutually exclusive
-# workflows remain advisory rather than competing for one aggregate allowance.
+# goal #297 baseline, always-loaded/codex was 625 tokens with AGENTS.md present. The
+# repository may omit that optional file; its ceiling still guards future additions.
+# Goal #302 reduced capture/execution to 3,324/8,452 tokens. Retain modest
+# 3,600/8,800 ceilings. Cold mutually exclusive workflows remain advisory.
 ENFORCED_PROMPT_BUDGETS = {
     "always-loaded/codex": 700,
     "capture/codex": 3_700,
@@ -158,7 +158,7 @@ for workflow, hot_paths in WORKFLOW_PROMPTS.items():
 
 WORKFLOW_SIGNALS = {
     "bootstrap-greenfield": ("never silently de-escalate", "adaptive product interview", "exactly one canonical top-level product-outcome goal", "canonical verification", "Continue from harness outcomes into product milestones", "ordered PR review queue", PROACTIVE_DELEGATION_SIGNAL),
-    "bootstrap-brownfield": ("evidence-led product/harness audit", "top-level product-outcome goal", "reconcile it in place", "$migrate-to-zzzops", "canonical verification", "until exhaustion", PROACTIVE_DELEGATION_SIGNAL),
+    "bootstrap-brownfield": ("evidence-led product/harness audit", "top-level product-outcome goal", "Preserve existing repository instructions", "$migrate-to-zzzops", "canonical verification", "until exhaustion", PROACTIVE_DELEGATION_SIGNAL),
     "capture": ("duplicate/relationship matches", "interview at", "owns requirements/acceptance", "active same-task execute intent", "effective engineering rigor", "vibe → light", "never silently de-escalate", "Git-free creation", PROACTIVE_DELEGATION_SIGNAL),
     "execution": ("complete:true", "smallest falsifiable chunk", "difficulty is cost, not value", "human_at_exhaustion", "human_after_checks", "PR review queue", "Execution assumes the user is absent", "Before substantive work on a newly selected goal", "safe useful work", "effective engineering rigor", "created-but-unrun machinery is not proof", "current public workflow checkpoint", "mandatory implementation review", PROACTIVE_DELEGATION_SIGNAL),
     "policy-review": ("Only this workflow changes or confirms the reviewed configuration and agent policy", "explicit approval of the current digest", "The policy is already approved", "privacy-safe execution reports"),
@@ -215,7 +215,9 @@ def render_report(rows: list[tuple[str, int, int]]) -> str:
 
 def prompt_profile(root: Path, paths: tuple[str, ...]) -> tuple[int, int, str]:
     unique_paths = dict.fromkeys(paths)
-    data = b"\n".join((root / path).read_bytes() for path in unique_paths)
+    optional_harness_paths = {path for items in HARNESS_PROMPTS.values() for path in items}
+    data = b"\n".join((root / path).read_bytes() for path in unique_paths
+                      if path not in optional_harness_paths or (root / path).is_file())
     size = canonical_size(data)
     return size, math.ceil(size / 4), data.decode("utf-8")
 

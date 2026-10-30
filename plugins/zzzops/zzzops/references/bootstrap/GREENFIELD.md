@@ -7,7 +7,7 @@ After the product brief, policy approval, root goal, and canonical DAG are estab
 1. Confirm the repository is still greenfield or early scaffold and the approved proposal, portfolio revisions, and target branch have not drifted. Re-analyze on consequential drift.
 2. Create or reuse the top-level product goal, then create harness and product goals/edges through `PLAN.md`. Invoke the normal loop for claims, branches, commits, PRs, gates, blockers, and resumability.
 3. Execute harness/scaffold outcomes and continue directly into authorized product milestones. Low [[bounded commitment]](../../../concepts/bounded-commitment.md) choices follow reviewed autonomy; high commitment uses early evidence and blocks only when materially ambiguous or outside authority.
-4. Reconcile `AGENTS.md` rather than overwrite it. Preserve unrelated instructions and the workflow-adherence block owned by `$review-zzzops-policy`. Keep stable purpose, pinned stack, canonical commands, hard invariants, definition of done, and deeper-context links; use deterministic enforcement where practical.
+4. Document stable purpose, pinned stack, canonical commands, hard invariants, definition of done, and deeper-context links in the repository's normal documentation. If an existing agent instruction file is useful, reconcile it without overwriting unrelated instructions; do not create one solely to mirror reviewed policy. Use deterministic enforcement where practical.
 5. For each goal, run and inspect its real probe. A script, test, CI file, or guardrail that merely exists is not acceptance evidence. The canonical verification command must exercise every required local gate, and CI must call that same contract rather than duplicate it.
 6. After harness goals reach verified checkpoints, run canonical verification at the exact combined checkpoint and inspect required CI there. Failures return to their owning goal; success releases dependent product work.
 7. Continue product goals until true exhaustion. Report the product root, working factory, product evidence, ordered PR review queue, deferred unauthorized scope, and blockers. Harness completion alone is not a stopping condition.
@@ -23,7 +23,7 @@ Expected bootstrap evidence:
 - formatting/lint/type/test choices are justified by the structured bar;
 - one documented verification command runs those gates successfully;
 - CI invokes the same verification command on the supported platforms;
-- concise `AGENTS.md` points to commands and architecture context without generic Python documentation;
+- concise repository documentation points to commands and architecture context without generic Python documentation;
 - the greeting milestone is a canonical product goal depending on the required harness leaves and is implemented, observed, and queued in its own stacked PR;
 - rerunning bootstrap reuses goals and makes no source or dependency change.
 

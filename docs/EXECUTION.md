@@ -8,7 +8,7 @@ Reviewed workflow adherence controls how agent work reaches this execution loop;
 - `tracked`: substantial repository-changing agent work requires a durable goal, while otherwise-authorized implementation may run outside `$execute-zzzops`.
 - `managed`: repository-changing agent work uses the appropriate ZzzOps workflow, and tracked implementation runs through `$execute-zzzops`.
 
-Read-only investigation and ZzzOps administration are exempt. A user may authorize a narrowly scoped exception explicitly, but no adherence level weakens safety or other reviewed policy. `$review-zzzops-policy` reflects the approved level in a bounded `AGENTS.md` block while preserving other instructions. This is guidance for agents; ZzzOps cannot observe or control direct human edits and does not promise a universal gate.
+Read-only investigation and ZzzOps administration are exempt. A user may authorize a narrowly scoped exception explicitly, but no adherence level weakens safety or other reviewed policy. The reviewed policy records the approved level; repository instruction files are optional guidance for agents. ZzzOps cannot observe or control direct human edits and does not promise a universal gate.
 
 Administration runs through host-defined authority-free transactions on the affected goal. Do not create a goal whose sole outcome is creating, updating, migrating, repairing, reviewing, approving, reprioritizing, superseding, reopening, or closing another goal. A separately deliverable product or tooling defect remains normal goal work.
 
