@@ -1064,8 +1064,16 @@ def prepare_attempt_restack_continue(repo: Path, preview: dict,
     if sequencer != plan['attempt_commit'] or head != plan['new_base']:
         raise ValueError('Git restack sequencer or HEAD changed')
     paths = _restack_dirty_paths(repo, owned_paths)
+    # A worker may already have staged the exact same-tree resolution, or a
+    # previous prepare may have staged it before its provider intent was saved.
+    # In that case status has no dirty paths, while the replay sequencer still
+    # pins the conflict and the index contains the resolved tree.
     if not paths:
-        raise ValueError('Git restack conflict resolution is missing')
+        if (_git(repo, 'ls-files', '-u', '-z') or
+                _git(repo, 'write-tree').decode().strip() !=
+                _git(repo, 'rev-parse', 'HEAD^{tree}').decode().strip()):
+            raise ValueError('Git restack conflict resolution is missing')
+        paths = list(plan['conflicts'])
     for path in paths:
         target = repo / path
         if target.is_symlink() or target.exists() and not target.is_file():
