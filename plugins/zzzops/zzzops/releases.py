@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -63,6 +64,47 @@ def open_release_ids(plan: dict[str, Any]) -> list[int]:
     values.update(int(key) for key, value in plan.get("releases", {}).items()
                   if value.get("state") != "branch_confirmed")
     return sorted(values or {plan["next_release"]})
+
+
+def preview_trunk_propagation(repo: Path, trunks: list[tuple[str, str]]) -> dict[str, Any]:
+    """Find the first missing ancestry edge in a reviewed top-to-bottom trunk chain."""
+    if (not isinstance(trunks, list) or len(trunks) < 2
+            or any(not isinstance(row, (tuple, list)) or len(row) != 2
+                   or not isinstance(row[0], str) or not row[0]
+                   or not isinstance(row[1], str)
+                   or re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', row[1]) is None
+                   for row in trunks)
+            or len({row[0] for row in trunks}) != len(trunks)):
+        raise ValueError('Trunk propagation requires distinct ordered names and exact commit IDs')
+    repo = Path(repo).resolve()
+    trees = {}
+    for name, commit in trunks:
+        found = subprocess.run(['git', 'cat-file', '-t', commit], cwd=repo,
+                               capture_output=True, text=True)
+        if found.returncode or found.stdout.strip() != 'commit':
+            raise ValueError('Trunk propagation commit is missing: ' + name)
+        tree = subprocess.run(['git', 'rev-parse', commit + '^{tree}'], cwd=repo,
+                              capture_output=True, text=True, check=True)
+        trees[name] = tree.stdout.strip()
+    for (source, source_commit), (target, target_commit) in zip(trunks, trunks[1:]):
+        ancestor = subprocess.run(['git', 'merge-base', '--is-ancestor',
+                                   source_commit, target_commit], cwd=repo,
+                                  capture_output=True)
+        if ancestor.returncode not in (0, 1):
+            raise ValueError('Trunk propagation ancestry could not be observed')
+        if ancestor.returncode == 0:
+            continue
+        fast_forward = subprocess.run(['git', 'merge-base', '--is-ancestor',
+                                       target_commit, source_commit], cwd=repo,
+                                      capture_output=True)
+        if fast_forward.returncode not in (0, 1):
+            raise ValueError('Trunk propagation ancestry could not be observed')
+        return {'status': 'propagate', 'source': source, 'target': target,
+                'source_commit': source_commit, 'target_commit': target_commit,
+                'source_tree': trees[source], 'target_tree': trees[target],
+                'content_change': trees[source] != trees[target],
+                'fast_forward': fast_forward.returncode == 0}
+    return {'status': 'current', 'trunks': [name for name, _ in trunks]}
 
 
 def target_release(plan: dict[str, Any], goal: int) -> int:

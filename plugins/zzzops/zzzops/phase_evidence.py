@@ -957,7 +957,7 @@ def validate_graph(graph):
         definitions.append((expansion['template'], True))
     for node, template in definitions:
         node_fields = {'id', 'prompt', 'inputs', 'outputs', 'requires', 'executor', 'independent_of', 'gates', 'resolves', 'permits'}
-        if not isinstance(node, dict) or set(node) - node_fields - {'applicability'} or node_fields - set(node):
+        if not isinstance(node, dict) or set(node) - node_fields - {'applicability', 'git_publish'} or node_fields - set(node):
             raise ValueError('Node has unsupported or missing fields')
         name = node['id']
         if not task_identifier(name) or name in names or name in sets: raise ValueError('Duplicate or invalid node/template identity')
@@ -989,6 +989,22 @@ def validate_graph(graph):
         if executor['role'] not in ('root', 'worker') or not task_identifier(executor['capability']): raise ValueError('Executor role/capability is invalid')
         if not isinstance(executor['resources'], list) or any(not task_identifier(r) for r in executor['resources']) or len(set(executor['resources'])) != len(executor['resources']): raise ValueError('Executor resources must be unique identities')
         validate_scope(executor['authority'], template)
+        publish = node.get('git_publish')
+        if publish is not None:
+            contract_fields(publish, {'series', 'group', 'order', 'output', 'commit_type', 'summary'}, 'Git publish')
+            if (template or 'repository_git_workspace' not in executor['resources']
+                    or any(not task_identifier(publish[key]) for key in ('series', 'group'))
+                    or not isinstance(publish['commit_type'], str)
+                    or not re.fullmatch(r'[a-z][a-z0-9]*', publish['commit_type'])
+                    or type(publish['order']) is not int or publish['order'] < 0
+                    or publish['output'] not in node['outputs']
+                    or not isinstance(publish['summary'], str)
+                    or not publish['summary'].strip()
+                    or publish['summary'] != publish['summary'].strip()
+                    or len(publish['summary']) > 120
+                    or any(ord(character) < 32 or ord(character) == 127
+                           for character in publish['summary'])):
+                raise ValueError('Git publish requires a bounded reviewed group and Git workspace output')
         for field in ('requires', 'independent_of', 'gates', 'resolves', 'permits'):
             if not isinstance(node[field], list): raise ValueError(f'Node {field} must be an array')
             for value in node[field]:
@@ -998,6 +1014,20 @@ def validate_graph(graph):
                     if not task_identifier(value['type']): raise ValueError('Permit type is invalid')
                     validate_scope(value['scope'], template)
                 else: validate_scope(value, template)
+    series = {}
+    for node, _ in definitions:
+        publish = node.get('git_publish')
+        if publish is None:
+            continue
+        groups = series.setdefault(publish['series'], {})
+        signature = (publish['order'], publish['commit_type'], publish['summary'])
+        previous = groups.setdefault(publish['group'], signature)
+        if previous != signature:
+            raise ValueError('Git publish group declarations disagree')
+    for groups in series.values():
+        orders = [signature[0] for signature in groups.values()]
+        if sorted(orders) != list(range(len(orders))):
+            raise ValueError('Git publish group order must be unique and contiguous')
     def event_selectors(value):
         if isinstance(value, dict):
             if value.get('kind') == 'member' and (value.get('item') == {'event_subject_item': True}
@@ -1012,11 +1042,16 @@ def validate_graph(graph):
             source = expansion['source'] if expansion else {}
             producer = source.get('producer', {})
             target = sets.get(selector['expansion'])
-            if (not template or producer not in ({'slot': 'phase_data'}, {'slot': 'phase_event_obligations'})
+            batch_source = producer in ({'slot': 'resolution_batches'}, {'slot': 'retired_resolution_members'})
+            if (not template or producer not in ({'slot': 'phase_data'}, {'slot': 'phase_event_obligations'},
+                                                 {'slot': 'resolution_batches'}, {'slot': 'retired_resolution_members'})
                     or source.get('mode') != 'content' or source.get('output') != 'content'
-                    or len(source.get('path', [])) != 2 or target is None
-                    or source['path'][0] != target['template']['id']
-                    or source['path'][1] not in target['template']['outputs']
+                    or target is None
+                    or (batch_source and (source.get('path') != [expansion['id']]
+                        or not any(scope['subject'] == selector and scope['output'] in target['template']['outputs'] for scope in node['resolves'])))
+                    or (not batch_source and (len(source.get('path', [])) != 2
+                        or source['path'][0] != target['template']['id']
+                        or source['path'][1] not in target['template']['outputs']))
                     or selector['goal'] != '#this'
                     or selector['item'] != {'event_subject_item': True}
                     or selector['generation'] != {'event_subject_generation': True}):
@@ -1087,6 +1122,39 @@ def selected_path(value, path):
 _PROJECTION_CACHE = OrderedDict()
 _PROJECTION_CACHE_LOCK = RLock()
 _PROJECTION_CACHE_BYTES = 8 * 1024 * 1024
+
+
+def validate_result_successors(records_by_node):
+    """Replay pre-CAS history, then require exact CAS on every new successor."""
+    for key, rows in records_by_node.items():
+        if rows and task_key(rows[0][1]['node']) != key:
+            continue
+        previous_ref = None
+        previous_revision = -1
+        cas_started = False
+        for ref, result in rows:
+            supersedes = result.get('supersedes_result')
+            expected_revision = result.get('expected_goal_revision')
+            if previous_ref is None:
+                if supersedes is not None or expected_revision is not None:
+                    raise ValueError('Initial Result cannot claim a predecessor CAS')
+            else:
+                has_predecessor = 'supersedes_result' in result
+                has_revision = 'expected_goal_revision' in result
+                if has_predecessor != has_revision:
+                    raise ValueError('Result successor has partial predecessor CAS')
+                if not has_predecessor:
+                    if cas_started:
+                        raise ValueError('Result successor cannot return to legacy predecessor history')
+                    previous_ref = ref
+                    continue
+                if supersedes != previous_ref or type(expected_revision) is not int:
+                    raise ValueError('Result successor does not name the exact current predecessor')
+                if expected_revision <= previous_revision:
+                    raise ValueError('Result successor goal revision did not advance')
+                previous_revision = expected_revision
+                cas_started = True
+            previous_ref = ref
 
 
 def derive_task_steps(graph, payload, context):
@@ -1198,6 +1266,11 @@ def _derive_task_steps(graph, payload, context):
             if result['node']['goal'] != number: raise ValueError('Result goal identity mismatch')
             records[number].append((ref, result))
             records_by_node.setdefault(task_key(result['node']), []).append((ref, result))
+            mapped_node = context.get('cutover_mappings', {}).get(ref['hash'])
+            if mapped_node is not None and mapped_node != result['node']['node']:
+                mapped_key = (number, mapped_node, result['node'].get('item'),
+                              result['node'].get('generation', 1))
+                records_by_node.setdefault(mapped_key, []).append((ref, result))
             for output_ref in result['outputs'].values():
                 output = artifact(output_ref)
                 if output.get('producer') != result['attempt'] or output.get('provenance', {}).get('actor') != result['executor']:
@@ -1212,6 +1285,7 @@ def _derive_task_steps(graph, payload, context):
             instance_order.append(task_key(identity))
         for index, expansion in enumerate(snapshot['graph']['task_sets']):
             expansions[(number, expansion['id'])] = (expansion, index)
+    validate_result_successors(records_by_node)
     latest_outputs = {key: {ref['hash'] for ref in rows[-1][1]['outputs'].values()} for key, rows in records_by_node.items()}
     output_owners = {ref['hash']: task_key(result['node']) for rows in records.values() for _, result in rows for ref in result['outputs'].values()}
     obligations = {}
@@ -1261,11 +1335,190 @@ def _derive_task_steps(graph, payload, context):
                 expansion, _ = expansions[expansion_key]
                 result.append((selected, expansion['template']['id'], selector['item'], generation))
         return sorted(set(result), key=lambda k: (k[0], k[1], k[2] or '', k[3]))
+    batch_selections = {}
+    resolution_waiting = []
+    resolution_errors = []
+    accepted_resolutions = context.get('accepted_resolution_entries', [])
+    closed_findings = {row['finding']['hash'] for row in accepted_resolutions
+                       if row['decision'] == 'resolved'}
+    attempted_opportunities = {row['opportunity'] for row in accepted_resolutions
+                               if row.get('opportunity')}
+
+    def current_result_by_ref(reference):
+        return next(result for ref, result in current.values() if ref == reference)
+
     def get_input(binding, number):
         producer = binding['producer']; selected = []
         if 'slot' in producer:
             slot = producer['slot']
-            if slot == 'relationship_context':
+            if slot == 'retired_resolution_members':
+                if len(binding['path']) != 1 or (number, binding['path'][0]) not in expansions:
+                    raise ValueError('Retired resolution selection requires its exact declared TaskSet')
+                declaration = expansions[(number, binding['path'][0])][0]
+                if any(output['type'] != 'resolution' for output in declaration['template']['outputs'].values()):
+                    raise ValueError('Only historical singular resolution members may be retired')
+                value = {binding['path'][0]: {'items': {}, 'rationale': 'Singular resolution work is replaced by the exact scoped batch contract.'}}
+                ref = remember({'type': 'retired_resolution_context', 'content': value, 'producer': None,
+                                'provenance': {'actor': 'host', 'source': None, 'policy': policy}})
+            elif slot == 'resolution_batches':
+                expansion_id = binding['path'][0]
+                cache_key = (number, expansion_id)
+                if cache_key not in batch_selections:
+                    expansion = expansions.get(cache_key)
+                    if expansion is None:
+                        raise ValueError('Resolution batch requires its exact declared TaskSet')
+                    template = expansion[0]['template']
+                    if (len(template['resolves']) != 1 or template['outputs'].get('value', {}).get('type') != 'resolution_batch'):
+                        raise ValueError('Unsupported resolution batch contract')
+                    scope = template['resolves'][0]
+                    grouped = {}
+                    for (owner, _), debt in obligations.items():
+                        actual_scope = debt['content']['target']
+                        declared = copy.deepcopy(scope)
+                        if declared['subject']['goal'] == '#this': declared['subject']['goal'] = number
+                        if declared['subject'].get('kind') == 'member':
+                            for field in ('item', 'generation'):
+                                if declared['subject'].get(field) == {'event_subject_' + field: True}:
+                                    declared['subject'][field] = actual_scope['subject'].get(field)
+                        if (owner == number and debt['applicability'] == 'applicable' and declared == actual_scope
+                                and debt['finding']['hash'] not in closed_findings):
+                            grouped.setdefault(semantic_hash(actual_scope), []).append(debt)
+                    items = {}
+                    for group_key, debts in sorted(grouped.items()):
+                        exact_scope = debts[0]['content']['target']
+                        exact_subject = exact_scope['subject']
+                        def materialized(value):
+                            if value == {'event_subject_item': True}: return exact_subject['item']
+                            if value == {'event_subject_generation': True}: return exact_subject['generation']
+                            if isinstance(value, dict): return {key: materialized(child) for key, child in value.items()}
+                            if isinstance(value, list): return [materialized(child) for child in value]
+                            return value
+                        selected_template = materialized(template)
+                        try:
+                            for (other_goal, other_id), (other, _) in expansions.items():
+                                if other_goal != number or other_id == expansion_id or other['source']['producer'] != {'slot': 'resolution_batches'}:
+                                    continue
+                                alternative = copy.deepcopy(other['template']['resolves'][0])
+                                if alternative['subject']['goal'] == '#this': alternative['subject']['goal'] = number
+                                if alternative == exact_scope and other['template']['resolves'][0] != scope:
+                                    raise ValueError('Unsupported resolution scope alias: symbolic and literal goal contracts overlap; explicitly unify the reviewed correction scope.')
+                            subject, _, _, subject_nodes = get_input(selected_template['inputs']['subject'], number)
+                            reviewer_refs, context_hashes = {}, {}
+                            for name, review_binding in selected_template['inputs'].items():
+                                if name in ('batch', 'subject'): continue
+                                context_ref, context_value, _, review_nodes = get_input(review_binding, number)
+                                if not name.startswith('review_'):
+                                    context_hashes[name] = (context_ref['hash'] if review_binding['mode'] == 'identity'
+                                                            else semantic_hash(context_value))
+                                    continue
+                                for review_key in review_nodes:
+                                    reference, review_result = current[review_key]
+                                    if review_key in subject_nodes:
+                                        raise ValueError('Resolution subject cannot review itself')
+                                    reviewer_refs[reference['hash']] = reference
+                            if not reviewer_refs:
+                                raise ValueError('Resolution batch requires current independent review Results')
+                            # A supported registry batch cannot silently bypass
+                            # an unrelated custom static resolver's extra authority.
+                            for custom in snapshots[number]['graph']['nodes']:
+                                if not any(output['type'] == 'resolution' for output in custom['outputs'].values()):
+                                    continue
+                                for declared in custom['resolves']:
+                                    overlapping = copy.deepcopy(declared)
+                                    if overlapping['subject']['goal'] == '#this': overlapping['subject']['goal'] = number
+                                    if overlapping == exact_scope:
+                                        raise ValueError('Unsupported resolution overlap: static resolver ' + custom['id']
+                                            + ' and registry batch cover the same admitted finding scope; explicitly reconcile their reviewed requirements.')
+                            reviews = [reviewer_refs[key] for key in sorted(reviewer_refs)]
+                            findings, opportunities, capabilities = {}, {}, []
+                            for debt in debts:
+                                finding = debt['content']
+                                key = 'finding_' + semantic_hash([number, finding['id'], finding['revision'], debt['finding']])[7:]
+                                event_review_names = {row['template']['id'] for row in snapshots[number]['graph']['task_sets']
+                                    if row['source']['producer'] == {'slot': 'phase_data'}}
+                                source_owners = {task_key(result['node']) for reference, result in records[number]
+                                    if finding['source'] == reference or finding['source'] in result['outputs'].values()}
+                                relevant = [reference for reference in reviews
+                                    if current_result_by_ref(reference)['node']['node'] not in event_review_names
+                                    or task_key(current_result_by_ref(reference)['node']) in source_owners]
+                                if not relevant:
+                                    raise ValueError('Finding has no exact qualifying independent review route')
+                                requirements = {}
+                                for original in snapshots[number]['graph']['task_sets']:
+                                    if original['source']['producer'] != {'slot': 'retired_resolution_members'}:
+                                        continue
+                                    matching = []
+                                    for candidate_scope in original['template']['resolves']:
+                                        # An unrelated member contract has no item/generation
+                                        # in this static scope. Match the scope before expanding
+                                        # its captured subject placeholders and other inputs.
+                                        if candidate_scope['subject']['kind'] != exact_subject['kind']:
+                                            continue
+                                        candidate_scope = materialized(copy.deepcopy(candidate_scope))
+                                        if candidate_scope['subject']['goal'] == '#this': candidate_scope['subject']['goal'] = number
+                                        if candidate_scope == exact_scope: matching.append(candidate_scope)
+                                    if not matching: continue
+                                    declared = materialized(original['template'])
+                                    if declared['inputs']['finding']['producer'] == {'slot': 'phase_event_obligations'}:
+                                        review_expansion = declared['inputs']['review']['producer']['node']['expansion']
+                                        review_name = expansions[(number, review_expansion)][0]['template']['id']
+                                        if not any(owner[1] == review_name for owner in source_owners): continue
+                                    requirement = declared['executor']['capability']
+                                    if requirement not in ('bounded', 'reasoning'):
+                                        raise ValueError('Unsupported resolution capability requirement')
+                                    requirements[semantic_hash(declared)] = requirement
+                                if not requirements:
+                                    raise ValueError('Unsupported resolution batch without original entry requirements')
+                                capability = 'reasoning' if 'reasoning' in requirements.values() else 'bounded'
+                                capabilities.append(capability)
+                                findings[key] = {'id': finding['id'], 'revision': finding['revision'],
+                                    'finding': debt['finding'], 'admission': debt['admission'], 'reviews': relevant}
+                                opportunities[key] = semantic_hash({'finding': debt['finding'],
+                                    'scope': finding['target'], 'subject': subject, 'reviews': relevant,
+                                    'context': context_hashes, 'requirements': requirements, 'policy': policy})
+                            required_capability = 'reasoning' if 'reasoning' in capabilities else 'bounded'
+                            if template['executor']['capability'] != required_capability:
+                                continue
+                            if exact_subject['kind'] == 'node':
+                                target = {'node': exact_subject['node'], 'output': scope['output']}
+                            else:
+                                target = {'node': expansions[(number, exact_subject['expansion'])][0]['template']['id'],
+                                          'output': scope['output'], **{field: exact_subject[field] for field in ('expansion', 'item', 'generation')}}
+                            manifest = {'target': target, 'findings': dict(sorted(findings.items())), 'subject': subject,
+                                        'reviews': reviews, 'opportunities': dict(sorted(opportunities.items()))}
+                            if any(key not in attempted_opportunities for key in opportunities.values()):
+                                items['batch_' + semantic_hash(manifest)[7:]] = manifest
+                            else:
+                                resolution_waiting.append({'goal': number, 'findings': manifest['findings']})
+                        except (ValueError, KeyError, TypeError) as exc:
+                            resolution_errors.append({'goal': number, 'reason': str(exc)})
+                    # An acquired member remains addressable solely for custody
+                    # and exact stopped-owner recovery when its live inputs drift.
+                    # It cannot create a historical resolution effect or bypass
+                    # the ordinary acquisition fingerprint check at submit.
+                    sibling_lanes = {row['template']['id'] for row in snapshots[number]['graph']['task_sets']
+                        if row['source']['producer'] == {'slot': 'resolution_batches'}
+                        and row['template']['resolves'] == template['resolves']}
+                    for lease in snapshots[number]['payload']['operational']['leases']:
+                        if lease['node']['node'] not in sibling_lanes: continue
+                        bindings = [entry for entry in lease['acquisition']['inputs'] if entry['name'] == 'batch']
+                        if len(bindings) != 1:
+                            raise ValueError('Owned resolution batch lacks its captured manifest')
+                        captured = artifact(bindings[0]['source'])
+                        if captured.get('type') != 'resolution_batch_context':
+                            raise ValueError('Owned resolution batch manifest type changed')
+                        manifest = selected_path(captured['content'], bindings[0]['path'])
+                        if lease['node']['item'] != 'batch_' + semantic_hash(manifest)[7:]:
+                            raise ValueError('Owned resolution batch identity differs from its captured manifest')
+                        items = {key: value for key, value in items.items() if value['target'] != manifest['target']}
+                        if lease['node']['node'] == template['id']:
+                            items[lease['node']['item']] = manifest
+                    batch_selections[cache_key] = {'items': items,
+                        'rationale': 'All exact unresolved findings with a new reviewed resolution opportunity.'}
+                value = {expansion_id: batch_selections[cache_key]}
+                ref = remember({'type': 'resolution_batch_context', 'content': value, 'producer': None,
+                                'provenance': {'actor': 'host', 'source': None, 'policy': policy}})
+            elif slot == 'relationship_context':
                 ref = snapshots[number].get('context_ref')
                 if ref is None: raise ValueError('Authenticated relationship context unavailable')
                 value = artifact(ref)['content']
@@ -1311,7 +1564,12 @@ def _derive_task_steps(graph, payload, context):
             elif slot == 'phase_data':
                 # Only the host-authenticated event journal can populate this
                 # slot. A similarly named goal payload field grants no authority.
-                value = snapshots[number].get('phase_data', {})
+                value = copy.deepcopy(snapshots[number].get('phase_data', {}))
+                for target_name, by_output in value.items():
+                    for output_name, selection in by_output.items():
+                        reviewer = 'sw_review_' + semantic_hash([target_name, output_name])[7:]
+                        selection['items'] = {item: event for item, event in selection['items'].items()
+                            if not phase_review_dismissed(number, (number, reviewer, item, 1))}
                 if not isinstance(value, dict):
                     raise ValueError('Authenticated phase data is malformed')
                 if len(binding['path']) < 2:
@@ -1333,6 +1591,22 @@ def _derive_task_steps(graph, payload, context):
                          if target_goal == number}
                 ref = remember({'type': 'obligation_context', 'content': value, 'producer': None,
                                 'provenance': {'actor': 'host', 'source': None, 'policy': policy}})
+            elif slot == 'obligation_subject':
+                if (binding['output'] != 'content' or binding['mode'] != 'identity'
+                        or len(binding['path']) != 1 or not isinstance(binding['path'][0], str)):
+                    raise ValueError('Obligation subject requires one exact materialized obligation identity')
+                obligation = obligations.get((number, binding['path'][0]))
+                if obligation is None or obligation['applicability'] != 'unresolved':
+                    raise ValueError('Obligation subject requires the exact current unresolved obligation')
+                finding = artifact(obligation['finding'])
+                subjects = finding.get('content', {}).get('subjects') if finding.get('type') == 'finding' else None
+                if not isinstance(subjects, list) or len(subjects) != 1:
+                    raise ValueError('Obligation subject requires exactly one authenticated historical subject')
+                ref = subjects[0]
+                value = artifact(ref)['content']
+                if not value_matches(binding['type'], value):
+                    raise ValueError('Obligation historical subject violates its declared output contract')
+                return ref, value, [], []
             elif slot == 'obligation_selections':
                 # Authenticated derived context, folded from immutable admission
                 # and assessment history above. A goal-authored Result cannot
@@ -1394,7 +1668,9 @@ def _derive_task_steps(graph, payload, context):
             else:
                 if len(selected) != 1: raise ValueError('Required singular artifact is missing')
                 path = binding['path']
-        if not value_matches(binding['type'], value): raise ValueError('Selected input violates its aggregate type contract')
+        # Retaining a producer at cutover never waives a current consumer's gate.
+        if not value_matches(binding['type'], value):
+            raise ValueError('Selected input violates its aggregate type contract')
         return ref, value, path, selected
     def expand(key):
         if key in memberships: return
@@ -1417,14 +1693,17 @@ def _derive_task_steps(graph, payload, context):
                 active = keys
             selected = []
             def event_target(item):
-                if expansion['source']['producer'] not in ({'slot': 'phase_data'}, {'slot': 'phase_event_obligations'}):
+                if expansion['source']['producer'] not in ({'slot': 'phase_data'}, {'slot': 'phase_event_obligations'}, {'slot': 'resolution_batches'}):
                     raise ValueError('Event selector cannot use an unauthenticated selection')
                 event = selection['items'][item]
                 if 'event' in event: event = event['event']
                 target = event['target']
+                batch_target = expansion['template']['resolves'][0] if expansion['source']['producer'] == {'slot': 'resolution_batches'} else None
+                expected_node = expansions[(number, batch_target['subject']['expansion'])][0]['template']['id'] if batch_target else expansion['source']['path'][0]
+                expected_output = batch_target['output'] if batch_target else expansion['source']['path'][1]
                 if (not task_identifier(target.get('item')) or not positive_integer(target.get('generation'))
-                        or target.get('node') != expansion['source']['path'][0]
-                        or target.get('output') != expansion['source']['path'][1]):
+                        or target.get('node') != expected_node
+                        or target.get('output') != expected_output):
                     raise ValueError('Malformed authenticated event member target')
                 return target
             def compile_template(value):
@@ -1464,6 +1743,7 @@ def _derive_task_steps(graph, payload, context):
     def obligation_resolved(obligation):
         if obligation['applicability'] == 'not_applicable': return True
         if obligation['applicability'] == 'unresolved': return False
+        if obligation['finding']['hash'] in closed_findings: return True
         for _, result in list(current.values()):
             for ref in result['outputs'].values():
                 output = artifact(ref)
@@ -1483,9 +1763,30 @@ def _derive_task_steps(graph, payload, context):
             if task_key(result['node']) == reviewer:
                 sources.add(ref['hash'])
                 sources.update(value['hash'] for value in result['outputs'].values())
-        matches = [obligation for (owner, _), obligation in obligations.items()
-                   if owner == number and obligation['content']['source']['hash'] in sources]
-        return bool(matches) and all(row['applicability'] == 'not_applicable' for row in matches)
+        expansion = next((row for row in snapshots[number]['graph']['task_sets']
+                          if row['template']['id'] == reviewer[1]
+                          and row['source']['producer'] == {'slot': 'phase_data'}), None)
+        if expansion is None: return False
+        target_name, output_name = expansion['source']['path']
+        event = snapshots[number].get('phase_data', {}).get(target_name, {}).get(output_name, {}).get('items', {}).get(reviewer[2])
+        if event is None: return False
+        subject = event['target']
+        expected = {'subject': ({'kind': 'member', 'goal': number, 'expansion': subject['expansion'],
+            'item': subject['item'], 'generation': subject['generation']} if 'expansion' in subject else
+            {'kind': 'node', 'goal': number, 'node': target_name}), 'output': output_name}
+        matches = {obligation['finding']['hash']: obligation
+                   for (owner, _), obligation in obligations.items()
+                   if owner == number and obligation['content']['target'] == expected
+                   and obligation['content']['source']['hash'] in sources}
+        for accepted in accepted_resolutions:
+            if accepted['decision'] != 'resolved': continue
+            finding = artifact(accepted['finding'])['content']
+            if finding['target'] == expected and finding['source']['hash'] in sources:
+                matches.setdefault(accepted['finding']['hash'], {'finding': accepted['finding'],
+                    'content': finding, 'applicability': 'applicable'})
+        return bool(matches) and all(row['applicability'] == 'not_applicable'
+                                    or row['finding']['hash'] in closed_findings for row in matches.values())
+
 
     def pending_phase_review(number, node, key):
         resources = node['executor']['resources']
@@ -1493,7 +1794,7 @@ def _derive_task_steps(graph, payload, context):
             value['type'] in {'repository_authorization', 'publication_authorization',
                               'merge_authorization', 'published_candidate', 'delivery_result'}
             for value in node['outputs'].values()))
-        if not publication and 'repository_workspace' not in resources:
+        if not publication and not {'repository_workspace', 'repository_git_workspace'}.intersection(resources):
             return False
         definitions = {row['id']: row for row in snapshots[number]['graph']['nodes']}
         definitions.update({row['template']['id']: row['template'] for row in snapshots[number]['graph']['task_sets']})
@@ -1583,7 +1884,7 @@ def _derive_task_steps(graph, payload, context):
                     raise ValueError('Unsupported or malformed goal context')
                 resources = node['executor']['resources']
                 publication_gate = ('repository_publication' in resources or node['id'] == 'observe_merge')
-                source_gate = 'repository_workspace' in resources
+                source_gate = bool({'repository_workspace', 'repository_git_workspace'}.intersection(resources))
                 if source_gate or publication_gate:
                     blockers = goal_context['blockers']
                     if any(not isinstance(row, dict) or row.get('status') not in ('closed', 'resolved')
@@ -1649,7 +1950,7 @@ def _derive_task_steps(graph, payload, context):
                                 'provenance': {'actor': 'host', 'source': None, 'policy': policy}})
                 state['inputs'].append({'name': '__policy', 'source': ref, 'path': [], 'mode': 'identity'})
                 hashes['__policy'] = ref['hash']
-            if ('workspaces' in context or 'repository_workspace' in node['executor']['resources']) and not context.get('workspace_probe'):
+            if ('workspaces' in context or {'repository_workspace', 'repository_git_workspace'}.intersection(node['executor']['resources'])) and not context.get('workspace_probe'):
                 workspace = context.get('workspaces', {}).get(key)
                 if not workspace or 'error' in workspace: raise ValueError((workspace or {}).get('error', 'Workspace allocation/authority is unavailable'))
                 ref = workspace['binding']
@@ -1698,7 +1999,8 @@ def _derive_task_steps(graph, payload, context):
                     'context': snapshots[number].get('context_ref'), 'targets': [instances[k]['node'] for k in selected]})
             resolution_semantics = [{'location': r['location'], 'selector': r['selector'], 'targets': r['targets']} for r in state['resolutions']]
             state.update(input_hash=semantic_hash({'node': instance['node'], 'contract': contract, 'inputs': hashes, 'resolutions': resolution_semantics}), state='ready', prerequisites=prerequisites)
-            for ref, result in reversed(records_by_node.get(key, [])):
+            # Only the authenticated latest Result may be current; never revive an older Result.
+            for ref, result in records_by_node.get(key, [])[-1:]:
                 provenance = artifact(ref).get('provenance', {})
                 recorded_policy = provenance.get('policy')
                 approved_policy = provenance.get('approved_policy')
@@ -1710,7 +2012,9 @@ def _derive_task_steps(graph, payload, context):
                     approved_snapshot = policy_forms[approved_policy]
                     allowed_contracts.add(semantic_hash({'node': node,
                         'policy': semantic_hash(evidence_policy(approved_snapshot))}))
-                if task_key(result['node']) != key or result['contract'] not in allowed_contracts:
+                cutover_equivalent = ref['hash'] in context.get('cutover_results', set())
+                mapped_node = context.get('cutover_mappings', {}).get(ref['hash'])
+                if task_key(result['node']) != key and mapped_node != key[1]:
                     if '64 policy' in (context.get('historical_policy_error') or ''):
                         state['reason'] = context['historical_policy_error']
                     continue
@@ -1740,6 +2044,13 @@ def _derive_task_steps(graph, payload, context):
                                           'default_id', 'default_disposition'):
                                 row.pop(field, None)
                     historical_form_hashes.add(semantic_hash(old_pre_static))
+                # Authenticate the exact finite historical fingerprint before
+                # comparing its contract. Pre-normalization Results used the
+                # current projection with full-policy provenance.
+                allowed_contracts.update(semantic_hash({'node': node, 'policy': identity})
+                                         for identity in historical_form_hashes)
+                if not cutover_equivalent and result['contract'] not in allowed_contracts:
+                    continue
                 if (approved_policy is not None and
                         (approved_policy not in historical_form_hashes or recorded_policy not in historical_form_hashes)):
                     state['reason'] = 'Approved policy identity does not authenticate Result provenance form'
@@ -1757,10 +2068,9 @@ def _derive_task_steps(graph, payload, context):
                 legacy_contract = semantic_hash({'node': node, 'policy': recorded_policy})
                 predecessor_contract = (semantic_hash({'node': node, 'policy': predecessor_policy_hash})
                                         if recorded_policy == full_policy else None)
-                if task_key(result['node']) != key or result['contract'] not in {contract, legacy_contract, predecessor_contract}: continue
                 predecessor = result['contract'] != contract and (
                     recorded_policy != policy or result['contract'] == predecessor_contract)
-                legacy = result['contract'] == legacy_contract and result['contract'] != contract
+                legacy = result['contract'] != contract and result['contract'] in allowed_contracts
                 old_hashes = {}
                 for binding in result['inputs']:
                     if binding['name'] == '__workspace' and (context.get('workspace_probe') or 'workspaces' not in context or '__workspace' not in hashes): continue
@@ -1799,6 +2109,23 @@ def _derive_task_steps(graph, payload, context):
                             or {**before, 'provenance': after['provenance']} != after):
                         continue
                     comparable_hashes['__workspace'] = old_hashes['__workspace']
+                if predecessor:
+                    # A host join pins exact values and source Refs. A policy
+                    # fingerprint upgrade alone must not replace that identity.
+                    current_bindings = {row['name']: row for row in state['inputs']}
+                    for binding in result['inputs']:
+                        newer = current_bindings.get(binding['name'])
+                        if (not newer or binding['mode'] != 'identity'
+                                or newer['mode'] != 'identity' or binding['path'] != newer['path']):
+                            continue
+                        before, after = artifact(binding['source']), artifact(newer['source'])
+                        if (before.get('type') == after.get('type') == 'binding'
+                                and before.get('producer') is None and after.get('producer') is None
+                                and before.get('provenance', {}).get('policy') in historical_form_hashes
+                                and {k: v for k, v in before.get('provenance', {}).items() if k != 'policy'} == {'actor': 'host', 'source': None}
+                                and after.get('provenance') == {'actor': 'host', 'source': None, 'policy': policy}
+                                and {**before, 'provenance': after['provenance']} == after):
+                            comparable_hashes[binding['name']] = old_hashes[binding['name']]
                 # Results created before policy_context existed already carry
                 # immutable policy provenance and a legacy contract.  Do not
                 # invalidate them merely because the host later introduced
@@ -1807,6 +2134,18 @@ def _derive_task_steps(graph, payload, context):
                 if legacy and '__policy' not in old_hashes:
                     comparable_hashes.pop('__policy', None)
                 old_resolutions = [{k: r[k] for k in ('location', 'selector', 'targets')} for r in result.get('resolutions', [])]
+                if cutover_equivalent:
+                    aliases = context.get('cutover_node_aliases', {})
+                    def mapped_identity(value):
+                        if isinstance(value, dict):
+                            renamed = {name: mapped_identity(child) for name, child in value.items()}
+                            if renamed.get('goal') == number and renamed.get('node') in aliases:
+                                renamed['node'] = aliases[renamed['node']]
+                            return renamed
+                        if isinstance(value, list):
+                            return [mapped_identity(child) for child in value]
+                        return value
+                    old_resolutions = mapped_identity(old_resolutions)
                 if old_hashes.get('__workspace') != hashes.get('__workspace'): state['reason'] = 'Workspace consumed/acquisition snapshot changed'
                 if old_hashes == comparable_hashes and old_resolutions == resolution_semantics:
                     current[key] = (ref, result); state['state'] = 'complete'; state.pop('reason', None); break
@@ -1824,7 +2163,10 @@ def _derive_task_steps(graph, payload, context):
     for selector in graph['terminals']:
         try: complete = complete and all(key in current for key in targets(selector, goal))
         except (ValueError, KeyError): complete = False
-    if any(not obligation_resolved(o) for o in obligations.values()): complete = False
+    unresolved_obligations = sorted(
+        key for key, obligation in obligations.items()
+        if not obligation_resolved(obligation))
+    if unresolved_obligations: complete = False
     # An admitted correction is not the only pending work: newly recorded late
     # evidence must receive its independent review before goal completion.
     for expansion in graph['task_sets']:
@@ -1872,4 +2214,4 @@ def _derive_task_steps(graph, payload, context):
         if affected:
             invalidated.append({'ancestor': instances[ancestor]['node'], 'reason': 'stale_input',
                                 'affected_descendants': affected})
-    return {'ready': [s for k, s in statuses.items() if k[0] == goal and s['state'] == 'ready' and k not in leases], 'states': statuses, 'current': current, 'leases': leases, 'complete': complete, 'obligations': obligations, 'artifacts': artifacts, 'invalidated_ancestor_gates': invalidated}
+    return {'ready': [s for k, s in statuses.items() if k[0] == goal and s['state'] == 'ready' and k not in leases], 'states': statuses, 'current': current, 'leases': leases, 'complete': complete, 'obligations': obligations, 'unresolved_obligations': unresolved_obligations, 'resolution_waiting': resolution_waiting, 'resolution_errors': resolution_errors, 'artifacts': artifacts, 'invalidated_ancestor_gates': invalidated}

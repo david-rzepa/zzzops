@@ -150,6 +150,13 @@ _releases = importlib.util.module_from_spec(_RELEASES_MODULE_SPEC)
 sys.modules[_RELEASES_MODULE_SPEC.name] = _releases
 _RELEASES_MODULE_SPEC.loader.exec_module(_releases)
 
+_STACK_INTEGRATION_MODULE_PATH = Path(__file__).with_name("stack_integration.py")
+_STACK_INTEGRATION_MODULE_SPEC = importlib.util.spec_from_file_location("zzzops_stack_integration", _STACK_INTEGRATION_MODULE_PATH)
+assert _STACK_INTEGRATION_MODULE_SPEC and _STACK_INTEGRATION_MODULE_SPEC.loader
+_stack_integration = importlib.util.module_from_spec(_STACK_INTEGRATION_MODULE_SPEC)
+sys.modules[_STACK_INTEGRATION_MODULE_SPEC.name] = _stack_integration
+_STACK_INTEGRATION_MODULE_SPEC.loader.exec_module(_stack_integration)
+
 GitHubReleasePlanAdapter = _releases.GitHubReleasePlanAdapter
 GitHubReleaseBranchAdapter = _releases.GitHubReleaseBranchAdapter
 
@@ -250,6 +257,20 @@ _GRAPH_COMPILER_SPEC.loader.exec_module(_graph_compiler)
 _STATIC_WORKFLOW_SPEC = importlib.util.spec_from_file_location("zzzops_static_workflow", Path(__file__).with_name("static_workflow.py"))
 _static_workflow = importlib.util.module_from_spec(_STATIC_WORKFLOW_SPEC)
 _STATIC_WORKFLOW_SPEC.loader.exec_module(_static_workflow)
+
+_RESOLUTION_LIFECYCLE_SPEC = importlib.util.spec_from_file_location("zzzops_resolution_lifecycle", Path(__file__).with_name("resolution_lifecycle.py"))
+_resolution_lifecycle = importlib.util.module_from_spec(_RESOLUTION_LIFECYCLE_SPEC)
+_RESOLUTION_LIFECYCLE_SPEC.loader.exec_module(_resolution_lifecycle)
+
+_GIT_PHASE_STATE_SPEC = importlib.util.spec_from_file_location("zzzops_git_phase_state", Path(__file__).with_name("git_phase_state.py"))
+_git_phase_state = importlib.util.module_from_spec(_GIT_PHASE_STATE_SPEC)
+sys.modules[_GIT_PHASE_STATE_SPEC.name] = _git_phase_state
+_GIT_PHASE_STATE_SPEC.loader.exec_module(_git_phase_state)
+
+_MANAGED_WORKTREES_SPEC = importlib.util.spec_from_file_location("zzzops_managed_worktrees", Path(__file__).with_name("managed_worktrees.py"))
+_managed_worktrees = importlib.util.module_from_spec(_MANAGED_WORKTREES_SPEC)
+sys.modules[_MANAGED_WORKTREES_SPEC.name] = _managed_worktrees
+_MANAGED_WORKTREES_SPEC.loader.exec_module(_managed_worktrees)
 
 _WORKFLOW_SPEC = importlib.util.spec_from_file_location("zzzops_workflow", Path(__file__).with_name("workflow.py"))
 _workflow = importlib.util.module_from_spec(_WORKFLOW_SPEC)
@@ -1711,7 +1732,7 @@ def _pull_request_detail_query(numbers: list[int]) -> str:
     fields = "\n".join(
         f"""    pr_{number}:pullRequest(number:{number}){{
       merged mergedAt headRefOid baseRefName baseRefOid
-      mergeCommit{{oid}}
+      mergeCommit{{oid message parents(first:2){{nodes{{oid}} pageInfo{{hasNextPage}}}}}}
       repository{{nameWithOwner}}
       reviewDecision
       commits(last:1){{nodes{{commit{{statusCheckRollup{{contexts(first:100){{nodes{{
@@ -1727,12 +1748,19 @@ def _pull_request_detail_query(numbers: list[int]) -> str:
 
 def _github_pr_query(repo: Path, executable: str, owner: str, name: str, query: str, detail: str) -> tuple[dict[str, Any], int]:
     command = [executable, "api", "graphql", "-f", f"query={query}", "-F", f"owner={owner}", "-F", f"name={name}"]
+    remaining = provider_operation_remaining()
+    if remaining is not None and remaining <= 0:
+        raise ValueError(f"GitHub pull-request {detail} read exceeded the provider deadline")
+    timeout = min(60, remaining) if remaining is not None else 60
     try:
-        result = subprocess.run(command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=60, check=False)
+        result = subprocess.run(command, cwd=repo, capture_output=True, text=True, encoding="utf-8", timeout=timeout, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ValueError(f"GitHub pull-request {detail} read failed: {type(exc).__name__}") from exc
     if result.returncode:
         raise ValueError(f"GitHub pull-request {detail} read failed: " + (result.stderr.strip() or "unknown gh error"))
+    response_bytes = len(result.stdout.encode("utf-8"))
+    if response_bytes > 1024 * 1024:
+        raise ValueError(f"GitHub pull-request {detail} response exceeds 1 MiB limit")
     try:
         payload = json.loads(result.stdout)
         repository = payload["data"]["repository"]
@@ -1740,7 +1768,7 @@ def _github_pr_query(repo: Path, executable: str, owner: str, name: str, query: 
         raise ValueError(f"GitHub pull-request {detail} read returned invalid JSON") from exc
     if not isinstance(repository, dict):
         raise ValueError(f"GitHub pull-request {detail} read is incomplete or malformed")
-    return repository, len(result.stdout.encode("utf-8"))
+    return repository, response_bytes
 
 
 def _cached_pull_request_states(repo: Path, marker: list[dict[str, Any]]) -> dict[str, dict[str, Any]] | None:
@@ -1749,7 +1777,7 @@ def _cached_pull_request_states(repo: Path, marker: list[dict[str, Any]]) -> dic
     except (OSError, UnicodeError, json.JSONDecodeError):
         return None
     states = cache.get("states") if isinstance(cache, dict) else None
-    if cache.get("schema_version") != 1 or cache.get("marker") != marker or not isinstance(states, dict):
+    if cache.get("schema_version") != 2 or cache.get("marker") != marker or not isinstance(states, dict):
         return None
     if any(not isinstance(value, dict) for value in states.values()):
         return None
@@ -1759,7 +1787,7 @@ def _cached_pull_request_states(repo: Path, marker: list[dict[str, Any]]) -> dic
 def _store_pull_request_states(repo: Path, marker: list[dict[str, Any]], states: dict[str, dict[str, Any]]) -> None:
     try:
         atomic_text(_portfolio_pull_request_cache_path(repo), json.dumps(
-            {"schema_version": 1, "marker": marker, "states": states}, sort_keys=True, separators=(",", ":"),
+            {"schema_version": 2, "marker": marker, "states": states}, sort_keys=True, separators=(",", ":"),
         ))
     except OSError:
         pass
@@ -1844,6 +1872,14 @@ def _observe_pull_request_states(
                 "base_oid": pull_request.get("baseRefOid"),
                 "base_ref": pull_request.get("baseRefName"),
                 "merge_commit": merge_commit.get("oid") if isinstance(merge_commit, dict) else None,
+                "merge_message": merge_commit.get("message") if isinstance(merge_commit, dict) else None,
+                "merge_parents": ([row.get("oid") for row in merge_commit["parents"]["nodes"]]
+                                  if isinstance(merge_commit, dict)
+                                  and isinstance(merge_commit.get("parents"), dict)
+                                  and isinstance(merge_commit["parents"].get("pageInfo"), dict)
+                                  and merge_commit["parents"]["pageInfo"].get("hasNextPage") is False
+                                  and isinstance(merge_commit["parents"].get("nodes"), list)
+                                  else None),
                 "repository": pr_repository.get("nameWithOwner") if isinstance(pr_repository, dict) else None,
                 "checks_verified": _pull_request_checks_verified(pull_request),
                 "checks_present": _pull_request_checks_present(pull_request),
@@ -4589,7 +4625,7 @@ def main() -> int:
         if args.intent is None:
             raise ValueError("--intent is required unless --read-response is used")
         runtime = json.loads(args.runtime.read_text()) if args.runtime else codex_thread_runtime()
-        payload = json.loads(args.input.read_text()) if args.input else None
+        payload = _comment_store.strict_json(args.input.read_text()) if args.input else None
         if isinstance(payload, dict) and payload.get('operation') == 'capture_propose':
             capture_errors = validate_goal_create(payload.get('request'), allow_deferred=True)
             if capture_errors:

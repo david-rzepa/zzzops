@@ -20,6 +20,27 @@ class StaticWorkflowCoreTests(unittest.TestCase):
         code['inputs'] = {'tests': dag.subject_input('tests')}
         return {'nodes': [tests, code], 'task_sets': [], 'terminals': [dag.selector('code')]}
 
+    def test_reviewed_git_publish_groups_have_bounded_contiguous_contracts(self):
+        graph = self.graph()
+        for order, node in enumerate(graph['nodes']):
+            node['executor']['resources'] = ['repository_git_workspace']
+            node['git_publish'] = {'series': 'leaf', 'group': node['id'],
+                                   'order': order, 'output': 'value',
+                                   'commit_type': 'test' if order == 0 else 'feat',
+                                   'summary': 'publish ' + node['id']}
+        dag.z._phase_evidence.validate_graph(graph)
+        compiled = self.service().canonical(graph, dag.z._graph_compiler)
+        dag.z._phase_evidence.validate_graph(compiled)
+        self.assertEqual([node['git_publish'] for node in graph['nodes']],
+                         [node['git_publish'] for node in compiled['nodes'][:2]])
+        graph['nodes'][1]['git_publish']['order'] = 0
+        with self.assertRaisesRegex(ValueError, 'unique and contiguous'):
+            dag.z._phase_evidence.validate_graph(graph)
+        graph['nodes'][1]['git_publish']['order'] = 1
+        graph['nodes'][1]['git_publish']['commit_type'] = 'feat:bad'
+        with self.assertRaisesRegex(ValueError, 'bounded reviewed group'):
+            dag.z._phase_evidence.validate_graph(graph)
+
     def test_absolute_policy_scope_is_preserved_without_goal_localization(self):
         graph = dag.correction_graph()
         canonical = self.service().canonical(graph, dag.z._graph_compiler)
@@ -147,7 +168,15 @@ class StaticWorkflowCoreTests(unittest.TestCase):
         compiled = s.canonical(graph, dag.z._graph_compiler)
         dag.z._phase_evidence.validate_graph(compiled)
         self.assertEqual(graph['nodes'], compiled['nodes'][:len(graph['nodes'])])
-        self.assertEqual(graph['task_sets'], compiled['task_sets'][:len(graph['task_sets'])])
+        for old, current in zip(graph['task_sets'], compiled['task_sets']):
+            self.assertEqual(old['id'], current['id'])
+            self.assertEqual(old['template'], current['template'])
+            if current['source']['producer'] == {'slot': 'retired_resolution_members'}:
+                self.assertTrue(all(output['type'] == 'resolution'
+                                    for output in old['template']['outputs'].values()))
+                self.assertEqual(s.retired_source(old), current['source'])
+            else:
+                self.assertEqual(old, current)
         self.assertEqual(compiled, s.canonical(compiled, dag.z._graph_compiler))
 
     def test_unknown_goal_context_blocks_only_resource_phase(self):

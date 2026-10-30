@@ -274,6 +274,14 @@ class ArtifactIndex:
         self.decode_work = MAX_RECONSTRUCTION_WORK_BYTES - budget[0]
 
     def resolve(self, identity):
+        return self._resolve_details(identity)[:3]
+
+    def _resolve_details(self, identity):
+        """Return detached value, depth, charged work and verified root byte size.
+
+        Size is taken from the bytes checked for the content identity, and is
+        returned only after every representation and reconstruction guard passes.
+        """
         spent = self.decode_work
         def visit(key, active):
             nonlocal spent
@@ -284,7 +292,8 @@ class ArtifactIndex:
             records = self.records.get(key)
             if not records:
                 raise ValueError('Missing artifact/base; persist the complete immutable content before referencing it')
-            values, depths = [], []
+            values, depths, sizes = [], [], []
+            chosen_text = None
             chunks = [record for record in records if record.get('kind') == 'chunk']
             ordinary = [record for record in records if record.get('kind') != 'chunk']
             if chunks:
@@ -306,13 +315,16 @@ class ArtifactIndex:
                 text = ''.join(record['text'] for record in ordered)
                 value = _from_text(record_type, text)
                 spent += sum(len(canonical(record).encode('utf-8')) for record in ordered)
-                raw = canonical(value).encode('utf-8')
+                # _from_text has fully validated this exact local JSON text.
+                canonical_text = text if record_type == 'json' else canonical(value)
+                raw = canonical_text.encode('utf-8')
                 spent += len(raw)
                 if len(raw) > MAX_ARTIFACT_BYTES or spent > MAX_RECONSTRUCTION_WORK_BYTES:
                     raise ValueError('Artifact decoded/reconstruction size limit exceeded')
-                if digest(value) != key:
+                if 'sha256:' + hashlib.sha256(raw).hexdigest() != key:
                     raise ValueError('Stored artifact content conflicts with its identity')
-                values.append(value); depths.append(0)
+                values.append(value); depths.append(0); sizes.append(len(raw))
+                chosen_text = canonical_text
             for record in ordinary:
                 spent += len(canonical(record).encode('utf-8'))
                 if spent > MAX_RECONSTRUCTION_WORK_BYTES:
@@ -324,30 +336,39 @@ class ArtifactIndex:
                     raise ValueError('Malformed artifact record fields')
                 if kind == 'legacy':
                     value, depth = record['content'], 0
+                    canonical_text = canonical(value)
                 elif kind == 'full':
-                    value, depth = _from_text(record.get('type'), record.get('text')), 0
+                    record_type, text = record.get('type'), record.get('text')
+                    value, depth = _from_text(record_type, text), 0
+                    canonical_text = text if record_type == 'json' else canonical(value)
                 elif kind == 'delta':
-                    base, depth = visit(record.get('base'), active | {key})
-                    base_type, base_text = _to_text(base)
+                    base, depth, _base_size, base_canonical = visit(record.get('base'), active | {key})
+                    # Transport follows the decoded value, including JSON strings.
+                    base_type, base_text = ('text', base) if isinstance(base, str) else ('json', base_canonical)
                     if base_type != record.get('type'):
                         raise ValueError('Artifact delta base type mismatch')
-                    value = _from_text(base_type, apply_text_patch(base_text, record.get('patch')))
+                    text = apply_text_patch(base_text, record.get('patch'))
+                    value = _from_text(base_type, text)
+                    canonical_text = text if base_type == 'json' else canonical(value)
                     depth += 1
                 else:
                     raise ValueError('Unsupported artifact representation')
-                raw = canonical(value).encode('utf-8')
+                raw = canonical_text.encode('utf-8')
                 spent += len(raw)
                 if len(raw) > MAX_ARTIFACT_BYTES or spent > MAX_RECONSTRUCTION_WORK_BYTES:
                     raise ValueError('Artifact decoded/reconstruction size limit exceeded')
-                if digest(value) != key or record.get('hash') != key:
+                if 'sha256:' + hashlib.sha256(raw).hexdigest() != key or record.get('hash') != key:
                     raise ValueError('Stored artifact content conflicts with its identity')
+                if not values:
+                    chosen_text = canonical_text
                 values.append(value)
                 depths.append(depth)
+                sizes.append(len(raw))
             if any(value != values[0] for value in values[1:]):
                 raise ValueError('Conflicting stored artifact identity')
-            return values[0], max(depths)
-        value, depth = visit(identity, set())
-        return copy.deepcopy(value), depth, spent
+            return values[0], max(depths), sizes[0], chosen_text
+        value, depth, size, _canonical_text = visit(identity, set())
+        return copy.deepcopy(value), depth, spent, size
 
     def record(self, content, base=None):
         identity = digest(content)
@@ -370,8 +391,8 @@ class ArtifactIndex:
 
 
 def _to_text(value):
-    canonical(value)
-    return ('text', value) if isinstance(value, str) else ('json', canonical(value))
+    text = canonical(value)
+    return ('text', value) if isinstance(value, str) else ('json', text)
 
 
 def _from_text(kind, text):
@@ -381,68 +402,77 @@ def _from_text(kind, text):
     if kind != 'json':
         raise ValueError('Unsupported artifact type')
     value = strict_json(text)
-    if canonical(value) != text:
+    if json.dumps(value, ensure_ascii=False, sort_keys=True,
+                  separators=(',', ':'), allow_nan=False) != text:
         raise ValueError('Noncanonical structured artifact serialization')
     return value
 
 
 def pack_envelopes(common, artifacts, history=None):
-    expanded = []
-    for record in artifacts:
-        probe = {'schema_version': 2, **common, 'part': 0, 'manifest': [digest({'kind': 'artifact', 'value': record})],
-                 'members': [0], 'artifacts': [record], 'history': None}
-        try:
-            encode_envelope(probe)
-        except ValueError:
-            if record.get('kind') != 'full' or record.get('type') not in {'json', 'text'}:
-                raise
-            text = record['text']
-            for total in range(2, MAX_ARTIFACT_RECORDS + 1):
+    counts = [1] * len(artifacts)
+    while True:
+        expanded, owners = [], []
+        for owner, record in enumerate(artifacts):
+            total = counts[owner]
+            if total == 1:
+                parts = [record]
+            else:
+                text = record['text']
                 size = (len(text) + total - 1) // total
-                chunks = [{'kind': 'chunk', 'hash': record['hash'], 'type': record['type'],
-                           'index': index, 'total': total, 'text': text[index * size:(index + 1) * size]}
-                          for index in range(total)]
-                if all(len(encode_envelope({'schema_version': 2, **common, 'part': index,
-                       'manifest': [digest({'kind': 'artifact', 'value': chunk})], 'members': [0],
-                       'artifacts': [chunk], 'history': None})) <= MAX_COMMENT_CHARACTERS
-                       for index, chunk in enumerate(chunks)):
-                    expanded.extend(chunks)
+                parts = [dict(kind='chunk', hash=record['hash'], type=record['type'],
+                              index=index, total=total,
+                              text=text[index * size:(index + 1) * size])
+                         for index in range(total)]
+            expanded.extend(parts)
+            owners.extend([owner] * len(parts))
+        if len(expanded) > MAX_ARTIFACT_RECORDS:
+            raise ValueError('Transaction artifact record limit exceeded')
+        pieces = [('artifact', record) for record in expanded]
+        if history is not None:
+            pieces.append(('history', history))
+        manifest = [digest(dict(kind=kind, value=value)) for kind, value in pieces]
+
+        def envelope(group, part):
+            return dict(schema_version=2, **common, part=part, manifest=manifest,
+                        members=[index for index, _, _ in group],
+                        artifacts=[value for _, kind, value in group if kind == 'artifact'],
+                        history=next((value for _, kind, value in group if kind == 'history'), None))
+
+        groups, current, failed = [], [], None
+        for index, (kind, value) in enumerate(pieces):
+            if kind == 'artifact' and any(k == 'artifact' and v['hash'] == value['hash']
+                                          for _, k, v in current):
+                groups.append(current)
+                current = []
+            candidate = current + [(index, kind, value)]
+            try:
+                encode_envelope(envelope(candidate, len(groups)))
+            except ValueError:
+                if current:
+                    groups.append(current)
+                current = [(index, kind, value)]
+                try:
+                    encode_envelope(envelope(current, len(groups)))
+                except ValueError:
+                    if kind != 'artifact':
+                        raise
+                    owner = owners[index]
+                    original = artifacts[owner]
+                    if original.get('kind') != 'full' or original.get('type') not in {'json', 'text'}:
+                        raise
+                    failed = owner
                     break
             else:
-                raise ValueError('Artifact cannot be split within the provider comment contract; use a published Git content reference')
-        else:
-            expanded.append(record)
-    artifacts = expanded
-    if len(artifacts) > MAX_ARTIFACT_RECORDS:
-        raise ValueError('Transaction artifact record limit exceeded')
-    pieces = [('artifact', record) for record in artifacts]
-    if history is not None:
-        pieces.append(('history', history))
-    manifest = [digest({'kind': kind, 'value': value}) for kind, value in pieces]
-    groups, current = [], []
-    def envelope(group, part):
-        return {'schema_version': 2, **common, 'part': part, 'manifest': manifest,
-                'members': [index for index, _, _ in group],
-                'artifacts': [value for _, kind, value in group if kind == 'artifact'],
-                'history': next((value for _, kind, value in group if kind == 'history'), None)}
-    for index, (kind, value) in enumerate(pieces):
-        candidate = current + [(index, kind, value)]
-        try:
-            encode_envelope(envelope(candidate, len(groups)))
-        except ValueError:
-            if not current:
-                raise
+                current = candidate
+        if failed is not None:
+            counts[failed] += 1
+            continue
+        if current:
             groups.append(current)
-            current = [(index, kind, value)]
-            encode_envelope(envelope(current, len(groups)))
-        else:
-            current = candidate
-    if current:
-        groups.append(current)
-    bodies = [encode_envelope(envelope(group, part)) for part, group in enumerate(groups)]
-    if sum(len(body) for body in bodies) > MAX_RECONSTRUCTION_WORK_BYTES:
-        raise ValueError('Transaction reconstruction work limit exceeded')
-    return bodies
+        bodies = [encode_envelope(envelope(group, part)) for part, group in enumerate(groups)]
+        if sum(len(body) for body in bodies) > MAX_RECONSTRUCTION_WORK_BYTES:
+            raise ValueError('Transaction reconstruction work limit exceeded')
+        return bodies
 
 
 HYDRATION_CHECKPOINT_SCHEMA = 1

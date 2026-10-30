@@ -513,22 +513,42 @@ def github_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
 
 
 def goal_acceptance_criteria(body: str) -> list[str]:
-    """Read requirements regardless of their completion markers.
-
-    Plain bullets belong to an acceptance section; explicit checkboxes also
-    support older goal bodies without a dedicated heading.
+    """Required behavior must have acceptance bullets: use '- criterion' or
+    '* criterion' (optionally '- [ ] criterion' or '- [x] criterion') beneath
+    '# Acceptance criteria', '## Acceptance criteria', '### Acceptance criteria',
+    or the plain label 'Acceptance criteria:'. Acceptance labels are case
+    insensitive. Existing level 1–3 headings containing 'acceptance' also work.
+    A following Markdown heading or plain section label ends the section.
+    Legacy bodies without an acceptance section may use explicit checkboxes.
     """
     if not isinstance(body, str):
         raise ValueError("goal body must be text")
     criteria = []
+    legacy_criteria = []
     acceptance = False
+    has_acceptance_section = False
     for line in body.split(GOAL_BLOCK_START, 1)[0].splitlines():
-        if re.match(r"^#{1,3}\s", line):
-            acceptance = "acceptance" in line.casefold()
+        heading = re.match(r"^#{1,6}\s", line)
+        label = re.match(r"^\s*([A-Za-z][\w /-]*):\s*$", line)
+        if heading or label:
+            acceptance = bool(
+                heading and re.match(r"^#{1,3}\s", line)
+                and "acceptance" in line.casefold()
+                or label and label.group(1).casefold() == "acceptance criteria"
+            )
+            has_acceptance_section = has_acceptance_section or acceptance
             continue
         match = re.match(r"^\s*[-*]\s+(?:\[([ xX])\]\s+)?(.+?)\s*$", line)
-        if match and (acceptance or match.group(1) is not None):
-            criteria.append(match.group(2).strip())
+        if match:
+            # An incomplete/unsupported checkbox is not a behavioral criterion.
+            if match.group(1) is None and re.match(r"^\[[^\]]*\](?:\s|$)", match.group(2)):
+                continue
+            if acceptance:
+                criteria.append(match.group(2).strip())
+            elif match.group(1) is not None:
+                legacy_criteria.append(match.group(2).strip())
+    if not has_acceptance_section:
+        criteria = legacy_criteria
     if any(not item for item in criteria) or len(criteria) != len(set(criteria)):
         raise ValueError("goal acceptance criteria must be unique")
     return criteria
@@ -642,7 +662,19 @@ def github_archived_goal_record(issue: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def normalize_deferred_goal_create(request: Any) -> Any:
+    """Fill administrative capture defaults without replacing explicit state."""
+    value = copy.deepcopy(request)
+    if isinstance(value, dict) and isinstance(value.get("goal"), dict):
+        goal = value["goal"]
+        for key, default in (("revision", 1), ("claim", None), ("implementation", None)):
+            goal.setdefault(key, default)
+    return value
+
+
 def validate_goal_create(request: Any, *, allow_deferred: bool = False) -> list[str]:
+    if allow_deferred:
+        request = normalize_deferred_goal_create(request)
     if not isinstance(request, dict):
         return ["goal create request must be an object"]
     errors = []
@@ -724,6 +756,8 @@ def load_goal_create(path: Path) -> dict[str, Any]:
 
 
 def apply_goal_create(adapter: Any, repository: str, request: dict[str, Any], *, allow_deferred: bool = False) -> dict[str, Any]:
+    if allow_deferred:
+        request = normalize_deferred_goal_create(request)
     errors = validate_goal_create(request, allow_deferred=allow_deferred)
     if allow_deferred:
         goal = request.get("goal")

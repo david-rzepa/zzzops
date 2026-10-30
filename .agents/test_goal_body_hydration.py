@@ -126,7 +126,30 @@ class GoalBodyHydrationTests(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 1)
         self.assertLessEqual(len(transport.calls), 4)
         self.assertTrue(all(0 < call['timeout'] <= .05 for call in transport.calls))
+        # A short real deadline may expire before every worker is scheduled.
+        self.assertLessEqual(transport.peak, 4)
+        self.assertEqual(len(transport.calls), len({tuple(call['numbers']) for call in transport.calls}))
+        self.assertEqual(0, transport.active)
+
+    def test_parent_deadline_expires_with_four_calls_in_flight(self):
+        transport = BodyTransport()
+        transport.failures = {n: ['timeout'] for n in (1, 6, 11, 16)}
+        expired = threading.Event()
+        # Keep the logical deadline open until the full first wave is running.
+        # Module-local time leaves threading's real waits and timeout cleanup
+        # intact; scheduling latency cannot consume the startup budget.
+        clock = mock.Mock(wraps=time)
+        clock.monotonic.side_effect = lambda: .05 if expired.is_set() else 0
+        transport.barrier = threading.Barrier(4, action=expired.set)
+        with mock.patch.object(z, 'time', clock), mock.patch.object(z, 'provider_operation_remaining', return_value=.05):
+            with self.assertRaisesRegex(ValueError, 'deadline|TimeoutExpired|cancelled'):
+                self.hydrate(transport, list(range(1, 89)))
+        self.assertTrue(expired.is_set())
         self.assertEqual(4, transport.peak)
+        self.assertEqual([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10],
+                          [11, 12, 13, 14, 15], [16, 17, 18, 19, 20]],
+                         sorted(call['numbers'] for call in transport.calls))
+        self.assertTrue(all(0 < call['timeout'] <= .05 for call in transport.calls))
         self.assertEqual(0, transport.active)
 
     def test_invalid_numbers_never_start_transport(self):

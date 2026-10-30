@@ -38,7 +38,7 @@ class PolicyDefaultInventoryTests(unittest.TestCase):
     def test_repository_boundary_is_complete_and_has_no_hot_default_leakage(self) -> None:
         report = inventory.validate(ROOT)
         boundary = report["boundary"]
-        self.assertIn("AGENTS.md", boundary["hot_prompt_paths"])
+        self.assertNotIn("AGENTS.md", boundary["hot_prompt_paths"])
         self.assertIn(inventory.DEFAULT_CATALOG_PATH, boundary["cold_policy_review_paths"])
         self.assertNotIn("docs/EXECUTION.md", boundary["hot_prompt_paths"])
         self.assertEqual("docs", boundary["public_documentation_root"])

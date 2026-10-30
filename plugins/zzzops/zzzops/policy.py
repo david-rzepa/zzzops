@@ -1040,6 +1040,7 @@ def _missing_setting_paths(current: Any, expected: Any, prefix: str = "configura
 
 def missing_policy_settings(
     policy: dict[str, Any], catalog: dict[str, dict[str, Any]] | None = None,
+    *, _pre_release_planning: bool = False,
 ) -> dict[str, list[str]]:
     """Return absent operational settings without filling them from shipped defaults."""
     catalog = policy_default_catalog() if catalog is None else catalog
@@ -1053,6 +1054,8 @@ def missing_policy_settings(
             continue
         section_id = section["id"]
         expected = by_section[section_id].get("content", {}).get("configuration", {})
+        if _pre_release_planning and section_id == "git_review_release":
+            expected = {key: value for key, value in expected.items() if key != "release_planning"}
         if section_id == "workflow_adherence":
             # A reviewed graph has its own closed grammar, not the default
             # graph's particular node names or retired phase fields.
@@ -1711,7 +1714,25 @@ def policy_review_digest(state: dict[str, Any]) -> str:
     return project_digest(payload)
 
 
-def validate_project_state(state: Any) -> list[str]:
+def validate_historical_project_state(state: Any) -> list[str]:
+    """Authenticate the finite pre-release-planning grammar, never current policy.
+
+    Its sole difference is absence of the later release_planning setting. All
+    other schema, review, provenance and approval-digest checks remain exact;
+    neither historical evidence nor its approval is normalized or rewritten.
+    """
+    policy = state.get("policy") if isinstance(state, dict) else None
+    sections = policy.get("sections") if isinstance(policy, dict) else None
+    git_sections = ([row for row in sections
+                     if isinstance(row, dict) and row.get("id") == "git_review_release"]
+                    if isinstance(sections, list) else [])
+    historical = (len(git_sections) == 1
+                  and isinstance(git_sections[0].get("configuration"), dict)
+                  and "release_planning" not in git_sections[0]["configuration"])
+    return validate_project_state(state, _pre_release_planning=historical)
+
+
+def validate_project_state(state: Any, *, _pre_release_planning: bool = False) -> list[str]:
     if not isinstance(state, dict):
         return ["project state must be an object"]
     allowed = {"schema_version", "initialized", "backend", "repository", "revision", "charter", "policy", "history", "bindings", "approval"}
@@ -1725,7 +1746,8 @@ def validate_project_state(state: Any) -> list[str]:
         errors.append("initialized must be boolean")
     if not isinstance(state.get("revision"), int) or isinstance(state.get("revision"), bool) or state.get("revision", -1) < 0:
         errors.append("revision must be a non-negative integer")
-    policy_errors = validate_policy(state.get("policy"), require_pending=False) if state.get("policy") is not None else []
+    policy_errors = validate_policy(state.get("policy"), require_pending=False,
+                                   _pre_release_planning=_pre_release_planning) if state.get("policy") is not None else []
     errors.extend(f"policy.{error}" for error in policy_errors)
     pending_policy = policy_blockers(state.get("policy")) if not policy_errors else []
     if state.get("initialized") is True:
@@ -1783,7 +1805,7 @@ def validate_project_artifacts(repo: Path, state: dict[str, Any] | None) -> list
     return errors
 
 
-def validate_policy(policy: Any, require_pending: bool) -> list[str]:
+def validate_policy(policy: Any, require_pending: bool, *, _pre_release_planning: bool = False) -> list[str]:
     if not isinstance(policy, dict):
         return ["must be an object"]
     errors = []
@@ -1972,7 +1994,7 @@ def validate_policy(policy: Any, require_pending: bool) -> list[str]:
     missing = sorted(set(POLICY_SECTION_IDS) - seen)
     if missing:
         errors.append("missing sections: " + ", ".join(missing))
-    for section_id, paths in missing_policy_settings(policy).items():
+    for section_id, paths in missing_policy_settings(policy, _pre_release_planning=_pre_release_planning).items():
         errors.append(f"section {section_id} is missing operational policy configuration: {', '.join(paths)}")
     return errors
 

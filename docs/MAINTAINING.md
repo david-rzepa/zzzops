@@ -90,6 +90,14 @@ npm run test:release
 
 Acceptance infrastructure and manual evidence are documented in the [acceptance test plan](ACCEPTANCE_TEST_PLAN.md).
 
+Codex cachebuster acceptance uses the actual upstream helper separately from self-contained unit discovery. Obtain a trusted `update_plugin_cachebuster.py` from Codex's plugin-creator skill, then run:
+
+```powershell
+<python> .agents/plugin_cachebuster_acceptance.py --helper /path/to/plugin-creator/scripts/update_plugin_cachebuster.py
+```
+
+The helper path is required; missing or unreadable helpers fail. The runner prints the helper SHA-256 and executes one acceptance test covering default and custom cachebusters, package contents, and public installation validation using a disposable package copy.
+
 ## Repository file reference
 
 - `plugins/zzzops/plugin.json` — distributable Agent Plugins v1 manifest.
@@ -107,7 +115,7 @@ Target-project `.zzzops` policy and goal state never ships inside the plugin.
 
 ## Prompt budget
 
-`.agents/prompt_stats.py` estimates prompt size as `ceil(canonical UTF-8 bytes / 4)` after LF normalization. It measures regression risk, not billing. CI enforces committed limits for always-loaded `AGENTS.md` context and the frequently routed goal-capture and execution paths. Other mutually exclusive workflows remain advisory rather than sharing a misleading global allowance.
+`.agents/prompt_stats.py` estimates prompt size as `ceil(canonical UTF-8 bytes / 4)` after LF normalization. It measures regression risk, not billing. CI enforces committed limits for the frequently routed goal-capture and execution paths. If root `AGENTS.md` is present, the checker includes it in the always-loaded profile; this repository currently has no such file. Other mutually exclusive workflows remain advisory rather than sharing a misleading global allowance.
 
 After prompt Markdown changes, inspect the relevant profiles and enforce committed ceilings:
 
