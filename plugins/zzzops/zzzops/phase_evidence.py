@@ -1949,7 +1949,10 @@ def _derive_task_steps(graph, payload, context):
     for selector in graph['terminals']:
         try: complete = complete and all(key in current for key in targets(selector, goal))
         except (ValueError, KeyError): complete = False
-    if any(not obligation_resolved(o) for o in obligations.values()): complete = False
+    unresolved_obligations = sorted(
+        key for key, obligation in obligations.items()
+        if not obligation_resolved(obligation))
+    if unresolved_obligations: complete = False
     # An admitted correction is not the only pending work: newly recorded late
     # evidence must receive its independent review before goal completion.
     for expansion in graph['task_sets']:
@@ -1997,4 +2000,4 @@ def _derive_task_steps(graph, payload, context):
         if affected:
             invalidated.append({'ancestor': instances[ancestor]['node'], 'reason': 'stale_input',
                                 'affected_descendants': affected})
-    return {'ready': [s for k, s in statuses.items() if k[0] == goal and s['state'] == 'ready' and k not in leases], 'states': statuses, 'current': current, 'leases': leases, 'complete': complete, 'obligations': obligations, 'artifacts': artifacts, 'invalidated_ancestor_gates': invalidated}
+    return {'ready': [s for k, s in statuses.items() if k[0] == goal and s['state'] == 'ready' and k not in leases], 'states': statuses, 'current': current, 'leases': leases, 'complete': complete, 'obligations': obligations, 'unresolved_obligations': unresolved_obligations, 'artifacts': artifacts, 'invalidated_ancestor_gates': invalidated}
