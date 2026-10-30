@@ -493,8 +493,17 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
                     selected['uri'] = 'zzzops:foreign/repo:goal:100:' + subject['hash']
                     self.assertNotEqual(subject['uri'], selected['uri'])
                 choice = fixture.session.acquire('choose_subject', actor='selector')
-                fixture.session.finish(choice, {'value': {'items': {'selected': selected},
-                    'rationale': 'Test exact declared source identity'}})
+                outputs = {'value': {'items': {'selected': selected},
+                    'rationale': 'Test exact declared source identity'}}
+                if name == 'foreign':
+                    before = copy.deepcopy((fixture.provider.issues, fixture.provider.comments))
+                    rejected = fixture.session.call(100, fixture.session.submission(
+                        choice, outputs, 'reject-foreign-selected-locator'), expected=2)
+                    self.assertEqual('Artifact locator must bind its exact hash and same repository goal identity',
+                                     rejected['next_steps'][0]['reason'])
+                    self.assertEqual(before, (fixture.provider.issues, fixture.provider.comments))
+                else:
+                    fixture.session.finish(choice, outputs)
                 frontier = fixture.session.checkpoint(100)
                 self.assertFalse(any(step.get('kind') == 'execute' and
                     step['node']['node'] == 'review_selected' for step in frontier),
