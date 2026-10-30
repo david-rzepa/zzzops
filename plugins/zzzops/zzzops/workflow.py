@@ -180,12 +180,12 @@ class ObservedArtifactIndex(comment_store.ArtifactIndex):
                 envelope, legacy = self._decode(body)
                 rows.append(envelope['artifacts'][index] if envelope is not None else legacy)
             view.records[key] = rows
-        value, depth, spent = view.resolve(identity)
+        value, depth, spent, size = view._resolve_details(identity)
         self._checks[identity] = (signature, self._limits, depth, spent - decoded)
         # Validation has already reconstructed the value. Retain it under the
         # same bounded cache as reads, avoiding a second decode after publication.
         # Each later read still checks its exact closure and charges its work.
-        cost = max(1, len(comment_store.canonical(value).encode('utf-8')))
+        cost = max(1, size)
         if identity in self._values:
             self._values.pop(identity); self._value_costs.pop(identity)
         while self._values and sum(self._value_costs.values()) + cost > comment_store.MAX_RECONSTRUCTION_WORK_BYTES:

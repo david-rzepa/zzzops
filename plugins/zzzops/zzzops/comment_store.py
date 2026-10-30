@@ -274,6 +274,14 @@ class ArtifactIndex:
         self.decode_work = MAX_RECONSTRUCTION_WORK_BYTES - budget[0]
 
     def resolve(self, identity):
+        return self._resolve_details(identity)[:3]
+
+    def _resolve_details(self, identity):
+        """Return detached value, depth, charged work and verified root byte size.
+
+        Size is taken from the bytes checked for the content identity, and is
+        returned only after every representation and reconstruction guard passes.
+        """
         spent = self.decode_work
         def visit(key, active):
             nonlocal spent
@@ -284,7 +292,8 @@ class ArtifactIndex:
             records = self.records.get(key)
             if not records:
                 raise ValueError('Missing artifact/base; persist the complete immutable content before referencing it')
-            values, depths = [], []
+            values, depths, sizes = [], [], []
+            chosen_text = None
             chunks = [record for record in records if record.get('kind') == 'chunk']
             ordinary = [record for record in records if record.get('kind') != 'chunk']
             if chunks:
@@ -306,13 +315,16 @@ class ArtifactIndex:
                 text = ''.join(record['text'] for record in ordered)
                 value = _from_text(record_type, text)
                 spent += sum(len(canonical(record).encode('utf-8')) for record in ordered)
-                raw = canonical(value).encode('utf-8')
+                # _from_text has fully validated this exact local JSON text.
+                canonical_text = text if record_type == 'json' else canonical(value)
+                raw = canonical_text.encode('utf-8')
                 spent += len(raw)
                 if len(raw) > MAX_ARTIFACT_BYTES or spent > MAX_RECONSTRUCTION_WORK_BYTES:
                     raise ValueError('Artifact decoded/reconstruction size limit exceeded')
                 if 'sha256:' + hashlib.sha256(raw).hexdigest() != key:
                     raise ValueError('Stored artifact content conflicts with its identity')
-                values.append(value); depths.append(0)
+                values.append(value); depths.append(0); sizes.append(len(raw))
+                chosen_text = canonical_text
             for record in ordinary:
                 spent += len(canonical(record).encode('utf-8'))
                 if spent > MAX_RECONSTRUCTION_WORK_BYTES:
@@ -324,30 +336,39 @@ class ArtifactIndex:
                     raise ValueError('Malformed artifact record fields')
                 if kind == 'legacy':
                     value, depth = record['content'], 0
+                    canonical_text = canonical(value)
                 elif kind == 'full':
-                    value, depth = _from_text(record.get('type'), record.get('text')), 0
+                    record_type, text = record.get('type'), record.get('text')
+                    value, depth = _from_text(record_type, text), 0
+                    canonical_text = text if record_type == 'json' else canonical(value)
                 elif kind == 'delta':
-                    base, depth = visit(record.get('base'), active | {key})
-                    base_type, base_text = _to_text(base)
+                    base, depth, _base_size, base_canonical = visit(record.get('base'), active | {key})
+                    # Transport follows the decoded value, including JSON strings.
+                    base_type, base_text = ('text', base) if isinstance(base, str) else ('json', base_canonical)
                     if base_type != record.get('type'):
                         raise ValueError('Artifact delta base type mismatch')
-                    value = _from_text(base_type, apply_text_patch(base_text, record.get('patch')))
+                    text = apply_text_patch(base_text, record.get('patch'))
+                    value = _from_text(base_type, text)
+                    canonical_text = text if base_type == 'json' else canonical(value)
                     depth += 1
                 else:
                     raise ValueError('Unsupported artifact representation')
-                raw = canonical(value).encode('utf-8')
+                raw = canonical_text.encode('utf-8')
                 spent += len(raw)
                 if len(raw) > MAX_ARTIFACT_BYTES or spent > MAX_RECONSTRUCTION_WORK_BYTES:
                     raise ValueError('Artifact decoded/reconstruction size limit exceeded')
                 if 'sha256:' + hashlib.sha256(raw).hexdigest() != key or record.get('hash') != key:
                     raise ValueError('Stored artifact content conflicts with its identity')
+                if not values:
+                    chosen_text = canonical_text
                 values.append(value)
                 depths.append(depth)
+                sizes.append(len(raw))
             if any(value != values[0] for value in values[1:]):
                 raise ValueError('Conflicting stored artifact identity')
-            return values[0], max(depths)
-        value, depth = visit(identity, set())
-        return copy.deepcopy(value), depth, spent
+            return values[0], max(depths), sizes[0], chosen_text
+        value, depth, size, _canonical_text = visit(identity, set())
+        return copy.deepcopy(value), depth, spent, size
 
     def record(self, content, base=None):
         identity = digest(content)
@@ -381,7 +402,8 @@ def _from_text(kind, text):
     if kind != 'json':
         raise ValueError('Unsupported artifact type')
     value = strict_json(text)
-    if canonical(value) != text:
+    if json.dumps(value, ensure_ascii=False, sort_keys=True,
+                  separators=(',', ':'), allow_nan=False) != text:
         raise ValueError('Noncanonical structured artifact serialization')
     return value
 
