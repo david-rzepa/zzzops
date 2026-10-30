@@ -5428,7 +5428,7 @@ class Workflow:
                         proof = checked_git_proof(state, grant, result)
                         base = proof['checkpoint']['base_commit']
                         transition = captured_transition(result['inputs'], base, key)
-                        if (head != base and
+                        if (head != base and not self.node_policy_only_base(base, head) and
                                 subprocess.run(['git', 'merge-base', '--is-ancestor', base, head],
                                                cwd=self.repo, capture_output=True).returncode == 0):
                             # A prior transition is provenance for this Result,
@@ -5659,8 +5659,20 @@ class Workflow:
                         ev.validate_ref(source)
                         selected_goal = self.node_ref_goal(source, key[0])
                         if source['hash'] not in current_outputs:
-                            contexts[key] = {'error': 'Selected subject is unresolved or stale'}
-                            break
+                            try:
+                                selected_artifact = content(source)
+                                provenance = (selected_artifact.get('provenance')
+                                              if isinstance(selected_artifact, dict) else None)
+                                proof_ref = (provenance.get('source')
+                                             if isinstance(provenance, dict) else None)
+                                selected_proof = content(proof_ref) if proof_ref else None
+                            except (KeyError, ValueError):
+                                contexts[key] = {'error': 'Selected subject is unresolved or stale'}
+                                break
+                            if selected_proof and selected_proof.get('kind') in {
+                                    'git_phase_proof', 'git_phase_verification_failed'}:
+                                contexts[key] = {'error': 'Selected Git subject is no longer current'}
+                                break
                     producer = current_outputs.get(source['hash'])
                     if producer is None:
                         continue
