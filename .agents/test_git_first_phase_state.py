@@ -265,8 +265,11 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
     def test_linked_coordinators_reuse_one_lease_verification_journal(self):
         fixture = self.fixture_with_git_workspace()
         first_repo = fixture.fixture.repo
-        second_repo = first_repo.parent / 'linked-coordinator'
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        second_repo = Path(scratch.name) / 'linked-coordinator'
         fixture.session.git('worktree', 'add', '-qb', 'linked-coordinator', str(second_repo))
+        self.addCleanup(fixture.session.git, 'worktree', 'remove', '--force', str(second_repo))
         head = fixture.session.git('rev-parse', 'HEAD').strip()
         engines = [object.__new__(z._workflow.Workflow) for _ in range(2)]
         for engine, repo in zip(engines, (first_repo, second_repo)):
@@ -275,7 +278,7 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         snapshot = {'number': 991001}
         lease = {'token': '0' * 32, 'worker': 'scratch-worker',
                  'acquisition': {'git_commit': head, 'scope': 'scratch-only'}}
-        counter = first_repo.parent / 'verification-count.txt'
+        counter = Path(scratch.name) / 'verification-count.txt'
         counter.write_text('0')
         code = ('from pathlib import Path;import sys;'
                 'p=Path(sys.argv[1]);n=int(p.read_text())+1;'
@@ -316,6 +319,8 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
     def test_verification_journal_rejects_changed_identity_running_and_corrupt_records(self):
         fixture = self.fixture_with_git_workspace()
         repo = fixture.fixture.repo
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
         engine = object.__new__(z._workflow.Workflow)
         engine.repo = repo
         engine.repository = 'scratch/local-no-provider'
@@ -323,7 +328,7 @@ class GitWorkspaceAcquisitionTests(unittest.TestCase):
         snapshot = {'number': 991002}
         lease = {'token': '1' * 32, 'worker': 'scratch-worker',
                  'acquisition': {'git_commit': head}}
-        counter = repo.parent / 'guard-count.txt'
+        counter = Path(scratch.name) / 'guard-count.txt'
         counter.write_text('0')
         code = ('from pathlib import Path;import sys;'
                 'p=Path(sys.argv[1]);p.write_text(str(int(p.read_text())+1))')
