@@ -5708,6 +5708,49 @@ class Workflow:
         }]
         return self.node_frontier(snapshot)
 
+    def node_has_merged_publication(self, snapshot, number):
+        """Treat a confirmed provider merge as a one-way task boundary."""
+        projection = snapshot['projection']
+        observations = [state['publication']['provider'] for key, state in projection['states'].items()
+                        if key[0] == number and isinstance(state.get('publication', {}).get('provider'), dict)]
+        observations.extend(value['provider'] for key, value in snapshot.get('publications', {}).items()
+                            if key[0] == number and isinstance(value.get('provider'), dict))
+        if any(value.get('merged') for value in observations):
+            return True
+        for reference in snapshot['payload']['evidence']:
+            result = snapshot['artifacts'].get(reference['hash'], {})
+            if result.get('type') != 'result':
+                continue
+            if any(snapshot['artifacts'].get(output['hash'], {}).get('type') == 'merge_observation'
+                   for output in result.get('content', {}).get('outputs', {}).values()):
+                return True
+        for receipt in reversed(snapshot['payload']['operational']['receipts']):
+            response = self.read_artifact(number, receipt['result'])
+            if any(step.get('provider_state') in {'merged', 'closed'}
+                   for step in response.get('next_steps', [])):
+                return True
+        if any(value.get('merged') is False for value in observations):
+            return False
+        # A sealed pre-merge certificate can precede an uncertain dispatch.
+        # Only a positive current open observation clears that uncertainty.
+        return ('publication_certificate' in snapshot['payload']
+                and not any(value.get('merged') is False for value in observations))
+
+    @staticmethod
+    def node_postmerge_operation_allowed(operation, terminal_observation):
+        return (operation in {'integrate', 'reconcile', 'complete', 'stack_status',
+                              'stack_advance', 'stack_attempt_retire', 'recover', 'release'}
+                or terminal_observation and operation in {
+                    'start', 'bind', 'submit', 'block', 'renew'})
+
+    def node_postmerge_terminal_observation(self, projection, number, node):
+        if not isinstance(node, dict) or node.get('goal') != number:
+            return False
+        state = projection['states'].get(self.api._phase_evidence.task_key(node))
+        return bool(state and state['node']['goal'] == number and any(
+            slot.get('type') == 'merge_observation'
+            for slot in state['contract']['outputs'].values()))
+
     def node_append_review_correction(self, graph, target_name, target_output, review_name, review_output,
                                       route_suffix=None):
         """Append the closed finding/admission/resolution route for one rejected review."""
@@ -5983,8 +6026,22 @@ class Workflow:
                 break
             except (KeyError, TypeError, ValueError):
                 continue
+        merged_publication = self.node_has_merged_publication(snapshot, number)
+        if merged_publication and resolution_steps:
+            resolution_steps = [{'kind': 'blocker', 'goal': number,
+                'reason': 'Merged goal retains historical blockers; reconcile exact pre-merge evidence without new substantive work.'}]
         for state in projection['states'].values():
             if state['node']['goal'] != number: continue
+            if (merged_publication and not any(slot.get('type') == 'merge_observation'
+                    for slot in state['contract']['outputs'].values())):
+                owned = projection['leases'].get(self.api._phase_evidence.task_key(state['node']))
+                if owned:
+                    steps.append({'kind': 'await_worker', 'goal': number, 'node': state['node'],
+                        'lease': owned, 'reason': 'Merged goal requires observed-stop recovery of prior ownership',
+                        'recovery_contract': {'operation': 'recover', 'node': state['node'],
+                            'lease': owned['token'], 'actor': owned['worker'],
+                            'worker_status': '<observed stopped status>', 'evidence': '<terminal observation>'}})
+                continue
             if (cutover_gate and state['node']['node'] in cutover_gate['old_unmapped']
                     and any((number, node, None, 1) not in projection['current']
                             for node in cutover_gate['added'])):
@@ -9451,6 +9508,11 @@ class Workflow:
                 if receipt['request'] == request['request_id']:
                     if receipt['payload'] != digest(request): raise ValueError('Request receipt payload conflict')
                     return copy.deepcopy(snapshot['artifacts'][receipt['result']['hash']])
+            if self.node_has_merged_publication(snapshot, number):
+                terminal_observation = self.node_postmerge_terminal_observation(
+                    projection, number, request.get('node'))
+                if not self.node_postmerge_operation_allowed(request['operation'], terminal_observation):
+                    raise ValueError('Merged goal permits observation and reconciliation only; substantive tasks cannot start after merge')
             pending = self.node_pending(snapshot, request)
             if request['operation'] == 'policy_dag_cutover_prepare':
                 return self.node_policy_cutover_prepare(snapshot, payload, request)
@@ -9494,6 +9556,8 @@ class Workflow:
                 return self.node_publication_attempt_retire(snapshot, payload, request)
             node = request.get('node')
             if not isinstance(node, dict): raise ValueError('Generic operation requires exact qualified node identity')
+            if node.get('goal') != number:
+                raise ValueError('Generic task mutation must address its own goal')
             key = ev.task_key(node)
             state = projection['states'].get(key)
             if state is None: raise ValueError('Unknown or retired task generation')

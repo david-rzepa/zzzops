@@ -5635,34 +5635,9 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
         response = self.session.call(100)
         ready = {step["node"]["node"] for step in response["next_steps"]
                  if step.get("kind") == "execute" and step.get("node")}
-        self.assertIn("integrate", ready)
-        response = self.session.finish(self.session.acquire("integrate", frontier=response), {"value": {
-            "version": 2, "provenance": "fresh merged provider and feedback snapshot",
-            "actionable": [], "non_actionable": ["acknowledged"],
-            "obsolete": [], "ambiguous": [],
-        }})
-        response = self.session.finish(self.session.acquire(
-            "integration_feedback_review", frontier=response),
-            {"value": self.approved_review("Fresh merged PR feedback approved")})
-        ready = {step["node"]["node"] for step in response["next_steps"]
-                 if step.get("kind") == "execute" and step.get("node")}
-        if "retain_integration_feedback_findings" in ready:
-            response = self.session.finish(self.session.acquire(
-                "retain_integration_feedback_findings", frontier=response),
-                {"value": {"items": {}, "rationale": "No fresh feedback findings"}})
-        response = self.session.finish(self.session.acquire(
-            "authorize_merge", frontier=response), {"authorization": merge_authorization})
-        response = self.session.finish(self.session.acquire(
-            "authorize_publication", frontier=response),
-            {"authorization": publication_authorization})
-        terminal = self.session.acquire("merge", frontier=response)
-        response = self.session.finish(terminal, {"delivery_result": {
-            "authorization": self.produced("authorize_publication", "authorization"),
-            "repository": "owner/repo", "pr": "https://github.com/owner/repo/pull/9",
-            "head_oid": published_head, "merge_commit": self.fixture.merge_oid,
-            "status": "merged",
-        }})
-        self.assertFalse([step for step in response["next_steps"] if step.get("kind") == "execute"])
+        self.assertFalse(ready, "An external merge cannot start a fresh feedback or authorization route")
+        self.assertEqual("open", self.provider.issues[100]["state"],
+                         "Missing premerge review cannot be fabricated after the provider merge")
 
     def test_shipped_configured_spec_domain_rejection_uses_generic_correction_route(self):
         self.requirements()

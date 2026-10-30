@@ -726,33 +726,22 @@ class PublicationContinuationTests(DagFixture):
         self.assertEqual(response, self.session.call(100, request))
         self.assertEqual([], self.merge_calls)
 
-    def test_deferred_binding_rejects_forged_transaction_target(self):
+    def test_external_merge_rejects_pending_substantive_approval(self):
         request = self.approval_request()
         self.mark_merged()
-        response = self.session.call(100, request)
-        changed = 0
-        for row in self.provider.comments[100]:
-            envelope = z._comment_store.decode_envelope(row['body'])
-            if envelope and envelope.get('context', {}).get('request_id') == request['request_id']:
-                envelope['context']['target_envelope']['revision'] += 10
-                row['body'] = z._comment_store.encode_envelope(envelope)
-                changed += 1
-        self.assertGreater(changed, 0)
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
         failed = self.session.call(100, request, expected=2)
-        self.assertNotEqual(response, failed)
-        self.assertFalse(any(step['kind'] == 'reconcile' for step in failed['next_steps']))
+        self.assertRegex(json.dumps(failed), r'(?i)merged goal|observation|reconciliation')
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
-    def test_reconciliation_binds_original_confirmed_envelope_on_replay(self):
+    def test_external_merge_cannot_replay_unconfirmed_approval_as_evidence(self):
         request = self.approval_request()
         self.mark_merged()
-        response = self.session.call(100, request)
-        reconciliation = next(step for step in response['next_steps'] if step['kind'] == 'reconcile')
-        original, _ = self.payload()
-        self.assertEqual(content_hash(original), reconciliation['submission']['expected_digest'])
-        self.assertIsInstance(reconciliation['submission']['expected_digest'], str)
+        first = self.session.call(100, request, expected=2)
         self.replace_spec('later unrelated envelope state')
-        self.assertEqual(response, self.session.call(100, request))
-        self.assertNotEqual(content_hash(self.payload()[0]), reconciliation['submission']['expected_digest'])
+        second = self.session.call(100, request, expected=2)
+        self.assertFalse(any(step['kind'] == 'reconcile' for step in first['next_steps']))
+        self.assertFalse(any(step['kind'] == 'reconcile' for step in second['next_steps']))
         self.assertEqual([], self.merge_calls)
 
 

@@ -1106,6 +1106,103 @@ class GenericPublicationPublicTests(DagFixture):
         self.assertIn("closed", json.dumps(replay))
         self.assertEqual(1, len(self.merge_calls))
 
+    def test_merged_goal_never_starts_legacy_substantive_terminal(self):
+        self.install(self.with_merge_observation(copy.deepcopy(self.graph)))
+        self.authorize_context()
+        authority = self.approve_publication()
+        request = self.integration_request(authority)
+        request["request_id"] = "postmerge-observation-only"
+        merged = self.session.call(100, request)
+        self.assertIn("pending", json.dumps(merged))
+        observation = self.session.acquire("observed_merge", actor="merge-observer")
+        self.session.finish(observation, {"value": self.merge_value()})
+        frontier = self.session.checkpoint(100)
+        self.assertFalse(any(step.get("kind") == "execute" and
+            step.get("node", {}).get("node") == self.ids["finish"] for step in frontier))
+        blocked = self.session.call(100, {"operation": "start", "request_id": "postmerge-finish-forbidden",
+            "node": {"goal": 100, "node": self.ids["finish"], "generation": 1,
+                     "item": None}, "input_hash": "stale",
+            "policy_receipt": "stale"}, expected=2)
+        self.assertRegex(json.dumps(blocked), r"(?i)merged goal|observation|reconciliation")
+        finding = self.session.call(100, {"operation": "phase_finding",
+            "request_id": "postmerge-finding-forbidden"}, expected=2)
+        self.assertRegex(json.dumps(finding), r"(?i)merged goal|observation|reconciliation")
+
+    def test_postmerge_allowlist_excludes_graph_reviews_and_new_findings(self):
+        allowed = z._workflow.Workflow.node_postmerge_operation_allowed
+        for operation in ("graph_review", "graph_review_bootstrap", "graph_adopt",
+                          "checkpoint_reconcile_review", "phase_finding",
+                          "resolve_goal_blocker", "compact_candidate", "stack_prepare"):
+            self.assertFalse(allowed(operation, False), operation)
+            self.assertFalse(allowed(operation, True), operation)
+        for operation in ("integrate", "reconcile", "complete", "stack_status",
+                          "stack_advance", "stack_attempt_retire", "recover", "release"):
+            self.assertTrue(allowed(operation, False), operation)
+        self.assertTrue(allowed("submit", True))
+        self.assertFalse(allowed("submit", False))
+        self.assertTrue(allowed("renew", True))
+        self.assertFalse(allowed("renew", False))
+
+    def test_related_goal_terminal_cannot_authorize_postmerge_work(self):
+        engine = z._workflow.Workflow.__new__(z._workflow.Workflow)
+        engine.api = SimpleNamespace(_phase_evidence=z._phase_evidence)
+        related = {"goal": 101, "node": "observed_merge", "generation": 1, "item": None}
+        key = z._phase_evidence.task_key(related)
+        projection = {"states": {key: {"node": related,
+            "contract": {"outputs": {"value": {"type": "merge_observation"}}}}}}
+        self.assertFalse(engine.node_postmerge_terminal_observation(projection, 100, related))
+        self.assertTrue(engine.node_postmerge_terminal_observation(projection, 101, related))
+
+    def test_confirmed_merge_boundary_survives_provider_read_failure(self):
+        self.install(self.with_merge_observation(copy.deepcopy(self.graph)))
+        self.authorize_context()
+        authority = self.approve_publication()
+        request = self.integration_request(authority)
+        request["request_id"] = "merged-before-provider-outage"
+        self.session.call(100, request)
+        with mock.patch.object(z, "_github_pull_request_states",
+                               side_effect=RuntimeError("provider temporarily unavailable")):
+            blocked = self.session.call(100, {"operation": "phase_finding",
+                "request_id": "finding-during-provider-outage"}, expected=2)
+            self.assertRegex(json.dumps(blocked),
+                             r"(?i)merged goal|observation|reconciliation")
+
+    def test_externally_merged_pr_without_certificate_remains_terminal_on_outage(self):
+        self.install(self.with_merge_observation(copy.deepcopy(self.graph)))
+        self.authorize_context()
+        authority = self.approve_publication()
+        self.mark_merged()
+        observed = self.session.call(100, {"operation": "integrate",
+            "request_id": "observe-external-merge", "authorization": authority,
+            "expected_head": self.observation["head_oid"]})
+        self.assertIn('"provider_state": "merged"', json.dumps(observed))
+        self.assertEqual([], self.merge_calls)
+        with mock.patch.object(z, "_github_pull_request_states",
+                               side_effect=RuntimeError("provider temporarily unavailable")):
+            blocked = self.session.call(100, {"operation": "phase_finding",
+                "request_id": "finding-after-external-merge-outage"}, expected=2)
+            self.assertRegex(json.dumps(blocked),
+                             r"(?i)merged goal|observation|reconciliation")
+
+    def test_uncertain_certificate_blocks_until_provider_confirms_open(self):
+        engine = z._workflow.Workflow.__new__(z._workflow.Workflow)
+        snapshot = {"projection": {"states": {}}, "publications": {},
+            "payload": {"publication_certificate": {"hash": "sha256:" + "a" * 64},
+                        "evidence": [], "operational": {"receipts": []}},
+            "artifacts": {}}
+        self.assertTrue(engine.node_has_merged_publication(snapshot, 100))
+        snapshot["publications"][(100, "merge")] = {"provider": {"merged": False}}
+        self.assertFalse(engine.node_has_merged_publication(snapshot, 100))
+
+    def test_confirmed_merge_receipt_overrides_stale_open_provider_read(self):
+        engine = z._workflow.Workflow.__new__(z._workflow.Workflow)
+        engine.read_artifact = lambda goal, reference: {"next_steps": [
+            {"kind": "checkpoint", "provider_state": "merged"}]}
+        snapshot = {"projection": {"states": {}},
+            "publications": {(100, "merge"): {"provider": {"merged": False}}},
+            "payload": {"evidence": [], "operational": {"receipts": [
+                {"result": {"hash": "sha256:" + "b" * 64}}]}}, "artifacts": {}}
+        self.assertTrue(engine.node_has_merged_publication(snapshot, 100))
     def test_native_merge_retains_certified_gates_when_provider_projection_changes(self):
         self.observation["updated_at"] = "2026-09-29T14:00:00Z"
         graph = self.with_merge_observation(copy.deepcopy(self.graph))
@@ -1404,9 +1501,9 @@ class GenericPublicationPublicTests(DagFixture):
                 self.session.call(100, self.session.submission(work, {"value": {**value, key: wrong}}, "wrong-merge-" + key), expected=2)
                 self.assertEqual(before, (self.provider.issues, self.provider.comments))
         self.session.finish(work, {"value": value})
-        self.assertIn(self.ids["finish"], self.names())
-        self.submit_role("finish", "Exact post-effect evidence consumed")
-        self.assertEqual(set(), self.names())
+        self.assertNotIn(self.ids["finish"], self.names(),
+                         "Postmerge work is limited to observation and reconciliation")
+        self.assertEqual("open", self.provider.issues[100]["state"])
 
     def test_unmerged_provider_cannot_issue_merge_observation_then_external_merge_is_readable(self):
         self.install(self.with_merge_observation(copy.deepcopy(self.graph)))
@@ -1421,7 +1518,8 @@ class GenericPublicationPublicTests(DagFixture):
         self.mark_merged()  # External provider event; no lease takeover or semantic Result fabrication.
         self.session.finish(work, {"value": self.merge_value()})
         self.assertEqual(0, len(self.merge_calls))
-        self.submit_role("finish", "Observed external merge has exact evidence")
+        self.assertNotIn(self.ids["finish"], self.names())
+        self.assertEqual("open", self.provider.issues[100]["state"])
 
     def test_declared_base_is_not_replaced_by_unrelated_checkout_head(self):
         self.authorize_context()
@@ -2068,12 +2166,13 @@ class GenericPublicationPublicTests(DagFixture):
                 self.configure()
                 self.authorize_context()
                 authority = self.approve_publication()
-                self.mark_merged()
+                self.submit_role("finish", "Current complete graph")
                 before = copy.deepcopy((self.provider.issues, self.provider.comments))
                 request = {"operation": "complete", "authorization": authority, "request_id": "complete-" + mode}
                 self.session.call(100, request, expected=2)
-                self.assertEqual(before, (self.provider.issues, self.provider.comments), "Even disabled CI cannot replace missing terminal Result")
-                self.submit_role("finish", "Current complete graph")
+                self.assertEqual(before, (self.provider.issues, self.provider.comments),
+                                 "A failed completion preflight must preserve provider state")
+                self.mark_merged()
                 self.observation["checks_verified"] = False
                 if mode == "inspect_exact_pr_head":
                     before = copy.deepcopy((self.provider.issues, self.provider.comments))
@@ -2243,7 +2342,8 @@ class GenericDeliveryPublicTests(DagFixture):
         self.assertTrue(self.observation["merged"])
         post_effect = self.session.acquire("observed_merge")
         self.session.finish(post_effect, {"value": self.merge_value()})
-        self.submit_role("finish", "Current connected delivery and observed merge evidence")
+        self.assertNotIn(self.ids["finish"], self.names(),
+                         "The observed merge cannot start a new substantive terminal")
         self.assertEqual(red, self.read_blob(red_reference))
         self.assertEqual(green, self.read_blob(green_reference))
         self.assertEqual(0, green["commands"][0]["exit_code"])
