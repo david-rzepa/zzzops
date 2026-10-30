@@ -154,6 +154,21 @@ class ExactTextPatchContractTests(unittest.TestCase):
         self.assertGreater(spent, len(value.encode('utf-8')))
         self.assertLessEqual(spent, codec.MAX_RECONSTRUCTION_WORK_BYTES)
 
+    def test_chunk_sizing_includes_complete_transaction_manifest(self):
+        codec = self.codec
+        value = ''.join(hashlib.sha256(str(i).encode()).hexdigest() for i in range(70))
+        values = [value] + [str(i) for i in range(6)]
+        records = [{'kind': 'full', 'type': 'text', 'text': text, 'hash': codec.digest(text)}
+                   for text in values]
+        with mock.patch.object(codec, 'MAX_COMMENT_CHARACTERS', 4096):
+            bodies = codec.pack_envelopes({'goal': 21, 'transaction': 'manifest-boundary',
+                                          'context': {}}, records)
+            self.assertTrue(all(len(body) <= 4096 for body in bodies))
+        index = codec.ArtifactIndex([{'body': body} for body in reversed(bodies)])
+        codec.verify_manifest(index.envelopes)
+        for value in values:
+            self.assertEqual(value, index.resolve(codec.digest(value))[0])
+
     def test_unicode_original_base_offsets_and_exact_newlines(self):
         before = 'A😀e\u0301BC🌍D'
         after = 'AXY😀e\u0301bC🌍!'

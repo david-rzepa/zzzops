@@ -409,66 +409,70 @@ def _from_text(kind, text):
 
 
 def pack_envelopes(common, artifacts, history=None):
-    expanded = []
-    for record in artifacts:
-        probe = {'schema_version': 2, **common, 'part': 0, 'manifest': [digest({'kind': 'artifact', 'value': record})],
-                 'members': [0], 'artifacts': [record], 'history': None}
-        try:
-            encode_envelope(probe)
-        except ValueError:
-            if record.get('kind') != 'full' or record.get('type') not in {'json', 'text'}:
-                raise
-            text = record['text']
-            for total in range(2, MAX_ARTIFACT_RECORDS + 1):
+    counts = [1] * len(artifacts)
+    while True:
+        expanded, owners = [], []
+        for owner, record in enumerate(artifacts):
+            total = counts[owner]
+            if total == 1:
+                parts = [record]
+            else:
+                text = record['text']
                 size = (len(text) + total - 1) // total
-                chunks = [{'kind': 'chunk', 'hash': record['hash'], 'type': record['type'],
-                           'index': index, 'total': total, 'text': text[index * size:(index + 1) * size]}
-                          for index in range(total)]
+                parts = [dict(kind='chunk', hash=record['hash'], type=record['type'],
+                              index=index, total=total,
+                              text=text[index * size:(index + 1) * size])
+                         for index in range(total)]
+            expanded.extend(parts)
+            owners.extend([owner] * len(parts))
+        if len(expanded) > MAX_ARTIFACT_RECORDS:
+            raise ValueError('Transaction artifact record limit exceeded')
+        pieces = [('artifact', record) for record in expanded]
+        if history is not None:
+            pieces.append(('history', history))
+        manifest = [digest(dict(kind=kind, value=value)) for kind, value in pieces]
+
+        def envelope(group, part):
+            return dict(schema_version=2, **common, part=part, manifest=manifest,
+                        members=[index for index, _, _ in group],
+                        artifacts=[value for _, kind, value in group if kind == 'artifact'],
+                        history=next((value for _, kind, value in group if kind == 'history'), None))
+
+        groups, current, failed = [], [], None
+        for index, (kind, value) in enumerate(pieces):
+            if kind == 'artifact' and any(k == 'artifact' and v['hash'] == value['hash']
+                                          for _, k, v in current):
+                groups.append(current)
+                current = []
+            candidate = current + [(index, kind, value)]
+            try:
+                encode_envelope(envelope(candidate, len(groups)))
+            except ValueError:
+                if current:
+                    groups.append(current)
+                current = [(index, kind, value)]
                 try:
-                    for index, chunk in enumerate(chunks):
-                        encode_envelope({'schema_version': 2, **common, 'part': index,
-                            'manifest': [digest({'kind': 'artifact', 'value': chunk})],
-                            'members': [0], 'artifacts': [chunk], 'history': None})
+                    encode_envelope(envelope(current, len(groups)))
                 except ValueError:
-                    continue
-                else:
-                    expanded.extend(chunks)
+                    if kind != 'artifact':
+                        raise
+                    owner = owners[index]
+                    original = artifacts[owner]
+                    if original.get('kind') != 'full' or original.get('type') not in {'json', 'text'}:
+                        raise
+                    failed = owner
                     break
             else:
-                raise ValueError('Artifact cannot be split within the provider comment contract; use a published Git content reference')
-        else:
-            expanded.append(record)
-    artifacts = expanded
-    if len(artifacts) > MAX_ARTIFACT_RECORDS:
-        raise ValueError('Transaction artifact record limit exceeded')
-    pieces = [('artifact', record) for record in artifacts]
-    if history is not None:
-        pieces.append(('history', history))
-    manifest = [digest({'kind': kind, 'value': value}) for kind, value in pieces]
-    groups, current = [], []
-    def envelope(group, part):
-        return {'schema_version': 2, **common, 'part': part, 'manifest': manifest,
-                'members': [index for index, _, _ in group],
-                'artifacts': [value for _, kind, value in group if kind == 'artifact'],
-                'history': next((value for _, kind, value in group if kind == 'history'), None)}
-    for index, (kind, value) in enumerate(pieces):
-        candidate = current + [(index, kind, value)]
-        try:
-            encode_envelope(envelope(candidate, len(groups)))
-        except ValueError:
-            if not current:
-                raise
+                current = candidate
+        if failed is not None:
+            counts[failed] += 1
+            continue
+        if current:
             groups.append(current)
-            current = [(index, kind, value)]
-            encode_envelope(envelope(current, len(groups)))
-        else:
-            current = candidate
-    if current:
-        groups.append(current)
-    bodies = [encode_envelope(envelope(group, part)) for part, group in enumerate(groups)]
-    if sum(len(body) for body in bodies) > MAX_RECONSTRUCTION_WORK_BYTES:
-        raise ValueError('Transaction reconstruction work limit exceeded')
-    return bodies
+        bodies = [encode_envelope(envelope(group, part)) for part, group in enumerate(groups)]
+        if sum(len(body) for body in bodies) > MAX_RECONSTRUCTION_WORK_BYTES:
+            raise ValueError('Transaction reconstruction work limit exceeded')
+        return bodies
 
 
 HYDRATION_CHECKPOINT_SCHEMA = 1
