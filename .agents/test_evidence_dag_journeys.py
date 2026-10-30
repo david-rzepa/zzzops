@@ -23,6 +23,7 @@ import hashlib
 import importlib.util
 import os
 import sys
+import subprocess
 from types import SimpleNamespace
 from unittest import mock
 
@@ -356,6 +357,524 @@ class DagFixture(unittest.TestCase):
         self.session.finish(acquired, outputs, "valid-after-negative-" + acquired["lease"]["attempt"])
 
 class EvidenceDagPublicTests(DagFixture):
+    def test_reverted_external_spec_reopens_current_attempt_instead_of_resurrecting_old_result(self):
+        producer = task("versioned_producer")
+        producer["inputs"] = {"request": spec_input()}
+        consumer = task("versioned_consumer", ["versioned_producer"])
+        consumer["inputs"] = {"subject": subject_input("versioned_producer")}
+        graph = {"nodes": [producer, consumer], "task_sets": [],
+                 "terminals": [selector("versioned_consumer")]}
+        self.install(graph)
+
+        self.session.finish(self.session.acquire("versioned_producer"),
+                            {"value": "producer A"})
+        producer_a = self.result("versioned_producer")[0]
+        self.session.finish(self.session.acquire("versioned_consumer"),
+                            {"value": "consumer A"})
+        consumer_a = self.result("versioned_consumer")[0]
+
+        self.replace_spec("external specification B")
+        self.session.finish(self.session.acquire("versioned_producer"),
+                            {"value": "producer B"})
+        producer_b, producer_b_result = self.result("versioned_producer")
+        self.assertEqual(producer_a, producer_b_result["supersedes_result"])
+        self.session.finish(self.session.acquire("versioned_consumer"),
+                            {"value": "consumer B"})
+        consumer_b, consumer_b_result = self.result("versioned_consumer")
+        self.assertEqual(consumer_a, consumer_b_result["supersedes_result"])
+        history = list(self.payload()[1]["evidence"])
+
+        self.replace_spec("Produce and review a value.")
+        frontier = self.session.checkpoint(100)
+
+        self.assertIn("versioned_producer", {
+            step["node"]["node"] for step in frontier if step.get("kind") == "execute"})
+        self.assertNotIn("versioned_consumer", {
+            step["node"]["node"] for step in frontier if step.get("kind") == "execute"})
+        self.assertEqual(history, self.payload()[1]["evidence"])
+        self.assertEqual(producer_b, self.result("versioned_producer")[0],
+                         "The accepted B successor remains history truth until C")
+        self.assertEqual(consumer_b, self.result("versioned_consumer")[0],
+                         "The old A downstream output must never become current again")
+
+    def policy_cutover_fixture(self, *, alternate=False, acquire_old_lease=False):
+        producer = "alpha" if alternate else "produce"
+        terminal = "omega" if alternate else "finish"
+        old_graph = {"nodes": [task(producer), task(terminal, [producer], role="root")],
+                     "task_sets": [], "terminals": [selector(terminal)]}
+        self.install(old_graph)
+        self.session.finish(self.session.acquire(producer), {"value": "old result"})
+        old_result = self.result(producer)[0]
+        old_lease = self.session.acquire(terminal) if acquire_old_lease else None
+        audit = task("sigma" if alternate else "audit", [producer])
+        audit["inputs"] = {"subject": subject_input(producer)}
+        audit["independent_of"] = [selector(producer)]
+        new_graph = {"nodes": [copy.deepcopy(old_graph["nodes"][0]), audit,
+                               copy.deepcopy(old_graph["nodes"][1])],
+                     "task_sets": [], "terminals": [selector(terminal)]}
+        z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = new_graph
+        step = self.session.checkpoint(100)[0]
+        self.assertEqual("policy_dag_cutover", step["kind"])
+        mapping = [{"old": {"node": producer, "output": "value"},
+                    "new": {"node": producer, "output": "value"},
+                    "result": old_result, "equivalence": {
+                        "inputs": True, "outputs": True, "scope": True,
+                        "role": True, "independence": True, "approval": True}}]
+        return old_graph, new_graph, old_result, old_lease, mapping, step
+
+    def test_policy_dag_change_requires_authenticated_cutover_before_old_result_reuse(self):
+        _old, _new, _result, _lease, _mapping, step = self.policy_cutover_fixture()
+        contract = json.dumps(step, sort_keys=True).lower()
+        for required in ("old", "new", "mapping", "policy", "revision", "receipt"):
+            self.assertIn(required, contract)
+        self.assertIn("prepare", step)
+        self.assertEqual("policy_dag_cutover_prepare", step["prepare"]["operation"])
+        for field in ("expected_goal_revision", "expected_goal_payload", "old_graph",
+                      "new_graph", "old_policy_digest", "new_policy_digest"):
+            self.assertIn(field, step["prepare"])
+
+    def test_reviewed_policy_dag_cutover_apply_retry_and_reverse_transition(self):
+        old, new, old_result, _lease, mapping, step = self.policy_cutover_fixture(alternate=True)
+        self.assertIn("prepare", step)
+        prepared = self.session.call(100, {**step["prepare"], "actor": "root-thread",
+            "mapping": mapping, "request_id": "prepare-alternate-cutover"})["next_steps"][0]
+        self.assertEqual("policy_dag_cutover_proposed", prepared["kind"])
+        reviewed = self.session.call(100, {**prepared["review"],
+            "actor": "independent-cutover-reviewer", "decision": "approved",
+            "report": "Exact mapping and evidence are equivalent",
+            "request_id": "review-alternate-cutover"})["next_steps"][0]
+        self.assertEqual("policy_dag_cutover_reviewed", reviewed["kind"])
+        self.assertNotEqual(step["prepare"]["expected_goal_revision"],
+                            reviewed["apply"]["expected_goal_revision"])
+        apply = {**reviewed["apply"], "actor": "root-thread",
+                 "request_id": "apply-alternate-cutover"}
+        original_body = self.provider.issues[100]["body"]
+        self.replace_spec("Intervening provider write after cutover review")
+        stale = self.session.call(100, apply, expected=2)
+        self.assertRegex(json.dumps(stale), r"(?i)stale|revision|payload|changed")
+        self.provider.issues[100]["body"] = original_body
+        update = self.provider.update_issue
+        lost = []
+        def uncertain(number, payload):
+            result = update(number, payload)
+            if not lost:
+                lost.append(True)
+                raise z.GoalTransitionProviderError("Cutover committed; response lost")
+            return result
+        with mock.patch.object(self.provider, "update_issue", side_effect=uncertain):
+            self.session.call(100, apply, expected=None)
+        self.assertTrue(lost)
+        first = self.session.call(100, apply)
+        comments = len(self.provider.comments[100])
+        self.assertEqual(first, self.session.call(100, apply))
+        self.assertEqual(comments, len(self.provider.comments[100]))
+        forward = first["next_steps"][0]
+        self.assertEqual("policy_dag_cutover_applied", forward["kind"])
+        forward_receipt = forward["receipt"]
+        self.assertEqual(old_result, self.result("alpha")[0])
+        self.assertEqual({"sigma"}, self.names())
+        z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = old
+        reverse = self.session.checkpoint(100)[0]
+        self.assertEqual("policy_dag_cutover", reverse["kind"])
+        self.assertEqual(new, self.read_blob(reverse["contract"]["old_graph"]))
+        reverse_mapping = [{"old": {"node": "alpha", "output": "value"},
+                            "new": {"node": "alpha", "output": "value"},
+                            "result": old_result, "equivalence": {
+                                "inputs": True, "outputs": True, "scope": True,
+                                "role": True, "independence": True, "approval": True}}]
+        reverse_prepared = self.session.call(100, {**reverse["prepare"],
+            "actor": "root-thread", "mapping": reverse_mapping,
+            "request_id": "prepare-reviewed-rollback"})["next_steps"][0]
+        self.assertEqual("policy_dag_cutover_proposed", reverse_prepared["kind"])
+        reverse_reviewed = self.session.call(100, {**reverse_prepared["review"],
+            "actor": "independent-rollback-reviewer", "decision": "approved",
+            "report": "Reverse mapping restores the prior reviewed graph without inherited approval",
+            "request_id": "review-reviewed-rollback"})["next_steps"][0]
+        self.assertEqual("policy_dag_cutover_reviewed", reverse_reviewed["kind"])
+        self.assertNotEqual(reverse["prepare"]["expected_goal_revision"],
+                            reverse_reviewed["apply"]["expected_goal_revision"])
+        rollback = {**reverse_reviewed["apply"], "actor": "root-thread",
+                    "request_id": "apply-reviewed-rollback"}
+        update = self.provider.update_issue
+        rollback_lost = []
+        def uncertain_rollback(number, payload):
+            result = update(number, payload)
+            if not rollback_lost:
+                rollback_lost.append(True)
+                raise z.GoalTransitionProviderError("Rollback committed; response lost")
+            return result
+        with mock.patch.object(self.provider, "update_issue", side_effect=uncertain_rollback):
+            self.session.call(100, rollback, expected=None)
+        self.assertTrue(rollback_lost)
+        reversed_once = self.session.call(100, rollback)
+        rollback_comments = len(self.provider.comments[100])
+        self.assertEqual(reversed_once, self.session.call(100, rollback))
+        self.assertEqual(rollback_comments, len(self.provider.comments[100]))
+        reversed_step = reversed_once["next_steps"][0]
+        self.assertEqual("policy_dag_cutover_applied", reversed_step["kind"])
+        reverse_receipt = reversed_step["receipt"]
+        self.assertNotEqual(forward_receipt, reverse_receipt)
+        self.assertEqual(old_result, self.result("alpha")[0])
+        self.assertEqual({"omega"}, self.names())
+
+        _envelope, payload = self.payload()
+        applied = []
+        for row in payload["operational"]["receipts"]:
+            response = self.read_blob(row["result"])
+            for candidate in response.get("next_steps", []):
+                if candidate.get("kind") == "policy_dag_cutover_applied":
+                    applied.append(candidate)
+        self.assertEqual(2, len(applied))
+        self.assertEqual({forward_receipt["hash"], reverse_receipt["hash"]},
+                         {candidate["receipt"]["hash"] for candidate in applied})
+        self.assertEqual(
+            {(candidate["old_graph"]["hash"], candidate["new_graph"]["hash"])
+             for candidate in applied},
+            {(forward["old_graph"]["hash"], forward["new_graph"]["hash"]),
+             (forward["new_graph"]["hash"], forward["old_graph"]["hash"])})
+
+    def test_policy_dag_cutover_rejects_bad_mapping_and_live_old_lease(self):
+        _old, _new, _result, lease, mapping, step = self.policy_cutover_fixture(
+            acquire_old_lease=True)
+        self.assertIn("prepare", step)
+        variants = {
+            "missing-output": [{**mapping[0], "new": {"node": "produce", "output": "missing"}}],
+            "ambiguous": mapping + copy.deepcopy(mapping),
+            "changed-independence": [{**mapping[0], "equivalence": {
+                **mapping[0]["equivalence"], "independence": False}}],
+            "changed-scope": [{**mapping[0], "equivalence": {
+                **mapping[0]["equivalence"], "scope": False}}],
+            "changed-role": [{**mapping[0], "equivalence": {
+                **mapping[0]["equivalence"], "role": False}}],
+            "changed-approval": [{**mapping[0], "equivalence": {
+                **mapping[0]["equivalence"], "approval": False}}],
+        }
+        for label, candidate in variants.items():
+            before = copy.deepcopy((self.provider.issues, self.provider.comments))
+            response = self.session.call(100, {**step["prepare"], "actor": "root-thread",
+                "mapping": candidate, "request_id": "reject-cutover-" + label}, expected=2)
+            self.assertRegex(json.dumps(response), r"(?i)mapping|output|ambiguous|equival|independen")
+            self.assertEqual(before, (self.provider.issues, self.provider.comments))
+        response = self.session.call(100, {**step["prepare"], "actor": "root-thread",
+            "mapping": mapping, "request_id": "live-lease-cutover"}, expected=2)
+        self.assertRegex(json.dumps(response), r"(?i)lease|owner|active|resolve")
+        self.assertEqual(lease["lease"]["token"],
+                         self.payload()[1]["operational"]["leases"][0]["token"])
+
+    def test_policy_dag_cutover_maps_reviewed_result_across_renamed_nodes(self):
+        old_producer = task("legacy_builder")
+        old_finish = task("legacy_finish", ["legacy_builder"], role="root")
+        old_graph = {"nodes": [old_producer, old_finish], "task_sets": [],
+                     "terminals": [selector("legacy_finish")]}
+        self.install(old_graph)
+        self.session.finish(self.session.acquire("legacy_builder"), {"value": "reviewed bytes"})
+        result = self.result("legacy_builder")[0]
+
+        new_producer = copy.deepcopy(old_producer)
+        new_producer["id"] = "modern_builder"
+        inspect = task("inspect_renamed", ["modern_builder"])
+        inspect["inputs"] = {"subject": subject_input("modern_builder")}
+        new_finish = task("modern_finish", ["inspect_renamed"], role="root")
+        new_graph = {"nodes": [new_producer, inspect, new_finish], "task_sets": [],
+                     "terminals": [selector("modern_finish")]}
+        z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = new_graph
+        cutover = self.session.checkpoint(100)[0]
+        self.assertEqual("policy_dag_cutover", cutover["kind"], cutover)
+        self.assertIn("prepare", cutover)
+        mapping = [{"old": {"node": "legacy_builder", "output": "value"},
+                    "new": {"node": "modern_builder", "output": "value"},
+                    "result": result, "equivalence": {
+                        "inputs": True, "outputs": True, "scope": True,
+                        "role": True, "independence": True, "approval": True}}]
+        proposed = self.session.call(100, {**cutover["prepare"], "actor": "root-thread",
+            "mapping": mapping, "request_id": "prepare-renamed-cutover"})["next_steps"][0]
+        reviewed = self.session.call(100, {**proposed["review"],
+            "actor": "independent-renamed-reviewer", "decision": "approved",
+            "report": "Renamed node retains the exact reviewed contract",
+            "request_id": "review-renamed-cutover"})["next_steps"][0]
+        self.session.call(100, {**reviewed["apply"], "actor": "root-thread",
+                               "request_id": "apply-renamed-cutover"})
+        self.assertEqual({"inspect_renamed"}, self.names())
+        self.assertEqual(result, self.result("legacy_builder")[0])
+
+    def test_policy_dag_cutover_mapping_rechecks_changed_external_inputs(self):
+        producer = task("produce_external")
+        producer["inputs"] = {"request": spec_input()}
+        review = task("review_external", ["produce_external"])
+        review["inputs"] = {"subject": subject_input("produce_external")}
+        review["independent_of"] = [selector("produce_external")]
+        old_graph = {"nodes": [producer, review], "task_sets": [],
+                     "terminals": [selector("review_external")]}
+        self.install(old_graph)
+        self.session.finish(self.session.acquire("produce_external"),
+                            {"value": "mapped producer result"})
+        self.session.finish(self.session.acquire(
+            "review_external", actor="independent-external-reviewer"),
+            {"value": "reviewed mapped producer"})
+        producer_result = self.result("produce_external")[0]
+        review_result = self.result("review_external")[0]
+        retained = {
+            producer_result["hash"]: copy.deepcopy(self.read_blob(producer_result)),
+            review_result["hash"]: copy.deepcopy(self.read_blob(review_result)),
+        }
+
+        consume = task("consume_external", ["review_external"], role="root")
+        consume["inputs"] = {"subject": subject_input("produce_external")}
+        new_graph = {"nodes": [copy.deepcopy(producer), copy.deepcopy(review), consume],
+                     "task_sets": [], "terminals": [selector("consume_external")]}
+        z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = new_graph
+        cutover = self.session.checkpoint(100)[0]
+        mapping = [{"old": {"node": node, "output": "value"},
+                    "new": {"node": node, "output": "value"},
+                    "result": result, "equivalence": {
+                        "inputs": True, "outputs": True, "scope": True,
+                        "role": True, "independence": True, "approval": True}}
+                   for node, result in (("produce_external", producer_result),
+                                        ("review_external", review_result))]
+        proposed = self.session.call(100, {**cutover["prepare"],
+            "actor": "root-thread", "mapping": mapping,
+            "request_id": "prepare-external-freshness-cutover"})["next_steps"][0]
+        reviewed = self.session.call(100, {**proposed["review"],
+            "actor": "independent-cutover-reviewer", "decision": "approved",
+            "report": "Mapped producer and review retain their exact old inputs only",
+            "request_id": "review-external-freshness-cutover"})["next_steps"][0]
+        applied = self.session.call(100, {**reviewed["apply"],
+            "actor": "root-thread",
+            "request_id": "apply-external-freshness-cutover"})["next_steps"][0]
+        self.assertEqual("policy_dag_cutover_applied", applied["kind"])
+        self.assertEqual({"consume_external"}, self.names())
+        history_before = list(self.payload()[1]["evidence"])
+
+        self.replace_spec("Changed external requirement after reviewed DAG cutover")
+        frontier = self.session.checkpoint(100)
+
+        self.assertIn("produce_external", {
+            step["node"]["node"] for step in frontier if step.get("kind") == "execute"})
+        self.assertNotIn("consume_external", {
+            step["node"]["node"] for step in frontier if step.get("kind") == "execute"})
+        self.assertNotIn("review_external", self.names())
+        self.assertEqual(history_before, self.payload()[1]["evidence"])
+        for identity, artifact in retained.items():
+            self.assertEqual(artifact, self.read_blob({
+                "hash": identity, "uri": "urn:" + identity}))
+
+    def test_cutover_maps_dependent_review_resolution_across_renamed_producer(self):
+        producer_old = task("producer_old")
+        producer_old["inputs"] = {"request": spec_input()}
+        review_old = task("review_old", ["producer_old"])
+        review_old["inputs"] = {"subject": subject_input("producer_old")}
+        review_old["independent_of"] = [selector("producer_old")]
+        old_graph = {"nodes": [producer_old, review_old], "task_sets": [],
+                     "terminals": [selector("review_old")]}
+        self.install(old_graph)
+        self.session.finish(self.session.acquire("producer_old"),
+                            {"value": "old producer output"})
+        self.session.finish(self.session.acquire(
+            "review_old", actor="independent-old-reviewer"),
+            {"value": "old producer independently reviewed"})
+        producer_result = self.result("producer_old")[0]
+        review_result = self.result("review_old")[0]
+        history = list(self.payload()[1]["evidence"])
+        retained = {ref["hash"]: copy.deepcopy(self.read_blob(ref))
+                    for ref in (producer_result, review_result)}
+
+        producer_new = copy.deepcopy(producer_old)
+        producer_new["id"] = "producer_new"
+        producer_new["executor"]["authority"] = scope("producer_new")
+        review_new = copy.deepcopy(review_old)
+        review_new["id"] = "review_new"
+        review_new["executor"]["authority"] = scope("review_new")
+        review_new["requires"] = [selector("producer_new")]
+        review_new["inputs"] = {"subject": subject_input("producer_new")}
+        review_new["independent_of"] = [selector("producer_new")]
+        finish_new = task("finish_new", ["review_new"], role="root")
+        new_graph = {"nodes": [producer_new, review_new, finish_new],
+                     "task_sets": [], "terminals": [selector("finish_new")]}
+        z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = new_graph
+        cutover = self.session.checkpoint(100)[0]
+        mapping = [{"old": {"node": old, "output": "value"},
+                    "new": {"node": new, "output": "value"},
+                    "result": result, "equivalence": {
+                        "inputs": True, "outputs": True, "scope": True,
+                        "role": True, "independence": True, "approval": True}}
+                   for old, new, result in (
+                       ("producer_old", "producer_new", producer_result),
+                       ("review_old", "review_new", review_result))]
+        rename_selectors = z._workflow._rename_node_selectors
+        def reviewed_cross_mapping(node, old, new):
+            projected = rename_selectors(node, old, new)
+            def replace(value):
+                if isinstance(value, dict):
+                    for key, child in value.items():
+                        if key == "node" and child == "producer_old":
+                            value[key] = "producer_new"
+                        else:
+                            replace(child)
+                elif isinstance(value, list):
+                    for child in value:
+                        replace(child)
+            replace(projected)
+            return projected
+        with mock.patch.object(z._workflow, "_rename_node_selectors",
+                               side_effect=reviewed_cross_mapping):
+            proposed = self.session.call(100, {**cutover["prepare"],
+                "actor": "root-thread", "mapping": mapping,
+                "request_id": "prepare-renamed-dependent-cutover"})["next_steps"][0]
+        reviewed = self.session.call(100, {**proposed["review"],
+            "actor": "independent-cutover-reviewer", "decision": "approved",
+            "report": "Producer and dependent review retain exact mapped semantics",
+            "request_id": "review-renamed-dependent-cutover"})["next_steps"][0]
+        with mock.patch.object(z._workflow, "_rename_node_selectors",
+                               side_effect=reviewed_cross_mapping):
+            self.session.call(100, {**reviewed["apply"], "actor": "root-thread",
+                                   "request_id": "apply-renamed-dependent-cutover"})
+
+        self.assertEqual({"finish_new"}, self.names(),
+                         "Both renamed mapped Results remain reusable before drift")
+        self.replace_spec("Changed external input after renamed dependent cutover")
+        self.assertEqual({"producer_new"}, self.names())
+        self.assertEqual(history, self.payload()[1]["evidence"])
+        for identity, artifact in retained.items():
+            self.assertEqual(artifact, self.read_blob({
+                "hash": identity, "uri": "urn:" + identity}))
+
+    def test_policy_dag_cutover_rejects_superseded_mapped_result(self):
+        self.findings()
+        predecessor = self.result("produce")[0]
+        self.session.finish(self.session.acquire("produce"), {"value": "current corrected result"})
+        current = self.result("produce")[0]
+        self.assertNotEqual(predecessor, current)
+        graph = correction_graph()
+        audit = task("post_correction_audit", ["produce"])
+        audit["inputs"] = {"subject": subject_input("produce")}
+        graph["nodes"].append(audit)
+        graph["terminals"].append(selector("post_correction_audit"))
+        z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = graph
+        cutover = self.session.checkpoint(100)[0]
+        mapping = [{"old": {"node": "produce", "output": "value"},
+                    "new": {"node": "produce", "output": "value"},
+                    "result": predecessor, "equivalence": {
+                        "inputs": True, "outputs": True, "scope": True,
+                        "role": True, "independence": True, "approval": True}}]
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        rejected = self.session.call(100, {**cutover["prepare"], "actor": "root-thread",
+            "mapping": mapping, "request_id": "reject-superseded-result"}, expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)current|supersed|stale|predecessor")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_policy_dag_cutover_rejects_omitted_reusable_current_output(self):
+        left, right = task("left"), task("right")
+        finish = task("join", ["left", "right"], role="root")
+        old_graph = {"nodes": [left, right, finish], "task_sets": [],
+                     "terminals": [selector("join")]}
+        self.install(old_graph)
+        for name in ("left", "right"):
+            self.session.finish(self.session.acquire(name), {"value": name + " result"})
+        left_result = self.result("left")[0]
+        changed = copy.deepcopy(old_graph)
+        audit = task("mapped_join_audit", ["left", "right"])
+        changed["nodes"].append(audit)
+        changed["terminals"].append(selector("mapped_join_audit"))
+        z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = changed
+        cutover = self.session.checkpoint(100)[0]
+        mapping = [{"old": {"node": "left", "output": "value"},
+                    "new": {"node": "left", "output": "value"},
+                    "result": left_result, "equivalence": {
+                        "inputs": True, "outputs": True, "scope": True,
+                        "role": True, "independence": True, "approval": True}}]
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        rejected = self.session.call(100, {**cutover["prepare"], "actor": "root-thread",
+            "mapping": mapping, "request_id": "reject-omitted-current-output"}, expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)mapping|omit|missing|current|reusable|right")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_policy_dag_cutover_rename_cannot_rewrite_root_executor_role(self):
+        old_node = task("root", role="root")
+        old_node["prompt"] = "Preserve this reviewed authority and schema literally."
+        old_graph = {"nodes": [old_node], "task_sets": [],
+                     "terminals": [selector("root")]}
+        self.install(old_graph)
+        self.session.finish(self.session.acquire("root"), {"value": "root-owned result"})
+        result = self.result("root")[0]
+
+        new_node = copy.deepcopy(old_node)
+        new_node["id"] = "worker"
+        new_node["executor"]["role"] = "worker"
+        new_node["executor"]["authority"]["subject"]["node"] = "worker"
+        new_graph = {"nodes": [new_node], "task_sets": [],
+                     "terminals": [selector("worker")]}
+        z._workflow_section(self.session.project, "workflow_adherence")[
+            "configuration"]["phase_dag"] = new_graph
+        cutover = self.session.checkpoint(100)[0]
+        self.assertEqual("policy_dag_cutover", cutover["kind"])
+        observed_old = self.read_blob(cutover["contract"]["old_graph"])
+        observed_new = z._static_workflow.definition(new_graph, z._graph_compiler)["graph"]
+        self.assertEqual(content_hash(observed_new), cutover["contract"]["new_graph"]["hash"])
+        self.assertEqual("root", observed_old["nodes"][0]["executor"]["role"])
+        self.assertEqual("worker", observed_new["nodes"][0]["executor"]["role"])
+        self.assertEqual(old_node["prompt"], observed_old["nodes"][0]["prompt"])
+        self.assertEqual(old_node["outputs"], observed_old["nodes"][0]["outputs"])
+        self.assertEqual(old_node["executor"]["authority"],
+                         observed_old["nodes"][0]["executor"]["authority"])
+        mapping = [{"old": {"node": "root", "output": "value"},
+                    "new": {"node": "worker", "output": "value"},
+                    "result": result, "equivalence": {
+                        "inputs": True, "outputs": True, "scope": True,
+                        "role": True, "independence": True, "approval": True}}]
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        rejected = self.session.call(100, {**cutover["prepare"], "actor": "root-thread",
+            "mapping": mapping, "request_id": "reject-root-role-rewrite"}, expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)role|authority|equival")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
+
+    def test_corrected_result_names_exact_predecessor_and_provider_revision_for_cas(self):
+        self.findings()
+        predecessor, _record = self.result("produce")
+        before_envelope, _payload = self.payload()
+        corrected = self.session.acquire("produce")
+        self.session.finish(corrected, {"value": "corrected candidate"},
+                            "result-supersession-cas")
+
+        _current, replacement = self.result("produce")
+        self.assertIn("supersedes_result", replacement)
+        self.assertIn("expected_goal_revision", replacement)
+        self.assertEqual(predecessor, replacement["supersedes_result"])
+        self.assertEqual(before_envelope["revision"],
+                         replacement["expected_goal_revision"])
+        replay = self.session.call(100, self.session.submission(
+            corrected, {"value": "corrected candidate"},
+            "result-supersession-cas"))
+        self.assertEqual("checkpoint", replay["next_steps"][0]["kind"])
+
+    def test_result_predecessor_replay_accepts_only_a_legacy_prefix(self):
+        node = {"goal": 100, "node": "produce", "item": None, "generation": 1}
+        key = z._phase_evidence.task_key(node)
+        refs = [{"hash": "sha256:" + digit * 64,
+                 "uri": "urn:sha256:" + digit * 64} for digit in "1234"]
+        legacy = [(refs[0], {"node": node}), (refs[1], {"node": node})]
+        current = (refs[2], {"node": node, "supersedes_result": refs[1],
+                             "expected_goal_revision": 9})
+        z._phase_evidence.validate_result_successors({key: legacy + [current]})
+
+        cases = [
+            ([(refs[2], {"node": node, "supersedes_result": refs[0],
+                        "expected_goal_revision": 9})], "exact current predecessor"),
+            ([(refs[2], {"node": node, "supersedes_result": refs[1]})], "partial predecessor CAS"),
+            ([current, (refs[3], {"node": node})], "cannot return to legacy"),
+            ([current, (refs[3], {"node": node, "supersedes_result": refs[2],
+                              "expected_goal_revision": 9})], "did not advance"),
+        ]
+        for suffix, reason in cases:
+            with self.subTest(reason=reason), self.assertRaisesRegex(ValueError, reason):
+                z._phase_evidence.validate_result_successors({key: legacy + suffix})
+
     def test_committed_submit_survives_compact_response_store_failure(self):
         """A post-commit formatting fault cannot invite duplicate execution."""
         acquired = self.session.acquire("produce")
@@ -623,8 +1142,25 @@ class EvidenceDagPublicTests(DagFixture):
         graph["nodes"].append(extra)
         graph["nodes"][-2]["requires"].append(selector("additional_check"))
         self.adopt_graph(graph)
-        # Reviewed policy activates the new requirement directly. The goal's
-        # original graph remains immutable and requires no second approval.
+        # Policy review authorizes the topology proposal, but cannot make old
+        # Results current under the new DAG without a separate reviewed cutover.
+        cutover = self.session.checkpoint(100)[0]
+        self.assertEqual("policy_dag_cutover", cutover["kind"])
+        self.assertIn("prepare", cutover)
+        mapping = [{"old": {"node": name, "output": "value"},
+                    "new": {"node": name, "output": "value"},
+                    "result": self.result(name)[0], "equivalence": {
+                        "inputs": True, "outputs": True, "scope": True,
+                        "role": True, "independence": True, "approval": True}}
+                   for name in ("produce", "review_a", "review_b")]
+        proposed = self.session.call(100, {**cutover["prepare"], "actor": "root-thread",
+            "mapping": mapping, "request_id": "prepare-stronger-policy"})["next_steps"][0]
+        reviewed = self.session.call(100, {**proposed["review"],
+            "actor": "independent-policy-cutover-reviewer", "decision": "approved",
+            "report": "Existing Results retain exact contracts; added review remains unsatisfied",
+            "request_id": "review-stronger-policy"})["next_steps"][0]
+        self.session.call(100, {**reviewed["apply"], "actor": "root-thread",
+                               "request_id": "apply-stronger-policy"})
         self.assertNotIn("additional_check", {
             row["id"] for row in self.read_blob(self.payload()[1]["graph"])["nodes"]})
         self.assertNotIn("finish", self.names_after_confirmed_normalization(),
@@ -1165,9 +1701,9 @@ class EvidenceDagPublicTests(DagFixture):
 
     def test_generic_task_read_dependency_and_undeclared_edit_reject_with_valid_control(self):
         work = self.session.acquire("produce")
-        # Empty output authority cannot exempt either a consumed file or a new file.
+        # Empty output authority cannot exempt edits inside its exact managed checkout.
         for name in ("product.txt", "unexpected.py"):
-            path = self.fixture.repo / name
+            path = Path(work['managed_worktree']['path']) / name
             original = path.read_bytes() if path.exists() else None
             try:
                 path.write_text("unapproved worktree change\n")
@@ -1516,6 +2052,53 @@ class WorkspaceAuthorityPublicTests(DagFixture):
             {100: {"payload": {"evidence": [], "operational": {"leases": [], "receipts": []}}}},
             {"states": {key: state}, "current": {}}, {})
         self.assertEqual({"error": "Finding applicability unresolved"}, contexts[key])
+
+    def test_acquired_legacy_workspace_keeps_file_baseline_when_commit_only_sibling_is_ready(self):
+        def add_commit_only_sibling(graph, allocations):
+            legacy = next(node for node in graph["nodes"] if node["id"] == "alpha")
+            sibling = copy.deepcopy(legacy)
+            sibling["id"] = "commit_only_sibling"
+            sibling["executor"]["authority"]["subject"]["node"] = "charter"
+            sibling["executor"]["resources"] = ["repository_git_workspace"]
+            sibling["inputs"]["allocation"]["path"] = ["allocations", "commit_only_sibling"]
+            graph["nodes"].append(sibling)
+            allocations["allocations"]["commit_only_sibling"] = {
+                "task": {"goal": 100, "node": "commit_only_sibling", "item": None,
+                         "generation": 1},
+                "owned": ["git_only.py"],
+                "consumed": ["source.py", "behavior_test.py", "read_dependency.txt"],
+            }
+
+        self.setup_workspace(add_commit_only_sibling)
+        frontier = self.session.ready()
+        self.assertTrue(any(step.get("node", {}).get("node") == "commit_only_sibling"
+                            for step in frontier), frontier)
+        legacy = self.acquire_workspace("alpha")
+        baseline = legacy["lease"]["acquisition"].get("files")
+        self.assertIsInstance(baseline, dict)
+        self.assertIn("source.py", baseline,
+            "an acquired legacy workspace must retain its raw baseline despite a ready Git-only sibling")
+        self.assertIn("behavior_test.py", baseline)
+
+    def test_targeted_legacy_baseline_error_rejects_acquisition_without_provider_write(self):
+        self.setup_workspace()
+        step = next(s for s in self.session.ready() if s["node"]["node"] == "alpha")
+        receipt = json.loads(Path(step["policy"]["path"]).read_text())["policy_receipt"]
+        request = {**step["start"], "policy_receipt": receipt}
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        original = z._workflow.Workflow.node_workspace_context
+
+        def reject_selected(adapter, snapshots, projection, artifacts, *, workspace_target=None):
+            contexts = original(adapter, snapshots, projection, artifacts,
+                                workspace_target=workspace_target)
+            if workspace_target is not None:
+                contexts[workspace_target] = {"error": "Targeted baseline validation failed"}
+            return contexts
+
+        with mock.patch.object(z._workflow.Workflow, "node_workspace_context", reject_selected):
+            response = self.session.call(100, request, expected=2)
+        self.assertIn("Targeted baseline validation failed", json.dumps(response))
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
     def setup_workspace(self, mutate=None, *, defer_authorization=False):
         (self.fixture.repo / "source.py").write_text("def value():\n    return 1\n")
@@ -2058,9 +2641,9 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.admit_workspace_correction()
         captured = []
         method = z._workflow.Workflow.node_workspace_context
-        def observe(adapter, snapshots, projection, artifacts):
+        def observe(adapter, snapshots, projection, artifacts, **kwargs):
             captured.append((adapter, copy.deepcopy(snapshots), copy.deepcopy(projection), copy.deepcopy(artifacts)))
-            return method(adapter, snapshots, projection, artifacts)
+            return method(adapter, snapshots, projection, artifacts, **kwargs)
         with mock.patch.object(z._workflow.Workflow, "node_workspace_context", observe):
             self.assertIn("beta", self.names())
         adapter, snapshots, projection, artifacts = captured[-1]
@@ -3023,8 +3606,9 @@ class WorkspaceAuthorityPublicTests(DagFixture):
         self.install(graph)
         work = self.session.acquire("decompose")
         acquisition = work["lease"]["acquisition"]
-        self.assertIn("read_files", acquisition)
-        self.assertEqual(acquisition["files"], acquisition["read_files"])
+        self.assertEqual(self.session.git('rev-parse', 'HEAD').strip(), acquisition['read_commit'])
+        self.assertNotIn('files', acquisition)
+        self.assertNotIn('read_files', acquisition)
 
         engine = z.workflow_engine(self.fixture.repo, self.session.project, self.session.runtime)
         actual = engine.workspace_files()
@@ -3099,7 +3683,7 @@ class WorkspaceAuthorityPublicTests(DagFixture):
 class DefaultCorrectionPublicTests(DagFixture):
     """Exercise the shipped graph, retaining two real correction attempts."""
 
-    def default_decomposition(self):
+    def default_decomposition(self, *, implementation_review_members=None):
         template = json.loads((old.fixtures.PLUGIN_ROOT / "zzzops/templates/project-goals/INIT_PLAN.json").read_text())
         graph = z._workflow_section(template, "workflow_adherence")["configuration"]["phase_dag"]
         self.install(graph)
@@ -3131,7 +3715,7 @@ class DefaultCorrectionPublicTests(DagFixture):
         self.session.finish(self.session.acquire("decompose"), {"value": {
             "delivery_class": "atomic", "rationale": "One bounded delivery",
             "children": {"items": {}, "rationale": "Atomic work has no child goals."},
-            "implementation_review_members": empty_members,
+            "implementation_review_members": implementation_review_members or empty_members,
             "integration_review_members": empty_members,
         }})
 
@@ -3207,6 +3791,11 @@ class DefaultCorrectionPublicTests(DagFixture):
 
     def test_default_test_design_correction_keeps_workspace_authority_and_red_proof(self):
         self.default_decomposition()
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        remote = Path(remote_dir.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(remote)], check=True)
+        self.session.git('remote', 'add', 'origin', str(remote))
         self.session.finish(self.session.acquire("decomposition_review"), {
             "value": self.review("approved", "Atomic disposition accepted"),
             "authorization": self.decomposition_authorization()})
@@ -3214,8 +3803,11 @@ class DefaultCorrectionPublicTests(DagFixture):
             "value": {"items": {}, "rationale": "No decomposition findings were admitted"}})
         approval = self.result("approve_spec")[0]
         original = self.session.acquire("test_design")
-        path = self.fixture.repo / "behavior_test.py"
+        path = Path(original['managed_worktree']['path']) / "behavior_test.py"
         path.write_text("raise AssertionError('expected initial red fixture')\n")
+        subprocess.run(['git', 'add', path.name], cwd=path.parent, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test(goal-100): rejected RED attempt'],
+                       cwd=path.parent, check=True)
         request = self.session.submission(original, {"value": "Initial RED test candidate"}, "default-red")
         request["workspace_checks"] = [[sys.executable, str(path)]]
         self.session.call(100, request)
@@ -3234,10 +3826,12 @@ class DefaultCorrectionPublicTests(DagFixture):
             "finding": finding, "target_inputs": self.result("test_design")[1]["inputs"],
             "authority": self.result("interpret_test_design_rejection")[0],
             "applicability": "applicable", "rationale": "Same exact reviewed test allocation"}, "transfer": None})
-        self.session.git("add", path.name)
-        self.session.git("commit", "-qm", "preserve rejected test candidate")
         corrected = self.session.acquire("test_design")
+        path = Path(corrected['managed_worktree']['path']) / "behavior_test.py"
         path.write_text("from pathlib import Path\nassert Path('product.txt').is_file()\n")
+        subprocess.run(['git', 'add', path.name], cwd=path.parent, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test(goal-100): corrected RED attempt'],
+                       cwd=path.parent, check=True)
         request = self.session.submission(corrected, {"value": "Meaningful bounded fixture probe"}, "default-corrected")
         request["workspace_checks"] = [[sys.executable, str(path)]]
         self.session.call(100, request)
@@ -4080,7 +4674,10 @@ class GenericStoragePublicTests(DagFixture):
                     self.assertTrue(case.provider.updates)
                     self.assertTrue(all(set(payload) == {"body"} for _, payload in case.provider.updates))
                     before = copy.deepcopy((case.provider.issues, case.provider.comments, case.provider.updates))
-                    self.assertEqual(response, case.session.call(100, request))
+                    replay = case.session.call(100, request)
+                    expected = copy.deepcopy(response)
+                    expected['next_steps'][0]['managed_worktree']['outcome'] = 'existing'
+                    self.assertEqual(expected, replay)
                     self.assertEqual(before, (case.provider.issues, case.provider.comments, case.provider.updates))
                 finally:
                     case.doCleanups()
@@ -4665,10 +5262,12 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
         self.session.finish(self.session.acquire("requirements"), {"value": value})
         return value
 
-    def specification(self, review_items, allocation_names=("test_design", "implement")):
+    def specification(self, review_items, allocation_names=("test_design", "implement"),
+                      owned_by_node=None):
+        owned_by_node = owned_by_node or {}
         allocation = {"allocations": {
             name: {"task": {"goal": 100, "node": name, "item": None, "generation": 1},
-                   "owned": [], "consumed": []}
+                   "owned": owned_by_node.get(name, []), "consumed": []}
             for name in allocation_names
         }}
         value = {"specification": "One falsifiable behavior", "criteria": ["observable"],
@@ -4812,6 +5411,11 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
                       "A specification-only flaw must not reopen settled requirements")
 
     def test_shipped_composition_never_acquires_leaf_implement_and_selects_integration_candidate(self):
+        remote_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(remote_dir.cleanup)
+        bare = Path(remote_dir.name) / 'remote.git'
+        subprocess.run(['git', 'init', '--bare', '-q', str(bare)], check=True)
+        self.session.git('remote', 'add', 'origin', str(bare))
         # Authenticated provider coverage proves this fixture's immediate-child
         # membership is known-empty; the graph must still use #children.
         self.provider.get_sub_issues = lambda _number: []
@@ -4834,7 +5438,8 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
         z._github_pull_request_states.side_effect = current_pr_states
         self.requirements()
         _spec, allocation = self.specification(
-            {}, allocation_names=("test_design", "implement", "integration_verification"))
+            {}, allocation_names=("test_design", "implement", "integration_verification"),
+            owned_by_node={"integration_verification": ["integration_test.py"]})
         if "retain_spec_review_findings" in self.names():
             self.session.finish(self.session.acquire("retain_spec_review_findings"), {"value": {
                 "items": {}, "rationale": "No specification review findings",
@@ -4851,7 +5456,9 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
             "delivery_class": "composition", "rationale": "Parent integrates child results",
             "children": {"items": {}, "rationale": "Fixture has an empty observed child set"},
             "implementation_review_members": {"items": {}, "rationale": "Leaf path is inapplicable"},
-            "integration_review_members": {"items": {}, "rationale": "Bounded integration fixture"},
+            "integration_review_members": {"items": {
+                "acceptance_contracts": "Review parent integration behavior"},
+                "rationale": "Independent review of parent integration"},
         }
         response = self.session.finish(
             self.session.acquire("decompose", frontier=response), {"value": decomposition})
@@ -4879,12 +5486,22 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
         ready = {step["node"]["node"] for step in response["next_steps"]
                  if step.get("kind") == "execute" and step.get("node")}
         self.assertEqual({"integration_verification"}, ready, response["next_steps"])
-        response = self.session.finish(self.session.acquire(
-            "integration_verification", frontier=response), {"value": {
+        integration_work = self.session.acquire("integration_verification", frontier=response)
+        integration_tree = Path(integration_work['managed_worktree']['path'])
+        (integration_tree / 'integration_test.py').write_text('assert True\n')
+        subprocess.run(['git', 'add', 'integration_test.py'], cwd=integration_tree, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'test(goal-100): verify composition'],
+                       cwd=integration_tree, check=True)
+        integration_source = subprocess.run(['git', 'rev-parse', 'HEAD'],
+            cwd=integration_tree, capture_output=True, text=True, check=True).stdout.strip()
+        integration_request = self.session.submission(integration_work, {"value": {
             "applicability": "applicable", "candidate": "parent integration candidate",
             "parent_workspace": "parent-only", "child_evidence": "exact joined child Results",
             "rationale": "Composition requires parent integration",
-        }})
+        }}, 'composition-integration')
+        integration_request['workspace_checks'] = [[sys.executable, '-B', 'integration_test.py']]
+        integration_request['verification_expectation'] = 'passed'
+        response = self.session.call(100, integration_request)
         ready = {step["node"]["node"] for step in response["next_steps"]
                  if step.get("kind") == "execute" and step.get("node")}
         self.assertNotIn("implement", ready)
@@ -4914,6 +5531,12 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
                 "retain_migration_findings", frontier=response), {"value": {
                 "items": {}, "rationale": "No migration findings",
             }})
+        response = self.session.finish(self.session.acquire(
+            "integration_review", item="acceptance_contracts", frontier=response), {
+            "value": self.approved_review("Reviewed parent integration result")})
+        for registry in sorted(name for name in self.names() if name.startswith("retain_integration_")):
+            response = self.session.finish(self.session.acquire(registry, frontier=response), {
+                "value": {"items": {}, "rationale": "No integration review findings"}})
         ready = {step["node"]["node"] for step in response["next_steps"]
                  if step.get("kind") == "execute" and step.get("node")}
         self.assertIn("authorize_repository", ready)
@@ -4924,12 +5547,26 @@ class ShippedGoal499PublicJourneyTests(DagFixture):
         }
         response = self.session.finish(self.session.acquire(
             "authorize_repository", frontier=response), {"authorization": repository_authorization})
+        compaction = next(step for step in response['next_steps']
+                          if step.get('kind') == 'compact_candidate')
+        response = self.session.call(100, compaction['submission'])
+        compacted = response['next_steps'][0]
+        retained_ref = ('refs/heads/zzzops/attempts/100/integration_verification/'
+                        + integration_work['lease']['attempt'])
+        self.assertEqual(integration_source,
+                         self.session.git('ls-remote', 'origin', retained_ref).split()[0])
+        self.assertEqual(2, len(self.session.git('rev-list', '--parents', '-n', '1',
+                                               compacted['head_oid']).split()))
+        self.assertEqual([100], sorted(self.provider.issues))
+        self.fixture.head_oid = compacted['head_oid']
+        self.fixture.base_oid = compacted['base_commit']
+        response = self.session.call(100)
         ready = {step["node"]["node"] for step in response["next_steps"]
                  if step.get("kind") == "execute" and step.get("node")}
-        self.assertEqual({"publish"}, ready)
+        self.assertEqual({"publish"}, ready, response['next_steps'])
         published_head = self.fixture.head_oid
         response = self.session.finish(self.session.acquire("publish", frontier=response), {"value": {
-            "repository": "owner/repo", "branch": "goal-child", "base": "dev",
+            "repository": "owner/repo", "branch": compacted['branch'], "base": "dev",
             "pr": "https://github.com/owner/repo/pull/9", "head_oid": published_head,
         }})
         response = self.session.finish(self.session.acquire("integrate", frontier=response), {"value": {

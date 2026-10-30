@@ -30,6 +30,42 @@ class StaticWorkflowPublicTests(dag.DagFixture):
     def public_steps(self):
         return self.session.checkpoint(100)
 
+    def cutover_mapping(self, step):
+        old = {node["id"]: node for node in self.read_blob(self.payload()[1]["graph"])["nodes"]}
+        configured = dag.z._workflow_section(
+            self.session.project, "workflow_adherence")["configuration"]["phase_dag"]
+        new = {node["id"]: node for node in configured["nodes"]}
+        current = {}
+        for reference in reversed(self.payload()[1]["evidence"]):
+            artifact = self.read_blob(reference)
+            result = artifact.get("content", {})
+            node = result.get("node", {})
+            if artifact.get("type") != "result" or node.get("item") is not None:
+                continue
+            current.setdefault(node.get("node"), (reference, result))
+        mapping = []
+        for name, (reference, result) in current.items():
+            if name not in old or name not in new:
+                continue
+            for output in result.get("outputs", {}):
+                if output not in old[name]["outputs"] or output not in new[name]["outputs"]:
+                    continue
+                mapping.append({"old": {"node": name, "output": output},
+                    "new": {"node": name, "output": output}, "result": reference,
+                    "equivalence": {key: True for key in
+                        ("inputs", "outputs", "scope", "role", "independence", "approval")}})
+        return mapping
+
+    def reviewed_cutover(self, step, request):
+        prepared = self.session.call(100, {**step["prepare"], "actor": "root-thread",
+            "mapping": self.cutover_mapping(step), "request_id": request + "-prepare"})["next_steps"][0]
+        reviewed = self.session.call(100, {**prepared["review"],
+            "actor": "independent-cutover-reviewer", "decision": "approved",
+            "report": "The exact old/new mapping and current evidence remain equivalent.",
+            "request_id": request + "-review"})["next_steps"][0]
+        return self.session.call(100, {**reviewed["apply"], "actor": "root-thread",
+            "request_id": request + "-apply"})["next_steps"][0]
+
     def executable_names(self, steps):
         return {step["node"]["node"] for step in steps
                 if step.get("kind") == "execute" and step.get("node")}
@@ -78,6 +114,11 @@ class StaticWorkflowPublicTests(dag.DagFixture):
         historical_ref = copy.deepcopy(self.graph_ref())
         self.set_current_graph(self.policy_graph_with_added_phase())
 
+        steps = self.public_steps()
+
+        self.assertEqual("policy_dag_cutover", steps[0]["kind"])
+        applied = self.reviewed_cutover(steps[0], "add-policy-phase")
+        self.assertEqual("policy_dag_cutover_applied", applied["kind"])
         steps = self.public_steps()
 
         self.assertNotIn("produce", self.executable_names(steps),
@@ -346,7 +387,7 @@ class StaticWorkflowPublicTests(dag.DagFixture):
                 self.assertRegex(json.dumps(response), r"(?i)item|generation|expansion|member|current")
                 self.assertEqual(before, (self.provider.issues, self.provider.comments))
 
-    def test_unmapped_historical_phase_blocks_direct_complete_and_integrate_mutations(self):
+    def test_pending_policy_cutover_blocks_direct_complete_and_integrate_mutations(self):
         self.produce()
         for name in ("review_a", "review_b"):
             self.session.finish(self.session.acquire(name), {"value": "accepted"})
@@ -354,6 +395,8 @@ class StaticWorkflowPublicTests(dag.DagFixture):
         current = {"nodes": [dag.task("policy_only", role="root")], "task_sets": [],
                    "terminals": [dag.selector("policy_only")]}
         self.set_current_graph(current)
+        frontier = self.public_steps()
+        self.assertEqual(["policy_dag_cutover"], [step["kind"] for step in frontier])
         for operation in ("complete", "integrate"):
             with self.subTest(operation=operation):
                 before = copy.deepcopy((self.provider.issues, self.provider.comments))
@@ -419,8 +462,13 @@ class StaticWorkflowPublicTests(dag.DagFixture):
         self.set_current_graph(changed_policy)
         resumed = self.session.checkpoint(100)
         rendered = json.dumps(resumed)
-        self.assertIn("persistent-member-reviewer", rendered)
-        self.assertIn(review["lease"]["token"], rendered)
+        self.assertEqual("policy_dag_cutover", resumed[0]["kind"])
+        before = copy.deepcopy((self.provider.issues, self.provider.comments))
+        rejected = self.session.call(100, {**resumed[0]["prepare"], "actor": "root-thread",
+            "mapping": self.cutover_mapping(resumed[0]),
+            "request_id": "cutover-with-live-member-review"}, expected=2)
+        self.assertRegex(json.dumps(rejected), r"(?i)lease|worker|resolve|recover")
+        self.assertEqual(before, (self.provider.issues, self.provider.comments))
         self.assertNotRegex(rendered, r"(?i)unknown or unsupported phase event target")
         recovery = {
             "operation": "recover", "request_id": "recover-pinned-member-review",
@@ -437,9 +485,17 @@ class StaticWorkflowPublicTests(dag.DagFixture):
                              and artifact.get("content", {}).get("node") == review["node"]
                              for artifact in review_results),
                          "recovery must not fabricate the stopped review result")
-        self.assertIn("select", self.names(),
-                      "the changed policy must expose its ordinary fresh frontier after recovery")
-        self.assertEqual(workflow_pin, self.payload()[1]["workflow"])
+        cutover = self.session.checkpoint(100)[0]
+        applied = self.reviewed_cutover(cutover, "member-review-policy-change")
+        self.assertEqual("policy_dag_cutover_applied", applied["kind"])
+        names = self.names()
+        self.assertNotIn("select", names, "equivalent settled selection must survive reviewed cutover")
+        self.assertIn("synthesize", names)
+        self.assertTrue(any(name.startswith("sw_review_") for name in names),
+                        "recovering the stopped lease must preserve its unresolved review obligation")
+        self.read_blob(workflow_pin["graph"])
+        self.assertNotEqual(workflow_pin, self.payload()[1]["workflow"],
+                            "the reviewed cutover must record the new authoritative workflow")
 
     def test_not_applicable_late_finding_preserves_target_and_restores_completion(self):
         self.produce()

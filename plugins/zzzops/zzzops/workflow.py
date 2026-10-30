@@ -26,6 +26,8 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 import zzzops_comment_store as comment_store
 import zzzops_state_cache as state_cache
+import zzzops_git_phase_state as git_phase_state
+import zzzops_managed_worktrees as managed_worktrees
 
 
 _OBSERVED_ARTIFACT_INDEXES = {}
@@ -42,6 +44,19 @@ HYDRATION_CHECKPOINT_MIN_COMMENTS = 32
 HYDRATION_CHECKPOINT_MIN_BYTES = 262144
 HYDRATION_CHECKPOINT_MAX_AGE_SECONDS = 86400
 HYDRATION_CHECKPOINT_MAX_LATER_COMMENTS = 32
+
+
+def _rename_node_selectors(value, old, new):
+    """Copy a graph fragment while renaming only validated node selectors."""
+    if isinstance(value, dict):
+        renamed = {name: _rename_node_selectors(child, old, new)
+                   for name, child in value.items()}
+        if value.get('kind') == 'node' and value.get('node') == old:
+            renamed['node'] = new
+        return renamed
+    if isinstance(value, list):
+        return [_rename_node_selectors(child, old, new) for child in value]
+    return value
 
 
 def materialized_state_contract():
@@ -201,12 +216,14 @@ PUBLIC_OPERATIONS = frozenset({
     'goal_dependency_prepare', 'goal_dependency_review', 'goal_dependency_apply',
     'goal_external_blocker_prepare', 'goal_external_blocker_review',
     'goal_external_blocker_apply',
+    'policy_dag_cutover_prepare', 'policy_dag_cutover_review', 'policy_dag_cutover_apply',
     'graph_normalize', 'migration_batch', 'graph_prepare', 'graph_review', 'graph_adopt', 'graph_review_bootstrap',
     'checkpoint_reconcile_prepare', 'checkpoint_reconcile_review', 'checkpoint_reconcile_adopt',
     'capture', 'capture_propose', 'complete', 'feedback_prepare',
     'feedback_submit', 'heartbeat', 'hydration_checkpoint', 'installation_record', 'integrate',
     'policy_approve', 'policy_propose', 'read', 'recover', 'release', 'renew',
     'preserve_historical_draft', 'retire_stale_draft', 'route_choice', 'start', 'reconcile', 'submit',
+    'compact_candidate', 'restack_continue', 'restack_abort',
 })
 
 
@@ -599,6 +616,49 @@ class Workflow:
     def node_evidence_policy(self):
         return digest(self.api._phase_evidence.evidence_policy(self.project['policy']))
 
+    def node_policy_at_commit(self, commit):
+        """Authenticate a committed policy and both bound instruction files."""
+        if not isinstance(commit, str) or not re.fullmatch('[0-9a-f]{40}', commit):
+            raise ValueError('Exact policy commit is required')
+        files = {}
+        for name in ('POLICY.json', 'PROJECT.md', 'PROJECT_AUDIT.md'):
+            files[name] = subprocess.run(['git', 'show', f'{commit}:.zzzops/{name}'],
+                cwd=self.repo, capture_output=True, check=True).stdout.decode('utf-8-sig')
+        state = json.loads(files['POLICY.json'])
+        if not isinstance(state, dict):
+            raise ValueError('Historical policy state must be an object')
+        invalid = self.api._policy.validate_project_state(state)
+        if invalid:
+            raise ValueError('; '.join(invalid))
+        if state.get('initialized') is not True:
+            invalid.append('historical policy is not initialized')
+        if state.get('repository', {}).get('identity') != self.project.get('repository', {}).get('identity'):
+            invalid.append('historical policy repository identity changed')
+        for name, file in (('project', 'PROJECT.md'), ('audit', 'PROJECT_AUDIT.md')):
+            if state.get('bindings', {}).get(name, {}).get('digest') != self.api._policy.project_digest(files[file]):
+                invalid.append(f'historical {name} policy artifact binding changed')
+        if invalid:
+            raise ValueError('; '.join(invalid))
+        return state['policy']
+
+    def node_policy_only_base(self, base, head):
+        """Prove a primary-base movement changed only compatible reviewed policy."""
+        try:
+            if subprocess.run(['git', 'merge-base', '--is-ancestor', base, head],
+                              cwd=self.repo, capture_output=True).returncode != 0:
+                return False
+            paths = subprocess.run(['git', 'diff', '--name-only', '-z', base, head, '--'],
+                cwd=self.repo, capture_output=True, check=True).stdout.split(b'\0')
+            paths = {path for path in paths if path}
+            allowed = {b'.zzzops/POLICY.json', b'.zzzops/PROJECT.md', b'.zzzops/PROJECT_AUDIT.md'}
+            if not paths or paths - allowed:
+                return False
+            before, after = self.node_policy_at_commit(base), self.node_policy_at_commit(head)
+            return (digest(after) == digest(self.project['policy'])
+                    and self.api._policy.phase_policy_ci_compatible(before, after))
+        except (OSError, UnicodeError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+            return False
+
     def node_historical_policies(self, snapshots, artifacts):
         """Authenticate bounded first-parent policy history for recorded Results."""
         forms = ("full", "pre_static", "current", "normalized")
@@ -643,25 +703,7 @@ class Workflow:
                 cache_key = (commit, digest(current))
                 old = cache.get(cache_key)
                 if old is None:
-                    files = {}
-                    for name in ('POLICY.json', 'PROJECT.md', 'PROJECT_AUDIT.md'):
-                        raw = subprocess.run(['git', 'show', f'{commit}:.zzzops/{name}'], cwd=self.repo,
-                                             capture_output=True, check=True).stdout
-                        files[name] = raw.decode('utf-8-sig')
-                    state = json.loads(files['POLICY.json'])
-                    invalid = self.api._policy.validate_project_state(state)
-                    if state.get('initialized') is not True:
-                        invalid.append('historical policy is not initialized')
-                    if state.get('repository', {}).get('identity') != self.project.get('repository', {}).get('identity'):
-                        invalid.append('historical policy repository identity changed')
-                    bindings = state.get('bindings', {})
-                    for name, file in (('project', 'PROJECT.md'), ('audit', 'PROJECT_AUDIT.md')):
-                        if bindings.get(name, {}).get('digest') != self.api._policy.project_digest(files[file]):
-                            invalid.append(f'historical {name} policy artifact binding changed')
-                    if invalid:
-                        errors.extend(invalid)
-                        continue
-                    old = state['policy']
+                    old = self.node_policy_at_commit(commit)
                     cache[cache_key] = old
                 if not self.api._policy.phase_policy_ci_compatible(old, current):
                     continue
@@ -1953,9 +1995,10 @@ class Workflow:
                 return {'kind': 'publication_setup', 'assignment': 'root', 'action': 'Record the implementation branch, base and target before publication.'}
             return None
         managed = {(g.get('implementation') or {}).get('branch') for g in self.portfolio()}
-        return self.publication_topology(implementation, self.publication_identity(goal), managed - {None})
+        return self.publication_topology(implementation, self.publication_identity(goal),
+                                         managed - {None}, goal_number=goal['key'])
 
-    def publication_topology(self, implementation, identity, managed_branches):
+    def publication_topology(self, implementation, identity, managed_branches, *, goal_number=None):
         """Validate provider ancestry without changing refs or publication state."""
         # Read provider topology here, never accept a caller-supplied topology as
         # proof that another coordinator has not published in the meantime.
@@ -1990,6 +2033,37 @@ class Workflow:
             return topology_repair('the provider returned an incomplete PR list')
         managed_branches = set(managed_branches(observed) if callable(managed_branches) else managed_branches)
         managed_branches.add(implementation['branch'])
+        try:
+            planning = policy_section(self.project, 'git_review_release')['configuration'].get('release_planning')
+        except (ValueError, KeyError):
+            planning = None
+        if isinstance(planning, dict) and planning.get('enabled') and goal_number is not None:
+            plan = self.api.GitHubReleasePlanAdapter(self.repo, self.repository).read(self.repository)
+            if plan is None:
+                return topology_repair('the reviewed release plan is unavailable')
+            lane = self.api._releases.target_release(plan, goal_number)
+            prefix = planning.get('release_branch_prefix')
+            integration = planning.get('integration_branch')
+            lane_trunk = (prefix + str(lane) if isinstance(prefix, str) and prefix
+                          and type(lane) is int and lane > 0 else None)
+            if lane_trunk is not None and identity.get('base_ref') == lane_trunk:
+                trunk = lane_trunk
+            elif isinstance(integration, str) and integration and identity.get('base_ref') == integration:
+                trunk = integration
+            owners = {}
+            for goal in self.portfolio():
+                branch = (goal.get('implementation') or {}).get('branch')
+                if branch:
+                    if branch in owners and owners[branch] != goal['key']:
+                        return topology_repair('managed branch belongs to multiple goals', branches=[branch])
+                    owners[branch] = goal['key']
+            unknown = sorted(branch for branch in managed_branches - {implementation['branch']}
+                             if branch not in owners)
+            if unknown:
+                return topology_repair('managed PR release assignment is unknown', branches=unknown)
+            managed_branches = {branch for branch in managed_branches
+                if branch == implementation['branch']
+                or self.api._releases.target_release(plan, owners[branch]) == lane}
         # An incomplete row makes the provider snapshot unsafe to reason from,
         # even when its relationship to this candidate cannot be established.
         for row in observed:
@@ -2033,6 +2107,32 @@ class Workflow:
                 if len(matches) > 1:
                     return topology_repair('multiple open PRs claim one relevant head', matches)
                 if not matches:
+                    if (candidate_row and cursor == identity['base_ref']
+                            and isinstance(identity.get('base_oid'), str)
+                            and re.fullmatch(r'[0-9a-f]{40}', identity['base_oid'])):
+                        fetched = subprocess.run(['git', 'fetch', '--no-tags', 'origin',
+                            'refs/heads/' + trunk], cwd=self.repo,
+                            capture_output=True, text=True)
+                        if fetched.returncode == 0:
+                            tip = subprocess.run(['git', 'rev-parse', 'FETCH_HEAD'],
+                                cwd=self.repo, capture_output=True, text=True)
+                            if tip.returncode == 0 and re.fullmatch(r'[0-9a-f]{40}', tip.stdout.strip()):
+                                try:
+                                    movement = git_phase_state.classify_base_move(self.repo,
+                                        old_base=identity['base_oid'], new_base=tip.stdout.strip())
+                                except (ValueError, OSError, subprocess.SubprocessError):
+                                    movement = None
+                                if movement and movement['action'] in {'current', 'retarget_only'}:
+                                    return {'kind': 'repair_stack', 'assignment': 'root',
+                                        'action': (f'Retarget the PR base from integrated {cursor} to {trunk} '
+                                            'without rewriting the candidate head; fetch and recheck exact provider topology.'),
+                                        'continuation': 'Refresh base-bound CI and review if required, preserving equivalent-tree phase evidence.',
+                                        'identities': [implementation['branch'], cursor, trunk,
+                                            identity['head_oid'], identity['base_oid'], tip.stdout.strip()],
+                                        'publication_directive': {'action': 'retarget_pr_base',
+                                            'from': cursor, 'to': trunk, 'head': identity['head_oid']},
+                                        'base_movement': movement,
+                                        'requires_phase_reverification': False}
                     return topology_repair('a relevant PR ancestor is missing before dev',
                                            relevant_by_head.values(), [cursor, branch])
                 row = matches[0]
@@ -2097,7 +2197,35 @@ class Workflow:
         def rev(ref):
             return subprocess.run(['git', 'rev-parse', ref], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
         candidate = {'branch': implementation['branch'], 'base': identity['base_ref'], 'base_head': identity['base_oid'], 'head': identity['head_oid']}
-        if implementation.get('pr') and (rev(implementation['branch']) != identity['head_oid'] or rev(implementation['base']) != identity['base_oid']):
+        local_head, local_base = ((rev(implementation['branch']), rev(implementation['base']))
+                                  if implementation.get('pr') else (None, None))
+        if implementation.get('pr') and local_head == identity['head_oid'] and local_base != identity['base_oid']:
+            try:
+                movement = git_phase_state.classify_base_move(self.repo,
+                    old_base=local_base, new_base=identity['base_oid'])
+            except (ValueError, OSError, subprocess.SubprocessError):
+                movement = None
+            if movement and movement['action'] == 'retarget_only':
+                return {'kind': 'repair_stack', 'assignment': 'root',
+                    'action': (f"Fetch exact provider base {identity['base_oid']} for {implementation['base']} "
+                               'and recheck topology; the equivalent-tree advance preserves phase evidence and needs no branch rewrite.'),
+                    'continuation': 'Recheck the exact PR head and base after fetching; preserve all current phase evidence.',
+                    'identities': [implementation['branch'], implementation['base'], identity['head_oid'], identity['base_oid']],
+                    'head': identity['head_oid'], 'base': identity['base_oid'],
+                    'base_movement': movement, 'requires_phase_reverification': False}
+            if movement and movement['action'] in {'topology_rewrite', 'rebase_and_reverify'}:
+                changed_tree = movement['action'] == 'rebase_and_reverify'
+                scope = ('rebase the candidate and reverify affected design, tests and implementation'
+                         if changed_tree else
+                         'repair candidate topology while retaining equivalent-tree phase evidence')
+                return {'kind': 'repair_stack', 'assignment': 'root',
+                    'action': (f"Preview {scope} for {implementation['branch']} against exact provider base "
+                               f"{identity['base_oid']}; require fresh head-bound review and CI after any rewrite."),
+                    'continuation': 'Use the reviewed restack path, then recheck exact PR head and base before publication.',
+                    'identities': [implementation['branch'], implementation['base'], identity['head_oid'], identity['base_oid']],
+                    'head': identity['head_oid'], 'base': identity['base_oid'],
+                    'base_movement': movement, 'requires_phase_reverification': changed_tree}
+        if implementation.get('pr') and (local_head != identity['head_oid'] or local_base != identity['base_oid']):
             return {'kind': 'repair_stack', 'assignment': 'root',
                     'action': f"Local {implementation['branch']} / {implementation['base']} do not match provider candidate {identity['head_oid']} and base {identity['base_oid']}; Synchronize the exact refs before publication.",
                     'continuation': f"The root continues from dev after reconciling {implementation['branch']} onto its declared immediate base {implementation['base']}; preserve existing PR heads and re-run exact-head checks.",
@@ -2191,7 +2319,7 @@ class Workflow:
 
 
     def node_snapshot(self, number, *, publication_probe=False, graph_override=None,
-                      prospective=None, dependency_override=None):
+                      prospective=None, dependency_override=None, workspace_target=None):
         """Read exact scoped records; only relationship consumers request closure."""
         ev = self.api._phase_evidence
         snapshots, artifacts, issues, bootstrap = {}, dict((prospective or {}).get('artifacts', {})), {}, {}
@@ -2242,14 +2370,30 @@ class Workflow:
             ev.contract_fields(payload['operational'], {'leases', 'receipts'}, 'Operational payload')
             if not isinstance(payload['evidence'], list): raise ValueError('Evidence must be an ordered Ref array')
             historical_graph = resolve(payload['graph'])
-            definition = self.api._static_workflow.definition(
-                policy_section(self.project, 'workflow_adherence')['configuration']['phase_dag'],
-                self.api._graph_compiler)
+            policy_graph = copy.deepcopy(policy_section(
+                self.project, 'workflow_adherence')['configuration']['phase_dag'])
+            if payload['evidence'] and policy_graph != historical_graph:
+                old_nodes = {node['id']: node for node in historical_graph['nodes']}
+                new_ids = {node['id'] for node in policy_graph['nodes']}
+                for index, candidate in enumerate(policy_graph['nodes']):
+                    matches = []
+                    for old_id, old_node in old_nodes.items():
+                        if old_id in new_ids or old_id == candidate['id']:
+                            continue
+                        comparable = copy.deepcopy(candidate); comparable['id'] = old_id
+                        if comparable == old_node:
+                            matches.append(old_id)
+                    if len(matches) == 1:
+                        policy_graph['nodes'][index] = _rename_node_selectors(
+                            candidate, matches[0], candidate['id'])
+            definition = self.api._static_workflow.definition(policy_graph, self.api._graph_compiler)
+            stored_workflow_graph = None
             if 'workflow' in payload:
                 ev.contract_fields(payload['workflow'], {'version', 'graph'}, 'Workflow definition')
                 if payload['workflow']['version'] != self.api._static_workflow.VERSION:
                     raise ValueError('Unsupported stored workflow definition version')
-                ev.validate_graph(resolve(payload['workflow']['graph']))
+                stored_workflow_graph = resolve(payload['workflow']['graph'])
+                ev.validate_graph(stored_workflow_graph)
             graph = definition['graph'] if envelope['state'] == 'open' else historical_graph
             source_artifact = resolve(payload['spec'])
             if source_artifact.get('type') == 'migration_source':
@@ -2267,6 +2411,34 @@ class Workflow:
             ev.validate_graph(graph)
             snapshot = {'envelope': envelope, 'payload': payload, 'graph': graph, 'resolve': resolve,
                         'historical_graph': historical_graph, 'workflow_definition': definition}
+            if (definition is not None and payload['evidence'] and stored_workflow_graph is not None
+                    and definition['graph'] != stored_workflow_graph):
+                recorded_old_graph = remember(stored_workflow_graph)
+                for receipt_row in reversed(payload['operational']['receipts']):
+                    try:
+                        prior_response = resolve(receipt_row['result'])
+                        prior_step = next(item for item in prior_response.get('next_steps', [])
+                                          if item.get('kind') == 'policy_dag_cutover_applied')
+                        prior_receipt = resolve(prior_step['receipt'])['content']
+                        if prior_receipt.get('new_graph') == recorded_old_graph:
+                            recorded_old_graph = prior_receipt['new_policy_graph']
+                            break
+                    except (KeyError, StopIteration, TypeError, ValueError):
+                        continue
+                snapshot['policy_dag_cutover'] = {
+                    'old_graph': recorded_old_graph,
+                    'old_execution_graph': remember(stored_workflow_graph),
+                    'new_graph': remember(definition['graph']),
+                    'new_policy_graph': remember(policy_section(
+                        self.project, 'workflow_adherence')['configuration']['phase_dag']),
+                    'old_policy_revision': digest(stored_workflow_graph),
+                    'new_policy_revision': digest(self.project['policy']),
+                }
+                # Keep pre-cutover currentness and ownership anchored to the
+                # authenticated old graph. The reviewed new graph may rename
+                # nodes that historical Results cannot resolve yet.
+                graph = stored_workflow_graph
+                snapshot['graph'] = graph
             journal = payload.get('phase_data', {'version': 1, 'events': []})
             if (not isinstance(journal, dict) or set(journal) != {'version', 'events'}
                     or journal['version'] != 1 or not isinstance(journal['events'], list)):
@@ -2662,8 +2834,24 @@ class Workflow:
             # Compiler-generated routes are historical evidence, not additional
             # product requirements. Unknown custom phases remain explicit debt.
             mapped_context_nodes = {'legacy_blockers'} if snapshot.get('goal_context') else set()
+            mapped_cutover_nodes = set()
+            for receipt_row in reversed(payload['operational']['receipts']):
+                try:
+                    response = resolve(receipt_row['result'])
+                    applied = next(item for item in response.get('next_steps', [])
+                                   if item.get('kind') == 'policy_dag_cutover_applied')
+                    cutover_receipt = resolve(applied['receipt'])['content']
+                    mapped_cutover_nodes = {item['old']['node'] for item in cutover_receipt['mapping']}
+                    break
+                except (KeyError, StopIteration, TypeError, ValueError):
+                    continue
+            evidenced_nodes = {resolve(reference)['content']['node']['node']
+                               for reference in payload['evidence']}
             unmapped = sorted(name for name in retired_nodes
-                             if not name.startswith(('gc_', 'sw_')) and name not in mapped_context_nodes)
+                             if (not name.startswith(('gc_', 'sw_'))
+                                 and name not in mapped_context_nodes
+                                 and name not in mapped_cutover_nodes
+                                 and name in evidenced_nodes))
             if unmapped:
                 snapshot['workflow_migration_blocker'] = 'Unmapped historical phase contracts require policy/data mapping: ' + ', '.join(unmapped)
             snapshots[n] = snapshot
@@ -2938,9 +3126,11 @@ class Workflow:
         context = {'goal': number, 'policy': self.project['policy'], 'runtime': self.runtime, 'artifacts': artifacts, 'goals': closure, 'published_bytes': published}
         snapshot = {'number': number, 'issue': issues[number], **selected, 'snapshots': snapshots, 'issues': issues,
                     'bootstrap': bootstrap, 'artifacts': artifacts, 'published': published, 'evaluation_context': context}
-        return self.node_project(snapshot, publication_probe=publication_probe)
+        return self.node_project(snapshot, publication_probe=publication_probe,
+                                 workspace_target=workspace_target)
 
-    def node_project(self, snapshot, *, payload=None, publication_probe=False):
+    def node_project(self, snapshot, *, payload=None, publication_probe=False,
+                     workspace_target=None):
         """Evaluate observed context with either durable or prospective evidence."""
         ev = self.api._phase_evidence
         context = {**snapshot['evaluation_context'], 'artifacts': snapshot['artifacts'], 'workspace_probe': True}
@@ -2953,11 +3143,44 @@ class Workflow:
                 events, closure[snapshot['number']]['graph'], snapshot['number'])
         selected = closure[snapshot['number']]
         context['goals'] = closure
+        cutover_results = set()
+        cutover_outputs = set()
+        for row in reversed(selected['payload']['operational']['receipts']):
+            try:
+                response = snapshot['artifacts'].get(row['result']['hash']) or snapshot['resolve'](row['result'])
+                step = next(item for item in response.get('next_steps', [])
+                            if item.get('kind') == 'policy_dag_cutover_applied')
+                receipt = snapshot['artifacts'].get(step['receipt']['hash']) or snapshot['resolve'](step['receipt'])
+                for item in receipt['content']['mapping']:
+                    cutover_results.add(item['result']['hash'])
+                    result_artifact = snapshot['artifacts'].get(item['result']['hash']) or snapshot['resolve'](item['result'])
+                    cutover_outputs.update(ref['hash'] for ref in result_artifact['content']['outputs'].values())
+                break
+            except (KeyError, StopIteration, TypeError, ValueError):
+                continue
+        context['cutover_results'] = cutover_results
+        context['cutover_outputs'] = cutover_outputs
+        context['cutover_mappings'] = {}
+        context['cutover_node_aliases'] = {}
+        for row in reversed(selected['payload']['operational']['receipts']):
+            try:
+                response = snapshot['artifacts'].get(row['result']['hash']) or snapshot['resolve'](row['result'])
+                step = next(item for item in response.get('next_steps', [])
+                            if item.get('kind') == 'policy_dag_cutover_applied')
+                receipt = snapshot['artifacts'].get(step['receipt']['hash']) or snapshot['resolve'](step['receipt'])
+                context['cutover_mappings'] = {
+                    item['result']['hash']: item['new']['node'] for item in receipt['content']['mapping']}
+                context['cutover_node_aliases'] = {
+                    item['old']['node']: item['new']['node'] for item in receipt['content']['mapping']}
+                break
+            except (KeyError, StopIteration, TypeError, ValueError):
+                continue
         historical, historical_error = self.node_historical_policies(closure, snapshot['artifacts'])
         context['historical_policies'] = historical
         context['historical_policy_error'] = historical_error
         result = ev.derive_task_steps(selected['graph'], selected['payload'], context)
-        workspaces = self.node_workspace_context(closure, result, result['artifacts'])
+        workspaces = self.node_workspace_context(
+            closure, result, result['artifacts'], workspace_target=workspace_target)
         publications = {} if publication_probe else self.node_publication_context(closure, result, result['artifacts'])
         context.update(workspace_probe=False, workspaces=workspaces, artifacts=result['artifacts'])
         if not publication_probe: context['publications'] = publications
@@ -3907,13 +4130,40 @@ class Workflow:
                     facts, _, _ = self.api._github_pull_request_states(self.repo, 'gh', [{'number': key[0]}], {key[0]: {'repository_context': value}})
                     observations[cache_key] = facts.get(key[0])
                 facts = observations[cache_key]
-                if not isinstance(facts, dict) or facts.get('repository') != self.repository or facts.get('base_ref') != value['base']: raise ValueError('Provider publication repository/base identity mismatch or unknown')
+                if not isinstance(facts, dict) or facts.get('repository') != self.repository:
+                    raise ValueError('Provider publication repository/base identity mismatch or unknown')
+                if facts.get('base_ref') != value['base']:
+                    planning = policy_section(self.project, 'git_review_release')['configuration']['release_planning']
+                    new_base = facts.get('base_ref')
+                    base_oid = facts.get('base_oid')
+                    if (not isinstance(planning, dict) or not candidate or facts.get('merged')
+                            or planning.get('enabled')
+                            or new_base != planning.get('integration_branch')
+                            or not isinstance(base_oid, str) or not re.fullmatch('[0-9a-f]{40}', base_oid)):
+                        raise ValueError('Provider publication repository/base identity mismatch or unknown')
+                    refs = subprocess.run(['git', 'ls-remote', '--heads', 'origin',
+                        'refs/heads/' + value['base'], 'refs/heads/' + new_base],
+                        cwd=self.repo, capture_output=True, text=True, check=False)
+                    remote = {}
+                    if refs.returncode == 0:
+                        for line in refs.stdout.splitlines():
+                            fields = line.split()
+                            if len(fields) == 2:
+                                remote[fields[1]] = fields[0]
+                    if (remote.get('refs/heads/' + value['base']) != base_oid
+                            or remote.get('refs/heads/' + new_base) != base_oid):
+                        raise ValueError('Provider publication repository/base identity mismatch or unknown')
+                    # The root's published-candidate Result remains historical.
+                    # An exact-OID retarget to the policy trunk changes only PR
+                    # topology; current provider facts govern downstream gates.
+                    value = {**value, 'base': new_base}
                 for name in ('head_oid', 'base_oid'):
                     if not isinstance(facts.get(name), str) or not re.fullmatch('[0-9a-f]{40}', facts[name]): raise ValueError('Provider publication head/base is unknown')
                 if candidate and facts['head_oid'] != blob['content']['head_oid']:
                     raise ValueError('Published candidate head differs from current provider head')
                 if not facts.get('merged'):
-                    repair = self.publication_topology(value, facts, self.node_managed_publication_branches)
+                    repair = self.publication_topology(value, facts,
+                        self.node_managed_publication_branches, goal_number=key[0])
                     if repair:
                         contexts[key] = {'error': repair['action'], 'repair': repair}
                         continue
@@ -3999,7 +4249,7 @@ class Workflow:
                     # workspace/relationship consumers. This filter grants no authority.
                     declarations = [*graph['nodes'], *(row['template'] for row in graph['task_sets'])]
                     slots = {node['id']: {name for name, contract in node['outputs'].items()
-                                         if contract.get('type') == 'repository_context'}
+                                         if contract.get('type') in {'repository_context', 'published_candidate'}}
                              for node in declarations}
                     if not any(slots.values()): continue
                     candidate = False
@@ -4010,7 +4260,8 @@ class Workflow:
                         for name in slots.get(result['node']['node'], set()):
                             if name not in result['outputs']: continue
                             context = read(result['outputs'][name])
-                            if context.get('type') == 'repository_context' and context['content'].get('branch') in heads: candidate = True
+                            if (context.get('type') in {'repository_context', 'published_candidate'}
+                                    and context['content'].get('branch') in heads): candidate = True
                     if not candidate: continue
                     candidates.append(number)
             finally:
@@ -4040,6 +4291,24 @@ class Workflow:
                     if not any(row['source'] == reference and row['mode'] == 'identity' and not row['path'] for row in result['inputs']): continue
                     context = artifacts[reference['hash']]
                     if context.get('type') == 'repository_context' and isinstance(context['content'].get('branch'), str): branches.add(context['content']['branch'])
+                for identity, (key, result) in owners.items():
+                    artifact = artifacts[identity]
+                    if artifact.get('type') != 'published_candidate' or result['executor'] != root:
+                        continue
+                    if projection['states'][key]['contract']['executor']['role'] != 'root':
+                        continue
+                    permits = [row['source'] for row in result['inputs']
+                               if row.get('mode') == 'identity' and not row.get('path')
+                               and artifacts[row['source']['hash']].get('type') == 'repository_authorization']
+                    if len(permits) != 1:
+                        continue
+                    try:
+                        self.node_compaction_authorization(snapshot, permits[0])
+                    except ValueError:
+                        continue
+                    branch = artifact.get('content', {}).get('branch')
+                    if isinstance(branch, str) and branch:
+                        branches.add(branch)
         except Exception:
             self._publication_candidate_discovery = None
             raise
@@ -4084,7 +4353,7 @@ class Workflow:
             seen.add(cursor['hash']); cursor = previous['acquisition'].get('stopped_draft')
         return seen
 
-    def node_workspace_context(self, snapshots, projection, artifacts):
+    def node_workspace_context(self, snapshots, projection, artifacts, *, workspace_target=None):
         """Observe repository facts and bind the explicit workspace adapter.
 
         The graph supplies all semantic prerequisites. This adapter checks the
@@ -4092,10 +4361,42 @@ class Workflow:
         raw snapshots to the same pure evaluator.
         """
         ev = self.api._phase_evidence
-        states = projection['states']; work = {key: state for key, state in states.items() if 'repository_workspace' in state['contract']['executor']['resources']}
-        actual = self.workspace_files()
+        states = projection['states']; work = {key: state for key, state in states.items()
+            if {'repository_workspace', 'repository_git_workspace'}.intersection(state['contract']['executor']['resources'])}
         head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()
-        committed = self.git_files(head)
+        # A merely-ready legacy sibling must not make a fresh commit-backed
+        # task serialize the whole repository. Legacy bytes are observed once
+        # durable ownership or evidence actually makes them part of evaluation.
+        commit_only_ready = any(
+            state['state'] == 'ready'
+            and 'repository_workspace' not in state['contract']['executor']['resources']
+            for state in states.values())
+        legacy_active = any(
+            'repository_workspace' in state['contract']['executor']['resources']
+            and ((state['state'] == 'ready'
+                  and (not commit_only_ready or key == workspace_target))
+                 or key in projection.get('leases', {})
+                 or (key in projection['current']
+                     and not projection['current'][key][1].get('non_applicability')))
+            for key, state in work.items())
+        legacy_lease = any('files' in lease.get('acquisition', {})
+                           for snapshot in snapshots.values()
+                           for lease in snapshot['payload']['operational']['leases'])
+        legacy_result = any(any(binding['name'] == '__workspace' and
+                                artifacts.get(binding['source']['hash'], {}).get('content', {}).get('files') is not None
+                                for binding in result['inputs'])
+                            for _, result in projection['current'].values())
+        legacy_draft = any(snapshot.get('workspace_drafts') for snapshot in snapshots.values())
+        commit_only = not (legacy_active or legacy_lease or legacy_result or legacy_draft)
+        if commit_only:
+            # New tasks run in managed worktrees at HEAD. Uncommitted primary
+            # checkout bytes are never their inputs, even when the checkout is
+            # dirty. Legacy active work and historical map evidence still need
+            # the exact file snapshots until they are resolved.
+            actual = committed = {}
+        else:
+            actual = self.workspace_files()
+            committed = self.git_files(head)
         current_outputs = {ref['hash']: (key, result) for key, (_, result) in projection['current'].items() for ref in result['outputs'].values()}
         all_results = [(ref, artifacts[ref['hash']]['content']) for snapshot in snapshots.values() for ref in snapshot['payload']['evidence']]
         def remember(value):
@@ -4193,11 +4494,15 @@ class Workflow:
             for path, value in overrides.items():
                 self.node_workspace_paths([path])
                 if path not in git or not re.fullmatch(r'sha256:[0-9a-f]{64}', str(value)) or files.get(path) != value or git[path] == value: raise ValueError('Acquisition checkout overrides are invalid')
-            return files
+            # A declared absent path is retained in the immutable acquisition,
+            # but it is not a file in the connected workspace topology.
+            return {path: value for path, value in files.items() if value != 'missing'}
         candidates = []
         for result_ref, result in all_results:
             key = ev.task_key(result['node'])
             if key not in work: continue
+            if 'repository_git_workspace' in states[key]['contract']['executor']['resources']:
+                continue
             for output in result['outputs'].values():
                 source = content(output).get('provenance', {}).get('source')
                 if not source: continue
@@ -4414,6 +4719,233 @@ class Workflow:
             if len(found) > 1:
                 raise ValueError('Multiple historical stopped recoveries match this current workspace; select an exact recovery result')
             return found[0] if found else None
+        def checked_git_lease(key, state, grant, lease):
+            receipts = [content(reference) for token, reference in snapshots[key[0]]['acquisition_receipts'].items()
+                        if token == lease['token']]
+            pinned = [step['lease']['acquisition'] for receipt in receipts for step in receipt.get('next_steps', [])
+                      if step.get('lease', {}).get('token') == lease['token'] and step['lease'].get('acquisition')]
+            if pinned != [lease['acquisition']] or lease['acquisition'].get('input_hash') != lease['fingerprint']:
+                raise ValueError('Git workspace acquisition differs from immutable start receipt')
+            base = lease['acquisition'].get('git_commit')
+            observed = managed_worktrees.inspect_attempt_worktree(
+                self.repo, goal=lease['node']['goal'], node=lease['node']['node'],
+                attempt=lease['attempt'])
+            # A dirty or absent local attempt remains recoverable as owned work.
+            # Submission independently requires a clean exact commit.
+            if observed['status'] == 'clean' and observed['head'] != base:
+                git_phase_state.validate_checkpoint(Path(observed['path']),
+                    base_commit=base, result_commit=observed['head'],
+                    owned_paths=grant['entry']['owned'])
+            return base
+        def checked_git_proof(state, grant, result):
+            sources = {value['provenance']['source']['hash']: value['provenance']['source']
+                       for ref in result['outputs'].values()
+                       if (value := content(ref)).get('provenance', {}).get('source')}
+            if len(sources) != 1:
+                raise ValueError('Git phase result has no unique workspace proof')
+            proof = content(next(iter(sources.values())))
+            acquisition = proof.get('acquisition', {})
+            checkpoint = proof.get('checkpoint', {})
+            base, result_commit = acquisition.get('git_commit'), checkpoint.get('result_commit')
+            expected_ref = (f"refs/heads/zzzops/attempts/{result['node']['goal']}/"
+                            f"{result['node']['node']}/{result['attempt']}")
+            if (proof.get('kind') != 'git_phase_proof' or proof.get('node') != result['node']
+                    or proof.get('actor') != result['executor'] or proof.get('input_hash') != acquisition.get('input_hash')
+                    or proof.get('acquisition_hash') != digest(acquisition)
+                    or proof.get('scope') != digest(grant['entry'])
+                    or proof.get('retained_ref') != expected_ref
+                    or checkpoint.get('base_commit') != base
+                    or checkpoint != git_phase_state.validate_checkpoint(self.repo,
+                        base_commit=base, result_commit=result_commit,
+                        owned_paths=grant['entry']['owned'], require_clean_worktree=False)):
+                raise ValueError('Git phase result/proof or reviewed scope differs')
+            git_phase_state.verify_attempt_ref(self.repo, remote='origin',
+                ref=proof['retained_ref'], commit=result_commit)
+            return proof
+        git_edges = {}; policy_base_bridges = {}
+        def connected_git_head(start, goal):
+            start_tree = subprocess.run(['git', 'rev-parse', start + '^{tree}'], cwd=self.repo,
+                                        capture_output=True, text=True, check=True).stdout.strip()
+            head_tree = subprocess.run(['git', 'rev-parse', head + '^{tree}'], cwd=self.repo,
+                                       capture_output=True, text=True, check=True).stdout.strip()
+            if start_tree == head_tree: return True
+            if goal not in git_edges:
+                edges = []
+                def append_checkpoint(checkpoint):
+                    edges.append((checkpoint['base_tree'], checkpoint['result_tree']))
+                    base = checkpoint['base_commit']
+                    if base not in policy_base_bridges:
+                        policy_base_bridges[base] = self.node_policy_only_base(base, head)
+                    if policy_base_bridges[base]:
+                        edges.append((head_tree, checkpoint['base_tree']))
+                for other_key, other in work.items():
+                    if (other_key[0] != goal
+                            or 'repository_git_workspace' not in other['contract']['executor']['resources']
+                            or other['state'] == 'blocked'):
+                        continue
+                    try:
+                        other_grant = authority(other)
+                        other_lease = next((l for l in snapshots[other_key[0]]['payload']['operational']['leases']
+                                            if ev.task_key(l['node']) == other_key), None)
+                        if other_lease:
+                            predecessor = checked_git_lease(other_key, other, other_grant, other_lease)
+                            if predecessor != head:
+                                checkpoint = git_phase_state.validate_checkpoint(self.repo,
+                                    base_commit=predecessor, result_commit=head,
+                                    owned_paths=other_grant['entry']['owned'])
+                                append_checkpoint(checkpoint)
+                        elif other_key in projection['current']:
+                            proof = checked_git_proof(other, other_grant, projection['current'][other_key][1])
+                            checkpoint = proof['checkpoint']
+                            append_checkpoint(checkpoint)
+                    except (ValueError, KeyError, subprocess.SubprocessError):
+                        continue
+                admitted_subjects = {subject['hash']
+                    for obligation in projection['obligations'].values()
+                    if obligation.get('admission') and obligation.get('applicability') == 'applicable'
+                    for subject in obligation.get('content', {}).get('subjects', [])}
+                for _, result in all_results:
+                    other_key = ev.task_key(result['node'])
+                    if (other_key[0] != goal or other_key not in work or not admitted_subjects.intersection(
+                            value['hash'] for value in result['outputs'].values())):
+                        continue
+                    other = work[other_key]
+                    try:
+                        proof = checked_git_proof(other, authority(other), result)
+                        checkpoint = proof['checkpoint']
+                        append_checkpoint(checkpoint)
+                    except (ValueError, KeyError, subprocess.SubprocessError):
+                        continue
+                if admitted_subjects:
+                    # A corrected test may be based on an implementation whose
+                    # evidence became stale when the test finding was admitted.
+                    # Its retained Result still proves an exact Git edge; use
+                    # it for topology only, never as current task authority.
+                    for _, result in all_results:
+                        other_key = ev.task_key(result['node'])
+                        other = states.get(other_key)
+                        if (other is None or other_key[0] != goal
+                                or 'repository_git_workspace' not in other['contract']['executor']['resources']):
+                            continue
+                        try:
+                            proof = checked_git_proof(other, historical_authority(result['node']), result)
+                            checkpoint = proof['checkpoint']
+                            append_checkpoint(checkpoint)
+                        except (ValueError, KeyError, subprocess.SubprocessError):
+                            continue
+                git_edges[goal] = edges
+            # Walk only authenticated Git phase edges out of the primary base.
+            # The primary checkout itself does not advance for a draft stack.
+            pending, seen = [head_tree], set()
+            while pending:
+                tree = pending.pop()
+                if tree == start_tree: return True
+                if tree in seen: continue
+                seen.add(tree)
+                pending.extend(after for before, after in git_edges[goal] if before == tree)
+            return False
+        def depends_on(consumer, ancestor):
+            visited = set()
+            def walk(key):
+                if key in visited or key not in states:
+                    return False
+                visited.add(key)
+                parents = [ev.task_key(identity) for identity in
+                           (states[key]['required_dependencies'] + states[key]['required_parent_gates'])]
+                return ancestor in parents or any(walk(parent) for parent in parents)
+            return walk(consumer)
+        def reviewed_predecessor(consumer, ancestor):
+            """Require a current independent node on a policy dependency path."""
+            visited = set()
+            def walk(key, independent):
+                marker = (key, independent)
+                if marker in visited or key not in states:
+                    return False
+                visited.add(marker)
+                contract = states[key]['contract']
+                independent = independent or (key in projection['current'] and any(
+                    selector.get('kind') == 'node'
+                    and selector.get('node') == states[ancestor]['node']['node']
+                    and selector.get('goal') in ('#this', states[ancestor]['node']['goal'])
+                    for selector in contract.get('independent_of', [])))
+                parents = [ev.task_key(identity) for identity in
+                           (states[key]['required_dependencies'] + states[key]['required_parent_gates'])]
+                return (ancestor in parents and independent) or any(
+                    walk(parent, independent) for parent in parents)
+            return walk(consumer, False)
+        def predecessor_commit(key):
+            correction_subjects = {
+                subject['hash'] for obligation in projection['obligations'].values()
+                if (obligation.get('admission') and obligation.get('applicability') == 'applicable'
+                    and obligation.get('content', {}).get('target', {}).get('subject', {}).get('goal') == key[0]
+                    and obligation['content']['target']['subject'].get('node') == key[1])
+                for subject in obligation['content']['subjects']}
+            if correction_subjects and key not in projection['current']:
+                corrected = []
+                for _, result in all_results:
+                    if (ev.task_key(result['node']) == key
+                            and correction_subjects.intersection(
+                                value['hash'] for value in result['outputs'].values())):
+                        proof = checked_git_proof(states[key], authority(states[key]), result)
+                        corrected.append(proof['checkpoint']['result_commit'])
+                latest = [candidate for candidate in corrected if all(
+                    subprocess.run(['git', 'merge-base', '--is-ancestor', other, candidate],
+                                   cwd=self.repo, capture_output=True).returncode == 0
+                    for other in corrected)]
+                if len(latest) != 1:
+                    raise ValueError('Admitted correction attempts have no unique retained Git tip')
+                correction_tip = latest[0]
+                # A late finding can reopen tests after implementation was
+                # recorded. The implementation is now stale as evidence, but
+                # remains the exact code that the corrected RED test must run
+                # against. Follow only authenticated recorded Git attempts on
+                # this goal's ancestry line; divergent attempts require a
+                # coordinator decision instead of an arbitrary branch choice.
+                descendants = [correction_tip]
+                for _, result in all_results:
+                    other_key = ev.task_key(result['node'])
+                    other = states.get(other_key)
+                    if (other_key[0] != key[0] or other is None
+                            or 'repository_git_workspace' not in other['contract']['executor']['resources']):
+                        continue
+                    try:
+                        candidate = checked_git_proof(other, historical_authority(result['node']), result)['checkpoint']['result_commit']
+                    except (ValueError, KeyError, subprocess.SubprocessError):
+                        continue
+                    if subprocess.run(['git', 'merge-base', '--is-ancestor', correction_tip, candidate],
+                                      cwd=self.repo, capture_output=True).returncode == 0:
+                        descendants.append(candidate)
+                tips = [candidate for candidate in set(descendants) if all(
+                    subprocess.run(['git', 'merge-base', '--is-ancestor', other, candidate],
+                                   cwd=self.repo, capture_output=True).returncode == 0
+                    for other in descendants)]
+                if len(tips) != 1:
+                    raise ValueError('Recorded Git correction descendants have no unique stack tip')
+                if subprocess.run(['git', 'merge-base', '--is-ancestor', head, tips[0]],
+                                  cwd=self.repo, capture_output=True).returncode:
+                    raise ValueError('Corrected Git attempt is disconnected from the current base')
+                return tips[0]
+            candidates = []
+            for other_key, other in work.items():
+                if (other_key == key or other_key not in projection['current']
+                        or 'repository_git_workspace' not in other['contract']['executor']['resources']
+                        or not depends_on(key, other_key)
+                        or not reviewed_predecessor(key, other_key)):
+                    continue
+                proof = checked_git_proof(other, authority(other),
+                                          projection['current'][other_key][1])
+                candidates.append(proof['checkpoint']['result_commit'])
+            if not candidates:
+                return head
+            latest = [candidate for candidate in candidates if all(
+                subprocess.run(['git', 'merge-base', '--is-ancestor', other, candidate],
+                               cwd=self.repo, capture_output=True).returncode == 0
+                for other in candidates)]
+            if len(latest) != 1:
+                raise ValueError('Reviewed Git predecessor commits do not form one exact stack')
+            if not connected_git_head(latest[0], key[0]):
+                raise ValueError('Reviewed Git predecessor is disconnected from the current base')
+            return latest[0]
         contexts = {}; migrations = {}
         for key, state in work.items():
             if state['state'] == 'blocked':
@@ -4435,6 +4967,26 @@ class Workflow:
                     if migration['decision']['action'] == 'block':
                         contexts[key] = {'error': 'Migration release/assessment evidence: ' + migration['decision']['reason'], 'migration': migration, 'path': expected_path}
                         continue
+                if 'repository_git_workspace' in state['contract']['executor']['resources']:
+                    if actual != committed:
+                        raise ValueError('Git workspace acquisition requires a clean committed worktree')
+                    lease = next((l for l in snapshots[key[0]]['payload']['operational']['leases'] if ev.task_key(l['node']) == key), None)
+                    base = lease['acquisition'].get('git_commit') if lease else predecessor_commit(key)
+                    if lease:
+                        base = checked_git_lease(key, state, grant, lease)
+                    elif key in projection['current']:
+                        _, result = projection['current'][key]
+                        proof = checked_git_proof(state, grant, result)
+                        base = proof['checkpoint']['base_commit']
+                        if not connected_git_head(proof['checkpoint']['result_commit'], key[0]):
+                            raise ValueError('Git phase result is disconnected from the current managed head')
+                    binding = remember({'type': 'workspace_snapshot', 'content': {
+                        'git_commit': base, **{name: grant[name] for name in ('allocation', 'authorization', 'approval')},
+                        **({'migration': migration} if migration is not None else {})}, 'producer': None,
+                        'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
+                    contexts[key] = {'binding': binding, 'acquisition': {'git_commit': base},
+                                     'git_workspace': True, **grant}
+                    continue
                 lease = next((l for l in snapshots[key[0]]['payload']['operational']['leases'] if ev.task_key(l['node']) == key), None)
                 matches = [row for row in candidates if row['key'] == key]
                 prior = matches[-1] if matches else None
@@ -4538,7 +5090,19 @@ class Workflow:
                         if 'error' not in row and row['reviews'] and row['proof']['hash'] in reachable and connected(row['after']): selected_anchors[row['key']] = row
                     acquisition['baseline_proofs'] = [{'result': row['result'], 'proof': row['proof'], 'reviews': [ref for ref, _ in row['reviews']]}
                         for row in selected_anchors.values()]
-                binding = remember({'type': 'workspace_snapshot', 'content': {'files': baseline, **{k: grant[k] for k in ('allocation', 'authorization', 'approval')}, **({'migration': migration} if migration is not None else {})}, 'producer': None, 'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
+                pinned_binding = next((item['source'] for item in acquisition.get('inputs', [])
+                                       if item.get('name') == '__workspace'), None) if lease else None
+                reuse_result_binding = (prior is not None and 'error' not in prior
+                                        and current_ref == prior['result']
+                                        and connected(prior['after']))
+                result_binding = next((item['source'] for item in projection['current'].get(
+                    key, (None, {'inputs': []}))[1]['inputs'] if item.get('name') == '__workspace'), None) if reuse_result_binding else None
+                if (result_binding is not None
+                        and (content(result_binding).get('content', {}).get('migration') != migration
+                             or content(result_binding).get('provenance', {}).get('policy')
+                             != self.node_evidence_policy())):
+                    result_binding = None
+                binding = pinned_binding or result_binding or remember({'type': 'workspace_snapshot', 'content': {'files': baseline, **{k: grant[k] for k in ('allocation', 'authorization', 'approval')}, **({'migration': migration} if migration is not None else {})}, 'producer': None, 'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
                 contexts[key] = {'binding': binding, 'files': baseline, 'acquisition': acquisition, **grant}
             except (ValueError, KeyError, subprocess.SubprocessError) as exc:
                 retirement = None
@@ -4579,9 +5143,47 @@ class Workflow:
             try:
                 entry = authority(state)['entry']; allocated_paths.update(entry['owned']); allocated_paths.update(entry['consumed'])
             except (ValueError, KeyError): pass
+        tree_cache = {}
+        def same_tree(commit):
+            if not isinstance(commit, str) or not re.fullmatch(r'[0-9a-f]{40}', commit):
+                return False
+            for oid in (commit, head):
+                if oid not in tree_cache:
+                    observed = subprocess.run(['git', 'rev-parse', '--verify', oid + '^{tree}'],
+                                              cwd=self.repo, capture_output=True, text=True)
+                    tree_cache[oid] = observed.stdout.strip() if observed.returncode == 0 else None
+            return tree_cache[commit] is not None and tree_cache[commit] == tree_cache[head]
         for key, state in states.items():
             if key in work or state['state'] == 'blocked': continue
             lease = next((item for item in snapshots[key[0]]['payload']['operational']['leases'] if ev.task_key(item['node']) == key), None)
+            previous = projection['current'].get(key, (None, None))[1]
+            previous_binding = next((item for item in previous['inputs'] if item['name'] == '__workspace'), None) if previous else None
+            previous_content = content(previous_binding['source'])['content'] if previous_binding else None
+            # A clean Git tree has a finite, immutable identity. New read-only
+            # acquisitions bind that commit instead of copying every file hash
+            # into the workspace artifact, lease, receipt and provider comment.
+            # Keep historical map-based acquisitions readable until migrated.
+            if actual == committed and not (lease and 'files' in lease['acquisition']) and not (previous_content and 'files' in previous_content):
+                pinned = lease['acquisition'].get('read_commit') if lease else None
+                if lease and not same_tree(pinned):
+                    contexts[key] = {'error': 'Read-only task Git commit changed after acquisition'}
+                    continue
+                if lease and lease.get('worker') is not None:
+                    observed = managed_worktrees.inspect_attempt_worktree(self.repo,
+                        goal=key[0], node=state['node']['node'], attempt=lease['attempt'])
+                    if observed['status'] != 'clean' or observed['head'] != pinned:
+                        contexts[key] = {'error': 'Read-only managed worktree changed; replay the exact start or inspect its local files'}
+                        continue
+                historical = previous_content.get('git_commit') if previous_content else None
+                baseline_commit = pinned if lease else historical if same_tree(historical) else head
+                binding = remember({'type': 'workspace_snapshot', 'content': {'git_commit': baseline_commit}, 'producer': None,
+                                    'provenance': {'actor': 'host', 'source': None, 'policy': self.node_evidence_policy()}})
+                contexts[key] = {'binding': binding, 'acquisition': {'read_commit': baseline_commit}, 'readonly': True}
+                continue
+            if (lease and 'read_commit' in lease['acquisition']
+                    or previous_content and 'git_commit' in previous_content and 'files' not in previous_content):
+                contexts[key] = {'error': 'Read-only Git task workspace changed outside empty write scope'}
+                continue
             baseline = read_actual
             if lease and 'files' in lease['acquisition']:
                 baseline = lease['acquisition']['files']
@@ -4641,14 +5243,18 @@ class Workflow:
                 handle.close()
             local.release()
 
-    def node_verification_commands(self, snapshot, lease, request, commands, before, *, reuse_only=False):
+    def node_verification_commands(self, snapshot, lease, request, commands, before, *, reuse_only=False,
+                                   working_directory=None):
         with self.node_verification_claim(snapshot, lease):
             return self.node_verification_commands_claimed(
-                snapshot, lease, request, commands, before, reuse_only=reuse_only)
+                snapshot, lease, request, commands, before, reuse_only=reuse_only,
+                working_directory=working_directory)
 
-    def node_verification_commands_claimed(self, snapshot, lease, request, commands, before, *, reuse_only=False):
+    def node_verification_commands_claimed(self, snapshot, lease, request, commands, before, *, reuse_only=False,
+                                           working_directory=None):
         """Reuse host-observed command outcomes across pre-publication failures."""
         if not commands: return []
+        command_repo = Path(working_directory or self.repo).resolve()
         git_dir = Path(subprocess.run(['git', 'rev-parse', '--absolute-git-dir'], cwd=self.repo,
                                       capture_output=True, text=True, check=True).stdout.strip())
         directory = git_dir / 'zzzops' / 'verification' / str(snapshot['number'])
@@ -4657,7 +5263,7 @@ class Workflow:
         identity = {'repository': self.repository, 'goal': snapshot['number'], 'request': digest(request),
                     'lease': lease['token'], 'actor': lease['worker'],
                     'acquisition': digest(lease['acquisition']), 'workspace': digest(before),
-                    'directory': str(self.repo.resolve()), 'environment': digest(dict(os.environ)),
+                    'directory': str(command_repo), 'environment': digest(dict(os.environ)),
                     'commands': commands}
         def read(candidate):
             value = json.loads(candidate.read_text(encoding='utf-8'))
@@ -4707,7 +5313,7 @@ class Workflow:
             execution_error = None
             with log.open('w') as output:
                 try:
-                    process = subprocess.run(command, cwd=self.repo, stdout=output, stderr=subprocess.STDOUT,
+                    process = subprocess.run(command, cwd=command_repo, stdout=output, stderr=subprocess.STDOUT,
                                              timeout=request.get('verification_timeout_seconds', 300), check=False)
                     exit_code = process.returncode
                 except subprocess.TimeoutExpired:
@@ -4732,6 +5338,55 @@ class Workflow:
         if workspace is None or workspace.get('readonly'):
             if request.get('workspace_checks'): raise ValueError('Workspace commands require explicit reviewed resource authority')
             return None
+        if workspace.get('git_workspace'):
+            base = lease['acquisition']['git_commit']
+            observed = managed_worktrees.inspect_attempt_worktree(
+                self.repo, goal=state['node']['goal'], node=state['node']['node'],
+                attempt=lease['attempt'])
+            if observed['status'] != 'clean':
+                raise ValueError('Git phase submission requires its exact clean managed attempt worktree')
+            worktree = Path(observed['path'])
+            head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=worktree,
+                                  capture_output=True, text=True, check=True).stdout.strip()
+            checkpoint = git_phase_state.validate_checkpoint(worktree, base_commit=base,
+                result_commit=head, owned_paths=workspace['entry']['owned'])
+            pending = snapshot.get('pending')
+            if pending and pending.get('proof'):
+                ref = pending['proof']; proof = self.artifact_index(snapshot['number']).resolve(ref['hash'])[0]
+                if (proof.get('kind') != 'git_phase_proof' or proof.get('checkpoint') != checkpoint
+                        or proof.get('acquisition_hash') != digest(lease['acquisition'])
+                        or proof.get('actor') != lease['worker'] or proof.get('lease') != lease['token']):
+                    raise ValueError('Pending Git phase proof/acquisition/output drift')
+                for record in proof['commands']:
+                    if hashlib.sha256(Path(record['log']).read_bytes()).hexdigest() != record['log_hash']:
+                        raise ValueError('Pending Git verification log changed')
+                git_phase_state.verify_attempt_ref(worktree, remote='origin',
+                    ref=proof['retained_ref'], commit=head)
+                snapshot['artifacts'][ref['hash']] = proof; snapshot['workspace_proof'] = ref
+                return ref
+            commands = request.get('workspace_checks', [])
+            if not isinstance(commands, list) or any(not isinstance(c, list) or not c or any(not isinstance(a, str) or not a for a in c) for c in commands):
+                raise ValueError('Workspace checks require nonempty argument arrays')
+            if checkpoint['change_count'] and not commands:
+                raise ValueError('Changed Git outputs require observed verification checks')
+            results = self.node_verification_commands(snapshot, lease, request, commands,
+                {'git_commit': head, 'tree': checkpoint['result_tree']}, reuse_only=reuse_only,
+                working_directory=worktree)
+            if git_phase_state.validate_checkpoint(worktree, base_commit=base,
+                    result_commit=head, owned_paths=workspace['entry']['owned']) != checkpoint:
+                raise ValueError('Workspace checks changed the Git result commit')
+            retained = git_phase_state.retain_attempt_ref(worktree, remote='origin',
+                goal=state['node']['goal'], node=state['node']['node'],
+                attempt=lease['attempt'], commit=head)
+            proof = {'kind': 'git_phase_proof', 'node': state['node'],
+                     'acquisition': lease['acquisition'], 'acquisition_hash': digest(lease['acquisition']),
+                     'input_hash': lease['fingerprint'], 'actor': lease['worker'], 'lease': lease['token'],
+                     'checkpoint': checkpoint, 'retained_ref': retained['ref'],
+                     'scope': digest(workspace['entry']), 'commands': results,
+                     'passed': len(results) == len(commands) and all(row['exit_code'] == 0 for row in results)}
+            identity = digest(proof); snapshot['artifacts'][identity] = proof
+            snapshot['workspace_proof'] = self.node_ref(identity, snapshot['number'])
+            return snapshot['workspace_proof']
         pending = snapshot.get('pending')
         if pending and pending.get('proof'):
             ref = pending['proof']; proof = self.artifact_index(snapshot['number']).resolve(ref['hash'])[0]
@@ -4743,7 +5398,9 @@ class Workflow:
         commands = request.get('workspace_checks', [])
         if not isinstance(commands, list) or any(not isinstance(c, list) or not c or any(not isinstance(a, str) or not a for a in c) for c in commands): raise ValueError('Workspace checks require nonempty argument arrays')
         before = self.workspace_files(); results = []
-        if before != lease['acquisition']['files'] and not commands: raise ValueError('Changed workspace outputs require observed verification checks before publishing a candidate proof')
+        acquired_files = {path: value for path, value in lease['acquisition']['files'].items()
+                          if value != 'missing'}
+        if before != acquired_files and not commands: raise ValueError('Changed workspace outputs require observed verification checks before publishing a candidate proof')
         results = self.node_verification_commands(
             snapshot, lease, request, commands, before, reuse_only=reuse_only)
         if self.workspace_files() != before: raise ValueError('Workspace checks changed source/output bytes; inspect before retry')
@@ -4756,6 +5413,85 @@ class Workflow:
         snapshot['workspace_proof'] = self.node_ref(identity, snapshot['number'])
         return snapshot['workspace_proof']
 
+    def node_attempt_restack_plan(self, snapshot, state, workspace):
+        """Derive moved-base work only from accepted same-node Git evidence."""
+        if not workspace or not workspace.get('git_workspace'):
+            return None
+        new_base = workspace.get('acquisition', {}).get('git_commit')
+        if not isinstance(new_base, str):
+            return None
+        artifacts = snapshot['artifacts']
+        results = []
+        for reference in snapshot['payload']['evidence']:
+            artifact = artifacts.get(reference['hash'], {})
+            if artifact.get('type') == 'result':
+                results.append((reference, artifact.get('content', {})))
+        for result_ref, result in reversed(results):
+            if result.get('node') != state['node']:
+                continue
+            outputs = list(result.get('outputs', {}).values())
+            def accepted_review(review):
+                review_state = snapshot['projection']['states'].get(
+                    self.api._phase_evidence.task_key(review.get('node')))
+                independent = review_state and any(
+                    selector.get('goal') in ('#this', state['node']['goal'])
+                    and selector.get('node') == state['node']['node']
+                    for selector in review_state['contract']['independent_of'])
+                decisions = [artifacts.get(reference['hash'], {}).get('content')
+                             for reference in review.get('outputs', {}).values()
+                             if artifacts.get(reference['hash'], {}).get('type') == 'review_decision']
+                return (review.get('executor') != result.get('executor') and independent
+                        and any(binding.get('source') in outputs
+                                for binding in review.get('inputs', []))
+                        and (not decisions or all(value.get('decision') == 'approved'
+                                                  for value in decisions)))
+            if not any(accepted_review(review) for _reference, review in results):
+                continue
+            sources = {value['provenance']['source']['hash']: value['provenance']['source']
+                       for reference in outputs
+                       if (value := artifacts.get(reference['hash'], {})).get(
+                           'provenance', {}).get('source')}
+            if len(sources) != 1:
+                continue
+            proof_ref = next(iter(sources.values()))
+            proof = artifacts.get(proof_ref['hash'], {})
+            acquisition = proof.get('acquisition', {})
+            checkpoint = proof.get('checkpoint', {})
+            old_base = acquisition.get('git_commit')
+            source_commit = checkpoint.get('result_commit')
+            retained_ref = (f"refs/heads/zzzops/attempts/{state['node']['goal']}/"
+                            f"{state['node']['node']}/{result.get('attempt')}")
+            try:
+                if (proof.get('kind') != 'git_phase_proof'
+                        or proof.get('node') != result['node']
+                        or proof.get('actor') != result.get('executor')
+                        or proof.get('acquisition_hash') != digest(acquisition)
+                        or proof.get('input_hash') != acquisition.get('input_hash')
+                        or proof.get('scope') != digest(workspace['entry'])
+                        or proof.get('retained_ref') != retained_ref
+                        or checkpoint.get('base_commit') != old_base
+                        or checkpoint != git_phase_state.validate_checkpoint(
+                            self.repo, base_commit=old_base, result_commit=source_commit,
+                            owned_paths=workspace['entry']['owned'],
+                            require_clean_worktree=False)):
+                    raise ValueError
+                git_phase_state.verify_attempt_ref(self.repo, remote='origin',
+                    ref=retained_ref, commit=source_commit)
+                if new_base == old_base:
+                    return None
+                plan = git_phase_state.preview_attempt_restack(self.repo,
+                    old_base=old_base, new_base=new_base,
+                    attempt_commit=source_commit,
+                    owned_paths=workspace['entry']['owned'])
+                if plan['status'] == 'clean' and plan['change_count'] == 0:
+                    return None
+                return {'source': {'result': result_ref, 'proof': proof_ref,
+                                   'ref': retained_ref, 'commit': source_commit},
+                        'plan': plan, 'plan_hash': digest(plan)}
+            except (KeyError, ValueError, subprocess.SubprocessError):
+                raise ValueError('Accepted same-node Git restack source is invalid') from None
+        return None
+
     def node_verification_prepare(self, snapshot, state, lease, request):
         """Freeze the authority checked before unlocked local verification."""
         workspace = state.get('workspace')
@@ -4767,7 +5503,22 @@ class Workflow:
                 any(not isinstance(argument, str) or not argument for argument in command)
                 for command in commands):
             raise ValueError('Workspace checks require nonempty argument arrays')
-        before = self.workspace_files()
+        if workspace.get('git_workspace'):
+            observed = managed_worktrees.inspect_attempt_worktree(
+                self.repo, goal=state['node']['goal'], node=state['node']['node'],
+                attempt=lease['attempt'])
+            if observed['status'] != 'clean':
+                raise ValueError('Git phase verification requires its exact clean managed attempt worktree')
+            worktree = Path(observed['path'])
+            head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=worktree,
+                capture_output=True, text=True, check=True).stdout.strip()
+            checkpoint = git_phase_state.validate_checkpoint(worktree,
+                base_commit=lease['acquisition']['git_commit'], result_commit=head,
+                owned_paths=workspace['entry']['owned'])
+            before = {'git_commit': head, 'tree': checkpoint['result_tree']}
+        else:
+            worktree = self.repo
+            before = self.workspace_files()
         identity = {
             'request': digest(request), 'node': state['node'],
             'lease': {key: copy.deepcopy(lease[key]) for key in
@@ -4777,7 +5528,7 @@ class Workflow:
             'policy': digest(self.project['policy']),
         }
         return {'identity': identity, 'snapshot': snapshot, 'state': state, 'lease': lease,
-                'commands': commands, 'before': before,
+                'commands': commands, 'before': before, 'working_directory': worktree,
                 'pending_proof': bool(snapshot.get('pending') and snapshot['pending'].get('proof'))}
 
     def node_policy(self, state):
@@ -5081,6 +5832,27 @@ class Workflow:
         """Format the same readiness and authority boundaries for both callers."""
         number = snapshot['number']
         resolution_steps = []
+        cutover = snapshot.get('policy_dag_cutover')
+        if cutover:
+            prepare = {'operation': 'policy_dag_cutover_prepare',
+                'request_id': '<stable request id>', 'actor': '<authenticated root>',
+                'expected_goal_revision': snapshot['envelope']['revision'],
+                'expected_goal_payload': copy.deepcopy(snapshot['envelope']['payload']),
+                'old_graph': copy.deepcopy(cutover['old_graph']),
+                'new_graph': copy.deepcopy(cutover['new_graph']),
+                'old_policy_digest': cutover['old_policy_revision'],
+                'new_policy_digest': cutover['new_policy_revision'],
+                'mapping': '<explicit reviewed mapping>'}
+            return [{'kind': 'policy_dag_cutover', 'assignment': 'root',
+                     'goal': number,
+                     'reason': ('The reviewed policy DAG differs from the authenticated goal graph; '
+                                'old Results cannot enter the new frontier without an explicit mapping.'),
+                     'contract': {**copy.deepcopy(cutover),
+                         'mapping': '<explicit old node/output/attempt to new contract mapping>',
+                         'receipt': '<authenticated idempotent cutover receipt>'},
+                     'prepare': prepare,
+                     'action': ('Review the old/new graph mapping, evidence equivalence, in-flight leases '
+                                'and invalidated consumers before recording one revision-pinned cutover.')}]
         context = snapshot.get('goal_context')
         original = snapshot.get('original_goal_context')
         context_ref = snapshot.get('goal_context_ref')
@@ -5122,8 +5894,34 @@ class Workflow:
                      'reason': snapshot['workflow_migration_blocker'],
                      'action': 'Preserve history and resolve the exact ownership or phase-data mapping; do not amend the goal graph.'}]
         projection = snapshot['projection']; steps = []
+        cutover_gate = None
+        for row in reversed(snapshot['payload']['operational']['receipts']):
+            try:
+                recorded = snapshot['resolve'](row['result'])
+                applied = next((step for step in recorded.get('next_steps', [])
+                                if step.get('kind') == 'policy_dag_cutover_applied'), None)
+                if applied is None:
+                    continue
+                receipt = snapshot['resolve'](applied['receipt'])['content']
+                old_graph = snapshot['resolve'](receipt['old_graph'])
+                new_graph = snapshot['resolve'](receipt['new_graph'])
+                mapped = {item['old']['node'] for item in receipt['mapping']}
+                added = {node['id'] for node in new_graph['nodes']} - {
+                    node['id'] for node in old_graph['nodes']}
+                terminal_nodes = {selector.get('node') for selector in old_graph['terminals']
+                                  if selector.get('kind') == 'node'}
+                cutover_gate = {'old_unmapped': ({
+                    node['id'] for node in old_graph['nodes']} - mapped).intersection(terminal_nodes),
+                    'added': added}
+                break
+            except (KeyError, TypeError, ValueError):
+                continue
         for state in projection['states'].values():
             if state['node']['goal'] != number: continue
+            if (cutover_gate and state['node']['node'] in cutover_gate['old_unmapped']
+                    and any((number, node, None, 1) not in projection['current']
+                            for node in cutover_gate['added'])):
+                continue
             # A reviewed additive member-route recovery preserves the legacy
             # contract and its historical Results, but only the exact upgraded
             # expansion may accept new work.
@@ -5147,7 +5945,23 @@ class Workflow:
                 if occupied:
                     steps.append({'kind': 'await_worker', 'goal': number, 'node': state['node'], 'reason': 'Declared resource is owned by another task'})
                     continue
-                try: steps.append(self.node_step(state, snapshot))
+                try:
+                    candidate = None
+                    if state['node']['node'] == 'publish' and self.node_native_delivery(snapshot):
+                        candidate = self.node_candidate_state(snapshot)
+                        if candidate['status'] == 'needs_compaction':
+                            steps.append({'kind': 'compact_candidate', 'assignment': 'root',
+                                'goal': number, 'node': state['node'],
+                                'action': 'Compact the exact reviewed phase source in a managed candidate worktree before publication.',
+                                'submission': {'operation': 'compact_candidate',
+                                    'request_id': uuid.uuid4().hex,
+                                    'authorization': candidate['authorization']}})
+                            continue
+                    ready = self.node_step(state, snapshot)
+                    if candidate and candidate['status'] == 'ready':
+                        ready['managed_candidate'] = {name: candidate[name]
+                            for name in ('path', 'branch', 'head_oid')}
+                    steps.append(ready)
                 except ValueError as exc: steps.append({'kind': 'blocker', 'goal': number, 'node': state['node'], 'reason': str(exc)})
             elif state['state'] == 'blocked' and 'repair' in snapshot['publications'].get(self.api._phase_evidence.task_key(state['node']), {}):
                 steps.append({**snapshot['publications'][self.api._phase_evidence.task_key(state['node'])]['repair'], 'goal': number, 'node': state['node']})
@@ -5233,6 +6047,602 @@ class Workflow:
                         for review in reviews): continue
             found.append((next(ref for ref in result['outputs'].values() if ref['hash'] == identity), observed))
         return found
+
+    def node_native_delivery(self, snapshot):
+        """Treat any retained Git phase Result as requiring native commit delivery."""
+        artifacts = snapshot['artifacts']
+        for reference in snapshot['payload']['evidence']:
+            result = artifacts.get(reference['hash'], {}).get('content', {})
+            if result.get('node', {}).get('goal') != snapshot['number']:
+                continue
+            for output in result.get('outputs', {}).values():
+                source = artifacts.get(output['hash'], {}).get('provenance', {}).get('source')
+                if isinstance(source, dict) and artifacts.get(source.get('hash'), {}).get('kind') == 'git_phase_proof':
+                    return True
+        return False
+
+    def node_native_sources(self, snapshot):
+        """Pin native delivery to the current reviewed phase Results."""
+        artifacts = snapshot['artifacts']
+        sources = {'test_design': set(), 'implement': set()}
+        for _, result in snapshot['projection']['current'].values():
+            node = result.get('node', {})
+            phase = node.get('node')
+            if node.get('goal') != snapshot['number'] or phase not in sources:
+                continue
+            for output in result.get('outputs', {}).values():
+                source = artifacts.get(output['hash'], {}).get('provenance', {}).get('source')
+                proof = artifacts.get(source.get('hash'), {}) if isinstance(source, dict) else {}
+                if proof.get('kind') == 'git_phase_proof':
+                    sources[phase].add(proof['checkpoint']['result_commit'])
+        if any(len(values) != 1 for values in sources.values()):
+            raise ValueError('Git-native delivery requires one current reviewed RED and GREEN source')
+        return {'test_source': next(iter(sources['test_design'])),
+                'implementation_source': next(iter(sources['implement']))}
+
+    def node_composition_source(self, snapshot):
+        """Return the current Git-backed integration source, if applicable."""
+        artifacts = snapshot['artifacts']
+        sources = set()
+        for _, result in snapshot['projection']['current'].values():
+            node = result.get('node', {})
+            if (node.get('goal') != snapshot['number']
+                    or node.get('node') != 'integration_verification'
+                    or result.get('non_applicability')):
+                continue
+            for output in result.get('outputs', {}).values():
+                source = artifacts.get(output['hash'], {}).get('provenance', {}).get('source')
+                proof = artifacts.get(source.get('hash'), {}) if isinstance(source, dict) else {}
+                if proof.get('kind') == 'git_phase_proof':
+                    sources.add(proof['checkpoint']['result_commit'])
+        if len(sources) > 1:
+            raise ValueError('Composition delivery has conflicting current Git sources')
+        return next(iter(sources)) if sources else None
+
+    def node_declared_compaction_inputs(self, snapshot):
+        """Resolve reviewed Git publish declarations to current exact Result proofs."""
+        declarations = {node['id']: node['git_publish'] for node in snapshot['graph']['nodes']
+                        if 'git_publish' in node}
+        if not declarations:
+            return None
+        goal, artifacts = snapshot['number'], snapshot['artifacts']
+        current = {}
+        for key, (_, result) in snapshot['projection']['current'].items():
+            node = result.get('node', {})
+            name = node.get('node')
+            if node.get('goal') != goal or name not in declarations or result.get('non_applicability'):
+                continue
+            if name in current:
+                raise ValueError('Git publication has multiple current Results for one declared node')
+            output = result['outputs'].get(declarations[name]['output'])
+            artifact = artifacts.get(output.get('hash'), {}) if isinstance(output, dict) else {}
+            source = artifact.get('provenance', {}).get('source')
+            proof = artifacts.get(source.get('hash'), {}) if isinstance(source, dict) else {}
+            workspace = snapshot['workspaces'].get(key, {})
+            if (proof.get('kind') != 'git_phase_proof' or not workspace.get('git_workspace')
+                    or 'entry' not in workspace):
+                continue
+            current[name] = {'node': name, 'source': proof['checkpoint']['result_commit'],
+                             'owned': workspace['entry']['owned']}
+        by_series = {}
+        for name, declaration in declarations.items():
+            by_series.setdefault(declaration['series'], set()).add(name)
+        selected = [series for series, members in by_series.items() if members <= current.keys()]
+        if len(selected) != 1:
+            raise ValueError('Git publication requires one complete reviewed declaration series')
+        members = by_series[selected[0]]
+        grouped = {}
+        for name in members:
+            declaration = declarations[name]
+            key = declaration['group']
+            row = grouped.setdefault(key, {'id': key, 'order': declaration['order'],
+                'commit_type': declaration['commit_type'], 'summary': declaration['summary'],
+                'nodes': []})
+            if (row['order'], row['commit_type'], row['summary']) != (
+                    declaration['order'], declaration['commit_type'], declaration['summary']):
+                raise ValueError('Git publication group declarations disagree')
+            row['nodes'].append(current[name])
+        groups = sorted(grouped.values(), key=lambda group: group['order'])
+        for group in groups:
+            group['nodes'].sort(key=lambda member: member['node'])
+        retained = {}
+        prefix = f'refs/heads/zzzops/attempts/{goal}/'
+        def add(ref, commit):
+            if not isinstance(ref, str) or not isinstance(commit, str):
+                raise ValueError('Git publication retained attempt identity is malformed')
+            parts = ref.removeprefix(prefix).split('/') if ref.startswith(prefix) else []
+            if len(parts) != 2 or parts[0] not in members:
+                return
+            if ref in retained and retained[ref] != commit:
+                raise ValueError('Git publication retained attempt ref changed its commit')
+            retained[ref] = commit
+        for reference in snapshot['payload']['evidence']:
+            result = artifacts.get(reference['hash'], {}).get('content', {})
+            if (result.get('node', {}).get('goal') != goal
+                    or result.get('node', {}).get('node') not in members):
+                continue
+            for output in result.get('outputs', {}).values():
+                source = artifacts.get(output['hash'], {}).get('provenance', {}).get('source')
+                proof = artifacts.get(source.get('hash'), {}) if isinstance(source, dict) else {}
+                if proof.get('kind') == 'git_phase_proof':
+                    add(proof['retained_ref'], proof['checkpoint']['result_commit'])
+        for receipt in snapshot['payload']['operational']['receipts']:
+            response = snapshot['resolve'](receipt['result'])
+            for step in response.get('next_steps', []):
+                attempt = step.get('retained_attempt')
+                if attempt and step.get('kind') == 'checkpoint' and step.get('goal') == goal:
+                    add(attempt['ref'], attempt['commit'])
+        attempts = [{'ref': ref, 'commit': commit} for ref, commit in sorted(retained.items())]
+        bases = []
+        for member in groups[0]['nodes']:
+            node_attempts = [attempt for attempt in attempts if attempt['ref'].startswith(
+                prefix + member['node'] + '/')]
+            bases.append(git_phase_state.compaction_base_from_attempts(self.repo,
+                goal=goal, test_source=member['source'], attempts=node_attempts,
+                remote='origin', phase=member['node']))
+        oldest = [base for base in set(bases) if all(subprocess.run(
+            ['git', 'merge-base', '--is-ancestor', base, other], cwd=self.repo,
+            capture_output=True).returncode == 0 for other in bases)]
+        if len(oldest) != 1:
+            raise ValueError('Git publication first group has no unique base')
+        return {'goal': goal, 'delivery_class': 'grouped', 'series': selected[0],
+                'groups': groups, 'base_commit': oldest[0], 'retained_attempts': attempts}
+
+    def node_compaction_inputs(self, snapshot):
+        """Derive local candidate inputs from current proofs and retained history."""
+        declared = self.node_declared_compaction_inputs(snapshot)
+        if declared is not None:
+            return declared
+        composition_source = self.node_composition_source(snapshot)
+        if composition_source is not None:
+            artifacts = snapshot['artifacts']
+            goal = snapshot['number']
+            owned = []
+            for key, (_, result) in snapshot['projection']['current'].items():
+                if (result.get('node', {}).get('goal') == goal
+                        and result['node'].get('node') == 'integration_verification'):
+                    workspace = snapshot['workspaces'].get(key, {})
+                    if not workspace.get('git_workspace') or 'entry' not in workspace:
+                        raise ValueError('Composition requires current reviewed Git workspace scope')
+                    owned.append(workspace['entry']['owned'])
+            if len(owned) != 1:
+                raise ValueError('Composition requires one current integration allocation')
+            retained = {}
+            prefix = f'refs/heads/zzzops/attempts/{goal}/integration_verification/'
+            def add(ref, commit):
+                if (not isinstance(ref, str) or not ref.startswith(prefix)
+                        or not isinstance(commit, str)):
+                    raise ValueError('Composition retained attempt identity is invalid')
+                if ref in retained and retained[ref] != commit:
+                    raise ValueError('Composition retained attempt ref has conflicting commits')
+                retained[ref] = commit
+            for reference in snapshot['payload']['evidence']:
+                result = artifacts.get(reference['hash'], {}).get('content', {})
+                if (result.get('node', {}).get('goal') != goal
+                        or result['node'].get('node') != 'integration_verification'):
+                    continue
+                for output in result.get('outputs', {}).values():
+                    source = artifacts.get(output['hash'], {}).get('provenance', {}).get('source')
+                    proof = artifacts.get(source.get('hash'), {}) if isinstance(source, dict) else {}
+                    if proof.get('kind') == 'git_phase_proof':
+                        add(proof['retained_ref'], proof['checkpoint']['result_commit'])
+            for receipt in snapshot['payload']['operational']['receipts']:
+                response = snapshot['resolve'](receipt['result'])
+                for step in response.get('next_steps', []):
+                    attempt = step.get('retained_attempt')
+                    if attempt and step.get('kind') == 'checkpoint' and step.get('goal') == goal:
+                        add(attempt['ref'], attempt['commit'])
+            attempts = [{'ref': ref, 'commit': commit} for ref, commit in sorted(retained.items())]
+            base = git_phase_state.compaction_base_from_attempts(self.repo, goal=goal,
+                test_source=composition_source, attempts=attempts, remote='origin',
+                phase='integration_verification')
+            return {'goal': goal, 'delivery_class': 'composition', 'base_commit': base,
+                    'integration_source': composition_source, 'integration_owned': owned[0],
+                    'retained_attempts': attempts}
+        sources = self.node_native_sources(snapshot)
+        artifacts = snapshot['artifacts']
+        goal = snapshot['number']
+        owned = {'test_design': [], 'implement': []}
+        for key, (_, result) in snapshot['projection']['current'].items():
+            phase = result.get('node', {}).get('node')
+            if result.get('node', {}).get('goal') != goal or phase not in owned:
+                continue
+            workspace = snapshot['workspaces'].get(key, {})
+            if not workspace.get('git_workspace') or 'entry' not in workspace:
+                raise ValueError('Compaction requires current reviewed Git workspace scope')
+            owned[phase].append(workspace['entry']['owned'])
+        if any(len(scopes) != 1 for scopes in owned.values()):
+            raise ValueError('Compaction requires one current RED and GREEN allocation')
+        retained = {}
+        prefix = f'refs/heads/zzzops/attempts/{goal}/'
+        def add(ref, commit):
+            if (not isinstance(ref, str) or not ref.startswith((prefix + 'test_design/', prefix + 'implement/'))
+                    or not isinstance(commit, str)):
+                raise ValueError('Compaction retained attempt identity is invalid')
+            if ref in retained and retained[ref] != commit:
+                raise ValueError('Compaction retained attempt ref has conflicting commits')
+            retained[ref] = commit
+        for reference in snapshot['payload']['evidence']:
+            result = artifacts.get(reference['hash'], {}).get('content', {})
+            if result.get('node', {}).get('goal') != goal or result['node'].get('node') not in owned:
+                continue
+            for output in result.get('outputs', {}).values():
+                source = artifacts.get(output['hash'], {}).get('provenance', {}).get('source')
+                proof = artifacts.get(source.get('hash'), {}) if isinstance(source, dict) else {}
+                if proof.get('kind') == 'git_phase_proof':
+                    add(proof['retained_ref'], proof['checkpoint']['result_commit'])
+        for receipt in snapshot['payload']['operational']['receipts']:
+            response = snapshot['resolve'](receipt['result'])
+            for step in response.get('next_steps', []):
+                attempt = step.get('retained_attempt')
+                if attempt and step.get('kind') == 'checkpoint' and step.get('goal') == goal:
+                    add(attempt['ref'], attempt['commit'])
+        attempts = [{'ref': ref, 'commit': commit} for ref, commit in sorted(retained.items())]
+        test_attempts = [row for row in attempts if row['ref'].startswith(prefix + 'test_design/')]
+        base = git_phase_state.compaction_base_from_attempts(self.repo, goal=goal,
+            test_source=sources['test_source'], attempts=test_attempts, remote='origin')
+        return {'goal': goal, 'delivery_class': 'leaf', 'base_commit': base, **sources,
+                'test_owned': owned['test_design'][0],
+                'implementation_owned': owned['implement'][0],
+                'retained_attempts': attempts}
+
+    def node_grouped_source(self, inputs):
+        """Find the exact latest source commit of the final declared group."""
+        sources = [member['source'] for member in inputs['groups'][-1]['nodes']]
+        latest = [candidate for candidate in set(sources) if all(subprocess.run(
+            ['git', 'merge-base', '--is-ancestor', other, candidate], cwd=self.repo,
+            capture_output=True).returncode == 0 for other in sources)]
+        if len(latest) != 1:
+            raise ValueError('Git publication final group has no unique source tip')
+        return latest[0]
+
+    def node_compaction_authorization(self, snapshot, reference):
+        """Require the current reviewed repository grant for this delivery."""
+        root = (self.runtime or {}).get('root_id')
+        if not root:
+            raise ValueError('Candidate compaction belongs to authenticated root')
+        projection, artifacts = snapshot['projection'], snapshot['artifacts']
+        owners = {output['hash']: (key, result, output)
+                  for key, (_, result) in projection['current'].items()
+                  for output in result['outputs'].values()}
+        owner = owners.get(reference.get('hash')) if isinstance(reference, dict) else None
+        if not owner or owner[2] != reference:
+            raise ValueError('Candidate compaction requires current repository authorization')
+        key, result, _ = owner
+        artifact = artifacts[reference['hash']]
+        value = artifact.get('content', {})
+        if (artifact.get('type') != 'repository_authorization'
+                or result['executor'] != root
+                or projection['states'][key]['contract']['executor']['role'] != 'root'
+                or value.get('decision') != 'approved'
+                or not self.node_authorization_policy_matches(value, artifact, result, artifacts)):
+            raise ValueError('Candidate compaction requires current approved root repository authorization')
+        manifest = value.get('manifest')
+        selected = owners.get(manifest.get('hash')) if isinstance(manifest, dict) else None
+        if (not selected or selected[2] != manifest
+                or artifacts[manifest['hash']].get('type') != 'delivery_candidate'
+                or artifacts[manifest['hash']]['content'].get('delivery_class') not in {'leaf', 'atomic', 'composition'}):
+            raise ValueError('Candidate compaction requires the current delivery selection')
+        delivery_class = artifacts[manifest['hash']]['content']['delivery_class']
+        declared = self.node_declared_compaction_inputs(snapshot)
+        source_phases = ({member['node'] for member in declared['groups'][-1]['nodes']}
+                         if declared is not None else
+                         {'integration_verification' if delivery_class == 'composition' else 'implement'})
+        candidate = artifacts[manifest['hash']]['content'].get('candidate')
+        current_sources = [output for _, (_, result) in projection['current'].items()
+            if result.get('node', {}).get('goal') == snapshot['number']
+            and result['node'].get('node') in source_phases
+            for output in result['outputs'].values()]
+        if candidate not in current_sources:
+            raise ValueError('Candidate compaction selection differs from current reviewed source')
+        review_input = ('approved_integration_reviews' if delivery_class == 'composition'
+                        else 'approved_implementation_reviews')
+        reviews = []
+        for binding in result.get('inputs', []):
+            if binding.get('name') != review_input:
+                continue
+            value = artifacts.get(binding['source']['hash'], {}).get('content')
+            for part in binding.get('path', []):
+                value = value.get(part) if isinstance(value, dict) else None
+            reviews.append(value)
+        if (len(reviews) != 1 or not isinstance(reviews[0], dict) or not reviews[0]
+                or any(not isinstance(row, dict) or row.get('decision') != 'approved'
+                       for row in reviews[0].values())):
+            raise ValueError('Candidate compaction requires approved independent reviews')
+        return reference
+
+    def node_compact_candidate(self, snapshot, payload, request):
+        """Compact an authorized goal candidate with an exact replayable receipt."""
+        if set(request) != {'operation', 'request_id', 'authorization'}:
+            raise ValueError('Candidate compaction request has unknown authority fields')
+        if payload['operational']['leases']:
+            raise ValueError('Candidate compaction requires reconciled worker ownership')
+        reference = self.node_compaction_authorization(snapshot, request['authorization'])
+        identity = reference['hash'] if isinstance(reference, dict) else None
+        if not isinstance(identity, str) or not re.fullmatch(r'sha256:[0-9a-f]{64}', identity):
+            raise ValueError('Candidate compaction requires exact authorization identity')
+        inputs = self.node_compaction_inputs(snapshot)
+        composition = inputs.get('delivery_class') == 'composition'
+        grouped = inputs.get('delivery_class') == 'grouped'
+        source = (self.node_grouped_source(inputs) if grouped else
+                  inputs['integration_source'] if composition else inputs['implementation_source'])
+        attempt = identity[7:39]
+        observed = managed_worktrees.inspect_attempt_worktree(
+            self.repo, goal=snapshot['number'], node='candidate', attempt=attempt)
+        if observed['status'] == 'missing':
+            managed_worktrees.prepare_worktree(self.repo, goal=snapshot['number'],
+                node='candidate', attempt=attempt,
+                base_commit=source)
+            observed = managed_worktrees.inspect_attempt_worktree(
+                self.repo, goal=snapshot['number'], node='candidate', attempt=attempt)
+        if observed['status'] != 'clean':
+            raise ValueError('Candidate worktree is dirty; preserve it for exact recovery')
+        path = Path(observed['path'])
+        if grouped:
+            preview = git_phase_state.preview_grouped_candidate(path,
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                groups=inputs['groups'], retained_attempts=inputs['retained_attempts'],
+                remote='origin')
+            result = git_phase_state.apply_grouped_candidate(path, preview,
+                groups=inputs['groups'], retained_attempts=inputs['retained_attempts'],
+                remote='origin')
+            head = result['head_commit']
+            phase_commits = {'group_commits': result['commits']}
+        elif composition:
+            preview = git_phase_state.preview_single_commit_candidate(path,
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                source_commit=source, owned_paths=inputs['integration_owned'],
+                retained_attempts=inputs['retained_attempts'], remote='origin')
+            result = git_phase_state.apply_single_commit_candidate(path, preview,
+                owned_paths=inputs['integration_owned'],
+                retained_attempts=inputs['retained_attempts'], remote='origin')
+            head = result['candidate_commit']
+            phase_commits = {}
+        else:
+            preview = git_phase_state.preview_two_commit_candidate(path,
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                test_source=inputs['test_source'], implementation_source=source,
+                test_owned=inputs['test_owned'], implementation_owned=inputs['implementation_owned'],
+                retained_attempts=inputs['retained_attempts'], remote='origin')
+            result = git_phase_state.apply_two_commit_candidate(path, preview,
+                test_owned=inputs['test_owned'], implementation_owned=inputs['implementation_owned'],
+                retained_attempts=inputs['retained_attempts'], remote='origin')
+            head = result['implementation_commit']
+            phase_commits = {'test_commit': result['test_commit']}
+        response = {'next_steps': [{'kind': 'candidate_compacted', 'goal': snapshot['number'],
+            'authorization': reference, 'branch': observed['branch'],
+            'base_commit': inputs['base_commit'], **phase_commits,
+            'head_oid': head, 'outcome': result['outcome'],
+            'action': 'Publish this exact managed candidate head, then obtain fresh head-bound independent review and CI.'}]}
+        return self.node_persist(snapshot, payload, response, request)
+
+    def node_candidate_state(self, snapshot):
+        """Infer the approved candidate's readiness from its managed Git branch."""
+        artifacts = snapshot['artifacts']
+        authorities = [output for _, (_, result) in snapshot['projection']['current'].items()
+            for output in result['outputs'].values()
+            if artifacts[output['hash']].get('type') == 'repository_authorization']
+        approved = []
+        for reference in authorities:
+            try:
+                approved.append(self.node_compaction_authorization(snapshot, reference))
+            except ValueError:
+                continue
+        if len(approved) != 1:
+            raise ValueError('Git-native publication requires one current approved repository authorization')
+        reference = approved[0]
+        inputs = self.node_compaction_inputs(snapshot)
+        composition = inputs.get('delivery_class') == 'composition'
+        grouped = inputs.get('delivery_class') == 'grouped'
+        sources = ({} if grouped else
+                   {'integration_source': inputs['integration_source']} if composition
+                   else self.node_native_sources(snapshot))
+        source = (self.node_grouped_source(inputs) if grouped else
+                  sources['integration_source'] if composition else sources['implementation_source'])
+        attempt = reference['hash'][7:39]
+        observed = managed_worktrees.inspect_attempt_worktree(self.repo,
+            goal=snapshot['number'], node='candidate', attempt=attempt)
+        if observed['status'] == 'missing' or (observed['status'] == 'clean'
+                and observed['head'] == source):
+            return {'status': 'needs_compaction', 'authorization': reference}
+        if observed['status'] != 'clean':
+            raise ValueError('Managed candidate worktree is dirty or changed')
+        if grouped:
+            git_phase_state.preview_grouped_candidate(Path(observed['path']),
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                groups=inputs['groups'], retained_attempts=inputs['retained_attempts'],
+                remote='origin')
+            git_phase_state.verify_grouped_candidate(Path(observed['path']),
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                head_commit=observed['head'], groups=inputs['groups'],
+                retained_attempts=inputs['retained_attempts'], remote='origin')
+            current, candidate = {}, {}
+        elif composition:
+            git_phase_state.preview_single_commit_candidate(Path(observed['path']),
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                source_commit=source, owned_paths=inputs['integration_owned'],
+                retained_attempts=inputs['retained_attempts'], remote='origin')
+            candidate = git_phase_state.verify_single_commit_candidate(Path(observed['path']),
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                head_commit=observed['head'])
+            current = {'source_commit': source}
+        else:
+            git_phase_state.preview_two_commit_candidate(Path(observed['path']),
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                test_source=inputs['test_source'], implementation_source=source,
+                test_owned=inputs['test_owned'], implementation_owned=inputs['implementation_owned'],
+                retained_attempts=inputs['retained_attempts'], remote='origin')
+            candidate = git_phase_state.verify_two_commit_candidate(Path(observed['path']),
+                goal=snapshot['number'], base_commit=inputs['base_commit'],
+                head_commit=observed['head'], test_owned=inputs['test_owned'])
+            current = sources
+        if any(candidate[name] != value for name, value in current.items()):
+            raise ValueError('Managed candidate differs from current reviewed source commits')
+        return {'status': 'ready', 'authorization': reference,
+                'path': observed['path'], 'branch': observed['branch'],
+                'head_oid': observed['head']}
+
+    def node_cleanup_merge_facts(self, snapshot):
+        """Confirm the observed merge remains in its exact remote target."""
+        merged = {digest(state['publication']['provider']): state['publication']['provider']
+                  for state in snapshot['projection']['states'].values()
+                  if state['node']['goal'] == snapshot['number']
+                  and state.get('publication', {}).get('provider', {}).get('merged')}
+        if len(merged) != 1:
+            raise ValueError('Local cleanup requires one observed merged candidate')
+        facts = next(iter(merged.values()))
+        integrated, head, base_ref = (facts.get(name)
+            for name in ('merge_commit', 'head_oid', 'base_ref'))
+        if (not all(isinstance(oid, str) and re.fullmatch(r'[0-9a-f]{40}', oid)
+                    for oid in (integrated, head))
+                or not isinstance(base_ref, str)
+                or not re.fullmatch(r'[A-Za-z0-9_./-]+', base_ref)
+                or base_ref.startswith(('-', '/')) or '..' in base_ref.split('/')):
+            raise ValueError('Local cleanup requires exact merged provider identities')
+        fetched = subprocess.run(['git', 'fetch', '--no-tags', 'origin',
+                                  'refs/heads/' + base_ref], cwd=self.repo,
+                                 capture_output=True, text=True)
+        if fetched.returncode:
+            raise ValueError('Cannot fetch the exact merged target for local cleanup')
+        target = subprocess.run(['git', 'rev-parse', 'FETCH_HEAD'], cwd=self.repo,
+                                capture_output=True, text=True, check=True).stdout.strip()
+        if subprocess.run(['git', 'merge-base', '--is-ancestor', integrated, target],
+                          cwd=self.repo, capture_output=True).returncode:
+            raise ValueError('Observed merge commit is not in the current target branch')
+        return integrated, head
+
+    def node_cleanup_delivered_worktrees(self, snapshot):
+        """Retry local cleanup only after exact merged provider and Git facts."""
+        number = snapshot['number']
+        integrated, head = self.node_cleanup_merge_facts(snapshot)
+        inputs = self.node_compaction_inputs(snapshot)
+        delivery_class = inputs.get('delivery_class', 'leaf')
+        if delivery_class == 'grouped':
+            git_phase_state.verify_grouped_candidate(self.repo, goal=number,
+                base_commit=inputs['base_commit'], head_commit=head,
+                groups=inputs['groups'], retained_attempts=inputs['retained_attempts'],
+                remote='origin')
+        else:
+            verifier = (git_phase_state.verify_single_commit_candidate
+                        if delivery_class == 'composition'
+                        else git_phase_state.verify_two_commit_candidate)
+            verification_options = ({} if delivery_class == 'composition'
+                                    else {'test_owned': inputs.get('test_owned')})
+            verifier(self.repo, goal=number, base_commit=inputs['base_commit'],
+                     head_commit=head, **verification_options)
+        if subprocess.run(['git', 'merge-base', '--is-ancestor', head, integrated],
+                          cwd=self.repo, capture_output=True).returncode:
+            raise ValueError('Exact reviewed candidate is not in the observed merge commit')
+        removed, preserved = 0, 0
+        for attempt in inputs['retained_attempts']:
+            ref, commit = attempt['ref'], attempt['commit']
+            phases = ('|'.join(re.escape(member['node']) for group in inputs['groups']
+                       for member in group['nodes']) if delivery_class == 'grouped' else
+                       'integration_verification' if delivery_class == 'composition'
+                       else 'test_design|implement')
+            match = re.fullmatch(
+                rf'refs/heads/zzzops/attempts/{number}/({phases})/([0-9a-f]{{32}})', ref)
+            if not match:
+                raise ValueError('Retained attempt identity changed before local cleanup')
+            node, attempt_id = match.groups()
+            local = managed_worktrees.inspect_attempt_worktree(self.repo,
+                goal=number, node=node, attempt=attempt_id)
+            if local['status'] == 'missing':
+                continue
+            if local['status'] != 'clean':
+                preserved += 1
+                continue
+            managed_worktrees.cleanup_delivered_attempt_worktree(self.repo, goal=number,
+                node=node, attempt=attempt_id, expected_head=commit,
+                delivery_base=inputs['base_commit'], delivery_head=head,
+                integrated_commit=integrated, remote='origin', retained_ref=ref,
+                delivery_class=delivery_class,
+                test_owned=inputs.get('test_owned') if delivery_class == 'leaf' else None,
+                groups=inputs.get('groups'), retained_attempts=inputs['retained_attempts'])
+            removed += 1
+        authorities = [output for _, (_, result) in snapshot['projection']['current'].items()
+            for output in result['outputs'].values()
+            if snapshot['artifacts'][output['hash']].get('type') == 'repository_authorization']
+        approved = []
+        for reference in authorities:
+            try:
+                if self.node_compaction_authorization(snapshot, reference) == reference:
+                    approved.append(reference)
+            except ValueError:
+                continue
+        if len(approved) != 1:
+            raise ValueError('Current candidate authorization is unavailable for local cleanup')
+        candidate_id = approved[0]['hash'][7:39]
+        candidate = managed_worktrees.inspect_attempt_worktree(self.repo,
+            goal=number, node='candidate', attempt=candidate_id)
+        if candidate['status'] == 'dirty':
+            preserved += 1
+        elif candidate['status'] == 'clean':
+            managed_worktrees.cleanup_delivered_candidate_worktree(self.repo,
+                goal=number, attempt=candidate_id, expected_head=head,
+                delivery_base=inputs['base_commit'], integrated_commit=integrated,
+                delivery_class=delivery_class,
+                test_owned=inputs.get('test_owned') if delivery_class == 'leaf' else None,
+                groups=inputs.get('groups'), retained_attempts=inputs['retained_attempts'])
+            removed += 1
+        readonly_removed, readonly_preserved = self.node_cleanup_readonly_attempts(snapshot, integrated)
+        removed += readonly_removed
+        preserved += readonly_preserved
+        return {'status': 'complete' if not preserved else 'preserved_dirty',
+                'removed': removed, 'preserved_dirty': preserved}
+
+    def node_readonly_attempts(self, snapshot):
+        """Recover bounded read-only identities from immutable start receipts."""
+        number = snapshot['number']
+        readonly = {}
+        for receipt in snapshot['payload']['operational']['receipts']:
+            response = snapshot['resolve'](receipt['result'])
+            for step in response.get('next_steps', []):
+                lease = step.get('lease') if step.get('kind') == 'perform' else None
+                acquisition = lease.get('acquisition', {}) if isinstance(lease, dict) else {}
+                if 'read_commit' not in acquisition:
+                    continue
+                node = lease.get('node', {})
+                attempt = lease.get('attempt')
+                commit = acquisition['read_commit']
+                if (node.get('goal') != number or not isinstance(node.get('node'), str)
+                        or not isinstance(attempt, str) or not re.fullmatch(r'[0-9a-f]{32}', attempt)
+                        or not isinstance(commit, str) or not re.fullmatch(r'[0-9a-f]{40}', commit)):
+                    raise ValueError('Read-only cleanup receipt identity is malformed')
+                identity = (node['node'], attempt)
+                if identity in readonly and readonly[identity] != commit:
+                    raise ValueError('Read-only cleanup receipt has conflicting base commits')
+                readonly[identity] = commit
+        return readonly
+
+    def node_cleanup_readonly_attempts(self, snapshot, integrated, readonly=None):
+        """Retire exact clean read-only attempts after their input remains reachable."""
+        number = snapshot['number']
+        readonly = self.node_readonly_attempts(snapshot) if readonly is None else readonly
+        removed, preserved = 0, 0
+        for (node, attempt), commit in sorted(readonly.items()):
+            local = managed_worktrees.inspect_attempt_worktree(self.repo,
+                goal=number, node=node, attempt=attempt)
+            if local['status'] == 'missing':
+                continue
+            if local['status'] != 'clean':
+                preserved += 1
+                continue
+            managed_worktrees.cleanup_delivered_readonly_worktree(self.repo,
+                goal=number, node=node, attempt=attempt, expected_head=commit,
+                integrated_commit=integrated)
+            removed += 1
+        return removed, preserved
+
+    def node_cleanup_delivered_readonly_worktrees(self, snapshot):
+        """Clean read-only attempts for a legacy delivery after its provider merge."""
+        readonly = self.node_readonly_attempts(snapshot)
+        if not readonly:
+            return {'status': 'complete', 'removed': 0, 'preserved_dirty': 0}
+        integrated, _ = self.node_cleanup_merge_facts(snapshot)
+        removed, preserved = self.node_cleanup_readonly_attempts(snapshot, integrated, readonly)
+        return {'status': 'complete' if not preserved else 'preserved_dirty',
+                'removed': removed, 'preserved_dirty': preserved}
 
     def node_publication_operation(self, snapshot, payload, request):
         operation = request['operation']; projection = snapshot['projection']
@@ -5682,7 +7092,8 @@ class Workflow:
                 with suspend():
                     self.node_verification_commands(
                         context['snapshot'], context['lease'], request,
-                        context['commands'], context['before'])
+                        context['commands'], context['before'],
+                        working_directory=context['working_directory'])
             except VerificationUncertain as exc:
                 lease = context['lease']; node = context['state']['node']
                 return {'next_steps': [{'kind': 'await_worker', 'goal': number, 'node': node,
@@ -6249,6 +7660,207 @@ class Workflow:
             'before': proposal['before'], 'after': proposal['after']}]}
         return self.node_persist(snapshot, payload, response, request)
 
+    def node_policy_cutover_mapping(self, snapshot, mapping, old_graph, new_graph):
+        """Validate a finite exact Result mapping between two reviewed graphs."""
+        if not isinstance(mapping, list) or not mapping:
+            raise ValueError('Policy DAG cutover mapping must be a non-empty array')
+        old_nodes = {node['id']: node for node in old_graph['nodes']}
+        new_nodes = {node['id']: node for node in new_graph['nodes']}
+        current = {}
+        for reference in reversed(snapshot['payload']['evidence']):
+            result_artifact = snapshot['resolve'](reference)
+            result = result_artifact.get('content', {})
+            if result_artifact.get('type') != 'result':
+                continue
+            key = self.api._phase_evidence.task_key(result['node'])
+            current.setdefault(key, (reference, result))
+        seen_old, seen_new = set(), set()
+        required = {'inputs', 'outputs', 'scope', 'role', 'independence', 'approval'}
+        for row in mapping:
+            if not isinstance(row, dict) or set(row) != {'old', 'new', 'result', 'equivalence'}:
+                raise ValueError('Policy DAG cutover mapping row is malformed')
+            for side, nodes in (('old', old_nodes), ('new', new_nodes)):
+                target = row[side]
+                if not isinstance(target, dict) or set(target) != {'node', 'output'}:
+                    raise ValueError('Policy DAG cutover mapping target is malformed')
+                node = nodes.get(target['node'])
+                if node is None or target['output'] not in node['outputs']:
+                    raise ValueError('Policy DAG cutover mapping names a missing output')
+            old_key = (row['old']['node'], row['old']['output'])
+            new_key = (row['new']['node'], row['new']['output'])
+            if old_key in seen_old or new_key in seen_new:
+                raise ValueError('Policy DAG cutover mapping is ambiguous')
+            seen_old.add(old_key); seen_new.add(new_key)
+            equivalence = row['equivalence']
+            if not isinstance(equivalence, dict) or set(equivalence) != required or not all(
+                    equivalence[name] is True for name in required):
+                raise ValueError('Policy DAG cutover evidence equivalence is incomplete')
+            old_node, new_node = old_nodes[old_key[0]], new_nodes[new_key[0]]
+            comparable_old = _rename_node_selectors(old_node, old_key[0], new_key[0])
+            derived = {
+                'inputs': comparable_old['inputs'] == new_node['inputs'],
+                'outputs': comparable_old['outputs'][old_key[1]] == new_node['outputs'][new_key[1]],
+                'scope': (comparable_old['executor'].get('authority') == new_node['executor'].get('authority')
+                          and comparable_old.get('permits', []) == new_node.get('permits', [])),
+                'role': comparable_old['executor'].get('role') == new_node['executor'].get('role'),
+                'independence': comparable_old.get('independent_of', []) == new_node.get('independent_of', []),
+                'approval': comparable_old.get('gates', []) == new_node.get('gates', []),
+            }
+            changed = sorted(name for name, equivalent in derived.items() if not equivalent)
+            if changed:
+                raise ValueError('Policy DAG cutover equivalence changed: ' + ', '.join(changed))
+            self.api._phase_evidence.validate_ref(row['result'])
+            if self.node_ref_goal(row['result'], snapshot['number']) != snapshot['number']:
+                raise ValueError('Policy DAG cutover Result belongs to another goal')
+            artifact = snapshot['resolve'](row['result'])
+            result = artifact.get('content', {})
+            if (artifact.get('type') != 'result' or result.get('node', {}).get('node') != old_key[0]
+                    or result.get('outputs', {}).get(old_key[1]) is None):
+                raise ValueError('Policy DAG cutover mapping Result/output identity differs')
+            old_task = (snapshot['number'], old_key[0], result['node'].get('item'),
+                        result['node'].get('generation', 1))
+            if old_task not in current or current[old_task][0] != row['result']:
+                raise ValueError('Policy DAG cutover mapping Result is superseded or not current')
+        mapped_old = {(row['old']['node'], row['old']['output']) for row in mapping}
+        reusable = set()
+        for key, (_reference, result) in current.items():
+            if key[0] != snapshot['number'] or key[2] is not None:
+                continue
+            old_node = old_nodes.get(key[1]); new_node = new_nodes.get(key[1])
+            if old_node is None or new_node is None:
+                continue
+            for output in result['outputs']:
+                if (output in old_node['outputs'] and output in new_node['outputs']
+                        and old_node['inputs'] == new_node['inputs']
+                        and old_node['outputs'][output] == new_node['outputs'][output]
+                        and old_node['executor'] == new_node['executor']
+                        and old_node.get('independent_of', []) == new_node.get('independent_of', [])
+                        and old_node.get('gates', []) == new_node.get('gates', [])
+                        and old_node.get('permits', []) == new_node.get('permits', [])):
+                    reusable.add((key[1], output))
+        omitted = sorted(reusable - mapped_old)
+        if omitted:
+            raise ValueError('Policy DAG cutover mapping omitted reusable current outputs: ' +
+                             ', '.join(node + '/' + output for node, output in omitted))
+        return copy.deepcopy(mapping)
+
+    def node_policy_cutover_prepare(self, snapshot, payload, request):
+        expected = {'operation', 'request_id', 'actor', 'expected_goal_revision',
+                    'expected_goal_payload', 'old_graph', 'new_graph',
+                    'old_policy_digest', 'new_policy_digest', 'mapping'}
+        if set(request) != expected:
+            raise ValueError('Policy DAG cutover prepare requires exact returned fields')
+        root = (self.runtime or {}).get('root_id')
+        if not root or request['actor'] != root:
+            raise ValueError('Only the coordinating root may prepare a policy DAG cutover')
+        cutover = snapshot.get('policy_dag_cutover')
+        if (cutover is None or request['expected_goal_revision'] != snapshot['envelope']['revision']
+                or request['expected_goal_payload'] != snapshot['envelope']['payload']
+                or any(request[name] != cutover[name] for name in (
+                    'old_graph', 'new_graph'))
+                or request['old_policy_digest'] != cutover['old_policy_revision']
+                or request['new_policy_digest'] != cutover['new_policy_revision']):
+            raise ValueError('Policy DAG cutover goal revision, payload, graph or policy changed')
+        old_graph = snapshot['resolve'](cutover['old_graph'])
+        new_graph = snapshot['resolve'](cutover['new_graph'])
+        mapping = self.node_policy_cutover_mapping(snapshot, request['mapping'], old_graph, new_graph)
+        if payload['operational']['leases']:
+            raise ValueError('Policy DAG cutover requires every old-policy lease owner to be resolved')
+        proposal = {'old_graph': cutover['old_graph'], 'new_graph': cutover['new_graph'],
+            'old_execution_graph': cutover['old_execution_graph'],
+            'new_policy_graph': cutover['new_policy_graph'],
+            'old_policy_digest': cutover['old_policy_revision'],
+            'new_policy_digest': cutover['new_policy_revision'], 'mapping': mapping,
+            'source_revision': snapshot['envelope']['revision'],
+            'source_payload': copy.deepcopy(snapshot['envelope']['payload'])}
+        artifact = {'type': 'policy_dag_cutover_proposal', 'content': proposal,
+            'producer': None, 'provenance': {'actor': root, 'request_id': request['request_id']}}
+        reference = self.node_ref(digest(artifact), snapshot['number'])
+        snapshot['artifacts'][reference['hash']] = artifact
+        snapshot['workflow_definition'] = None
+        response = {'next_steps': [{'kind': 'policy_dag_cutover_proposed',
+            'goal': snapshot['number'], 'proposal': reference,
+            'review': {'operation': 'policy_dag_cutover_review',
+                'request_id': '<stable request id>', 'actor': '<independent reviewer>',
+                'proposal': reference, 'decision': '<approved or changes_requested>',
+                'report': '<exact review report>'}}]}
+        return self.node_persist(snapshot, payload, response, request)
+
+    def node_policy_cutover_review(self, snapshot, payload, request):
+        if set(request) != {'operation', 'request_id', 'actor', 'proposal', 'decision', 'report'}:
+            raise ValueError('Policy DAG cutover review requires exact returned fields')
+        root = (self.runtime or {}).get('root_id')
+        if (not isinstance(request['actor'], str) or not request['actor'].strip()
+                or request['actor'] == root or request['decision'] not in {'approved', 'changes_requested'}
+                or not isinstance(request['report'], str) or not request['report'].strip()):
+            raise ValueError('Policy DAG cutover requires an independent substantive review')
+        self.api._phase_evidence.validate_ref(request['proposal'])
+        proposal_artifact = snapshot['resolve'](request['proposal'])
+        proposal = proposal_artifact.get('content', {})
+        if (proposal_artifact.get('type') != 'policy_dag_cutover_proposal'
+                or proposal_artifact.get('provenance', {}).get('actor') != root
+                or snapshot.get('policy_dag_cutover') is None
+                or proposal.get('old_graph') != snapshot['policy_dag_cutover']['old_graph']
+                or proposal.get('new_graph') != snapshot['policy_dag_cutover']['new_graph']):
+            raise ValueError('Policy DAG cutover proposal is stale or unauthenticated')
+        review = {'type': 'policy_dag_cutover_review',
+            'content': {'decision': request['decision'], 'report': request['report']},
+            'producer': None, 'provenance': {'actor': request['actor'],
+                'source': request['proposal'], 'request_id': request['request_id']}}
+        reference = self.node_ref(digest(review), snapshot['number'])
+        snapshot['artifacts'][reference['hash']] = review
+        snapshot['workflow_definition'] = None
+        step = {'kind': 'policy_dag_cutover_reviewed', 'goal': snapshot['number'],
+            'proposal': request['proposal'], 'review': reference}
+        if request['decision'] == 'approved':
+            step['apply'] = {'operation': 'policy_dag_cutover_apply',
+                'request_id': '<stable request id>', 'actor': root,
+                'proposal': request['proposal'], 'review': reference,
+                'expected_goal_revision': snapshot['envelope']['revision'] + 1}
+        return self.node_persist(snapshot, payload, {'next_steps': [step]}, request)
+
+    def node_policy_cutover_apply(self, snapshot, payload, request):
+        if set(request) != {'operation', 'request_id', 'actor', 'proposal', 'review',
+                            'expected_goal_revision'}:
+            raise ValueError('Policy DAG cutover apply requires exact returned fields')
+        root = (self.runtime or {}).get('root_id')
+        if (not root or request['actor'] != root
+                or request['expected_goal_revision'] != snapshot['envelope']['revision']):
+            raise ValueError('Policy DAG cutover apply goal revision is stale or actor is not root')
+        if payload['operational']['leases']:
+            raise ValueError('Policy DAG cutover cannot apply while an old-policy lease is active')
+        proposal_artifact = snapshot['resolve'](request['proposal'])
+        review_artifact = snapshot['resolve'](request['review'])
+        proposal = proposal_artifact.get('content', {})
+        review = review_artifact.get('content', {})
+        if (proposal_artifact.get('type') != 'policy_dag_cutover_proposal'
+                or review_artifact.get('type') != 'policy_dag_cutover_review'
+                or review_artifact.get('provenance', {}).get('source') != request['proposal']
+                or review_artifact.get('provenance', {}).get('actor') == root
+                or review.get('decision') != 'approved'):
+            raise ValueError('Policy DAG cutover requires the exact independent approved review')
+        cutover = snapshot.get('policy_dag_cutover')
+        if (cutover is None or proposal.get('old_graph') != cutover['old_graph']
+                or proposal.get('new_graph') != cutover['new_graph']):
+            raise ValueError('Policy DAG cutover proposal no longer matches current old/new policy')
+        old_graph = snapshot['resolve'](proposal['old_graph'])
+        new_graph = snapshot['resolve'](proposal['new_graph'])
+        self.node_policy_cutover_mapping(snapshot, proposal.get('mapping'), old_graph, new_graph)
+        payload['workflow'] = {'version': self.api._static_workflow.VERSION,
+                               'graph': copy.deepcopy(proposal['new_graph'])}
+        receipt_artifact = {'type': 'policy_dag_cutover_receipt',
+            'content': {'old_graph': proposal['old_execution_graph'], 'new_graph': proposal['new_graph'],
+                'new_policy_graph': proposal['new_policy_graph'],
+                'proposal': request['proposal'], 'review': request['review'],
+                'mapping': proposal['mapping']}, 'producer': None,
+            'provenance': {'actor': root, 'request_id': request['request_id']}}
+        receipt = self.node_ref(digest(receipt_artifact), snapshot['number'])
+        snapshot['artifacts'][receipt['hash']] = receipt_artifact
+        response = {'next_steps': [{'kind': 'policy_dag_cutover_applied',
+            'goal': snapshot['number'], 'old_graph': proposal['old_execution_graph'],
+            'new_graph': proposal['new_graph'], 'receipt': receipt}]}
+        return self.node_persist(snapshot, payload, response, request)
+
     def node_phase_finding(self, snapshot, payload, request):
         """Record diagnostic phase data; independent review/admission grants work."""
         fields = {'operation', 'request_id', 'actor', 'target', 'subject', 'source', 'rationale', 'id'}
@@ -6336,6 +7948,14 @@ class Workflow:
                         if any(step.get('provider_state') == 'closed' for step in response['next_steps']) and str(issue.get('state', '')).lower() != 'closed': raise ValueError('Stored closure receipt conflicts with partial provider state; repair required')
                         if str(issue.get('state', '')).lower() == 'closed' and not any(step.get('provider_state') == 'closed' for step in response['next_steps']):
                             raise ValueError('Closed goal cannot resume an execution receipt without explicit reopening')
+                        if request.get('operation') == 'submit':
+                            submitted = response.get('submitted', {})
+                            result_ref = submitted.get('result')
+                            if isinstance(result_ref, dict):
+                                result_artifact = self.artifact_index(number).resolve(result_ref['hash'])[0]
+                                if result_artifact.get('content', {}).get('supersedes_result') is not None:
+                                    response = {'next_steps': [{'kind': 'checkpoint', 'goal': number,
+                                        'action': 'Replacement Result is already committed; observe the current authenticated frontier.'}]}
                         return self.stop_completed_heartbeat(number, request, durable['operational'], response)
             ownership_graph = None
             if request.get('operation') in {'recover', 'release', 'renew'} and envelope.get('schema_version') == 2:
@@ -6343,6 +7963,22 @@ class Workflow:
                 ownership_graph = self.artifact_index(number).resolve(ownership_reference['hash'])[0]
             snapshot = self.node_snapshot(number, graph_override=ownership_graph)
             if snapshot['envelope']['state'] != 'open' or str(snapshot['issue'].get('state', '')).lower() == 'closed': raise ValueError('Archived goal cannot execute or mutate')
+            if snapshot.get('policy_dag_cutover'):
+                cutover_operations = {
+                    'policy_dag_cutover_prepare', 'policy_dag_cutover_review',
+                    'policy_dag_cutover_apply',
+                }
+                ownership_operations = {'bind', 'block', 'recover', 'release', 'renew', 'submit'}
+                operation = request.get('operation')
+                if operation in ownership_operations:
+                    requested = request.get('node')
+                    owned = (isinstance(requested, dict) and any(
+                        lease.get('node') == requested
+                        for lease in snapshot['payload']['operational']['leases']))
+                    if not owned:
+                        raise ValueError('Pending policy DAG cutover permits only an exact old-lease operation')
+                elif operation not in cutover_operations:
+                    raise ValueError('Pending policy DAG cutover blocks semantic mutation until reviewed mapping is applied')
             # Archived-prerequisite administration repairs an exact migrated
             # blocker without running or accepting any retired phase. Keep the
             # old phase mapping debt on the execution frontier after the write.
@@ -6356,6 +7992,12 @@ class Workflow:
                     if receipt['payload'] != digest(request): raise ValueError('Request receipt payload conflict')
                     return copy.deepcopy(snapshot['artifacts'][receipt['result']['hash']])
             pending = self.node_pending(snapshot, request)
+            if request['operation'] == 'policy_dag_cutover_prepare':
+                return self.node_policy_cutover_prepare(snapshot, payload, request)
+            if request['operation'] == 'policy_dag_cutover_review':
+                return self.node_policy_cutover_review(snapshot, payload, request)
+            if request['operation'] == 'policy_dag_cutover_apply':
+                return self.node_policy_cutover_apply(snapshot, payload, request)
             if request['operation'] == 'resolve_goal_blocker':
                 return self.node_resolve_goal_blocker(snapshot, payload, request)
             if request['operation'] == 'goal_dependency_review':
@@ -6374,6 +8016,8 @@ class Workflow:
                 return self.node_checkpoint_reconcile_adopt(snapshot, payload, request)
             if request['operation'] == 'checkpoint_reconcile_review':
                 return self.node_checkpoint_reconcile_review(snapshot, payload, request)
+            if request['operation'] == 'compact_candidate':
+                return self.node_compact_candidate(snapshot, payload, request)
             if request['operation'] == 'graph_adopt':
                 return self.node_graph_adopt(snapshot, payload, request)
             if request['operation'] == 'graph_review':
@@ -6396,7 +8040,89 @@ class Workflow:
             operation = request['operation']; leases = payload['operational']['leases']
             lease = next((item for item in leases if item['node'] == node), None)
             root = (self.runtime or {}).get('root_id')
-            if operation == 'route_choice':
+            if operation in {'restack_continue', 'restack_abort'}:
+                allowed = {'operation', 'request_id', 'node', 'lease', 'actor', 'plan_hash'}
+                restack = lease.get('restack') if lease else None
+                if (set(request) != allowed or not lease or not restack
+                        or request.get('lease') != lease.get('token')
+                        or request.get('actor') != lease.get('worker')
+                        or not lease.get('worker')
+                        or request.get('plan_hash') != restack.get('plan_hash')
+                        or restack.get('plan_hash') != digest(restack.get('plan'))
+                        or restack.get('pending') is not None):
+                    raise ValueError('Unsupported restack operation or exact lease, actor, and plan changed')
+                restack['pending'] = {'operation': operation,
+                    'request': request['request_id'], 'actor': request['actor']}
+                response = {'next_steps': [{'kind': operation + '_authorized',
+                    'goal': number, 'node': node, 'lease': lease['token'],
+                    'actor': lease['worker'], 'attempt': lease['attempt'],
+                    'plan_hash': restack['plan_hash'],
+                    'plan': copy.deepcopy(restack['plan'])}]}
+            elif operation == 'restack_intent':
+                allowed = {'operation', 'request_id', 'node', 'lease', 'actor',
+                           'plan_hash', 'authorized_request', 'candidate_commit', 'result_tree'}
+                restack = lease.get('restack') if lease else None
+                pending_restack = restack.get('pending') if restack else None
+                intent = ({'candidate_commit': request.get('candidate_commit'),
+                           'result_tree': request.get('result_tree')})
+                if (set(request) != allowed or not lease or not restack
+                        or request.get('lease') != lease.get('token')
+                        or request.get('actor') != lease.get('worker')
+                        or request.get('plan_hash') != restack.get('plan_hash')
+                        or pending_restack != {'operation': 'restack_continue',
+                            'request': request.get('authorized_request'), 'actor': request.get('actor')}
+                        or any(re.fullmatch(r'[0-9a-f]{40}', value or '') is None
+                               for value in intent.values())
+                        or restack.get('candidate_intent') not in (None, intent)):
+                    raise ValueError('Restack candidate intent differs from provider-authorized continuation')
+                restack['candidate_intent'] = intent
+                response = {'next_steps': [{'kind': 'restack_intent_confirmed',
+                    'goal': number, 'node': node, 'lease': lease['token'],
+                    'actor': lease['worker'], 'plan_hash': restack['plan_hash'], **intent}]}
+            elif operation == 'restack_finalize':
+                allowed = {'operation', 'request_id', 'node', 'lease', 'actor',
+                           'plan_hash', 'authorized_request', 'status', 'head_commit'}
+                restack = lease.get('restack') if lease else None
+                pending_restack = restack.get('pending') if restack else None
+                if (set(request) != allowed or not lease or not restack
+                        or request.get('lease') != lease.get('token')
+                        or request.get('actor') != lease.get('worker')
+                        or request.get('plan_hash') != restack.get('plan_hash')
+                        or pending_restack != {'operation': 'restack_' + request.get('status', ''),
+                            'request': request.get('authorized_request'), 'actor': request.get('actor')}
+                        or request.get('status') not in {'continue', 'abort'}):
+                    raise ValueError('Restack finalization differs from its provider-confirmed operation')
+                workspace = snapshot['workspaces'].get(key, {})
+                observed = managed_worktrees.inspect_attempt_worktree(self.repo,
+                    goal=number, node=node['node'], attempt=lease['attempt'])
+                if (not workspace.get('git_workspace') or 'entry' not in workspace
+                        or observed.get('status') != 'clean'
+                        or observed.get('head') != request.get('head_commit')):
+                    raise ValueError('Restack finalization requires the exact clean managed worktree')
+                plan = restack['plan']
+                git_phase_state.verify_attempt_ref(self.repo, remote='origin',
+                    ref=restack['source']['ref'], commit=restack['source']['commit'])
+                if request['status'] == 'continue':
+                    checkpoint = git_phase_state.validate_checkpoint(Path(observed['path']),
+                        base_commit=plan['new_base'], result_commit=observed['head'],
+                        owned_paths=workspace['entry']['owned'])
+                    restack.update(status='ready', result_commit=observed['head'],
+                                   result_tree=checkpoint['result_tree'])
+                    restack.pop('pending')
+                    response = {'next_steps': [{'kind': 'restack_continued',
+                        'goal': number, 'node': node, 'lease': lease['token'],
+                        'actor': lease['worker'], 'plan_hash': restack['plan_hash'],
+                        'result_commit': observed['head'],
+                        'submission': {'operation': 'submit', 'node': node}}]}
+                else:
+                    if observed['head'] != plan['new_base']:
+                        raise ValueError('Restack abort did not restore the exact new base')
+                    leases.remove(lease)
+                    response = {'next_steps': [{'kind': 'restack_aborted',
+                        'goal': number, 'node': node, 'lease': lease['token'],
+                        'actor': lease['worker'], 'plan_hash': restack['plan_hash'],
+                        'head_commit': observed['head']}]}
+            elif operation == 'route_choice':
                 allowed = {'operation', 'request_id', 'node', 'root_pair', 'requested_pair', 'choice', 'approved_by'}
                 if set(request) != allowed or request.get('choice') != 'downgrade_to_root' or not explicit_approval(request.get('approved_by')):
                     raise ValueError('Root capability downgrade requires the exact returned choice and explicit human approval')
@@ -6416,6 +8142,30 @@ class Workflow:
             elif operation == 'start':
                 if lease: raise ValueError('Task already has an owner; observed-stop recovery is required')
                 if state['state'] != 'ready' or request.get('input_hash') != state.get('input_hash'): raise ValueError('Stale input or prerequisite prevents acquisition')
+                # Broadphase intentionally avoids serialising a merely-ready
+                # legacy sibling. Once that exact legacy task is selected,
+                # materialise its raw baseline before issuing ownership.
+                selected_workspace = self.node_workspace_context(
+                    snapshot['evaluation_context']['goals'], projection,
+                    snapshot['artifacts'], workspace_target=key).get(key)
+                if isinstance(selected_workspace, dict) and 'error' in selected_workspace:
+                    raise ValueError(selected_workspace['error'])
+                if 'repository_workspace' in state['contract']['executor']['resources']:
+                    if (not isinstance(selected_workspace, dict)
+                            or 'files' not in selected_workspace
+                            or 'entry' not in selected_workspace):
+                        raise ValueError('Selected legacy workspace baseline is unavailable')
+                if (selected_workspace is not None and 'files' in selected_workspace
+                        and 'entry' in selected_workspace):
+                    selected_workspace = copy.deepcopy(selected_workspace)
+                    for path in (selected_workspace['entry']['owned']
+                                 + selected_workspace['entry']['consumed']):
+                        selected_workspace['files'].setdefault(path, 'missing')
+                    selected_workspace['acquisition']['workspace_digest'] = digest(
+                        selected_workspace['files'])
+                if node['node'] == 'publish' and self.node_native_delivery(snapshot):
+                    if self.node_candidate_state(snapshot)['status'] != 'ready':
+                        raise ValueError('Git-native candidate must be compacted before publication acquisition')
                 draft_acquisition = state.get('workspace', {}).get('acquisition', {})
                 if draft_acquisition.get('stopped_draft') and draft_acquisition.get('input_hash') != state['input_hash']:
                     raise ValueError('Stopped workspace draft full input identity changed; reconcile current authority before acquisition')
@@ -6427,7 +8177,10 @@ class Workflow:
                 if request.get('policy_receipt') != receipt: raise ValueError('Exact policy receipt is required')
                 lease = {'node': node, 'attempt': uuid.uuid4().hex, 'token': uuid.uuid4().hex, 'owner': root,
                          'worker': root if step['assignment'] == 'root' else None, 'fingerprint': state['input_hash'], 'expires_at': time.time() + 600,
-                         'selection': step['selection'], 'acquisition': {'resolutions': state['resolutions'], 'inputs': state['inputs'], 'contract': state['contract_hash']}}
+                         'selection': step['selection'], 'acquisition': {
+                             'resolutions': state['resolutions'], 'inputs': state['inputs'],
+                             'contract': state['contract_hash'],
+                             'expected_goal_revision': snapshot['envelope']['revision']}}
                 aggregates = {}
                 for binding in state['inputs']:
                     declared = state['contract']['inputs'].get(binding['name'], {})
@@ -6435,11 +8188,17 @@ class Workflow:
                     if selector.get('goal') == '#children' or selector.get('kind') == 'join':
                         aggregates[binding['name']] = copy.deepcopy(snapshot['artifacts'][binding['source']['hash']]['content']['sources'])
                 if aggregates: lease['acquisition']['aggregate_sources'] = aggregates
-                if 'workspace' in state:
-                    workspace = state['workspace']
+                if selected_workspace is not None:
+                    workspace = selected_workspace
                     lease['acquisition'].update(copy.deepcopy(workspace['acquisition']))
-                    lease['acquisition'].update(files=workspace['files'], input_hash=state['input_hash'])
+                    if 'files' in workspace:
+                        lease['acquisition']['files'] = copy.deepcopy(workspace['files'])
+                    lease['acquisition']['input_hash'] = state['input_hash']
                 lease['acquisition'].update(inputs=copy.deepcopy(state['inputs']), resolutions=copy.deepcopy(state['resolutions']), contract=state['contract_hash'])
+                restack = self.node_attempt_restack_plan(
+                    snapshot, state, selected_workspace)
+                if restack is not None:
+                    lease['restack'] = restack
                 if pending: lease.update(copy.deepcopy(pending['response']['next_steps'][0]['lease']))
                 leases.append(lease)
                 # Reserve local capacity before the durable provider write. A
@@ -6522,11 +8281,57 @@ class Workflow:
                     'workspace_draft': self.node_ref(identity, number),
                     'action': 'Historical stopped bytes are preserved as unaccepted work; reacquire through the normal current task contract.'}]}
             else:
+                if not lease and operation == 'submit':
+                    acquired = None
+                    for historical_receipt in payload['operational']['receipts']:
+                        historical_response = snapshot['resolve'](historical_receipt['result'])
+                        acquired = next((step.get('lease') for step in historical_response.get('next_steps', [])
+                                         if isinstance(step.get('lease'), dict)
+                                         and step['lease'].get('token') == request.get('lease')), None)
+                        if acquired:
+                            break
+                    current = projection['current'].get(key)
+                    mapped_results = set()
+                    for receipt_row in reversed(payload['operational']['receipts']):
+                        try:
+                            prior = snapshot['resolve'](receipt_row['result'])
+                            applied = next(item for item in prior.get('next_steps', [])
+                                           if item.get('kind') == 'policy_dag_cutover_applied')
+                            cutover_receipt = snapshot['resolve'](applied['receipt'])['content']
+                            mapped_results = {item['result']['hash'] for item in cutover_receipt['mapping']}
+                            break
+                        except (KeyError, StopIteration, TypeError, ValueError):
+                            continue
+                    if (acquired and current and current[0]['hash'] in mapped_results
+                            and current[1]['attempt'] == acquired.get('attempt')):
+                        return {'next_steps': [{'kind': 'checkpoint', 'goal': number,
+                            'action': 'The reviewed cutover retained this completed attempt; observe the current frontier.'}]}
                 if not lease or request.get('lease') != lease['token'] or lease['owner'] != root: raise ValueError('Exact current owner/lease token required')
                 if operation == 'recover':
                     if request.get('worker_status') != 'stopped' or not isinstance(request.get('evidence'), str) or not request['evidence'].strip(): raise ValueError('Observed stopped worker evidence required; unknown liveness cannot recover')
                     if request.get('actor') != lease['worker']: raise ValueError('Exact bound actor required for observed-stop recovery')
                     step = {'kind': 'checkpoint', 'goal': number}
+                    if ('git_commit' in lease['acquisition'] and 'files' not in lease['acquisition']):
+                        observed = managed_worktrees.inspect_attempt_worktree(
+                            self.repo, goal=number, node=node['node'], attempt=lease['attempt'])
+                        base = lease['acquisition']['git_commit']
+                        workspace = state.get('workspace')
+                        if (observed['status'] == 'clean' and observed['head'] != base
+                                and workspace and workspace.get('git_workspace')):
+                            try:
+                                git_phase_state.validate_checkpoint(Path(observed['path']),
+                                    base_commit=base, result_commit=observed['head'],
+                                    owned_paths=workspace['entry']['owned'])
+                            except ValueError as exc:
+                                step['unretained_attempt'] = str(exc)
+                            else:
+                                # Retain before releasing the lease. A failed or
+                                # uncertain push leaves this exact recover request
+                                # replayable, and the remote ref is create-only.
+                                step['retained_attempt'] = git_phase_state.retain_attempt_ref(
+                                    Path(observed['path']), remote='origin', goal=number,
+                                    node=node['node'], attempt=lease['attempt'],
+                                    commit=observed['head'])
                     if 'repository_workspace' in state['contract']['executor']['resources']:
                         if state['state'] != 'ready' or state.get('input_hash') != lease['fingerprint']:
                             raise ValueError('Stale workspace authority/input prevents draft recovery: ' + state.get('reason', 'workspace drift'))
@@ -6566,13 +8371,22 @@ class Workflow:
                     response = {'next_steps': [{'kind': 'perform', 'goal': number, 'node': node, 'lease': lease}]}
                 else:
                     if request.get('actor') != lease['worker'] or not lease['worker']: raise ValueError('Exact bound actor required')
-                    if operation != 'release' and (state.get('input_hash') != lease['fingerprint'] or state['state'] != 'ready'): raise ValueError('Stale substantive input/contract/prerequisite; owner remains bound: ' + state.get('reason', 'workspace or input identity drift'))
-                    if lease['expires_at'] <= time.time() and operation not in {'renew', 'release'}:
-                        raise ValueError('Lease expired; observe stopped owner before recovery')
                     if operation == 'renew':
+                        current = (state.get('input_hash') == lease['fingerprint']
+                                   and state['state'] == 'ready')
                         lease['expires_at'] = pending['response']['next_steps'][0]['lease']['expires_at'] if pending else time.time() + 600
-                        response = {'next_steps': [{'kind': 'renewed', 'goal': number, 'node': node, 'lease': lease['token'], 'actor': lease['worker'], 'expires_at': lease['expires_at']}]}
-                    elif operation == 'release':
+                        step = {'kind': 'renewed', 'goal': number, 'node': node,
+                            'lease': lease['token'], 'actor': lease['worker'],
+                            'expires_at': lease['expires_at'], 'current': current}
+                        if not current:
+                            step.update(reason=state.get('reason', 'workspace or input identity drift'),
+                                action='Custody only: preserve the owned attempt; current review and input authority are still required before submission.')
+                        response = {'next_steps': [step]}
+                    elif operation != 'release':
+                        if state.get('input_hash') != lease['fingerprint'] or state['state'] != 'ready': raise ValueError('Stale substantive input/contract/prerequisite; owner remains bound: ' + state.get('reason', 'workspace or input identity drift'))
+                        if lease['expires_at'] <= time.time() and operation != 'release':
+                            raise ValueError('Lease expired; observe stopped owner before recovery')
+                    if operation == 'release':
                         if set(request) - {'operation', 'node', 'lease', 'actor', 'request_id'}:
                             raise ValueError('Lease release accepts only the exact owner identity')
                         leases.remove(lease)
@@ -6600,6 +8414,14 @@ class Workflow:
                             )
                             if not legacy_rejected_authorization and not ev.value_matches(contracts[slot]['schema'], content):
                                 raise ValueError('Output type contract rejected slot ' + slot)
+                        if node['node'] == 'publish' and self.node_native_delivery(snapshot):
+                            candidate = self.node_candidate_state(snapshot)
+                            value = bundle.get('value')
+                            if (candidate['status'] != 'ready' or not isinstance(value, dict)
+                                    or value.get('branch') != candidate['branch']
+                                    or value.get('head_oid') != candidate['head_oid']
+                                    or value.get('repository') != self.repository):
+                                raise ValueError('Published candidate differs from the exact managed Git head')
                         self.node_validate_bundle(snapshot, state, bundle, lease['worker'])
                         verification = None
                         if request.get('workspace_checks'):
@@ -6632,11 +8454,32 @@ class Workflow:
                             identity = digest(output); snapshot['artifacts'][identity] = output; outputs[slot] = self.node_ref(identity, number)
                             if slot in previous: snapshot.setdefault('output_bases', {})[identity] = previous[slot]['hash']
                         result = {'node': node, 'attempt': lease['attempt'], 'contract': state['contract_hash'], 'inputs': lease['acquisition']['inputs'], 'executor': lease['worker'], 'outputs': outputs, 'resolutions': lease['acquisition']['resolutions']}
+                        predecessor = snapshot['projection']['current'].get(
+                            self.api._phase_evidence.task_key(node))
+                        if predecessor is None:
+                            predecessor = next(((reference, value['content'])
+                                for reference in reversed(snapshot['payload']['evidence'])
+                                if (value := snapshot['artifacts'][reference['hash']]).get('type') == 'result'
+                                and value.get('content', {}).get('node') == node), None)
+                        if predecessor is not None:
+                            expected_revision = lease['acquisition'].get('expected_goal_revision')
+                            if (type(expected_revision) is not int
+                                    or expected_revision >= snapshot['envelope']['revision']):
+                                raise ValueError('Replacement Result goal revision CAS precondition changed')
+                            observed = next(((reference, value['content'])
+                                for reference in reversed(snapshot['payload']['evidence'])
+                                if (value := snapshot['artifacts'][reference['hash']]).get('type') == 'result'
+                                and value.get('content', {}).get('node') == node), None)
+                            if observed is None or observed[0] != predecessor[0]:
+                                raise ValueError('Replacement Result predecessor CAS precondition changed')
+                            result['supersedes_result'] = predecessor[0]
+                            result['expected_goal_revision'] = expected_revision
                         artifact = {'type': 'result', 'content': result, 'producer': lease['attempt'], 'provenance': {'actor': lease['worker'], 'source': None, 'policy': self.node_evidence_policy(), 'approved_policy': digest(self.project['policy'])}}
                         identity = digest(artifact); snapshot['artifacts'][identity] = artifact
                         ref = self.node_ref(identity, number); payload['evidence'].append(ref); leases.remove(lease)
                         response = self.node_continuation(snapshot, payload, node, ref)
-                    else: raise ValueError('Unsupported generic operation; semantic evidence uses submit')
+                    elif operation != 'renew':
+                        raise ValueError('Unsupported generic operation; semantic evidence uses submit')
             return self.node_persist(snapshot, payload, response, request)
 
     def node_validate_bundle(self, snapshot, state, bundle, actor):
@@ -6644,6 +8487,10 @@ class Workflow:
         ev = self.api._phase_evidence; projection = snapshot['projection']; artifacts = snapshot['artifacts']
         current = {ref['hash']: result for ref, result in projection['current'].values()}
         subject_results = {ref['hash']: result for result in current.values() for ref in result['outputs'].values()}
+        historical_subject_results = {ref['hash']: result
+            for result_ref in snapshot['payload']['evidence']
+            for result in [artifacts[result_ref['hash']]['content']]
+            for ref in result['outputs'].values()}
         history = [(ref, artifacts[ref['hash']]) for item in snapshot['payload']['evidence'] for ref in artifacts[item['hash']]['content']['outputs'].values()]
         proposed = [(state['contract']['outputs'][slot]['type'], value) for slot, value in bundle.items()]
         def nullable_supersession(contract):
@@ -6981,8 +8828,10 @@ class Workflow:
                     raise ValueError('Applicability assessment must classify the obligation with evidence rationale')
                 if not exact_obligation_input(value['admission']) or not exact_obligation_input(value['finding']):
                     raise ValueError('Applicability assessment must bind the exact admission and finding')
-                if not value['subjects'] or any(ref['hash'] not in subject_results or not exact_input(ref) for ref in value['subjects']):
-                    raise ValueError('Applicability assessment requires exact current corrected subjects')
+                if (value['subjects'] != finding.get('subjects') or not value['subjects']
+                        or any(ref['hash'] not in historical_subject_results or not exact_input(ref)
+                               for ref in value['subjects'])):
+                    raise ValueError('Applicability assessment requires the finding-bound exact historical subjects')
                 reviewer = read(value['reviewer_result'], 'result')
                 if value['reviewer_result']['hash'] not in current:
                     raise ValueError('Applicability assessment requires the exact current reviewer Result')
@@ -6996,10 +8845,11 @@ class Workflow:
                 independent_targets = [target for row in reviewer_state['resolutions']
                     if row['selector'] in reviewer_state['contract']['independent_of']
                     for target in row['targets']]
-                if any(subject_results[ref['hash']]['node'] not in independent_targets
+                if any(historical_subject_results[ref['hash']]['node'] not in independent_targets
                        for ref in value['subjects']):
                     raise ValueError('Applicability reviewer requires declared exact subject independence')
-                if any(subject_results[ref['hash']]['executor'] == reviewer['executor'] for ref in value['subjects']):
+                if any(historical_subject_results[ref['hash']]['executor'] == reviewer['executor']
+                       for ref in value['subjects']):
                     raise ValueError('Applicability reviewer must be independent of corrected subjects')
             elif kind == 'supersession':
                 if value is None:
@@ -7039,6 +8889,16 @@ class Workflow:
             for node in resolution['targets']:
                 current = snapshot['projection']['current'].get(self.api._phase_evidence.task_key(node))
                 if current and current[1]['executor'] == actor: raise ValueError('Independent reviewer cannot be the actual subject executor')
+                exact_subjects = {item['source']['hash'] for item in state['inputs']
+                                  if item['name'] == 'subject' and item['mode'] == 'identity'
+                                  and not item['path']}
+                if exact_subjects:
+                    for reference in snapshot['payload']['evidence']:
+                        result = snapshot['artifacts'][reference['hash']]['content']
+                        if (result['node'] == node and result['executor'] == actor
+                                and any(ref['hash'] in exact_subjects
+                                        for ref in result['outputs'].values())):
+                            raise ValueError('Independent reviewer cannot be the historical subject executor')
 
 
 def capacity_step(active_leases, limit):
@@ -7786,7 +9646,168 @@ def _public_run(api, repo, intent, source, runtime, payload, number, *, policy_s
             steps.append({'kind': 'repair', 'action': result['error']})
         return {'next_steps': steps}
     if payload is not None and number is not None:
-        return engine.mutate(number, payload)
+        stopped_attempt = None
+        if operation == 'recover':
+            historical = api.parse_managed_goal(engine.adapter.get_issue(number)['body'], number)
+            if historical.get('schema_version') == 2:
+                snapshot = engine.node_snapshot(number)
+                node_key = api._phase_evidence.task_key(payload.get('node'))
+                prior = snapshot['projection']['leases'].get(node_key)
+                if (prior and prior.get('token') == payload.get('lease')
+                        and 'git_commit' in prior.get('acquisition', {})
+                        and 'files' not in prior['acquisition']):
+                    stopped_attempt = prior
+        result = engine.mutate(number, payload)
+        if operation in {'restack_continue', 'restack_abort'}:
+            authorization = next((step for step in result.get('next_steps', [])
+                                  if step.get('kind') == operation + '_authorized'), None)
+            if (authorization is None or authorization.get('lease') != payload.get('lease')
+                    or authorization.get('actor') != payload.get('actor')
+                    or authorization.get('plan_hash') != payload.get('plan_hash')
+                    or authorization.get('plan_hash') != digest(authorization.get('plan'))):
+                raise ValueError('Provider-confirmed restack authorization changed')
+            current = engine.node_snapshot(number)
+            key = api._phase_evidence.task_key(payload['node'])
+            authority = current['workspaces'].get(key, {})
+            if not authority.get('git_workspace') or 'entry' not in authority:
+                raise ValueError('Provider-confirmed restack authority changed')
+            local = managed_worktrees.inspect_attempt_worktree(repo, goal=number,
+                node=payload['node']['node'], attempt=authorization['attempt'])
+            if local['status'] == 'missing':
+                raise ValueError('Provider-confirmed restack managed worktree is missing')
+            path = Path(local['path']); plan = authorization['plan']
+            if operation == 'restack_continue':
+                lease = next((item for item in current['payload']['operational']['leases']
+                              if item.get('token') == authorization['lease']), None)
+                intent = lease.get('restack', {}).get('candidate_intent') if lease else None
+                if intent is None:
+                    intent = git_phase_state.prepare_attempt_restack_continue(
+                        path, plan, authority['entry']['owned'])
+                    intent_request = {'operation': 'restack_intent',
+                        'request_id': payload['request_id'] + '-intent',
+                        'node': payload['node'], 'lease': payload['lease'],
+                        'actor': payload['actor'], 'plan_hash': payload['plan_hash'],
+                        'authorized_request': payload['request_id'], **intent}
+                    confirmation = engine.mutate(number, intent_request)
+                    confirmed = next((step for step in confirmation.get('next_steps', [])
+                                      if step.get('kind') == 'restack_intent_confirmed'), None)
+                    if (confirmed is None or any(confirmed.get(name) != value
+                            for name, value in intent.items())):
+                        raise ValueError('Provider did not confirm the exact restack candidate intent')
+                outcome = git_phase_state.complete_attempt_restack_continue(
+                    path, plan, authority['entry']['owned'], intent)
+                head = outcome['result_commit']
+                status = 'continue'
+            else:
+                outcome = git_phase_state.abort_attempt_restack(
+                    path, plan, authority['entry']['owned'])
+                head = outcome['head_commit']; status = 'abort'
+            finalize = {'operation': 'restack_finalize',
+                'request_id': payload['request_id'] + '-finalize',
+                'node': payload['node'], 'lease': payload['lease'],
+                'actor': payload['actor'], 'plan_hash': payload['plan_hash'],
+                'authorized_request': payload['request_id'],
+                'status': status, 'head_commit': head}
+            result = engine.mutate(number, finalize)
+        if operation == 'integrate':
+            cleanup = None
+            try:
+                current = engine.node_snapshot(number)
+                if engine.node_native_delivery(current):
+                    cleanup = engine.node_cleanup_delivered_worktrees(current)
+                else:
+                    cleanup = engine.node_cleanup_delivered_readonly_worktrees(current)
+            except (ValueError, OSError, subprocess.SubprocessError) as exc:
+                cleanup = {'status': 'pending', 'reason': str(exc)}
+            if cleanup is not None:
+                for step in result.get('next_steps', []):
+                    if step.get('kind') == 'checkpoint' and step.get('goal') == number:
+                        step['local_cleanup'] = cleanup
+                        if cleanup['status'] == 'pending':
+                            step['local_cleanup_action'] = ('Replay this exact integrate request after fixing the '
+                                'local cleanup obstacle; the provider merge and goal receipt remain committed.')
+        if operation == 'start':
+            for step in result.get('next_steps', []):
+                lease = step.get('lease') if step.get('kind') == 'perform' else None
+                acquisition = lease.get('acquisition', {}) if isinstance(lease, dict) else {}
+                if (lease and lease.get('node') == payload.get('node')
+                        and lease.get('owner') == (runtime or {}).get('root_id')
+                        and ('git_commit' in acquisition or 'read_commit' in acquisition)
+                        and 'files' not in acquisition):
+                    current = engine.node_snapshot(number)
+                    active = [item for item in current['payload']['operational']['leases']
+                              if item.get('token') == lease['token']]
+                    if (len(active) != 1 or active[0].get('node') != lease['node']
+                            or active[0].get('attempt') != lease['attempt']
+                            or active[0].get('owner') != lease['owner']
+                            or active[0].get('fingerprint') != lease['fingerprint']
+                            or active[0].get('acquisition') != acquisition
+                            or active[0].get('expires_at', 0) <= time.time()):
+                        raise ValueError('Original Git workspace lease is no longer active; recover through the current workflow')
+                    durable_lease = active[0]
+                    node = lease['node']
+                    restack = durable_lease.get('restack')
+                    if restack is not None:
+                        local = managed_worktrees.inspect_attempt_worktree(
+                            repo, goal=number, node=node['node'], attempt=lease['attempt'])
+                        workspace = (managed_worktrees.prepare_worktree(
+                            repo, goal=number, node=node['node'], attempt=lease['attempt'],
+                            base_commit=acquisition['git_commit'], resume_dirty=True)
+                            if local['status'] == 'missing' else
+                            {**local, 'outcome': ('existing_dirty'
+                                                 if local['status'] == 'dirty'
+                                                 else 'existing')})
+                        key = api._phase_evidence.task_key(node)
+                        authority = current['workspaces'].get(key, {})
+                        if (not authority.get('git_workspace') or 'entry' not in authority
+                                or restack.get('plan_hash') != digest(restack.get('plan'))):
+                            raise ValueError('Persisted restack lease differs from current reviewed workspace authority')
+                        applied = git_phase_state.apply_attempt_restack(
+                            Path(workspace['path']), restack['plan'],
+                            authority['entry']['owned'])
+                        actor = lease.get('worker') or '<actual worker>'
+                        common = {'node': node, 'lease': lease['token'], 'actor': actor,
+                                  'plan_hash': restack['plan_hash'],
+                                  'request_id': '<unique request>'}
+                        step['restack'] = {**restack, 'status': applied['status'],
+                            'conflicts': applied.get('conflicts', []),
+                            'continue': {'operation': 'restack_continue', **common},
+                            'abort': {'operation': 'restack_abort', **common}}
+                    else:
+                        workspace = managed_worktrees.prepare_worktree(
+                            repo, goal=number, node=node['node'], attempt=lease['attempt'],
+                            base_commit=acquisition.get('git_commit', acquisition.get('read_commit')),
+                            resume_dirty='git_commit' in acquisition)
+                    step['managed_worktree'] = workspace
+                    step['action'] = ('Resolve only the exact reported owned conflicts, then use the returned continue or abort contract.'
+                        if step.get('restack', {}).get('status') == 'conflict' else
+                        'Resume this leased dirty draft in the managed worktree at '
+                        + workspace['path'] + '; verify and commit only authorized outputs before submission.'
+                        if workspace['outcome'] == 'existing_dirty' else
+                        'Run this leased task in the managed worktree at '
+                        + workspace['path'] + '; preserve the exact attempt branch.')
+        if operation == 'compact_candidate':
+            for step in result.get('next_steps', []):
+                if step.get('kind') != 'candidate_compacted' or step.get('goal') != number:
+                    continue
+                attempt = step['authorization']['hash'][7:39]
+                local = managed_worktrees.inspect_attempt_worktree(
+                    repo, goal=number, node='candidate', attempt=attempt)
+                step['managed_candidate'] = local
+                if local['status'] != 'clean' or local['head'] != step['head_oid']:
+                    step['action'] = ('The exact compacted head is not available in this machine\'s '
+                                      'managed worktree; restore it from retained attempts before publication.')
+        if stopped_attempt is not None:
+            local = managed_worktrees.inspect_attempt_worktree(
+                repo, goal=number, node=stopped_attempt['node']['node'],
+                attempt=stopped_attempt['attempt'])
+            for step in result.get('next_steps', []):
+                if step.get('kind') == 'checkpoint' and step.get('goal') == number:
+                    step['preserved_attempt'] = local
+                    step['action'] = ('The stopped attempt worktree remains local. '
+                                      'Inspect its exact branch and files before reuse; dirty files '
+                                      'have no remote durability guarantee.')
+        return result
     if payload is not None:
         raise ValueError('Unknown operation or missing goal; request an intent checkpoint for its submission contract')
     if source == '$add-zzzops-goal' or intent == 'capture':

@@ -4,9 +4,8 @@ Run package-local [`zzzops.py`](../zzzops.py), never globally. Use the skill's
 semantic `--intent` with `workflow --intent INTENT`; copy returned `--goal`, runtime and input.
 
 Workflow checkpoints and reads have a 90-second provider budget by default.
-Use `workflow --timeout SECONDS` for a slower repository; the override applies
-to the provider deadline for that invocation and must be
-a positive finite number and applies only to that invocation. Renewal keeps its
+Use `workflow --timeout SECONDS` for a slower repository; the override must be
+a positive finite provider deadline for that invocation. Renewal keeps its
 separate work and cleanup budgets.
 
 Stdout is compact; `--response full` preserves full JSON. For minimal inputs and selective reads, use [response references](CLI_BOUNDARY.md).
@@ -23,7 +22,9 @@ Respect allocations and publication gates; infer no operations or models.
 Renew live owners; expiry permits no takeover. Recover only observed stopped owners.
 For monitoring, replay, reconciliation or test corrections, read [recovery](CLI_RECOVERY.md).
 
-Reviewed policy enables [release planning](RELEASES.md).
+See [release planning](RELEASES.md).
+
+For policy-DAG transitions, read [Git workspace cutover](GIT_WORKSPACES.md#reviewed-policy-dag-cutover).
 
 Execution migrates supported open v1 goals automatically, preserving history
 without granting authority. Preview/historical reads never migrate or reopen.
