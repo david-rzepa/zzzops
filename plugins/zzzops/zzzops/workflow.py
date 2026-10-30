@@ -1040,6 +1040,7 @@ class Workflow:
                 'Transaction artifact record limit exceeded',
                 'Transaction reconstruction work limit exceeded',
                 'Artifact reconstruction work limit exceeded',
+                'Artifact decoded/reconstruction size limit exceeded',
                 'Artifact cannot be split within the provider comment contract; use a published Git content reference',
             }:
                 return None
