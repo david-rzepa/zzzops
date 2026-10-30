@@ -23,7 +23,7 @@ except ImportError:  # pragma: no cover - exercised on Windows hosts
     import msvcrt
 from datetime import datetime
 from concurrent.futures import Future, ThreadPoolExecutor
-from contextlib import contextmanager, nullcontext
+from contextlib import ExitStack, contextmanager, nullcontext
 from pathlib import Path
 import zzzops_comment_store as comment_store
 import zzzops_state_cache as state_cache
@@ -5648,7 +5648,20 @@ class Workflow:
                 # Only current declared inputs can select that subject.
                 subjects = []
                 for declared in state['inputs']:
-                    producer = current_outputs.get(declared['source']['hash'])
+                    source = declared['source']
+                    contract_input = state['contract']['inputs'].get(declared['name'])
+                    ref_schema = {'kind': 'object', 'fields': {
+                        'hash': {'kind': 'string'}, 'uri': {'kind': 'string'}}}
+                    typed_selection = bool(contract_input and declared['path']
+                                           and contract_input.get('type') == ref_schema)
+                    if typed_selection:
+                        source = ev.selected_path(content(source)['content'], declared['path'])
+                        ev.validate_ref(source)
+                        selected_goal = self.node_ref_goal(source, key[0])
+                        if source['hash'] not in current_outputs:
+                            contexts[key] = {'error': 'Selected subject is unresolved or stale'}
+                            break
+                    producer = current_outputs.get(source['hash'])
                     if producer is None:
                         continue
                     producer_key, producer_result = producer
@@ -5656,8 +5669,16 @@ class Workflow:
                     if (producer_state is None or producer_key not in projection['current']
                             or 'repository_git_workspace' not in producer_state['contract']['executor']['resources']):
                         continue
+                    if typed_selection and selected_goal != producer_key[0]:
+                        contexts[key] = {'error': 'Selected Git subject locator differs from its producer goal'}
+                        break
+                    if typed_selection and selected_goal != key[0]:
+                        contexts[key] = {'error': 'Selected Git subject belongs to another goal'}
+                        break
                     proof = checked_git_proof(producer_state, authority(producer_state), producer_result)
                     subjects.append(proof['checkpoint']['result_commit'])
+                if key in contexts and 'error' in contexts[key]:
+                    continue
                 subjects = sorted(set(subjects))
                 if subjects:
                     tips = [candidate for candidate in subjects if all(
@@ -5713,42 +5734,58 @@ class Workflow:
                              'acquisition': {'read_files': copy.deepcopy(actual)}, 'readonly': True}
         return contexts
 
+    def verification_git_dirs(self):
+        """Common journal home and registered legacy per-worktree homes."""
+        common = Path(subprocess.run(
+            ['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+            cwd=self.repo, capture_output=True, text=True, check=True).stdout.strip()).resolve()
+        directories = {common}
+        admins = common / 'worktrees'
+        if admins.is_symlink() or (admins.exists() and not admins.is_dir()):
+            raise VerificationUncertain('Registered legacy verification admin directory is invalid')
+        if admins.exists():
+            for home in admins.iterdir():
+                marker = home / 'commondir'
+                if (home.is_symlink() or not home.is_dir() or marker.is_symlink()
+                        or not marker.is_file()):
+                    raise VerificationUncertain('Registered legacy verification admin directory is invalid')
+                try:
+                    relative = marker.read_text(encoding='utf-8').strip()
+                    if not relative or (home / relative).resolve() != common:
+                        raise ValueError
+                except (OSError, UnicodeError, ValueError) as exc:
+                    raise VerificationUncertain('Registered legacy verification commondir is invalid') from exc
+                directories.add(home)
+        return common, sorted(directories)
+
     @contextmanager
     def node_verification_claim(self, snapshot, lease):
-        git_dir = Path(subprocess.run(['git', 'rev-parse', '--absolute-git-dir'], cwd=self.repo,
-                                      capture_output=True, text=True, check=True).stdout.strip())
-        directory = git_dir / 'zzzops' / 'verification' / str(snapshot['number'])
-        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-        path = directory / ('lease-' + lease['token'] + '.lock')
-        local = _VERIFICATION_LOCKS.setdefault(str(path), threading.Lock())
-        if not local.acquire(blocking=False):
-            raise VerificationUncertain('Another verification invocation owns this lease journal')
-        handle = None
-        try:
-            handle = path.open('a+b')
-            if fcntl is not None:
-                try: fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except BlockingIOError as exc:
-                    raise VerificationUncertain('Another verification process owns this lease journal') from exc
-            else:  # pragma: no cover - exercised on Windows hosts
-                if not handle.read(1):
-                    handle.write(b'0'); handle.flush()
-                handle.seek(0)
-                try: msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-                except OSError as exc:
-                    raise VerificationUncertain('Another verification process owns this lease journal') from exc
+        common, homes = self.verification_git_dirs()
+        paths = [home / 'zzzops' / 'verification' / str(snapshot['number']) /
+                 ('lease-' + lease['token'] + '.lock') for home in homes]
+        with ExitStack() as stack:
+            for path in paths:
+                path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                local = _VERIFICATION_LOCKS.setdefault(str(path), threading.Lock())
+                if not local.acquire(blocking=False):
+                    raise VerificationUncertain('Another verification invocation owns this lease journal')
+                stack.callback(local.release)
+                handle = path.open('a+b')
+                stack.callback(handle.close)
+                if fcntl is not None:
+                    try: fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except BlockingIOError as exc:
+                        raise VerificationUncertain('Another verification process owns this lease journal') from exc
+                    stack.callback(fcntl.flock, handle.fileno(), fcntl.LOCK_UN)
+                else:  # pragma: no cover - exercised on Windows hosts
+                    if not handle.read(1):
+                        handle.write(b'0'); handle.flush()
+                    handle.seek(0)
+                    try: msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                    except OSError as exc:
+                        raise VerificationUncertain('Another verification process owns this lease journal') from exc
+                    stack.callback(msvcrt.locking, handle.fileno(), msvcrt.LK_UNLCK, 1)
             yield
-        finally:
-            if handle is not None and fcntl is not None:
-                try: fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-                except OSError: pass
-            elif handle is not None:  # pragma: no cover - exercised on Windows hosts
-                try:
-                    handle.seek(0); msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-                except OSError: pass
-            if handle is not None:
-                handle.close()
-            local.release()
 
     def node_verification_commands(self, snapshot, lease, request, commands, before, *, reuse_only=False,
                                    working_directory=None):
@@ -5762,9 +5799,8 @@ class Workflow:
         """Reuse host-observed command outcomes across pre-publication failures."""
         if not commands: return []
         command_repo = Path(working_directory or self.repo).resolve()
-        git_dir = Path(subprocess.run(['git', 'rev-parse', '--absolute-git-dir'], cwd=self.repo,
-                                      capture_output=True, text=True, check=True).stdout.strip())
-        directory = git_dir / 'zzzops' / 'verification' / str(snapshot['number'])
+        common, homes = self.verification_git_dirs()
+        directory = common / 'zzzops' / 'verification' / str(snapshot['number'])
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         path = directory / (digest(request['request_id'])[7:] + '.json')
         identity = {'repository': self.repository, 'goal': snapshot['number'], 'request': digest(request),
@@ -5791,14 +5827,45 @@ class Workflow:
                     finally: os.close(directory_fd)
             finally:
                 temporary.unlink(missing_ok=True)
-        journal = read(path) if path.exists() else {'identity': identity, 'status': 'prepared', 'results': []}
-        if journal['identity'] != identity:
-            raise ValueError('Verification request/workspace/acquisition/environment identity changed; use original bytes or a corrected new request')
-        # Unknown command liveness cannot be bypassed with another request ID.
-        for candidate in directory.glob('*.json'):
-            existing = read(candidate)
-            if existing['identity']['lease'] == lease['token'] and existing['status'] == 'running':
-                raise VerificationUncertain('Verification completion is unknown; inspect the exact worker and verifier before observed-stop recovery. Journal: ' + str(candidate))
+        matches = []
+        for home in homes:
+            old_directory = home / 'zzzops' / 'verification' / str(snapshot['number'])
+            for candidate in old_directory.glob('*.json'):
+                existing = read(candidate)
+                recorded = existing.get('identity')
+                if not isinstance(recorded, dict):
+                    raise ValueError('Verification journal identity is invalid')
+                if candidate.name == path.name:
+                    if recorded != identity:
+                        raise ValueError('Verification request/workspace/acquisition/environment identity changed; use original bytes or a corrected new request')
+                    matches.append(candidate)
+                if recorded.get('lease') != lease['token']:
+                    continue
+                if existing.get('status') == 'running':
+                    raise VerificationUncertain('Verification completion is unknown; inspect the exact worker and verifier before observed-stop recovery. Journal: ' + str(candidate))
+        if matches:
+            originals = {candidate.read_bytes() for candidate in matches}
+            if len(originals) != 1:
+                raise ValueError('Conflicting verification journals for the same request and lease')
+            original = next(iter(originals))
+            journal = read(matches[0])
+            if journal.get('status') != 'complete' or len(journal.get('results', [])) != len(commands):
+                raise VerificationUncertain('Legacy verification journal is incomplete; inspect original execution before retry')
+            if [row.get('command') for row in journal['results']] != commands:
+                raise ValueError('Verification journal command coverage is invalid')
+            for record in journal['results']:
+                if hashlib.sha256(Path(record['log']).read_bytes()).hexdigest() != record['log_hash']:
+                    raise ValueError('Recorded verification log changed')
+            if not path.exists():
+                temporary = path.with_name(path.name + '.' + uuid.uuid4().hex + '.tmp')
+                try:
+                    with temporary.open('xb') as handle:
+                        handle.write(original); handle.flush(); os.fsync(handle.fileno())
+                    os.replace(temporary, path)
+                finally:
+                    temporary.unlink(missing_ok=True)
+        else:
+            journal = {'identity': identity, 'status': 'prepared', 'results': []}
         results = journal['results']
         if journal['status'] not in {'prepared', 'complete'} or [row['command'] for row in results] != commands[:len(results)] or len(results) > len(commands):
             raise ValueError('Verification journal command coverage is invalid')
