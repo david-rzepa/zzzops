@@ -349,6 +349,111 @@ def cmd_new(argv):
             raise Refused("contention", "could not allocate a goal id; retry shortly")
 
 
+# --------------------------------------------------------------------------------------------- lifecycle verbs
+
+
+def two_ids(a, usage):
+    if len(a.pos) != 2:
+        raise Refused("usage", usage)
+    return goal_id(a.pos[0]), a.pos[1]
+
+
+def attempt_of(a, required=True):
+    v = a.get("attempt")
+    if v is None:
+        if required:
+            raise Refused("usage", "--attempt N is required")
+        return None
+    if not str(v).isdigit():
+        raise Refused("usage", "--attempt takes an integer")
+    return int(v)
+
+
+@verb("start")
+def cmd_start(argv):
+    from engine import verbs
+    a = Args(argv, dict(GLOBAL, **{"as": "value", "reclaim": "bool", "force": "bool"}))
+    g, x = two_ids(a, "start G X [--as L] [--reclaim] [--force]")
+    s = session(a)
+    out = verbs.start(s, g, x, verbs.default_label(a.get("as")), bool(a.get("reclaim")), bool(a.get("force")))
+    emit(out)
+    return 0
+
+
+@verb("submit")
+def cmd_submit(argv):
+    from engine import verbs
+    a = Args(argv, dict(GLOBAL, attempt="value", **{"as": "value"}, output="value", artifact="value", blocked="value"))
+    g, x = two_ids(a, "submit G X --attempt N [--as L] (--output F [--artifact F] | --blocked F)")
+    s = session(a)
+    emit(verbs.submit(s, g, x, attempt_of(a), verbs.default_label(a.get("as")), a.get("output"), a.get("artifact"),
+                      a.get("blocked")))
+    return 0
+
+
+@verb("renew")
+def cmd_renew(argv):
+    from engine import verbs
+    a = Args(argv, dict(GLOBAL, attempt="value"))
+    g, x = two_ids(a, "renew G X --attempt N")
+    emit(verbs.renew(session(a), g, x, attempt_of(a)))
+    return 0
+
+
+@verb("abandon")
+def cmd_abandon(argv):
+    from engine import verbs
+    a = Args(argv, dict(GLOBAL, attempt="value", force="bool", note="value"))
+    g, x = two_ids(a, "abandon G X (--attempt N | --force --note T)")
+    force = bool(a.get("force"))
+    if force and not a.get("note"):
+        raise Refused("usage", "abandon --force needs --note")
+    emit(verbs.abandon(session(a), g, x, attempt_of(a, required=not force), force, a.get("note")))
+    return 0
+
+
+@verb("answer")
+def cmd_answer(argv):
+    from engine import verbs
+    a = Args(argv, dict(GLOBAL, fp="value", file="value"))
+    g, x = two_ids(a, "answer G X --fp P --file F")
+    if not a.get("fp") or not a.get("file"):
+        raise Refused("usage", "answer G X --fp P --file F")
+    emit(verbs.answer(session(a), g, x, a.get("fp"), a.get("file")))
+    return 0
+
+
+@verb("reopen")
+def cmd_reopen(argv):
+    from engine import verbs
+    a = Args(argv, dict(GLOBAL, note="value"))
+    g, x = two_ids(a, "reopen G X --note T")
+    emit(verbs.reopen(session(a), g, x, a.get("note") or ""))
+    return 0
+
+
+@verb("edit")
+def cmd_edit(argv):
+    from engine import verbs
+    a = Args(argv, dict(GLOBAL, file="list", set="list", base="list"))
+    if not a.pos:
+        raise Refused("usage", "edit G... (--file F... | --set PATH=JSON...) [--base C]...")
+    gids = [goal_id(x) for x in a.pos]
+    sets = []
+    for item in a.get("set", []):
+        if "=" not in item:
+            raise Refused("usage", f"--set takes PATH=JSON, got {item!r}")
+        path, raw = item.split("=", 1)
+        try:
+            sets.append((path, json.loads(raw)))
+        except json.JSONDecodeError as exc:
+            raise Refused("usage", f"--set {path}: not JSON ({exc})")
+    if not sets and not a.get("file"):
+        raise Refused("usage", "edit needs --file or --set")
+    emit(verbs.edit(session(a), gids, a.get("file", []), sets, a.get("base", [])))
+    return 0
+
+
 # --------------------------------------------------------------------------------------------- main
 
 

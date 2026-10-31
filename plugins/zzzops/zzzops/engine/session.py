@@ -83,13 +83,14 @@ class Session:
                 raise Refused("remote", f"cannot reach `{self.R}`: {str(exc).splitlines()[0] if str(exc) else ''}",
                               hint="check the network and credentials, then retry") from exc
             self.snap = offline_snapshot(self.git, self.R, self.I)
-        self.state = read_state(self.git, self.snap, all_goals=all_goals)
+        self.state = read_state(self.git, self.snap, all_goals=all_goals, wanted=goals)
         self._portfolio = None
+        self._goals = list(goals)
         return self.state
 
     def refetch(self, goals=(), deps=(), all_goals=False):
         self.snap = coordinator_fetch(self.git, self.R, self.I, goals, deps)
-        self.state = read_state(self.git, self.snap, all_goals=all_goals)
+        self.state = read_state(self.git, self.snap, all_goals=all_goals, wanted=goals)
         self._portfolio = None
 
     # ------------------------------------------------------------------ evaluation
@@ -143,6 +144,23 @@ class Session:
         if self.snap is not None and self.snap.integration:
             update_mirror(self.git, self.snap.integration)
 
+    def op_self_sync(self, nd: dict) -> bool:
+        from engine.ops import OPS
+        return nd.get("kind") == "op" and nd.get("op") in OPS and OPS[nd["op"]].self_sync
+
+    def mirror_path(self) -> str:
+        return os.path.join(self.git.common, "zzzops", "coordinator")
+
+    def fetch_work_of(self, goal: int):
+        """A missing artifact blob: fetch that goal's work branch once (SPEC §4.20)."""
+        done = getattr(self, "_fetched_work", set())
+        if goal in done:
+            return
+        done.add(goal)
+        self._fetched_work = done
+        self.git.run("fetch", "-q", "--no-tags", self.R,
+                     f"+refs/heads/zzzops/work/g{goal}:refs/remotes/{self.R}/zzzops/work/g{goal}", check=False)
+
     def web_base(self) -> str | None:
         url = self.git.config(f"remote.{self.R}.url") or ""
         m = re.match(r"^(?:https://|git@|ssh://git@)(github\.com)[/:]([^/]+)/([^/]+?)(?:\.git)?$", url)
@@ -179,6 +197,7 @@ class Session:
             for g, d in new.items():
                 errs, _ = schemas.validate_goal(d, self.state.docs.get(g), all_docs, self.state.workflow,
                                                 lambda doc, g=g: self.terminals_current(g, doc, all_docs))
+                errs = list(errs) + dependent_release_errors(g, d, all_docs)
                 if errs:
                     raise Refused("too_large" if any("too_large" in e for e in errs) else "validation",
                                   f"G{g}: " + "; ".join(errs[:5]), details={"errors": list(errs)})
@@ -188,7 +207,13 @@ class Session:
                     msg = message(g, self.state.docs.get(g), d) if message else goal_message(verb, g, "ok", d["state"])
                     c = goal_commit(self.git, d, self.snap.goals.get(g), msg)
                     updates.append((f"refs/heads/zzzops/goal/g{g}", self.snap.goals.get(g), c))
-            updates += list(extra(self, new) if extra else []) + deletions
+            seen = set()
+            merged = []
+            for u in updates + list(extra(self, new) if extra else []) + deletions:
+                if u[0] not in seen:                       # a lease deleted by both the verb and the close
+                    seen.add(u[0])
+                    merged.append(u)
+            updates = merged
             if not updates:
                 return "noop", [], closed
             r, stderr = push_atomic(self.git, self.R, updates)
@@ -242,6 +267,16 @@ class Session:
                 if self.snap.stack.get(g):
                     deletions.append((f"refs/heads/zzzops/stack/g{g}", self.snap.stack[g], None))
         return new, deletions, closed
+
+
+def dependent_release_errors(g: int, d: dict, all_docs: dict) -> list:
+    """SPEC §4.4: validation includes the dependents' release order."""
+    out = []
+    for x, xd in sorted(all_docs.items()):
+        if x != g and isinstance(xd, dict) and g in (xd.get("depends_on") or []) and xd.get("state") != "closed":
+            if isinstance(xd.get("release"), int) and isinstance(d.get("release"), int) and d["release"] > xd["release"]:
+                out.append(f"goal.release: G{x} depends on G{g} but is in release {xd['release']}, before {d['release']}")
+    return out
 
 
 def first_line(text: str) -> str:

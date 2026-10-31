@@ -272,3 +272,50 @@ class World:
         if check and p.returncode != 0:
             raise AssertionError(p.stderr)
         return p.stdout.strip()
+
+
+def stub_ops_workflow(wf=None):
+    """The default graph with `base` and `run_tests` replaced by agent nodes (steps 5 tests, before the ops exist)."""
+    import copy as _copy
+    wf = _copy.deepcopy(wf or load_template("workflow.json"))
+    nodes = wf["graphs"]["default"]["nodes"]
+    b = nodes["base"]
+    nodes["base"] = {"description": "stub base", "kind": "agent", "capability": "routine", "prompt": "design.md",
+                     "stage": "delivery", "inputs": b["inputs"],
+                     "outputs": {"base_commit": "sha", "stack": "list", "branch": "string"}}
+    r = nodes["run_tests"]
+    nodes["run_tests"] = {"description": "stub checks", "kind": "agent", "capability": "routine", "prompt": "design.md",
+                          "stage": "delivery", "inputs": r["inputs"], "policy": r["policy"], "outputs": {"result": "object"}}
+    return wf
+
+
+class Agent:
+    """Plays an agent against the CLI: start, do the work, submit."""
+
+    def __init__(self, world: World, clone: str, label: str):
+        self.w, self.clone, self.label = world, clone, label
+
+    def start(self, g, node, *extra, ok=True):
+        rc, out = self.w.run(self.clone, "start", str(g), node, "--as", self.label, *extra)
+        if ok and rc != 0:
+            raise AssertionError(f"start {g} {node} -> {rc}: {_json.dumps(out, indent=1)[:2500]}")
+        return out if ok else (rc, out)
+
+    def submit(self, g, node, card, output=None, artifact=None, blocked=None, ok=True):
+        argv = ["submit", str(g), node, "--attempt", str(card["lease"]["attempt"]), "--as", self.label]
+        if blocked is not None:
+            argv += ["--blocked", self.w.file(blocked)]
+        else:
+            argv += ["--output", self.w.file(output or {})]
+        if artifact is not None:
+            path = os.path.join(self.w.tmp, "files", f"a{self.w.files}.md")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(artifact)
+            argv += ["--artifact", path]
+        rc, out = self.w.run(self.clone, *argv)
+        if ok and rc != 0:
+            raise AssertionError(f"submit {g} {node} -> {rc}: {_json.dumps(out, indent=1)[:2500]}")
+        return out if ok else (rc, out)
+
+    def worktree(self, g):
+        return GitDir(os.path.join(self.w.clones[self.clone].path, ".zzzops", "worktrees", f"g{g}"), self.w.env)

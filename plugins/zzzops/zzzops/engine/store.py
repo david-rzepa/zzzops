@@ -258,6 +258,7 @@ class State:
     write_block: Refused | None = None                  # why writes are refused, if they are
     docs: dict = field(default_factory=dict)            # id -> valid document
     invalid: dict = field(default_factory=dict)         # id -> errors
+    invalid_raw: dict = field(default_factory=dict)     # id -> the parsed JSON of an invalid goal (for edit)
     newer: set = field(default_factory=set)
     goal_commits: dict = field(default_factory=dict)    # id -> Commit of the accepted tip
     leases: dict = field(default_factory=dict)          # (id, node) -> Lease (parsed)
@@ -276,7 +277,8 @@ class State:
         return c
 
 
-def read_state(git: Git, snap: Snapshot, all_goals: bool = False) -> State:
+def read_state(git: Git, snap: Snapshot, all_goals: bool = False, wanted=()) -> State:
+    """`wanted`: goals the verb names, read whatever their state."""
     from engine.canon import iso
     st = State(snap)
     I = snap.integration
@@ -356,7 +358,8 @@ def read_state(git: Git, snap: Snapshot, all_goals: bool = False) -> State:
         else:
             st.policy_branches.append(info)
     # 3. and 4. goal documents
-    wanted = [g for g, c in sorted(commits.items()) if all_goals or c.trailer("State") != "closed"]
+    named = {int(g) for g in wanted}
+    wanted = [g for g, c in sorted(commits.items()) if all_goals or g in named or c.trailer("State") != "closed"]
     raw_docs = {}
     for g in wanted:
         raw_docs[g] = read_goal_json(git, snap.goals[g])
@@ -387,7 +390,7 @@ def read_state(git: Git, snap: Snapshot, all_goals: bool = False) -> State:
                 errs = [f"goal.id {doc.get('id')} does not match the branch g{g}"]
             if errs:
                 st.invalid[g] = list(errs)
-                del st.docs[g]
+                st.invalid_raw[g] = st.docs.pop(g)
             st.warnings += warns
     for g, errs in sorted(st.invalid.items()):
         st.warnings.append({"kind": "invalid_goal", "message": f"G{g} is invalid: " + "; ".join(errs[:3])})
