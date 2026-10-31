@@ -331,3 +331,19 @@ def stub_base_workflow(wf=None):
                      "stage": "delivery", "inputs": b["inputs"],
                      "outputs": {"base_commit": "sha", "stack": "list", "branch": "string"}}
     return wf
+
+
+def stub_github_workflow(wf=None):
+    """The default graph with `integrate` and `merge` replaced by agent nodes (step 7 tests, before gh exists)."""
+    import copy as _copy
+    wf = _copy.deepcopy(wf or load_template("workflow.json"))
+    nodes = wf["graphs"]["default"]["nodes"]
+    i = nodes["integrate"]
+    nodes["integrate"] = {"description": "stub integrate", "kind": "agent", "capability": "routine", "prompt": "design.md",
+                          "stage": "delivery", "inputs": i["inputs"], "policy": i["policy"],
+                          "outputs": {"pr": "object", "ci": "object"}}
+    m = nodes["merge"]
+    nodes["merge"] = {"description": "stub merge", "kind": "agent", "capability": "routine", "prompt": "design.md",
+                      "stage": "delivery", "release_gate": True, "inputs": m["inputs"],
+                      "outputs": {"merge_commit": "sha", "merged_at": "string"}}
+    return wf

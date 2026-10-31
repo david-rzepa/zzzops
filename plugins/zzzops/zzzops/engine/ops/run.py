@@ -148,18 +148,39 @@ def start_op(s, res, X, label, state, reclaim, force) -> dict:
         wt.sync(s.git, Identity(s.git), s.snap, g, "clean", X, lease["attempt"])
     res = s.portfolio().goals[g]
     ctx = make_context(s, res, X, lease)
+    import time
+    deadline = time.monotonic() + 30
     with Renewer(s, g, X, lease["attempt"], lease["timeout"]) as renewer:
-        ctx.renew = renewer.renew_once
-        try:
-            result = spec.run(ctx)
-        except Refused:
-            raise
-        except Exception as exc:
-            raise Refused("op_error", f"{nd['op']} failed: {exc}", hint="the lease expires; start --reclaim retries it")
+        while True:
+            ctx.renew = renewer.renew_once
+            try:
+                result = spec.run(ctx)
+            except Refused:
+                raise
+            except Exception as exc:
+                raise Refused("op_error", f"{nd['op']} failed: {exc}", hint="the lease expires; start --reclaim retries it")
+            if nd["op"] != "git.base":
+                break
+            W0 = ctx.snap.work.get(g)
+            try:
+                return finish(s, g, X, label, lease, result, spec, ctx, retry=False)
+            except Refused as exc:
+                if exc.code != "goal_changed" or time.monotonic() > deadline:
+                    raise
+            # the finish was rejected: re-run in-process when the lease is unchanged and W moved only by reviews
+            L = verbs.valid_lease(s, g, X)
+            W1 = s.snap.work.get(g)
+            ident = Identity(s.git)
+            if (L is None or L.attempt != lease["attempt"] or not W0 or not W1
+                    or not s.git.is_ancestor(W0, W1)
+                    or not all(ident.is_review(c) for c in s.git.out("rev-list", f"{W0}..{W1}").split())):
+                raise Refused("contention", "the work branch moved during the restack; run base again")
+            res = s.portfolio().goals[g]
+            ctx = make_context(s, res, X, lease)
     return finish(s, g, X, label, lease, result, spec, ctx)
 
 
-def finish(s, g, X, label, lease, result, spec, ctx) -> dict:
+def finish(s, g, X, label, lease, result, spec, ctx, retry=True) -> dict:
     from engine import verbs
     from engine.carry import carry_forward
     N = lease["attempt"]
@@ -205,7 +226,7 @@ def finish(s, g, X, label, lease, result, spec, ctx) -> dict:
         doc["records"][X] = record
         info["record"] = record
         if isinstance(result, Done) and result.replayed:
-            info["carried"] = carry_forward(sess, graph, doc, X, record, result.replayed)
+            info["carried"] = carry_forward(sess, graph, doc, X, record, result.replayed, res.live)
         return {g: doc}
 
     def extra(sess, new):
@@ -221,7 +242,7 @@ def finish(s, g, X, label, lease, result, spec, ctx) -> dict:
             text += "; carried: " + ", ".join(info["carried"])
         return goal_message("start", gg, text, new["state"], X, N, label)
 
-    kind, updates, closed = s.write_goals("start", [g], mutate, extra, message=message)
+    kind, updates, closed = s.write_goals("start", [g], mutate, extra, message=message, retry=retry)
     warnings = []
     if isinstance(result, Done) and result.after_push:
         try:
