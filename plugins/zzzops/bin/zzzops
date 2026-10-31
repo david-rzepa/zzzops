@@ -1,0 +1,16 @@
+#!/bin/sh
+# ZzzOps launcher: finds Python >= 3.10 and runs the engine with a stable printed prefix.
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+entry="$here/../zzzops/zzzops.py"
+ZZZOPS_PREFIX=zzzops
+export ZZZOPS_PREFIX
+for py in python3 python; do
+  if command -v "$py" >/dev/null 2>&1 && "$py" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
+    exec "$py" "$entry" "$@"
+  fi
+done
+if command -v py >/dev/null 2>&1 && py -3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
+  exec py -3 "$entry" "$@"
+fi
+echo "zzzops: Python 3.10 or later is required (python3, python or py -3)" >&2
+exit 1
