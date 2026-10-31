@@ -226,8 +226,11 @@ class World:
             fh.write(content if isinstance(content, str) else _json.dumps(content))
         return path
 
+    extra_env = None
+
     def cli_env(self, now=None, extra=None):
         env = dict(self.env)
+        env.update(self.extra_env or {})
         env.update({"PYTHONPATH": str(PLUGIN_CODE), "ZZZOPS_NOW": str(now if now is not None else self.now),
                     "ZZZOPS_TRACE": self.trace, "ZZZOPS_PREFIX": "zzzops", "GH_REPO": "test/repo"})
         env.update(extra or {})
@@ -347,3 +350,65 @@ def stub_github_workflow(wf=None):
                       "stage": "delivery", "release_gate": True, "inputs": m["inputs"],
                       "outputs": {"merge_commit": "sha", "merged_at": "string"}}
     return wf
+
+
+# --------------------------------------------------------------------------------------------- fake GitHub
+
+FAKE_GH = Path(__file__).with_name("engine_fake_gh.py")
+
+
+class FakeGitHub:
+    """Installs the fake `gh` for a World and lets tests act on GitHub by hand."""
+
+    def __init__(self, world: World):
+        self.w = world
+        self.bindir = os.path.join(world.tmp, "ghbin")
+        os.makedirs(self.bindir, exist_ok=True)
+        gh = os.path.join(self.bindir, "gh")
+        with open(gh, "w") as fh:
+            fh.write(f'#!/bin/sh\nexec "{_sys.executable}" "{FAKE_GH}" "$@"\n')
+        os.chmod(gh, 0o755)
+        self.path = os.path.join(world.tmp, "gh-state.json")
+        self.save({"repo": "test/repo", "remote": world.remote, "next_number": 1, "prs": {}, "checks": {},
+                   "auto_delete": True})
+        world.extra_env = {"PATH": self.bindir + os.pathsep + world.env["PATH"], "ZZZOPS_FAKE_GH_STATE": self.path}
+
+    def load(self):
+        with open(self.path) as fh:
+            return _json.load(fh)
+
+    def save(self, st):
+        with open(self.path, "w") as fh:
+            _json.dump(st, fh, indent=1)
+
+    def update(self, fn):
+        st = self.load()
+        fn(st)
+        self.save(st)
+
+    def pr(self, n):
+        return self.load()["prs"][str(n)]
+
+    def calls(self):
+        p = self.path + ".calls.jsonl"
+        if not os.path.exists(p):
+            return []
+        with open(p) as fh:
+            return [_json.loads(l) for l in fh if l.strip()]
+
+    def set_checks(self, head, **names):
+        self.update(lambda st: st["checks"].setdefault(head, {}).update({k: list(v) for k, v in names.items()}))
+
+    def merge_by_hand(self, n, method="merge"):
+        sys_path = str(FAKE_GH.parent)
+        if sys_path not in _sys.path:
+            _sys.path.insert(0, sys_path)
+        import engine_fake_gh as f
+        st = self.load()
+        pr = st["prs"][str(n)]
+        f.refresh(st, pr)
+        f.do_merge(st, pr, method, by="dave")
+        self.save(st)
+
+    def close_by_hand(self, n):
+        self.update(lambda st: st["prs"][str(n)].update(state="CLOSED"))

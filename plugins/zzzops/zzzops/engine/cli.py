@@ -186,7 +186,9 @@ def cmd_validate(argv):
     s = session(a, environment=False)
     from engine.gitrun import check_environment
     env = check_environment(s.git)
+    from engine.gh import gh_problems
     st = s.open(readonly=True, all_goals=True)
+    env += gh_problems(s)
     wanted = [goal_id(x) for x in a.pos] or sorted(set(st.docs) | set(st.invalid) | st.newer)
     goals = {}
     for g in wanted:
