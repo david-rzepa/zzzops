@@ -1,0 +1,453 @@
+"""The frontier (SPEC §4.9), the portfolio (§4.10) and ordering (§4.11).
+
+Pure: everything is passed in; no I/O, no clock, no environment. Iteration is in topological or sorted order, so
+identical arguments give identical results."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from engine.canon import parse_iso
+from engine.fingerprint import fp_parts, input_fp, out_fp, stale_keys
+from engine.schemas import Graph
+
+ABSENT = object()
+
+
+class Skipped:
+    pass
+
+
+SKIPPED = Skipped()
+
+
+@dataclass(frozen=True)
+class Missing:
+    reason: str
+
+
+@dataclass
+class Lease:
+    """A parsed, valid lease (SPEC §3.8). Times are integer seconds."""
+    goal: int
+    node: str
+    attempt: int
+    holder: str
+    reason: str
+    timeout: int                 # minutes; 0 = abandoned
+    last_active: int
+    work: str | None = None
+    input_fp: str | None = None
+    fp_parts: dict | None = None
+    prompt: str | None = None
+    tip: str | None = None
+    claimed_at: int | None = None
+
+    def live(self, now: int) -> bool:
+        return self.timeout > 0 and now - self.last_active < self.timeout * 60
+
+    @property
+    def expires_at(self) -> int:
+        return self.last_active + self.timeout * 60
+
+
+def miss(node, reason, **extra) -> dict:
+    m = {"node": node, "reason": reason}
+    m.update(extra)
+    return m
+
+
+def get_path(obj, path):
+    for key in path:
+        if not isinstance(obj, dict) or key not in obj:
+            return ABSENT
+        obj = obj[key]
+    return obj
+
+
+# --------------------------------------------------------------------------------------------- resolve
+
+
+def resolve(graph: Graph, doc: dict, n: str, out_of, dep_view: dict):
+    vals, missing = {}, []
+    nd = graph.nodes[n]
+    for name in sorted((nd.get("inputs") or {})):
+        s = nd["inputs"][name]
+        sel = graph.selectors[n][name]
+        if sel.kind == "goal":
+            v = get_path(doc, list(sel.path))
+            if v is ABSENT:
+                missing.append(miss("goal." + ".".join(sel.path), "output_absent"))
+            else:
+                vals[name] = v
+        elif sel.kind == "node":
+            o = out_of(sel.node)
+            if o is SKIPPED:
+                if s.get("optional"):
+                    vals[name] = None
+                else:
+                    missing.append(miss(sel.node, "skipped"))
+            elif isinstance(o, Missing):
+                missing.append(miss(sel.node, o.reason))
+            else:
+                v = get_path(o, [sel.output, *sel.path])
+                if v is ABSENT:
+                    missing.append(miss(sel.node, "output_absent"))
+                else:
+                    vals[name] = v
+        else:
+            m, bad = {}, []
+            for d in sorted(doc.get("depends_on") or []):
+                dv = dep_view.get(d) or INVALID_VIEW
+
+                def dmiss(wait, d=d, dv=dv):
+                    return {"node": sel.node, "reason": "dependency", "dep": d, "state": dv["state"], "wait": wait}
+
+                if sel.node in dv["cur"]:
+                    v = get_path(dv["cur"][sel.node], [sel.output, *sel.path])
+                    if v is ABSENT:
+                        bad.append(dmiss(False))
+                    else:
+                        m[str(d)] = v
+                elif dv["kind"] == "done" or (dv["kind"] in ("open", "held") and sel.node in dv["skip"]):
+                    if s.get("optional"):
+                        m[str(d)] = None
+                    else:
+                        bad.append(dmiss(False))
+                elif dv["kind"] in ("open", "held") and sel.node in dv["nodes"]:
+                    if s.get("pending"):
+                        m[str(d)] = None
+                    else:
+                        bad.append(dmiss(not dv["stuck"]))
+                elif dv["kind"] == "newer":
+                    bad.append(dmiss(True))
+                else:
+                    bad.append(dmiss(False))
+            if bad:
+                missing += bad
+            else:
+                vals[name] = m
+    return vals, missing
+
+
+def recorded_out(doc: dict, p: str):
+    if p in (doc.get("skip") or {}):
+        return SKIPPED
+    r = (doc.get("records") or {}).get(p)
+    if r and r["status"] == "done":
+        return r["output"]
+    return Missing("no_record")
+
+
+# --------------------------------------------------------------------------------------------- frontier
+
+
+def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: dict, now: int):
+    """States of one goal's nodes. `leases`: node -> Lease (valid leases only). Returns (st, cur, live)."""
+    N, topo = graph.nodes, graph.topo
+    skip = doc.get("skip") or {}
+    records = doc.get("records") or {}
+    R = {n: records[n] for n in topo if n in records and n not in skip}
+
+    def recorded(p):
+        return recorded_out(doc, p)
+
+    # ---- pass 1: liveness, from recorded values only
+    live = {n: [] for n in topo}
+    for c in topo:
+        if c not in R or R[c]["status"] != "done":
+            continue
+        vals, missing = resolve(graph, doc, c, recorded, dep_view)
+        subj = graph.subject(c)
+        fresh = (not missing and not (subj and (subj not in R or R[subj]["status"] != "done"))
+                 and input_fp(fp_parts(graph, c, vals, R.get(subj), settings)) == R[c]["input_fp"])
+        for f in R[c].get("findings") or []:
+            t = f["target"]
+            if not fresh and t != c:
+                continue
+            if (f["status"] == "open" and f["target_fp"] is not None and t in N and t in R
+                    and R[t]["status"] == "done" and f["target_fp"] == out_fp(graph, t, R[t])
+                    and not (N[t]["kind"] == "op" and t != c and R[t]["attempt"] > (f.get("target_attempt") or 0))):
+                live[t].append((c, f))
+
+    # ---- pass 2: states
+    cur, st = {}, {}
+
+    def current_out(p):
+        if p in skip:
+            return SKIPPED
+        return cur[p] if p in cur else Missing("not_current")
+
+    for n in topo:
+        node = N[n]
+        if n in skip:
+            st[n] = {"name": "skipped", "reason": skip[n]}
+            continue
+        r = R.get(n)
+        L = leases.get(n)
+        if L and r and r["attempt"] >= L.attempt:
+            L = None
+        vals, missing = resolve(graph, doc, n, current_out, dep_view)
+        subj = graph.subject(n)
+        if subj and subj not in cur:
+            missing.append(miss(subj, "subject_not_current"))
+        if L and L.live(now):
+            rv, rmiss = resolve(graph, doc, n, recorded, dep_view)
+            rsub = bool(subj) and (subj not in R or R[subj]["status"] != "done")
+            f = None if rmiss or rsub else input_fp(fp_parts(graph, n, rv, R.get(subj), settings))
+            st[n] = {"name": "running", "lease": L, "fp": f}
+            continue
+        if missing:
+            st[n] = {"name": "blocked", "missing": missing}
+            continue
+        if node.get("release_gate") and doc["release"] > settings["releases"]["current"]:
+            st[n] = {"name": "waiting", "until": f"release {doc['release']}", "reason": "release"}
+            continue
+        parts = fp_parts(graph, n, vals, R.get(subj), settings)
+        f = input_fp(parts)
+        corr = sorted((x for _, x in live[n]), key=lambda x: x["id"])
+        if L:
+            if L.attempt >= (r["attempt"] if r else 0) + 3:
+                st[n] = {"name": "needs_human", "kind": "crash_loop", "cap": "lease", "lease": L, "fp": f, "parts": parts}
+                continue
+            st[n] = {"name": "reclaimable", "lease": L, "fp": f, "parts": parts, "corrections": corr}
+            continue
+        if r is None:
+            s = {"name": "ready", "reason": "new"}
+        elif r["input_fp"] != f:
+            s = {"name": "ready", "reason": "stale", "stale_because": stale_keys(r.get("fp_parts"), parts)}
+        elif r["status"] == "blocked":
+            b = r["blocked"]
+            wf = b["waiting_for"]
+            if wf == "time" and now < parse_iso(b["retry_after"]):
+                st[n] = {"name": "waiting", "until": b["retry_after"], "reason": b["reason"], "retry_after": b["retry_after"]}
+                continue
+            if wf == "dependency":
+                st[n] = {"name": "waiting", "until": "the dependencies combine cleanly", "reason": b["reason"]}
+                continue
+            if wf == "human":
+                st[n] = {"name": "needs_human", "kind": "blocked", "blocked": b, "fp": r["input_fp"], "record": r}
+                continue
+            if wf == "agent" and b.get("repeats", 1) >= 3:
+                st[n] = {"name": "needs_human", "kind": "crash_loop", "cap": "repeat", "blocked": b, "fp": f, "parts": parts}
+                continue
+            s = {"name": "ready", "reason": "retry", "instructions": b.get("instructions"), "answer": r.get("answer")}
+        elif corr:
+            s = {"name": "ready", "reason": "reopened"}
+        elif not r["ok"]:
+            if node["kind"] == "op" and any(x["status"] == "open" and x.get("repeats", 1) >= 3 for x in r.get("findings") or []):
+                st[n] = {"name": "needs_human", "kind": "crash_loop", "cap": "op_finding", "record": r, "fp": f, "parts": parts}
+                continue
+            own = sorted({x["target"] for x in r.get("findings") or [] if any(cc == n and y is x for cc, y in live.get(x["target"], []))})
+            if own:
+                st[n] = {"name": "blocked", "missing": [miss(t, "findings_open") for t in own]}
+                continue
+            s = {"name": "ready", "reason": "not_ok"}
+        else:
+            st[n] = {"name": "current"}
+            cur[n] = r["output"]
+            continue
+        s["corrections"], s["fp"], s["parts"] = corr, f, parts
+        esc = [(c, x) for c, x in live[n] if escalates(N, n, c, x)]
+        if esc:
+            st[n] = {"name": "needs_human", "kind": "dispute", "escalated": esc, "ready": s}
+            continue
+        if node["kind"] == "human":
+            st[n] = {"name": "needs_human", "kind": "approve", "ready": s, "fp": f, "parts": parts}
+            continue
+        st[n] = s
+    return st, cur, live
+
+
+def escalates(N: dict, target: str, carrier: str, f: dict) -> bool:
+    return (f["rounds"] >= 2 and not f["upheld"] and N[target]["kind"] == "agent" and N[carrier]["kind"] != "human")
+
+
+# --------------------------------------------------------------------------------------------- portfolio
+
+INVALID_VIEW = {"kind": "invalid", "state": "invalid", "cur": {}, "skip": {}, "nodes": {}, "stuck": False}
+NEWER_VIEW = {"kind": "newer", "state": "newer", "cur": {}, "skip": {}, "nodes": {}, "stuck": False}
+
+
+@dataclass
+class GoalResult:
+    goal: int
+    doc: dict
+    graph: Graph
+    st: dict
+    cur: dict
+    live: dict
+    stuck: dict | None = None
+    budget: dict = field(default_factory=dict)       # {"used", "limit", "over", "per_node"}
+    close: bool = False                              # every terminal current but the goal is open
+    busy: str | None = None                          # workspace node with a live lease
+
+
+@dataclass
+class Portfolio:
+    goals: dict                                      # id -> GoalResult (open and held goals)
+    views: dict                                      # id -> dep view
+    invalid: dict                                    # id -> [errors]
+    newer: set
+    mass_expiry: bool = False
+    expired: int = 0
+    live_agents: int = 0
+
+
+def closed_view(doc: dict, graph: Graph | None) -> dict:
+    nodes = graph.nodes if graph else {}
+    if doc["closed"]["reason"] == "done":
+        cur = {n: r["output"] for n, r in sorted((doc.get("records") or {}).items()) if r["status"] == "done" and r["ok"]}
+        return {"kind": "done", "state": "merged", "cur": cur, "skip": doc.get("skip") or {}, "nodes": nodes, "stuck": False}
+    return {"kind": "closed", "state": "cancelled", "cur": {}, "skip": doc.get("skip") or {}, "nodes": nodes, "stuck": False}
+
+
+def goal_order(docs: dict) -> tuple:
+    """(order, cyclic): topological order over depends_on, ties by id; members of cycles are excluded."""
+    order, state, cyclic = [], {}, set()
+
+    def visit(g, trail):
+        if state.get(g) == 2:
+            return
+        if state.get(g) == 1:
+            cyclic.update(trail[trail.index(g):])
+            return
+        state[g] = 1
+        for d in sorted(docs[g].get("depends_on") or []):
+            if d in docs:
+                visit(d, trail + [g])
+        state[g] = 2
+        order.append(g)
+
+    for g in sorted(docs):
+        visit(g, [])
+    return [g for g in order if g not in cyclic], cyclic
+
+
+def portfolio(docs: dict, graphs: dict, leases: dict, settings: dict, now: int, invalid: dict | None = None,
+              newer: set | None = None) -> Portfolio:
+    """docs: id -> valid document (any state); graphs: name -> Graph; leases: (goal, node) -> Lease (parsed);
+    invalid: id -> errors; newer: ids whose schema is newer than this engine."""
+    invalid = dict(invalid or {})
+    newer = set(newer or ())
+    order, cyclic = goal_order(docs)
+    for g in sorted(cyclic):
+        invalid[g] = ["dependency cycle: " + ", ".join(f"G{c}" for c in sorted(cyclic))]
+    views = {g: INVALID_VIEW for g in invalid}
+    views.update({g: NEWER_VIEW for g in newer})
+    results = {}
+    for g in order:
+        d = docs[g]
+        graph = graphs.get(d["graph"])
+        if graph is None:
+            invalid[g] = [f"unknown graph {d['graph']!r}"]
+            views[g] = INVALID_VIEW
+            continue
+        if d["state"] == "closed":
+            views[g] = closed_view(d, graph)
+            continue
+        goal_leases = valid_leases(g, d, graph, leases)
+        dep_view = {x: views.get(x, INVALID_VIEW) for x in d.get("depends_on") or []}
+        st, cur, live = frontier(graph, d, dep_view, goal_leases, settings, now)
+        res = GoalResult(g, d, graph, st, cur, live)
+        finish_goal(res, goal_leases, now)
+        results[g] = res
+        stuck = res.stuck is not None
+        views[g] = {"kind": d["state"], "state": "stuck" if stuck else d["state"], "cur": cur,
+                    "skip": d.get("skip") or {}, "nodes": graph.nodes, "stuck": stuck}
+    p = Portfolio(results, views, invalid, newer)
+    lease_guards(p, docs, leases, now)
+    return p
+
+
+def valid_leases(g: int, doc: dict, graph: Graph, leases: dict) -> dict:
+    """node -> Lease for the goal's valid leases (SPEC §1.1): node in the graph, attempt above the record's."""
+    out = {}
+    if doc["state"] == "closed":
+        return out
+    for (lg, node), L in sorted(leases.items(), key=lambda kv: (kv[0][0], kv[0][1])):
+        if lg != g or node not in graph.nodes:
+            continue
+        r = (doc.get("records") or {}).get(node)
+        if r and r["attempt"] >= L.attempt:
+            continue
+        out[node] = L
+    return out
+
+
+def orphan_leases(docs: dict, graphs: dict, leases: dict) -> list:
+    """(goal, node) keys of parsed leases that are not valid (SPEC §4.12)."""
+    out = []
+    for (g, node), L in sorted(leases.items()):
+        d = docs.get(g)
+        graph = graphs.get(d["graph"]) if d else None
+        if d is None or graph is None or d["state"] == "closed" or node not in graph.nodes:
+            out.append((g, node))
+            continue
+        r = (d.get("records") or {}).get(node)
+        if r and r["attempt"] >= L.attempt:
+            out.append((g, node))
+    return out
+
+
+def lease_guards(p: Portfolio, docs: dict, leases: dict, now: int):
+    valid = []
+    for res in p.goals.values():
+        for node, L in valid_leases(res.goal, res.doc, res.graph, leases).items():
+            valid.append((res, node, L))
+    nonabandoned = [(res, n, L) for res, n, L in valid if L.timeout > 0]
+    expired = [x for x in nonabandoned if not x[2].live(now)]
+    p.expired = len(expired)
+    p.mass_expiry = len(expired) >= 3 and 2 * len(expired) > len(nonabandoned)
+    p.live_agents = sum(1 for res, n, L in valid if L.live(now) and res.graph.nodes[n]["kind"] == "agent")
+
+
+def finish_goal(res: GoalResult, goal_leases: dict, now: int):
+    st, graph, doc = res.st, res.graph, res.doc
+    topo = graph.topo
+    progress = any(st[n]["name"] in ("ready", "running", "reclaimable", "waiting", "needs_human") for n in topo)
+    done = all(st[t]["name"] == "current" for t in graph.terminal)
+    named_wait = any(m["reason"] == "dependency" and m.get("wait")
+                     for n in topo if st[n]["name"] == "blocked" for m in st[n]["missing"])
+    if doc["state"] == "open" and not progress and not done and not named_wait:
+        x = next((n for n in topo if st[n]["name"] == "blocked"), None)
+        if x is not None:
+            res.stuck = {"node": x, "missing": st[x]["missing"]}
+    res.close = doc["state"] == "open" and done
+    agent = [n for n in topo if graph.nodes[n]["kind"] == "agent"]
+    records = doc.get("records") or {}
+    per_node = {n: records[n]["correction_runs"] for n in agent if n in records and records[n]["correction_runs"]}
+    used = sum(records[n]["correction_runs"] for n in agent if n in records)
+    limit = doc["budget"] if doc.get("budget") is not None else 3 * len(agent)
+    res.budget = {"used": used, "limit": limit, "over": used > limit, "per_node": per_node, "agents": len(agent)}
+    for n in topo:
+        L = goal_leases.get(n)
+        if L and L.live(now) and graph.nodes[n].get("workspace") and st[n]["name"] == "running":
+            res.busy = n
+            break
+
+
+def counts(r0: dict | None, reason: str, old_parts: dict | None, parts: dict) -> int:
+    """1 when a new record counts toward the correction budget (SPEC §4.10)."""
+    if r0 is None:
+        return 0
+    if reason == "stale" and all(k == "def" or k.startswith("policy.") for k in stale_keys(old_parts, parts)):
+        return 0
+    return 1
+
+
+def all_terminal_current(doc: dict, graph: Graph, dep_view: dict, settings: dict, now: int) -> bool:
+    """For §3.3 rule 8 and the generic close (§4.19); leases do not matter for currency."""
+    st, _, _ = frontier(graph, doc, dep_view, {}, settings, now)
+    return all(st[t]["name"] == "current" for t in graph.terminal)
+
+
+# --------------------------------------------------------------------------------------------- ordering (§4.11)
+
+PRI = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+
+
+def order_key(settings: dict, doc: dict, graph: Graph, node: str) -> tuple:
+    stage = graph.nodes[node]["stage"] if node in graph.nodes else "delivery"
+    s = (0 if stage == "discovery" else 1) if settings["scheduling"]["order"] == "stage_first" else 0
+    return (s, doc["release"], PRI[doc["priority"]], doc["id"], graph.topo.index(node) if node in graph.topo else 0)
