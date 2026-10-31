@@ -48,7 +48,7 @@ class ReleaseValidationTests(unittest.TestCase):
                 validate.assert_called_once_with(platform)
         retained = {test_id.split(".", 1)[0]
                     for targets in runner.NATIVE_COVERAGE.values() for test_id in targets}
-        self.assertTrue({"test_legacy_cleanup", "test_installation_validation",
+        self.assertTrue({"test_legacy_cleanup", "test_engine_identity",
                          "test_marketplace_bundle"}.issubset(retained))
         release_job = workflow.split("  release:", 1)[1]
         self.assertIn("actions/setup-python@v5", release_job)

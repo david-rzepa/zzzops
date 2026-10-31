@@ -71,3 +71,19 @@ class LauncherTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CliWithoutRepositoryTests(unittest.TestCase):
+    def test_help_and_policy_validation_need_no_repository(self):
+        nowhere = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, nowhere, True)
+        cli = str(fx.PLUGIN_CODE / "zzzops.py")
+        import sys
+        p = subprocess.run([sys.executable, cli, "--help"], cwd=nowhere, capture_output=True, text=True)
+        self.assertEqual(0, p.returncode, p.stderr)
+        self.assertIn("usage: zzzops", p.stdout)
+        p = subprocess.run([sys.executable, cli, "validate", "--policy", "--dir", str(fx.TEMPLATES)], cwd=nowhere,
+                           capture_output=True, text=True)
+        self.assertEqual(0, p.returncode, p.stderr + p.stdout)
+        self.assertTrue(json.loads(p.stdout)["ok"])
+        self.assertEqual([], os.listdir(nowhere))                     # wrote nothing

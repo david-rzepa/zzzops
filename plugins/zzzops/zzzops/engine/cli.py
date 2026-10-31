@@ -189,6 +189,9 @@ def cmd_validate(argv):
     from engine.gh import gh_problems
     st = s.open(readonly=True, all_goals=True)
     env += gh_problems(s)
+    package = package_check()
+    if package:
+        env.append(package)
     wanted = [goal_id(x) for x in a.pos] or sorted(set(st.docs) | set(st.invalid) | st.newer)
     goals = {}
     for g in wanted:
@@ -215,6 +218,16 @@ def cmd_validate(argv):
     emit({"ok": ok, "coordinator": st.coordinator, "goals": goals, "policy": policy, "environment": env,
           "warnings": warnings})
     return 0 if ok else 1
+
+
+def package_check() -> str | None:
+    """The plugin package self-check (DESIGN C4): a damaged or mixed installation is reported, never gated on."""
+    import runpy
+    try:
+        status = runpy.run_path(str(Path(__file__).resolve().parent.parent / "package.py"))["package_status"]()
+    except Exception as exc:                                    # pragma: no cover - a broken install
+        return f"plugin package check failed: {exc}"
+    return None if status.get("ok") else f"plugin package: {status.get('detail')}"
 
 
 def validate_policy_dir(a) -> int:

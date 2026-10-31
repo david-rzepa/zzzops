@@ -1,39 +1,17 @@
-# Initialization and project policy
+# Initializing a repository
 
-Install the ZzzOps Agent Plugin through Codex, then start `$review-zzzops-policy` from a fresh task. It inspects repository evidence, proposes the charter/GitHub authority/operating policy, and interviews only consequential gaps. Other ZzzOps skills defer to it whenever reviewed policy is unavailable.
+Bootstrap is a checklist, run by the `$bootstrap-zzzops-repository` skill over the shipped templates in `plugins/zzzops/zzzops/templates/default/` and plain `git`/`gh`:
 
-Resolve one Python 3.10 or newer interpreter first (`python3`, `python`, Windows `py -3`, or a harness-provided runtime), reject older interpreters, then reuse the compatible command below as `<python>` without speculative launcher attempts. If none is compatible, stop once with the observed version and actionable install or selection detail:
+1. Choose the remote and the integration branch (`dev` or `main`).
+2. Write `.zzzops/POLICY.json` (verification commands, required CI checks, integration branch, first goal id, routing tiers), `.zzzops/workflow.json` and `.zzzops/prompts/` from the templates.
+3. `zzzops validate --policy --dir .zzzops` (no remote needed).
+4. Land them on the integration branch (through a `zzzops/policy/bootstrap` branch and a PR when the branch is protected).
+5. Per clone: `git config zzzops.integrationBranch <branch>` when it is not the remote's default branch, and `zzzops.committer`.
+6. Harness setup for Codex or Claude Code: [SETUP.md](../plugins/zzzops/zzzops/references/SETUP.md).
+7. GitHub settings: automatic head-branch deletion on; the merge method allowed; a ruleset protecting `zzzops/goal/**` from deletion and force-push; `zzzops/**` excluded from other branch rules ([Branch protection](BRANCH_PROTECTION.md)).
+8. Optionally skip CI on `zzzops/**` pushes and add `.zzzops/worktrees/` to tool ignore files.
+9. `zzzops validate`, then capture the first goals with `$add-zzzops-goal`.
 
-```text
-<python> <zzzops-cli> --repo . init inspect
-<python> <zzzops-cli> --repo . installation status
-<python> <zzzops-cli> --repo . installation audit
-<python> <zzzops-cli> --repo . init validate --plan .zzzops/init/plan.json
-<python> <zzzops-cli> --repo . init apply --plan .zzzops/init/plan.json
-<python> <zzzops-cli> --repo . init confirm --policy-digest DIGEST --reviewer NAME --all
-<python> <zzzops-cli> --repo . checkpoint
-```
+A repository without `.zzzops/workflow.json` on its integration branch reports `not_bootstrapped`.
 
-Inspection includes one plain-language table with every policy, its current choice, relationship to the ZzzOps default, staleness, exact approval state, applicability, and any action needed. The detailed audit retains rationale, evidence, settings, provenance, and review history.
-
-Operational defaults remain in the cold initialization catalog. Ordinary workflows use reviewed project settings; a missing legacy section or setting appears as stale/missing in the table and must be reviewed instead of inheriting the current shipped choice. See [Policy context boundary](POLICY_CONTEXT.md).
-
-Apply creates a concise pending `.zzzops/PROJECT.md`, the detailed `.zzzops/PROJECT_AUDIT.md`, and the canonical `.zzzops/POLICY.json`. The agent summarizes the meaningful choices and invites adjustments; it cannot approve them or continue ordinary work. Explicit user approval of the current policy digest may confirm all sections or selected stable IDs. Any bound charter, audit, or policy edit invalidates approval, and every required unchecked section remains a categorized `decision` blocker.
-
-Before ordinary initialization, `installation status` compares the installed manifest version and complete package digest with ignored state in the repository's Git metadata. A missing, malformed, or stale record routes once through `$validate-zzzops-installation`; a current `clean` or user-declined record continues without another audit. The validation skill composes the existing fingerprint-based cleaner, requires explicit confirmation before removal, and resumes the originally requested workflow exactly once. Interrupted or unsafe validation writes no success record.
-
-Workflow adherence is reviewed separately from engineering or verification rigor. `optional` makes ZzzOps available without requiring it; `tracked` requires a durable goal for substantial agent work while allowing otherwise-authorized execution outside `$execute-zzzops`; `managed` requires repository-changing agent work to use the appropriate ZzzOps workflow and tracked implementation to run through `$execute-zzzops`. Read-only investigation and ZzzOps administration remain exempt, and only explicit user authority grants a scoped exception. A legacy policy missing this section is stale and blocks affected work until review; new policy drafts propose `tracked`.
-
-After workflow adherence is approved, the canonical policy remains the authority for ZzzOps operations. Repository instructions may additionally guide an agent, but policy review does not require a root `AGENTS.md` file.
-
-Engineering rigor is a stake-dependent `vibe` → `structured` → `agentic` spectrum, not a test-coverage score. `vibe` favors low-commitment exploration whose replacement, verification, and cleanup fit inside one goal before dependent work fans out; `structured` is the production-oriented default with explicit outcomes, observable acceptance, targeted automation, canonical verification, and baseline CI; `agentic` adds precise constraints, strong deterministic and regression evidence, required gates, and relevant security, data, recovery, and operational proof. Stronger levels cost more upfront but reduce ambiguity, correction loops, regressions, and maintenance risk.
-
-Policy review owns the default, automatic escalation, risk-category minimums, and per-goal overrides. ZzzOps may automatically raise rigor when evidence matches a reviewed risk category, but never silently lower it; lowering requires explicit user authority and cannot undercut a risk minimum. Requirements-interview depth is derived from rigor (`vibe`=`light`, `structured`=`standard`, `agentic`=`thorough`) so the existing capture setting cannot become a competing control. A legacy policy missing this section is stale and blocks affected work until review; review proposes `structured`.
-
-`PROJECT.md` remains the concise human charter and policy summary. `POLICY.json` is the one canonical machine representation, while digest-bound `PROJECT_AUDIT.md` keeps evidence, rationales, and review history off the ordinary workflow path. Every invocation of `$review-zzzops-policy` re-reads and re-summarizes meaningful current choices, even when policy is already valid.
-
-The bounded policy audit covers backend; Git/review/release; execution/continuation; verification/testing; code quality; dependencies/tooling/generated artifacts; security/privacy/compliance; documentation/style/communication; deployment/environment/resources; workflow adherence; and autonomy/approval/parallelism. Repository/user evidence overrides labeled ZzzOps defaults. New drafts enable outcome-first communication and privacy-safe execution-report recording, bounded refill for documentation/tests/non-behavioral code quality/agent observability, exact-checkpoint dependency stacking, and human review when safe work is exhausted; each can be reviewed or customized. The repository-size probe supplies tracked-byte evidence only, while the cold draft applies the proposed worker threshold, modes, and cap. Existing reviewed projects retain their explicit category list until review opts into new categories; any missing operational setting is stale instead of inheriting the shipped value. State/schema mechanics and safety/authority invariants are not operational defaults. If repository instructions later disagree with reviewed PROJECT policy, affected work stops for reconciliation.
-
-The canonical policy preserves extension settings inside policy sections. After initialization, `checkpoint` first validates the installed plugin manifest, required package surfaces, and deterministic package digest. Missing, changed, unsafe, or incomplete plugin content stops with a Codex reinstall/update action before any GitHub portfolio read. Project policy/state, root instructions, and `.zzzops/init/` scratch are outside the plugin package. On the valid path, GitHub Issues is authoritative only after identity, authentication, Issues, and permission probes pass, and the same CLI call returns the complete canonical portfolio. A failed probe is an explicit blocker with no fallback authority.
-
-Maintain the contract with initialization tests, Agent Plugin schema/package tests, clean target probes, and the prompt-budget check.
+Goals created by the pre-reset engine are not migrated automatically: see [MIGRATING.md](../plugins/zzzops/zzzops/references/MIGRATING.md).

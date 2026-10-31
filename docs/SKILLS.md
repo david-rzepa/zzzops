@@ -1,24 +1,11 @@
-# Skill discovery and modes
+# Skills
 
-ZzzOps uses the Agent Plugins skill contract: the `name` and `description` frontmatter in each `SKILL.md`. Put likely user verbs, nouns, boundaries, and exact mode phrases in `description`; do not invent alias or keyword metadata. Codex's optional `agents/openai.yaml` supplies UI text but does not replace the common description.
+ZzzOps ships three skills. Each drives the `zzzops` CLI ([reference](../plugins/zzzops/zzzops/references/CLI_USAGE.md)).
 
-The table below is the exact ten-skill Agent Plugin package. `run-zzzops-acceptance` is deliberately absent: that skill, `docs/ACCEPTANCE_TEST_PLAN.md`, and `.agents/manual_acceptance.py` are base-repository maintenance and release infrastructure used to validate the shipped workflows, not plugin features.
+| Skill | Use it to |
+|---|---|
+| `$bootstrap-zzzops-repository` | Initialize a repository: policy, workflow, prompts, harness and GitHub settings ([Initialization](INITIALIZATION.md)). |
+| `$add-zzzops-goal` | Capture a goal's spec with you and start its design at once. |
+| `$execute-zzzops` | Work through all ready phases: dispatch workers, run the Git and GitHub operations, and present your decisions in batches. In unattended runs it sleeps until the next time something can change (`wake_at`). |
 
-| Skill | Discovery terms | Default | Explicit modes |
-| --- | --- | --- | --- |
-| `add-zzzops-goal` | add, create, capture, record; goal, TODO, backlog item | Write one canonical goal | None |
-| `bootstrap-zzzops-repository` | bootstrap, create project; repository, agent-ready, specification | Analyze, plan, and execute verified harness goals; stop before product implementation | Greenfield, early scaffold, and brownfield are evidence-derived rather than user-selected |
-| `execute-zzzops` | execute, work all goals, continue, triage, prioritize, reprioritize, unblock | Execute authorized work; exclude feedback issues | `dry run`, `preview`, `plan`: read-only; session approval includes all `zzzops-feedback` issues |
-| `migrate-to-zzzops` | discover, plan, migrate, import; TODOs, backlog | Build review artifacts; apply only after approval | `dry run`, `preview`, `plan`: report only; `apply`, `migrate`, `import`: approved write |
-| `review-zzzops-policy` | review, initialize, summarize, reconcile, adjust; policy | Summarize current policy and invite adjustments | Explicit approval confirms the current reviewed policy |
-| `review-agentic-engineering` | review; completed software-agent work, agentic engineering, practice | Read-only evidence attribution and at most two improvements | Explicit invocation only; insufficient evidence produces no advice |
-| `review-zzzops-entropy` | review; entropy, repository decay; recent, full | Read-only preview | `recent`: exact pending batch; `full`: repository-wide; `apply`: approved goal capture; `complete`: exact reviewed coverage |
-| `send-zzzops-feedback` | send, submit, feedback; execution reports | Preview human-readable cause accounts plus the exact inline report appendix | Exact digest confirmation: create one public ZzzOps issue and delete only submitted reports |
-| `suggest-zzzops-work` | suggest, discover, audit, refill | Dry run | `dry run`, `preview`, `plan`: read-only; `apply`: approved write; `refill`: PROJECT-policy-authorized write |
-| `validate-zzzops-installation` | validate, check; installation, upgrade, legacy ZzzOps | Audit once per repository and installed package | Explicit invocation revalidates; removal always requires confirmation |
-
-Generic mode words are contextual: combine them with the task noun, such as “dry run TODO migration.” Host installation and updates remain Codex marketplace operations; the validation skill reconciles their repository-local aftermath. Keep descriptions concise and update contract tests when names, modes, or defaults change.
-
-Codex, marketplace, and generated Claude packages all derive this same exact skill inventory. Distribution validation rejects missing skills or divergent generated content; the human acceptance ledger separately maps user-visible lifecycle behavior.
-
-References: [Agent Plugins specification](https://agent-plugins.org/specification), [Codex skills](https://developers.openai.com/codex/skills).
+Everything else is a CLI verb: holding or cancelling a goal, adding a dependency or a skip, reopening a node, or answering a decision.

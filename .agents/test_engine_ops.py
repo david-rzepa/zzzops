@@ -80,7 +80,7 @@ class ChecksJourney(Journey):
         marker = os.path.join(self.tmp, "fast")
         self.implement(g, test_cmd=f"test -f {marker} || sleep 30")
         env = self.w.cli_env()
-        proc = subprocess.Popen([sys.executable, "-m", "engine", "start", str(g), "run_tests", "--as", "claude:aaaa/op"],
+        proc = subprocess.Popen([sys.executable, str(fx.PLUGIN_CODE / "zzzops.py"), "start", str(g), "run_tests", "--as", "claude:aaaa/op"],
                                 cwd=self.w.clones["a"].path, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 start_new_session=True)
         time.sleep(3)

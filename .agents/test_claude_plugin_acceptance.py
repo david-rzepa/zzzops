@@ -12,11 +12,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 HARNESS = ROOT / ".agents" / "claude_plugin_acceptance.py"
-EXPECTED_SKILLS = {
-    "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
-    "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
-    "validate-zzzops-installation",
-}
+EXPECTED_SKILLS = {"add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops"}
 
 
 def load_harness():
@@ -43,7 +39,7 @@ class ClaudePluginAcceptanceTests(unittest.TestCase):
         details = f"Skills ({len(EXPECTED_SKILLS)})  " + ", ".join(sorted(EXPECTED_SKILLS)) + "\n  Agents (0)"
         self.harness.validate_details(details)
         with self.assertRaisesRegex(self.harness.AcceptanceError, "skill inventory"):
-            self.harness.validate_details(details.replace("validate-zzzops-installation", "unexpected"))
+            self.harness.validate_details(details.replace("execute-zzzops", "unexpected"))
 
         del available[0]["version"]
         self.harness.validate_available(available, None, "./plugins/zzzops")
@@ -65,16 +61,24 @@ class ClaudePluginAcceptanceTests(unittest.TestCase):
             with self.assertRaisesRegex(self.harness.AcceptanceError, "isolated Claude cache"):
                 self.harness.validate_install(record, config, "2.0.0")
 
-    def test_cached_skill_launch_contract_rejects_path_command(self) -> None:
+    def test_cached_skill_launch_contract_rejects_the_retired_intent_cli(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             install = Path(directory)
             (install / "zzzops").mkdir()
             (install / "zzzops" / "zzzops.py").write_text("# runtime\n", encoding="utf-8")
+            (install / "bin").mkdir()
+            (install / "bin" / "zzzops").write_text("#!/bin/sh\n", encoding="utf-8")
             for name in EXPECTED_SKILLS:
                 skill = install / "skills" / name
                 skill.mkdir(parents=True)
-                (skill / "SKILL.md").write_text("`zzzops workflow`\n", encoding="utf-8")
-            with self.assertRaisesRegex(self.harness.AcceptanceError, "package-owned public CLI"):
+                (skill / "SKILL.md").write_text("[CLI usage](../../zzzops/references/CLI_USAGE.md)\n", encoding="utf-8")
+            self.harness.validate_skill_launch_contract(install)
+            (install / "skills" / "execute-zzzops" / "SKILL.md").write_text(
+                "run zzzops.py --intent execute\n[CLI usage](../../zzzops/references/CLI_USAGE.md)\n", encoding="utf-8")
+            with self.assertRaisesRegex(self.harness.AcceptanceError, "package-owned CLI reference"):
+                self.harness.validate_skill_launch_contract(install)
+            (install / "bin" / "zzzops").unlink()
+            with self.assertRaisesRegex(self.harness.AcceptanceError, "launcher"):
                 self.harness.validate_skill_launch_contract(install)
 
     def test_versionless_validation_allows_only_claudes_documented_sha_warning(self) -> None:

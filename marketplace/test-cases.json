@@ -6,14 +6,14 @@
       "prompt": "Review and initialize this project's ZzzOps policy.",
       "expected_behavior": "The policy-review skill inspects the repository, proposes a project charter and operating policy, and waits for explicit approval before initialization becomes usable.",
       "expected_result_shape": "A concise policy summary, consequential questions when needed, and validated .zzzops policy artifacts only after approval.",
-      "fixture": "A public test repository with GitHub Issues enabled and no existing .zzzops policy."
+      "fixture": "A public test repository the user can push to, with no existing .zzzops policy."
     },
     {
       "id": "P-002",
       "prompt": "Use ZzzOps to capture a goal to add a documented JSON export command.",
       "expected_behavior": "The capture skill checks for duplicates, relates the work to reviewed project value, gathers consequential details, and creates one GitHub Issue without making code or Git changes.",
       "expected_result_shape": "One linked managed goal with acceptance criteria, priority, scope, and a resumable next action.",
-      "fixture": "An initialized public test repository with a reviewed policy and GitHub Issues write access."
+      "fixture": "An initialized public test repository with a ZzzOps policy and push access."
     },
     {
       "id": "P-003",

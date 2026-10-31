@@ -231,13 +231,13 @@ class World:
     def cli_env(self, now=None, extra=None):
         env = dict(self.env)
         env.update(self.extra_env or {})
-        env.update({"PYTHONPATH": str(PLUGIN_CODE), "ZZZOPS_NOW": str(now if now is not None else self.now),
+        env.update({"ZZZOPS_NOW": str(now if now is not None else self.now),
                     "ZZZOPS_TRACE": self.trace, "ZZZOPS_PREFIX": "zzzops", "GH_REPO": "test/repo"})
         env.update(extra or {})
         return env
 
     def run(self, clone: str, *argv, now=None, env=None, cwd=None):
-        p = subprocess.run([_sys.executable, "-m", "engine", *argv], cwd=cwd or self.clones[clone].path,
+        p = subprocess.run([_sys.executable, str(PLUGIN_CODE / "zzzops.py"), *argv], cwd=cwd or self.clones[clone].path,
                            capture_output=True, text=True, env=self.cli_env(now, env))
         out = None
         if p.stdout.strip().startswith("{"):

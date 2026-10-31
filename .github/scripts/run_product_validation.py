@@ -22,27 +22,24 @@ LINUX_AUXILIARY_SECONDS = 20.0
 # This unchanged one-second wall-clock contract needs an otherwise idle shard.
 # Keep this list explicit and discovery-guarded: never omit or relax the test.
 LINUX_EXCLUSIVE_TESTS = (
-    "test_evidence_dag_journeys.EvidenceDagPublicTests.test_pure_frontier_has_no_io_and_fixed_expanded_equal_work_budget",
+    "test_engine_property.NoDeadEndPropertyTests.test_random_portfolios",
 )
 
 NATIVE_COVERAGE = {
     "installation_cleanup": (
-        "test_installation_validation.InstallationValidationTests.test_cli_clean_first_use_and_idempotent_status",
         "test_legacy_cleanup.LegacyCleanupTests.test_default_cli_is_dry_run_and_interrupted_cleanup_converges",
     ),
     "marketplace_package": (
         "test_marketplace_bundle.MarketplaceBundleTests.test_fixed_version_build_is_deterministic_and_complete",
         "test_agent_plugin.AgentPluginTests.test_marketplace_points_to_the_self_contained_package",
     ),
-    "package_cli": ("test_zzzops.InitializationTests.test_cli_without_command_shows_help_without_writing_local_state",),
-    "heartbeat_process": ("test_workflow_heartbeat.HeartbeatProcessTests.test_one_coordinator_renews_multiple_leases_and_stops_tracking_workers",),
+    "package_cli": ("test_engine_docs.CliWithoutRepositoryTests.test_help_and_policy_validation_need_no_repository",),
     "git_crlf_drift": (
-        "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_mixed_clean_checkout_rejects_raw_consumed_drift_and_restores_exact_acquisition",
-        "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_crlf_design_correction_retains_frozen_raw_checkout_overrides",
-        "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_clean_crlf_checkout_pins_raw_consumed_bytes_and_allows_owned_red_edit",
+        "test_engine_identity.IdentityTests.test_crlf_checkout_gives_the_same_identities",
+        "test_engine_identity.IdentityTests.test_identity_under_hostile_global_configuration",
     ),
-    "path_confinement": ("test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_acquired_owned_path_cannot_be_replaced_by_escaping_symlink",),
-    "public_delivery": ("test_workflow_publication_contract.GenericDeliveryPublicTests.test_reviewed_red_green_proofs_commit_and_exact_publication_form_one_delivery_graph",),
+    "path_confinement": ("test_engine_identity.IdentityTests.test_i1_i2_and_artifact_commits",),
+    "goal_journey": ("test_engine_lifecycle.SubmitTests.test_new_creates_no_branch_and_first_artifact_does",),
 }
 
 
@@ -307,8 +304,6 @@ def linux_validation() -> None:
 
 
 def linux_auxiliary_validation() -> None:
-    run(sys.executable, "-m", "unittest", "discover", "-s", "plugins/zzzops/skills/migrate-to-zzzops/scripts", "-p", "test_*.py")
-    run(sys.executable, ".agents/manual_acceptance.py", "coverage")
     run("npm", "run", "test:plugin")
     run("npm", "run", "test:release")
     run(sys.executable, ".agents/prompt_stats.py", "--check")

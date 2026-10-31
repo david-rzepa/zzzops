@@ -97,7 +97,7 @@ class PluginCachebusterTests(unittest.TestCase):
         skill.write_text(original.replace("v0.0.0-dev", "v9.9.9", 1))
         self.assertIn("skill discovery metadata", self.status()["detail"])
         skill.write_text(original)
-        required = self.plugin / "rules/GOAL_SYSTEM.md"
+        required = self.plugin / "zzzops/engine/frontier.py"
         required.unlink()
         self.assertIn("missing package files", self.status()["detail"])
         required.symlink_to(skill)
@@ -108,34 +108,21 @@ class PluginCachebusterTests(unittest.TestCase):
         self.assert_current_package_validation()
 
     def assert_current_package_validation(self):
-        """Exercise the public path for this copied package's actual identity."""
-        repo = self.root / "repo"
-        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        """The copied package's own CLI runs, and its package check accepts this identity; a change moves the digest."""
+        status = self.status()
+        self.assertTrue(status["ok"], status["detail"])
         cli = self.plugin / "zzzops/zzzops.py"
-
-        def invoke(payload=None):
-            arguments = [sys.executable, str(cli), "--repo", str(repo), "--intent", "inspect",
-                         "--source-skill", "$validate-zzzops-installation", "--response", "full"]
-            if payload is not None:
-                request = self.root / "input.json"
-                request.write_text(json.dumps(payload))
-                arguments.extend(["--input", str(request)])
-            result = subprocess.run(arguments, capture_output=True, text=True)
-            self.assertEqual(0, result.returncode, result.stderr + result.stdout)
-            return json.loads(result.stdout)
-
-        first = invoke()
-        step = first["next_steps"][0]
-        self.assertEqual("installation_validation", step["kind"])
-        invoke({**step["submission"], "outcome": "clean"})
-        installation = runpy.run_path(str(self.plugin / "zzzops/installation.py"))
-        provenance = self.package["package_provenance"]()
-        self.assertFalse(installation["validation_status"](repo, provenance)["required"])
+        result = subprocess.run([sys.executable, str(cli), "validate", "--policy", "--dir",
+                                 str(self.plugin / "zzzops/templates/default")], capture_output=True, text=True,
+                                cwd=self.root)
+        self.assertEqual(0, result.returncode, result.stderr + result.stdout)
+        self.assertTrue(json.loads(result.stdout)["ok"])
+        before = self.package["package_provenance"]()["revision"]
         for change in ({"version": "0.0.0-dev+codex.20260929050008"}, {"description": "changed"}):
             self.update(**change)
-            status = installation["validation_status"](repo, self.package["package_provenance"]())
-            self.assertTrue(status["required"])
-            self.assertEqual("package_changed", status["reason"])
+            after = self.package["package_provenance"]()["revision"]
+            self.assertNotEqual(before, after)
+            before = after
 
 
 if __name__ == "__main__":

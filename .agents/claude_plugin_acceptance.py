@@ -16,11 +16,7 @@ import tempfile
 from typing import Any
 
 
-EXPECTED_SKILLS = {
-    "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
-    "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
-    "validate-zzzops-installation",
-}
+EXPECTED_SKILLS = {"add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops"}
 
 
 class AcceptanceError(ValueError):
@@ -141,19 +137,14 @@ def validate_install(records: Any, config: Path, version: str) -> Path:
 
 
 def validate_skill_launch_contract(install: Path) -> None:
-    """Require every cached skill to locate the package-owned public CLI."""
+    """Require every cached skill to use the package-owned CLI reference and launcher, never the retired --intent."""
+    if not (install / "bin" / "zzzops").is_file() or not (install / "zzzops" / "zzzops.py").is_file():
+        raise AcceptanceError("cached plugin is missing its launcher or packaged runtime")
     for name in EXPECTED_SKILLS:
         skill = install / "skills" / name / "SKILL.md"
-        expected_cli = skill.parents[2] / "zzzops" / "zzzops.py"
         text = skill.read_text(encoding="utf-8")
-        if (
-            not expected_cli.is_file()
-            or "../../zzzops/zzzops.py" not in text
-            or "--intent" not in text
-            or "../../zzzops/references/CLI_USAGE.md" not in text
-            or "`zzzops workflow" in text
-        ):
-            raise AcceptanceError("cached skill does not invoke its package-owned public CLI")
+        if "../../zzzops/references/CLI_USAGE.md" not in text or "--intent" in text:
+            raise AcceptanceError("cached skill does not use its package-owned CLI reference")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -228,34 +219,14 @@ def main(argv: list[str] | None = None) -> int:
             cached_skills = {path.name for path in (install / "skills").iterdir() if path.is_dir()}
             if cached_skills != EXPECTED_SKILLS:
                 raise AcceptanceError("cached skill directories differ from the intended ZzzOps surface")
-            runtime_command = [
-                sys.executable, str(install / "zzzops" / "zzzops.py"), "--repo", str(project),
-                "workflow", "--intent", "inspect", "--source-skill", "$review-zzzops-policy",
-            ]
-            inspection = json_output(runtime_command)
-            steps = inspection.get("next_steps") if isinstance(inspection, dict) else None
-            reference = inspection.get("full_response") if isinstance(inspection, dict) else None
-            if (set(inspection) != {"outcome", "next_steps", "full_response"}
-                    or not isinstance(steps, list) or not steps or not isinstance(reference, dict)):
-                raise AcceptanceError("packaged ZzzOps runtime cannot produce a public workflow response")
-            required_reference = {"schema_version", "path", "sha256", "goal", "intent"}
-            if set(reference) != required_reference or reference.get("schema_version") != 1:
-                raise AcceptanceError("packaged ZzzOps runtime produced a malformed full-response reference")
-            response_path = Path(reference["path"])
-            response_bytes = response_path.read_bytes()
-            if "sha256:" + hashlib.sha256(response_bytes).hexdigest() != reference.get("sha256"):
-                raise AcceptanceError("packaged ZzzOps runtime produced a corrupt full-response reference")
-            envelope = json.loads(response_bytes)
-            full = json_output([
-                sys.executable, str(install / "zzzops" / "zzzops.py"), "--repo", str(project),
-                "workflow", "--read-response", str(response_path),
-                "--response-hash", reference["sha256"],
-            ])
-            if (not isinstance(envelope, dict) or envelope.get("schema_version") != 1
-                    or envelope.get("intent") != "inspect"
-                    or envelope.get("response") != full
-                    or not isinstance(full.get("next_steps"), list)):
-                raise AcceptanceError("compact and full packaged runtime responses are not equivalent")
+            runtime = install / "zzzops" / "zzzops.py"
+            usage = run([sys.executable, str(runtime), "--help"], env=env)
+            if "usage: zzzops" not in usage:
+                raise AcceptanceError("packaged ZzzOps runtime does not print its usage")
+            checked = json_output([sys.executable, str(runtime), "validate", "--policy", "--dir",
+                                   str(install / "zzzops" / "templates" / "default")])
+            if not isinstance(checked, dict) or checked.get("ok") is not True:
+                raise AcceptanceError("packaged ZzzOps runtime rejects its own shipped templates")
     except (AcceptanceError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         print(f"Claude plugin acceptance failed: {exc}", file=sys.stderr)
         return 2

@@ -5,12 +5,14 @@ description: ZzzOps v0.0.0-dev — development plugin. Capture/add/create/record
 
 # Add Goal
 
-Run [`zzzops.py`](../../zzzops/zzzops.py) with `--intent add_goal`; follow its `next_steps`.
+Communicate as [the shared guide](../../rules/COMMUNICATION.md) says, and respect its data boundary.
 
-Read [CLI usage](../../zzzops/references/CLI_USAGE.md) before invoking it.
+Capture the goal with the human, create it, and let its design start at once. Read [CLI usage](../../zzzops/references/CLI_USAGE.md) once.
 
-Do not capture a goal whose sole deliverable is a ZzzOps administrative mutation
-to another goal. Use the direct administrative workflow returned by the CLI.
-Capture only a distinct product or tooling defect with its own observable outcome.
+1. **Write the spec with the human:** the outcome, the acceptance criteria, constraints and non-goals, scaled with [[effective engineering rigor]](../../concepts/effective-engineering-rigor.md). The design is done by a worker from this spec, so it must carry the human's nuances. Ask about dependencies on other goals (`zzzops next --all` lists them), release and priority.
+2. **Skips are agreed now, explicitly.** For a small, low-risk goal you may offer `skip: {"approve_design": "<reason, with the human's agreement>"}`. Never offer to skip the merge approval.
+3. **Create it:** write the new-goal file (`title`, `spec`, and optionally `priority`, `release`, `depends_on`, `skip`, `links.issue`) and run `zzzops new --file <F>`.
+4. **Start discovery now:** the output's `next` holds the goal's `design` action. Dispatch it to a worker (with a minted label, as in the execute skill) and carry on capturing the next goal. Design questions come back later as batched human items.
+5. When the design proposes child goals, create them with `new` only after `approve_design` is ok.
 
-When a response includes `working_input`, reuse its stable ignored file for revisions. Dispatch only frozen exact bytes, and run the returned status or reconciliation command before retrying an uncertain request.
+Do not capture a goal whose only outcome is a change to ZzzOps state (use `edit`, `reopen` or `answer` for that).
