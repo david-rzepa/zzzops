@@ -147,3 +147,128 @@ class env_of:
     def __exit__(self, *exc):
         os.environ.clear()
         os.environ.update(self.old)
+
+
+# --------------------------------------------------------------------------------------------- World: remote + clones
+
+import json as _json
+import sys as _sys
+
+REMOTE_URL = "https://github.com/test/repo.git"
+NOW = 1_800_000_000
+
+
+class World:
+    """A bare remote reached as https://github.com/test/repo.git (via url.insteadOf), and clones of it."""
+
+    def __init__(self, tmp: str, clones=("a", "b"), now: int = NOW):
+        self.tmp = tmp
+        self.now = now
+        self.home = os.path.join(tmp, "home")
+        os.makedirs(self.home, exist_ok=True)
+        self.remote = os.path.join(tmp, "remote.git")
+        self.env = isolated_env(self.home)
+        gcfg = self.env["GIT_CONFIG_GLOBAL"]
+        with open(gcfg, "a", encoding="utf-8") as fh:
+            fh.write(f'[url "{self.remote}"]\n\tinsteadOf = {REMOTE_URL}\n[zzzops]\n\tcommitter = ZzzOps Test <zzzops@test>\n')
+        self.env.pop("GIT_AUTHOR_DATE", None)
+        self.env.pop("GIT_COMMITTER_DATE", None)
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "dev", self.remote], check=True, env=self.env)
+        seed = os.path.join(tmp, "seed")
+        subprocess.run(["git", "clone", "-q", REMOTE_URL, seed], check=True, env=self.env, capture_output=True)
+        self.seed = GitDir(seed, self.env)
+        self.seed.commit({"README.md": "# test repo\n", "src/app.py": "def app():\n    return 1\n"}, "chore: initial")
+        self.seed.git("push", "-q", "origin", "HEAD:dev")
+        self.clones = {}
+        for name in clones:
+            self.add_clone(name)
+        self.trace = os.path.join(tmp, "trace.jsonl")
+        self.files = 0
+
+    def add_clone(self, name):
+        path = os.path.join(self.tmp, name)
+        subprocess.run(["git", "clone", "-q", REMOTE_URL, path], check=True, env=self.env, capture_output=True)
+        self.clones[name] = GitDir(path, self.env)
+        return self.clones[name]
+
+    def bootstrap(self, policy=None, workflow=None, prompts=True, settings=None, first_id=1000):
+        policy = policy or load_template("POLICY.json")
+        policy["settings"]["integration_branch"] = "dev"
+        policy["settings"]["goals"]["first_id"] = first_id
+        for k, v in (settings or {}).items():
+            node = policy["settings"]
+            *path, last = k.split(".")
+            for p in path:
+                node = node[p]
+            node[last] = v
+        workflow = workflow or load_template("workflow.json")
+        files = {".zzzops/POLICY.json": _json.dumps(policy, indent=2) + "\n",
+                 ".zzzops/workflow.json": _json.dumps(workflow, indent=2) + "\n"}
+        if prompts:
+            for p in sorted((TEMPLATES / "prompts").iterdir()):
+                files[f".zzzops/prompts/{p.name}"] = p.read_text(encoding="utf-8")
+        self.seed.git("pull", "-q", "--ff-only", "origin", "dev")
+        self.seed.commit(files, "chore(zzzops): bootstrap")
+        self.seed.git("push", "-q", "origin", "HEAD:dev")
+        self.policy, self.workflow = policy, workflow
+
+    def push_dev(self, files: dict, message="chore: dev moves"):
+        self.seed.git("pull", "-q", "--ff-only", "origin", "dev")
+        c = self.seed.commit(files, message)
+        self.seed.git("push", "-q", "origin", "HEAD:dev")
+        return c
+
+    def file(self, content) -> str:
+        self.files += 1
+        path = os.path.join(self.tmp, "files", f"f{self.files}.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(content if isinstance(content, str) else _json.dumps(content))
+        return path
+
+    def cli_env(self, now=None, extra=None):
+        env = dict(self.env)
+        env.update({"PYTHONPATH": str(PLUGIN_CODE), "ZZZOPS_NOW": str(now if now is not None else self.now),
+                    "ZZZOPS_TRACE": self.trace, "ZZZOPS_PREFIX": "zzzops", "GH_REPO": "test/repo"})
+        env.update(extra or {})
+        return env
+
+    def run(self, clone: str, *argv, now=None, env=None, cwd=None):
+        p = subprocess.run([_sys.executable, "-m", "engine", *argv], cwd=cwd or self.clones[clone].path,
+                           capture_output=True, text=True, env=self.cli_env(now, env))
+        out = None
+        if p.stdout.strip().startswith("{"):
+            try:
+                out = _json.loads(p.stdout)
+            except _json.JSONDecodeError:
+                out = None
+        if out is None:
+            out = {"_stdout": p.stdout, "_stderr": p.stderr}
+        if p.returncode != 0 and "_stderr" not in out:
+            out["_stderr"] = p.stderr
+        return p.returncode, out
+
+    def ok(self, clone, *argv, **kw):
+        rc, out = self.run(clone, *argv, **kw)
+        if rc != 0:
+            raise AssertionError(f"{' '.join(argv)} -> {rc}: {_json.dumps(out, indent=1)[:3000]}")
+        return out
+
+    def new(self, clone="a", title="Goal", **fields):
+        return self.ok(clone, "new", "--file", self.file(dict({"title": title, "spec": f"spec for {title}"}, **fields)))
+
+    def trace_lines(self):
+        if not os.path.exists(self.trace):
+            return []
+        with open(self.trace) as fh:
+            return [_json.loads(l) for l in fh if l.strip()]
+
+    def reset_trace(self):
+        if os.path.exists(self.trace):
+            os.remove(self.trace)
+
+    def remote_git(self, *args, check=True):
+        p = subprocess.run(["git", "--git-dir", self.remote, *args], capture_output=True, text=True, env=self.env)
+        if check and p.returncode != 0:
+            raise AssertionError(p.stderr)
+        return p.stdout.strip()
