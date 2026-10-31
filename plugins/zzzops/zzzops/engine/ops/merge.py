@@ -31,7 +31,7 @@ def _run(ctx):
     n, H = pr["number"], pr["head"]
 
     def wrong_base(b):
-        prod = ctx.producers.get("pr") or "integrate"
+        prod = ctx.producers["pr"]
         return Blocked({"category": "dependency", "waiting_for": "human", "reason": "PR base is not the integration branch",
                         "question": f"PR #{n} for G{g} targets `{b}`, not `{I}`, although every dependency has merged. "
                                     f"Rebuild it on `{I}` (reopen {prod}), or cancel G{g}?",

@@ -90,10 +90,9 @@ def _run(ctx):
     if all(ident.is_review(c) for c in commits):
         return Blocked({"category": "decision", "waiting_for": "human", "reason": "no code commits",
                         "question": f"G{g} has no code commits to integrate. Close it as superseded (nothing to deliver)?",
-                        "options": ["close as superseded", "reopen implement"],
+                        "options": ["close as superseded", f"reopen {ctx.producers['code']}"],
                         "commands": {"close as superseded": ["edit", str(g), "--file", "<F>", "--base", "<C>"],
-                                     "reopen implement": ["reopen", str(g), ctx.producers.get("code") or "implement",
-                                                          "--note", "<why>"]}})
+                                     f"reopen {ctx.producers['code']}": ["reopen", str(g), ctx.producers["code"], "--note", "<why>"]}})
     # 2. deterministic rebuild: drop review commits
     todo = "".join(f"{'drop' if ident.is_review(c) else 'pick'} {c} {ident.subject(c)}\n" for c in commits)
     gitdir = git.out("rev-parse", "--absolute-git-dir", cwd=p)
