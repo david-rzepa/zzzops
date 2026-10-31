@@ -319,3 +319,15 @@ class Agent:
 
     def worktree(self, g):
         return GitDir(os.path.join(self.w.clones[self.clone].path, ".zzzops", "worktrees", f"g{g}"), self.w.env)
+
+
+def stub_base_workflow(wf=None):
+    """The default graph with only `base` replaced by an agent node (step 6 tests)."""
+    import copy as _copy
+    wf = _copy.deepcopy(wf or load_template("workflow.json"))
+    nodes = wf["graphs"]["default"]["nodes"]
+    b = nodes["base"]
+    nodes["base"] = {"description": "stub base", "kind": "agent", "capability": "routine", "prompt": "design.md",
+                     "stage": "delivery", "inputs": b["inputs"],
+                     "outputs": {"base_commit": "sha", "stack": "list", "branch": "string"}}
+    return wf
