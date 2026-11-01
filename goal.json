@@ -255,6 +255,85 @@
       },
       "status": "done"
     },
+    "run_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T22:17:18Z",
+      "fp_parts": {
+        "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
+        "inputs": {
+          "code": "v1:sha256:64a5da0309f5a99ecc4af230a36e76eb793c5c6e89d19710ca062c326a564895",
+          "commands": "v1:sha256:b250dd00cf6bc0e44f73a5a65fd97df33b42aa58064d1e1793c798de07b5f826"
+        },
+        "policy": {
+          "verification.commands": [
+            "python3 -m unittest discover -s .agents"
+          ]
+        }
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:9f8e3e74b676d5157c37b9323f9b3b062f9fab9d0f0dbf24f3a5c812230c5e2e",
+      "ok": true,
+      "output": {
+        "result": {
+          "details": [
+            {
+              "cmd": "python3 -m unittest discover -s .agents -p test_engine_review_lenses.py",
+              "exit": 0,
+              "seconds": 76,
+              "tail": "...........................................................\n----------------------------------------------------------------------\nRan 59 tests in 76.588s\n\nOK\n"
+            },
+            {
+              "cmd": "python3 -m unittest discover -s .agents -p test_engine_lenses.py",
+              "exit": 0,
+              "seconds": 219,
+              "tail": "rning: Enable tracemalloc to get the object allocation traceback\n...../home/dave/Work/dev/zzzops/.zzzops/worktrees/g1022/.agents/test_engine_lenses.py:118: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp7nl3junh/tpl/POLICY.json' mode='r' encoding='UTF-8'>\n  p = json.loads(open(os.path.join(d, \"POLICY.json\")).read())\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 61 tests in 219.083s\n\nOK\n"
+            },
+            {
+              "cmd": "python3 -m unittest discover -s .agents -p test_engine_lens_polish.py",
+              "exit": 0,
+              "seconds": 35,
+              "tail": "............\n----------------------------------------------------------------------\nRan 12 tests in 34.986s\n\nOK\n"
+            },
+            {
+              "cmd": "python3 -m unittest discover -s .agents -p test_engine_names.py",
+              "exit": 0,
+              "seconds": 0,
+              "tail": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.015s\n\nOK\n"
+            },
+            {
+              "cmd": "python3 -m unittest discover -s .agents -p test_marketplace_bundle.py",
+              "exit": 0,
+              "seconds": 0,
+              "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.442s\n\nOK\n"
+            },
+            {
+              "cmd": "python3 -m unittest discover -s .agents -p test_design_docs.py",
+              "exit": 0,
+              "seconds": 0,
+              "tail": "...................................\n----------------------------------------------------------------------\nRan 35 tests in 0.241s\n\nOK\n"
+            },
+            {
+              "cmd": "python3 .agents/prompt_stats.py --check",
+              "exit": 0,
+              "seconds": 0,
+              "tail": "# Enforced prompt budgets\n\nOnly always-loaded context and frequent routed workflows are blocking. Other workflows and total inventory are advisory.\n\n| Context | Bytes | Est. tokens | Limit | Status |\n| --- | ---: | ---: | ---: | --- |\n| always-loaded/codex | 0 | 0 | 700 | PASS |\n| capture/codex | 9597 | 2400 | 3700 | PASS |\n| execution/codex | 12653 | 3164 | 8800 | PASS |\n\nAdvisory total inventory: 35 prompts, 68099 bytes, ~17038 tokens.\n\n## Policy context boundary\n\nPublic documentation is excluded. Static prompts, the current project policy, and cold default/review context are counted separately.\n\n| Context class | Bytes | Est. tokens |\n| --- | ---: | ---: |\n| static-hot-prompts | 53907 | 13477 |\n| current-project-policy | 7536 | 1884 |\n| cold-default-review | 22971 | 5743 |\nPASS: all enforced prompt contexts are within their committed limits.\n"
+            },
+            {
+              "cmd": "python3 -m unittest discover -s .agents",
+              "exit": 0,
+              "seconds": 731,
+              "tail": ":0: ResourceWarning: unclosed file <_io.BufferedReader name=23>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=20>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=21>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=14>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=15>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=12>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=13>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
+            }
+          ],
+          "passed": true,
+          "tree": "d5ab0d4591f962c1710a39bf895b21a1c09cb85e"
+        }
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "test_design": {
       "attempt": 2,
       "correction_runs": 1,
