@@ -232,6 +232,55 @@
       },
       "status": "done"
     },
+    "run_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T21:44:21Z",
+      "fp_parts": {
+        "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
+        "inputs": {
+          "code": "v1:sha256:29cb27ee0dd771d1e822978f96f733566620669439f24b127054a4b0b8f0e6b7",
+          "commands": "v1:sha256:857067514effcd1a148d68394c2e64a2966fe6146745b8ae646defe42c8e89f2"
+        },
+        "policy": {
+          "verification.commands": [
+            "python3 -m unittest discover -s .agents"
+          ]
+        }
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:49c16e3f8201f7d8e4474108741ed0337fef39efc7ff21f6ad87ee6152be96d6",
+      "ok": true,
+      "output": {
+        "result": {
+          "details": [
+            {
+              "cmd": "cd .agents && python -m unittest test_marketplace_bundle test_agent_plugin test_plugin_cachebuster test_claude_plugin_acceptance test_ci_selection test_release_validation",
+              "exit": 0,
+              "seconds": 3,
+              "tail": "....................................................s\n...\n......................\n----------------------------------------------------------------------\nRan 76 tests in 3.210s\n\nOK\n"
+            },
+            {
+              "cmd": "python -c \"import runpy; m=runpy.run_path('.github/scripts/run_product_validation.py'); m['select_native_tests'](m['discover_native_tests']())\"",
+              "exit": 0,
+              "seconds": 0,
+              "tail": ""
+            },
+            {
+              "cmd": "python3 -m unittest discover -s .agents",
+              "exit": 0,
+              "seconds": 719,
+              "tail": "emalloc to get the object allocation traceback\n/usr/lib/python3.14/contextlib.py:597: ResourceWarning: unclosed file <_io.FileIO name=19 mode='rb' closefd=True>\n  is_sync, cb = self._exit_callbacks.pop()\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n......................................................................\n----------------------------------------------------------------------\nRan 678 tests in 719.348s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmph1oah7_7\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=26>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=27>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=24>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=25>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=22>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=23>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=20>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=21>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=14>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=15>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=12>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=13>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
+            }
+          ],
+          "passed": true,
+          "tree": "330f15c24cedd93493f7b382f10dbae82396d04e"
+        }
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "test_design": {
       "attempt": 2,
       "correction_runs": 1,
