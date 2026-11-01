@@ -530,6 +530,30 @@ class IdempotentNewTests(StoreBase):
         self.assertEqual([(1000, "design")], [(a["goal"], a["node"]) for a in out["next"]["actions"]])
         self.assertEqual(["refs/heads/zzzops/goal/g1000"], self.goal_refs())
 
+    def test_a_failed_request_key_scan_is_an_engine_bug_and_pushes_nothing(self):
+        """A non-zero `git log --stdin --max-parents=0` must not read as "no match" (that could allocate a duplicate
+        of a goal that already landed): `new` reports engine_bug, exit 1, and pushes no goal ref."""
+        from engine.gitrun import Git
+        from unittest import mock
+        self.w.new(title="existing")                                  # a goal tip, so the scan runs a log
+        real = Git.run
+        scans = []
+
+        def broken_scan(git, *args, **kw):
+            if "log" in args and "--stdin" in args and "--max-parents=0" in args:
+                scans.append(list(args))
+                args = (*args, "--no-such-option")                    # real git, real non-zero exit
+            return real(git, *args, **kw)
+
+        f = self.w.file({"title": "Scan", "spec": "broken"})
+        self.w.reset_trace()
+        with mock.patch.object(Git, "run", broken_scan):
+            rc, out = InProcess(self.w, "a").run("new", "--file", f)
+        self.assertEqual((1, "engine_bug"), (rc, out["error"]["code"]), out)
+        self.assertGreaterEqual(len(scans), 1)
+        self.assertEqual(["refs/heads/zzzops/goal/g1000"], self.goal_refs())
+        self.assertEqual([], self.pushes())
+
     def test_push_atomic_reports_up_to_date_only_when_asked(self):
         from engine import store
         from engine.session import Session
