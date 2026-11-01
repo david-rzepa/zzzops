@@ -134,6 +134,42 @@
       "reason": "new",
       "status": "done"
     },
+    "integrate": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T08:33:21Z",
+      "fp_parts": {
+        "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
+        "inputs": {
+          "base": "v1:sha256:e2e24e462d70f331ee1b6844c51d09411d56c576ee09ef40ebadf1bcfa5fe8ad",
+          "code": "v1:sha256:513bdcc75c60acc68c8ee38b7bb555c7258cff2b7fea0fe6b8d8520a9d21194a"
+        },
+        "policy": {
+          "verification.required_ci": [
+            "dev-required-tests"
+          ]
+        }
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:aafbe6e03d6e8aace4862f21e30c8f47ae6de6ca3691e519083aee79e994205a",
+      "ok": true,
+      "output": {
+        "ci": {
+          "checks": {},
+          "stacked": true
+        },
+        "pr": {
+          "base": "zzzops/pr/g1000",
+          "head": "541080915580a9e75d76adcd0f1c60d122297136",
+          "number": 750,
+          "tree": "54731517588e3e6a42894e3fca7f577d699eac79",
+          "url": "https://github.com/david-rzepa/zzzops/pull/750"
+        }
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 2,
       "correction_runs": 1,
