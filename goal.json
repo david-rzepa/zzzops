@@ -160,6 +160,56 @@
       "reason": "stale",
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_tests:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:b271a55d8243954f1806ba2711c7e003c51bbe287b528c803d1a623a82956b8c",
+          "text": "F1: engine_fake_gh.graphql ignores the selection set and the type argument. It returns issueCount, nodes[{number}] and pageInfo for any search alias. Real GitHub, checked live, rejects a search without type: ISSUE ('missing required arguments: type') and nodes{number} without '... on Issue' ('Selections can't be made directly on unions'), and it omits unselected fields. So a malformed legacy query passes every test, and in production every check becomes a non-transient GraphQL error, i.e. github: retry forever with no issue counts. Fix: per alias, require type: ISSUE and the selection of issueCount and '... on Issue { number }', failing otherwise with the real 'GraphQL: ...' message (exit 1). Return only selected fields, or at least leave out issueCount when it is not selected. Add one direct test of the fake: one well-formed two-alias document and the three malformed forms.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T04:49:37Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:fb5b4190ac489d3d95280c8cbf4efc6c4fd1d4d3",
+          "tests": "v1:sha256:9d9f73ca06c049cf5be5da108fe67e9dcd182e0fed007ec0e52f3e8826087ab5"
+        },
+        "policy": {},
+        "subject": "v1:sha256:b271a55d8243954f1806ba2711c7e003c51bbe287b528c803d1a623a82956b8c"
+      },
+      "holder": "claude:e6ad/review_tests-1015-1",
+      "input_fp": "v1:sha256:d3be21bda1d7e23a6e0940bcd44249fff27a580e08987c6ce1d3f80f6a479d5a",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "21c69bf5760705673b2610c5e700d7a418957f7d",
+          "commit": "8a8641cd85af968de019dfb08abaf65781207a9e",
+          "path": ".zzzops/reviews/1015/review_tests.md"
+        },
+        "summary": "Coverage of the design's 14 test items is complete. The pre-seeded cache keeps the existing cost and journey assertions meaningful with no off switch, and drift is guarded by the seed test. The fixture edits are disjoint from G1001's World.new hunk. Before implementation, all 32 failing tests fail for the right reason, and the rest of the 417-test suite passes. One finding: the fake gh's graphql handler accepts documents real GitHub rejects (no type: ISSUE, number selected outside '... on Issue', issueCount returned even when not selected). A malformed engine query would pass every test, then silently degrade to github: retry in production."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
+          "change": "c65da4ce473fbda18509f562fe3fda77608eeb1b",
+          "commit": "a19c52f6ea00d573287840c86b6580171b2b81df",
+          "tree": "be59f1af4a3805f66465c346d189d693d2a4d3dc"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
