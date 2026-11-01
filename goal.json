@@ -1,0 +1,18 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [],
+  "graph": "default",
+  "id": 1012,
+  "links": {
+    "issue": null
+  },
+  "priority": "P3",
+  "records": {},
+  "release": 2,
+  "schema": 1,
+  "skip": {},
+  "spec": "Introduce a Git-tracked test plan (path and schema decided in design) recording each test file's purpose, originating goal id and latest successful input hashes, and let checks.run (or a custom node before it) select only tests whose dependencies changed, using a pinned structural dependency graph (Graft was the reviewed choice). Unknown or unresolved dependencies widen to the full suite; a full-suite mode remains. Results stay bound to the implement tree identity, so a skipped test is justified by recorded hashes. Changed vs old wording: integrates with checks.run and test_design.commands instead of old phase evidence; CI remains the authority at integrate.\n\nMigrated from GitHub issue #557 after the engine reset (#740).",
+  "state": "open",
+  "title": "Maintain a tracked test plan for affected-test selection in run_tests"
+}
