@@ -135,6 +135,43 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T20:41:42Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:41fa9a84fd500cf41af800b3fa7393c26f40724c",
+          "tests": "v1:sha256:286ab6df7cd908394c3aa092cdb735205a3ec888a80c3f787dcccb51748f4232"
+        },
+        "policy": {},
+        "subject": "v1:sha256:bafeabc1ac3ca1403dd9aaed57fdab674fec9ce0cc28f5016e51c81cfedce61d"
+      },
+      "holder": "claude:e6ad/rt5",
+      "input_fp": "v1:sha256:02bb235862c4b37fdf52dcc14c0f648275cce98f142b9491adf0fe17e6a4cb2c",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "1f3438a92ffeaa9647fea754277709a20fcd1505",
+          "commit": "f08788d33d6d4360308be8035a505c31e37e17b0",
+          "path": ".zzzops/reviews/1034/review_tests.md"
+        },
+        "summary": "The tests match the approved design (Testing 1 and 2). I ran them at 8399a63: test_skill_assigns_a_release_per_goal fails on the current skill and MIGRATING text, and each of its assertions fails on its own against that text (milestone field, owner confirms release, 'may not depend on a goal of a later release', dependencies first, release/priority/depends_on in step 5, no #695 and 'later release' in MIGRATING); the phrases are load-bearing, not prose. The two NewReleaseOrderTests pass by design; as a mutation check I disabled the release-order branch of schemas.validate_goal rule 4 and the refusal test then errors, so it pins the behaviour, and it compares the remote goal refs before and after, so it also catches a refused new that wrote a ref. Non-blocking: the confirm regex's second alternative (confirm ... release within 200 chars) is loose; under the mutant the test fails with a KeyError on err['error'] rather than a clean assertion."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "ec954bacd0a4c206b1c667d2a6c45424fbbef8b7",
+          "commit": "8399a6385b9380d4249e3cbaf9c3f20cc12cb263",
+          "tree": "6ce93573ece1c890785811db5f29ab04155881ba"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
