@@ -10,10 +10,10 @@
   "priority": "P2",
   "records": {
     "design": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-01T04:29:14Z",
+      "finished_at": "2026-11-01T04:33:40Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -22,19 +22,19 @@
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/design-1016-2",
+      "holder": "claude:e6ad/design-1016-3",
       "input_fp": "v1:sha256:8ec390f70a3828e06bcc6ecddc38865d0090666980c3b6fadbfc586f9148497b",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "41058bb4ed974088960674262115339d3ca0325a",
-          "commit": "65987079db82af032fd664742cc6717dc3a26968",
+          "blob": "9008e0101ebef0dff6bcfb3075aae0f32f1a20d1",
+          "commit": "77635d50b8b60981c057df0282579d4da55ad8c2",
           "path": ".zzzops/reviews/1016/design.md"
         },
         "responses": {
-          "review_design:1:1": "fixed: §2 now keeps two sets. stale_because (the union) is shown on the card. record_stale (staleness against the done record only) drives the routine downgrade and previous.output, so lease-since-claim staleness never changes capability. The new test reclaims a no-record implement, and a reopened design, after base moved, and asserts each keeps its own capability. The control asserts that a record-stale base-only start is still routine."
+          "review_design:2:1": "fixed: new section 4a. validate_submit_output requires SHA.match for the override, with the reviewer's message. The rev_parse/ancestry checks in done_record stay. fill_current_records (verbs.py:917) gets the same full-sha rule, plus a 'does not exist' refusal where rev_parse returns None. The card wording is now 'give {\"commit\": \"<full 40-hex sha>\"}; ref names such as HEAD and short shas are refused', and prompts/CLI_USAGE match it. Tests: HEAD, 'main', a goal branch name, a short sha and uppercase hex each get validation; 'a'*40 is accepted; an end-to-end submit of HEAD is refused and the work-branch full sha succeeds; the existing 'not in the work branch' and 'does not exist' refusals still fire; the edit-completion cases are covered. Minor note: section 2 now says record_stale == [\"def\"] is kept on purpose (the 'If it still holds, resubmit it' hint is safe only when def alone changed)."
         },
-        "summary": "Attempt 2 of the G1016 design. It fixes F1. Reclaim cards still show stale_because as the union of lease-since-claim and record staleness, but claim() now also records the record-only set (kind_state.record_stale, not printed). card.build keys the inputs.base -> routine downgrade and the def -> previous.output rule on that record set only. A reclaimed first attempt, or a reclaimed reopened correction, therefore keeps its node's own capability even when base moved. A test covers this, with a control that keeps the record-stale rebase on routine. Also taken: N1 (the non-review finding_effect wording now says 're-runs if that ancestor's output changes'), N2 (the artifact schema text now says --artifact takes the local file and artifact.path is where submit stores it), the checkpoint text (omit the key to default; the literal \"HEAD\" is refused; override with {\"commit\": sha}), and N4 (crash-loop needs_human reclaims under --force --reclaim also get lease-side stale_because). Everything else is unchanged from attempt 1."
+        "summary": "Attempt 3 of the G1016 design. It fixes F2 (review_design:2:1). A checkpoint override must now be a full 40-hex sha: validate_submit_output (schemas.py:933) adds SHA.match with the message 'a checkpoint override is {\"commit\": \"<40-hex sha>\"}; omit the key to use the default'. done_record keeps its rev_parse existence check and ancestry check. The same rule applies to the {\"commit\"}-only completion in fill_current_records (verbs.py:917), which also now refuses a commit that does not exist instead of storing None. The card text, the implement/test_design prompts and CLI_USAGE now say ref names such as HEAD and short shas are refused. New tests: schema-level refusal of HEAD, branch names, a short sha and uppercase hex, with a full sha accepted; an end-to-end submit refusal for HEAD; and edit-time completion. The previous.output rule is settled on purpose as record_stale == [\"def\"], today's exact match, because its 'resubmit it' hint is safe only when the definition alone changed. Everything else is unchanged from attempt 2."
       },
       "reason": "reopened",
       "status": "done"
