@@ -136,7 +136,6 @@ def do_merge(st, pr, method, by="zzzops"):
 
 # --------------------------------------------------------------------------------------------- legacy search (G1015)
 
-SEARCH_ALIAS = re.compile(r"(\w+)\s*:\s*search\s*\(([^)]*)\)")
 SEARCH_TERM = re.compile(r'-?[\w.-]+:(?:"[^"]*"|[^\s"]+)|"[^"]*"|\S+')
 
 
@@ -193,26 +192,159 @@ def search_matches(st, q, issue):
     return not phrase or bool(issue.get("body_marker"))
 
 
+GQL_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|#[^\n]*|\.\.\.|[A-Za-z_]\w*|-?\d+|\S')
+UNION = "Selections can't be made directly on unions (see selections on SearchResultItem)"
+NO_SELECTION = ("Field must have selections (field 'search' returns SearchResultItemConnection but has no "
+                "selections. Did you mean 'search { ... }'?)")
+
+
+def gql_selection(toks, i):
+    """Parse the selection set at toks[i] == '{'. Return (entries, next index). An entry is
+    ("field", response key, name, argument tokens, sub-entries or None) or ("on", type name, sub-entries)."""
+    i += 1
+    out = []
+    while toks[i] != "}":
+        t = toks[i]
+        if t == ",":
+            i += 1
+            continue
+        if t == "...":
+            if toks[i + 1] != "on":
+                die("fake gh: api graphql named fragments are not supported by the fake")
+            typ = toks[i + 2]
+            sub, i = gql_selection(toks, i + 3)
+            out.append(("on", typ, sub))
+            continue
+        key = name = t
+        i += 1
+        if toks[i] == ":":
+            name, i = toks[i + 1], i + 2
+        args = []
+        if toks[i] == "(":
+            j, depth = i, 0
+            while True:
+                depth += {"(": 1, ")": -1}.get(toks[i], 0)
+                i += 1
+                if depth == 0:
+                    break
+            args = toks[j + 1:i - 1]
+        sub = None
+        if toks[i] == "{":
+            sub, i = gql_selection(toks, i)
+        out.append(("field", key, name, args, sub))
+    return out, i + 1
+
+
+def gql_document(doc):
+    """The top-level selection of a single anonymous or named query."""
+    toks = [t for t in GQL_TOKEN.findall(doc) if not t.startswith("#")]
+    try:
+        top, end = gql_selection(toks, toks.index("{"))
+    except (ValueError, IndexError):
+        die("fake gh: api graphql document could not be parsed by the fake")
+    if end != len(toks):
+        die("fake gh: api graphql supports one operation per document")
+    return top
+
+
+def gql_args(toks, variables):
+    """name: value pairs; a value is a string, a $variable, or an enum or number literal."""
+    out, i = {}, 0
+    while i < len(toks):
+        if toks[i] == ",":
+            i += 1
+            continue
+        name, v = toks[i], toks[i + 2]
+        i += 3
+        if v == "$":
+            v, i = variables.get(toks[i]), i + 1
+        elif v.startswith('"'):
+            v = json.loads(v)
+        out[name] = v
+    return out
+
+
+def gql_errors(top):
+    """GitHub's validation of the subset the fake serves, as [(message, path)]."""
+    errors = []
+    for e in top:
+        if e[0] != "field" or e[2] != "search":
+            die("fake gh: api graphql supports only the legacy issue search")
+        _, alias, _, args, sub = e
+        missing = [n for n in ("query", "type") if n not in gql_args(args, {})]
+        if missing:
+            errors.append((f"Field 'search' is missing required arguments: {', '.join(missing)}", ["query", alias]))
+        if sub is None:
+            errors.append((NO_SELECTION, ["query", alias]))
+            continue
+        for f in sub:
+            if f[0] == "field" and f[2] == "nodes" and f[4] is not None:
+                for n in f[4]:
+                    if n[0] == "field" and n[2] != "__typename":
+                        errors.append((UNION, ["query", alias, f[1], n[1]]))
+    return errors
+
+
+def gql_issue(sub, number):
+    out = {}
+    for e in sub:
+        if e[0] != "field" or e[2] not in ("number", "__typename"):
+            die(f"fake gh: Issue selection {e[1]!r} is not supported by the fake")
+        out[e[1]] = number if e[2] == "number" else "Issue"
+    return out
+
+
+def gql_connection(sub, hits, n):
+    out = {}
+    for e in sub:
+        if e[0] != "field":
+            die("fake gh: fragments on SearchResultItemConnection are not supported by the fake")
+        _, key, name, _, fsub = e
+        if name == "issueCount":
+            out[key] = len(hits)
+        elif name == "nodes" and fsub is not None:
+            nodes = []
+            for h in hits[:n]:
+                item = {}
+                for f in fsub:
+                    if f[0] == "field":                         # __typename only, by gql_errors
+                        item[f[1]] = "Issue"
+                    elif f[1] == "Issue":
+                        item.update(gql_issue(f[2], h))
+                nodes.append(item)
+            out[key] = nodes
+        elif name == "pageInfo" and fsub is not None:
+            info = {"hasNextPage": len(hits) > n, "endCursor": None}
+            for f in fsub:
+                if f[0] != "field" or f[2] not in info:
+                    die(f"fake gh: pageInfo selection {f[1]!r} is not supported by the fake")
+                out.setdefault(key, {})[f[1]] = info[f[2]]
+        else:
+            die(f"fake gh: search selection {key!r} is not supported by the fake")
+    return out
+
+
 def graphql(st, argv):
     if (st.get("faults") or {}).get("graphql_error"):
         die("GraphQL: Something went wrong while executing your query. (search)")
     doc, variables = graphql_request(argv)
-    aliases = SEARCH_ALIAS.findall(doc)
-    if not aliases:
-        die("fake gh: api graphql supports only the legacy issue search")
+    top = gql_document(doc)
+    errors = gql_errors(top)
+    if errors:                                                  # as gh 2.100 shows a rejected document
+        print(json.dumps({"errors": [{"path": p, "message": m} for m, p in errors]}))
+        die("gh: " + errors[0][0])
     data, received = {}, {}
-    for alias, args in aliases:
-        m = re.search(r'query\s*:\s*(?:"((?:[^"\\]|\\.)*)"|\$(\w+))', args)
-        if not m:
-            die(f"fake gh: search alias {alias} has no query")
-        q = json.loads(f'"{m.group(1)}"') if m.group(1) is not None else variables.get(m.group(2), "")
+    for _, alias, _, args, sub in top:
+        a = gql_args(args, variables)
+        if a["type"] != "ISSUE":
+            die(f"fake gh: search type {a['type']!r} is not supported by the fake")
+        q = a["query"] or ""
         received[alias] = q
         hits = sorted(i["number"] for i in st.get("legacy_issues") or [] if search_matches(st, q, i))
-        first = re.search(r"first\s*:\s*(\d+)", args)
-        n = min(int(first.group(1)) if first else 100, 100)
-        data[alias] = {"issueCount": len(hits), "nodes": [{"number": h} for h in hits[:n]],
-                       "pageInfo": {"hasNextPage": len(hits) > n, "endCursor": None}}
+        n = min(int(a.get("first") or 100), 100)
+        data[alias] = gql_connection(sub, hits, n)
     st.setdefault("graphql_searches", []).append(received)
+    st.setdefault("graphql_documents", []).append(doc)
     save(st)
     print(json.dumps({"data": data}))
     return 0

@@ -592,12 +592,138 @@ class BoundedCostTests(unittest.TestCase):
                            [l["cmd"][1:3] for l in lines if l["cmd"][0] == "gh"]))
             for l in lines:
                 self.assertFalse(any("comments" in a for a in l["cmd"]), l["cmd"])
+        # the documents themselves (argv or --input stdin) select no comments; the fake refuses such a selection,
+        # so a check that read comments would end as github: retry with no counts, not the result below
+        docs = gh.load().get("graphql_documents", [])
+        self.assertEqual(2, len(docs))
+        for d in docs:
+            self.assertNotIn("comments", d)
+        with open(w.legacy_cache("a"), encoding="utf-8") as fh:
+            c = json.load(fh)
+        result.append((c["github"], c["issues"], c["issue_count"]))
         return result
 
     def test_cost_does_not_grow_with_archived_comments(self):
         small, big = self.costs(0), self.costs(2000)
         self.assertEqual(small, big)
         self.assertEqual((["fetch", "ls-remote"], [["api", "graphql"]]), small[0])
+        self.assertEqual(("ok", [1, 2, 3], 3), small[2])
+
+
+# --------------------------------------------------------------------------------------------- the fake gh itself
+
+
+class FakeGhGraphqlTests(unittest.TestCase):
+    """Direct checks of engine_fake_gh's `api graphql`: it serves GitHub's search contract and rejects the
+    documents real GitHub rejects (checked live with gh 2.100.0 on 2026-10-31), so a malformed engine query fails."""
+
+    GOOD = ("query($l:String!,$m:String!){"
+            "labelled: search(type:ISSUE, query:$l, first:100){issueCount nodes{... on Issue{number}}}"
+            " marked: search(type: ISSUE, query: $m, first: 100){issueCount nodes{__typename ... on Issue{number}}"
+            " pageInfo{hasNextPage}}}")
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.state = os.path.join(self.tmp, "gh-state.json")
+        labelled = [issue(n) for n in range(1, 151)]
+        marked = [issue(n, labels=(), marker=True) for n in (200, 201)]
+        other = [issue(300, labels=("bug",)), issue(301, open=False)]
+        with open(self.state, "w", encoding="utf-8") as fh:
+            json.dump({"repo": "test/repo", "legacy_issues": labelled + marked + other}, fh)
+
+    def gh(self, doc, input=None, **variables):
+        import subprocess
+        import sys
+        argv = [sys.executable, str(fx.FAKE_GH), "api", "graphql"]
+        if input is None:
+            argv += ["-f", f"query={doc}"] + [x for k, v in variables.items() for x in ("-f", f"{k}={v}")]
+        else:
+            argv += ["--input", "-"]
+        env = dict(os.environ, ZZZOPS_FAKE_GH_STATE=self.state)
+        return subprocess.run(argv, capture_output=True, text=True, env=env,
+                              input=None if input is None else json.dumps({"query": doc, "variables": variables}))
+
+    def load(self):
+        with open(self.state, encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def test_well_formed_two_alias_document(self):
+        for via_input in (False, True):
+            p = self.gh(self.GOOD, input=via_input or None, l=LABELLED, m=MARKED)
+            self.assertEqual(0, p.returncode, p.stderr)
+            data = json.loads(p.stdout)["data"]
+            self.assertEqual({"issueCount", "nodes"}, set(data["labelled"]))
+            self.assertEqual(150, data["labelled"]["issueCount"])
+            self.assertEqual([{"number": n} for n in range(1, 101)], data["labelled"]["nodes"])
+            self.assertEqual({"issueCount": 2, "pageInfo": {"hasNextPage": False},
+                              "nodes": [{"__typename": "Issue", "number": 200}, {"__typename": "Issue", "number": 201}]},
+                             data["marked"])
+        st = self.load()
+        self.assertEqual([{"labelled": LABELLED, "marked": MARKED}] * 2, st["graphql_searches"])
+        self.assertEqual([self.GOOD] * 2, st["graphql_documents"])
+
+    def test_first_caps_nodes_and_page_info_reports_more(self):
+        doc = ('query{s: search(type:ISSUE, query:"' + LABELLED.replace('"', '\\"') + '", first:10)'
+               '{issueCount pageInfo{hasNextPage endCursor} nodes{... on Issue{number}}}}')
+        p = self.gh(doc)
+        self.assertEqual(0, p.returncode, p.stderr)
+        s = json.loads(p.stdout)["data"]["s"]
+        self.assertEqual((150, 10, True), (s["issueCount"], len(s["nodes"]), s["pageInfo"]["hasNextPage"]))
+
+    def assert_rejected(self, doc, message, path):
+        before = self.load().get("graphql_searches")
+        p = self.gh(doc, l=LABELLED)
+        self.assertEqual(1, p.returncode)
+        self.assertEqual(f"gh: {message}\n", p.stderr)
+        self.assertIn({"path": path, "message": message}, json.loads(p.stdout)["errors"])
+        self.assertEqual(before, self.load().get("graphql_searches"))
+
+    def test_search_without_type_is_rejected(self):
+        self.assert_rejected('query($l:String!){labelled: search(query:$l, first:100){issueCount}}',
+                             "Field 'search' is missing required arguments: type", ["query", "labelled"])
+
+    def test_one_bad_alias_rejects_the_whole_document(self):
+        self.assert_rejected('query($l:String!){a: search(type:ISSUE, query:$l, first:1){issueCount}'
+                             ' b: search(query:$l, first:1){issueCount}}',
+                             "Field 'search' is missing required arguments: type", ["query", "b"])
+
+    def test_nodes_without_an_issue_fragment_are_rejected(self):
+        self.assert_rejected('query($l:String!){labelled: search(type:ISSUE, query:$l, first:100)'
+                             '{issueCount nodes{number}}}',
+                             "Selections can't be made directly on unions (see selections on SearchResultItem)",
+                             ["query", "labelled", "nodes", "number"])
+
+    def test_search_without_selections_is_rejected(self):
+        self.assert_rejected('query($l:String!){labelled: search(type:ISSUE, query:$l, first:100)}',
+                             "Field must have selections (field 'search' returns SearchResultItemConnection but has "
+                             "no selections. Did you mean 'search { ... }'?)", ["query", "labelled"])
+
+    def test_only_selected_fields_are_returned(self):
+        p = self.gh('query($l:String!){labelled: search(type:ISSUE, query:$l, first:100){nodes{... on Issue{number}}}}',
+                    l=LABELLED)
+        self.assertEqual(0, p.returncode, p.stderr)
+        self.assertNotIn("issueCount", json.loads(p.stdout)["data"]["labelled"])
+
+    def test_comments_are_not_served(self):
+        p = self.gh('query($l:String!){labelled: search(type:ISSUE, query:$l, first:100)'
+                    '{issueCount nodes{... on Issue{number comments{totalCount}}}}}', l=LABELLED)
+        self.assertEqual(1, p.returncode)
+        self.assertIn("not supported by the fake", p.stderr)
+
+
+class IsolatedEnvTests(unittest.TestCase):
+    def test_gh_credentials_never_reach_a_world(self):
+        keys = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_HOST", "GH_CONFIG_DIR")
+        saved = {k: os.environ.get(k) for k in keys}
+        self.addCleanup(lambda: [os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+                                 for k, v in saved.items()])
+        os.environ.update({k: "secret-for-test" for k in keys})
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        w = fx.World(tmp, clones=())
+        for env in (w.env, w.cli_env()):
+            self.assertEqual([], [k for k in keys if k in env])
 
 
 if __name__ == "__main__":
