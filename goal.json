@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-01T05:52:52Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [],
   "graph": "default",
   "id": 1001,
@@ -195,6 +200,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T05:52:52Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:b1f30355f6a77bb8be562b68374152bb07807acd2ad1dddbdcf462502ee7fe1e"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:fa078c39aeae80cdda1797f6b708404f8270a45f0020416e93922469c5641d76",
+      "ok": true,
+      "output": {
+        "merge_commit": "7e2f96cf4367236eb807529222125120daefd7a3",
+        "merged_at": "2026-11-01T05:52:50Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -419,6 +446,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Give each `new` request a stable identity: an optional client `request_key` in the new-goal file, defaulting to a hash of the canonical title+spec+depends_on. Record it in the goal document or as a goal-commit trailer. Before allocating an id, and after any non-ok push, scan the fetched goal tips for that key; if found, return the existing goal with `created.recovered: true` instead of allocating another id. Reject a request whose key matches a goal with different contents. Deliberately distinct goals with the same title stay allowed because the key covers the spec. Acceptance: unit tests for an exact retry, a push that lands but reports failure, concurrent identical `new` calls (one goal), a key reused with different contents (refused) and same-title distinct specs (two goals). Dropped versus the old wording: issue-based discovery, lock release and capture checkpoints (R1, R12).\n\nMigrated from GitHub issue #542 after the engine reset (#740).",
-  "state": "open",
+  "state": "closed",
   "title": "Make `zzzops new` idempotent across retries and uncertain pushes"
 }
