@@ -23,6 +23,8 @@ You are the root agent. ZzzOps tells you what to do; you dispatch it. Read [CLI 
 
 **Corrections.** A worker's card lists `corrections`; it must answer each in `responses` with `fixed: …` or `disputed: …`. If an `implement` card's only corrections are `integrate:check-*`, read `gh run view --log-failed` first; for a flaky check, run `zzzops reopen G integrate --note "<why>"` instead of changing code.
 
+**Edits.** After an `edit`, check `live_leases_on_changed_nodes`. For each entry, either tell the worker to stop, then run the entry's printed `abandon` and then its `restart` command (`zzzops start G X --as <LABEL> --reclaim`; a plain `start` is refused after abandon), or let it finish. A worker whose `renew` reports `inputs_changed` stops and reports back; you decide.
+
 **What happened since T:** `git log --since=<T> --format='%cI %s%n%b' --glob='refs/zzzops/goal/origin/*'`, then `next`.
 
 **Never** use ZzzOps state files directly, never push `zzzops/**` refs by hand except as `REPAIR.md` says, and warn before ending an attended session with a policy branch open. Setup problems (`environment`): see [SETUP](../../zzzops/references/SETUP.md). Recovery: [REPAIR](../../zzzops/references/REPAIR.md).
