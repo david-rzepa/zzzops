@@ -148,16 +148,22 @@ class CapabilityTests(CardJourney):
         self.assertNotIn("inputs.base", c.get("changed") or {})        # plain node outputs get no pointer
 
     def test_reclaimed_reopened_correction_keeps_its_capability(self):
+        """Second F1 case: the record is current (a reopened correction), base moves during the attempt, then reclaim."""
         g = self.goal()
-        c = self.A.start(g, self.n("design"))
-        self.A.submit(g, self.n("design"), c, {"summary": "D"}, artifact="# D\n")
-        self.review(self.B, g, "review_design", "changes_requested", [{"text": "simpler"}])
-        self.start_at(self.A, 1, g, "design")
-        self.w.push_dev({"moved.txt": "1\n"})
-        self.abandon_at(self.A, 2, g, "design", 2)
-        c = self.start_at(self.A, 3, g, "design", "--reclaim")
+        self.through_design(g)
+        c = self.A.start(g, self.n("test_design"))
+        self.A.worktree(g).commit({"tests/test_cut.py": "def test_cut():\n    assert cut() == 1\n"}, "test: cut")
+        self.A.submit(g, self.n("test_design"), c, {"commands": ["python -m pytest tests"]})
+        self.review(self.B, g, "review_tests", "changes_requested", [{"target": self.n("test_design"), "text": "more"}])
+        c = self.start_at(self.A, 1, g, "test_design")
+        self.assertEqual("reopened", c["reason"])
+        self.assertNotIn("stale_because", c)
+        self.restack_base(g, 2)
+        self.abandon_at(self.A, 5, g, "test_design", c["lease"]["attempt"])
+        c = self.start_at(self.A, 6, g, "test_design", "--reclaim")
         self.assertEqual("reclaim", c["reason"])
-        self.assertEqual("architectural", c["run"]["capability"])
+        self.assertEqual(["inputs.base"], c["stale_because"])
+        self.assertEqual("reasoning", c["run"]["capability"])          # lease-side only: not routine
 
     def test_record_stale_only_on_base_is_routine_on_start_and_after_reclaim(self):
         g = self.goal()
@@ -425,7 +431,8 @@ class DocsTests(unittest.TestCase):
         self.assertNotIn("else `HEAD`", para)
 
     def test_prompts_name_full_shas(self):
-        for d in (fx.TEMPLATES / "prompts", fx.ROOT / ".zzzops" / "prompts"):
+        # Template prompts only: this repo's .zzzops/prompts follow through a separate policy change.
+        for d in (fx.TEMPLATES / "prompts",):
             td = (d / "test_design.md").read_text(encoding="utf-8")
             self.assertIn('{"tests": {"commit": "<full 40-hex sha>"}}', td, d)
             im = (d / "implement.md").read_text(encoding="utf-8")
