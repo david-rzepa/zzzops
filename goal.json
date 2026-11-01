@@ -2,7 +2,8 @@
   "budget": null,
   "closed": null,
   "depends_on": [
-    1000
+    1000,
+    1017
   ],
   "graph": "default",
   "id": 1004,
@@ -14,7 +15,7 @@
   "release": 2,
   "schema": 1,
   "skip": {},
-  "spec": "test_design submits a `coverage` output mapping each acceptance criterion in goal.spec (or the design) to the tests that check it, or to a justified exclusion. review_tests receives the mapping and must raise a finding for any criterion left uncovered without justification. Add evidence that the tests fail at base.base_commit, for example a checks.run op that runs test_design.commands against the base tree and expects failure, or a recorded red run in test_design's output. Acceptance: a goal with an uncovered criterion cannot get past review_tests, and a test that passes before implementation produces a finding. Old wording bound this to per-phase evidence records and parent/child gates, which no longer exist.\n\nMigrated from GitHub issue #457 after the engine reset (#740).",
+  "spec": "test_design submits a `coverage` output mapping each acceptance criterion in goal.spec (or the design) to the tests that check it, or to a justified exclusion. review_tests receives the mapping and must raise a finding for any criterion left uncovered without justification. Add evidence that the tests fail at base.base_commit, for example a checks.run op that runs test_design.commands against the base tree and expects failure, or a recorded red run in test_design's output. Acceptance: a goal with an uncovered criterion cannot get past review_tests, and a test that passes before implementation produces a finding. Old wording bound this to per-phase evidence records and parent/child gates, which no longer exist.\n\nMigrated from GitHub issue #457 after the engine reset (#740).\n- This PR edits docs/design/SPEC.md and DESIGN.md for every contract change it makes and adds a HISTORY §4 row.",
   "state": "open",
   "title": "Require acceptance-to-test traceability and red-before-green evidence in the default graph"
 }
