@@ -1,6 +1,6 @@
 # G1014 design: warn when edit changes the inputs of a running phase
 
-Read at integration commit 54d7e83.
+Read at integration commit 54d7e83. Attempt 2: revised for review findings F1 (renew on an expired lease) and F2 (CLI_USAGE `abandon` row), plus both non-blocking notes.
 
 ## Outcome
 
@@ -68,10 +68,14 @@ live = [render.live_lease_entry(s.ctx(), g, n, L, sb)
 
 ### 4. verbs.renew: an `inputs_changed` flag
 
-After a successful push (`r == "ok"`), evaluate `s.portfolio()` over the snapshot just fetched. That fetch reads every non-closed goal plus closed dependencies (store.read_state), so dependency views resolve exactly as they did at `start`.
+After a successful push (`r == "ok"`), evaluate the portfolio over the snapshot just fetched. That fetch reads every non-closed goal plus closed dependencies (store.read_state), so dependency views resolve exactly as they did at `start`.
+
+The evaluation must use the lease as it is after this renew, not as fetched. `renew` accepts a valid lease whose timeout has already run out (`valid_lease` checks only validity, and renew refuses only `timeout == 0`). In the fetched snapshot such a lease has the old `last_active`, so the frontier puts the node in `reclaimable`, not `running`, and the check would be skipped. That is exactly the worker that comes back after a long pause and is most likely to have stale inputs. So the renewed lease is substituted first:
 
 ```python
-st = s.portfolio().goals.get(g, None)
+L2 = dataclasses.replace(L, last_active=s.now)        # the lease as this renew just made it
+p = s.portfolio(leases={**s.state.leases, (g, X): L2}) # leases= bypasses the session's cached portfolio
+st = p.goals.get(g, None)
 a = st.st.get(X) if st else None
 if a and a["name"] == "running" and a["fp"] != L.input_fp:
     out["inputs_changed"] = True
@@ -80,6 +84,7 @@ if a and a["name"] == "running" and a["fp"] != L.input_fp:
     out["hint"] = "Your inputs changed after start: work submitted now lands stale and the phase re-runs. Stop, report, and let the root abandon and restart (or finish if nearly done)."
 ```
 
+- With `L2` live, the node is always `running` here, so the comparison always sees the recorded-values running fp, whether the lease was live or expired before the renew.
 - This compares against `L.input_fp`, the fingerprint recorded at start, not against a before-portfolio. So the worker learns about every change since `start`: edits, upstream re-runs and policy changes alike.
 - `inputs_changed` is omitted when false, which keeps current renew output byte-identical.
 - The evaluation is wrapped so that any exception leaves the renew result unchanged. A renew that pushed must never be reported as failed.
@@ -91,15 +96,16 @@ Replace the `live_changed` list comprehension with the union of:
 - its current rule (the node's state string changed), and
 - `live_input_changes(before, after, s.now)`, with no scope, because the policy affects every goal.
 
-Entries are de-duplicated by (goal, node) and use `live_lease_entry` (`stale_because` is `[]` for state-only entries). The entries gain fields; `goal`, `node` and `holder` stay, so the change is additive.
+Entries are de-duplicated by (goal, node) and use `live_lease_entry` (`stale_because` is `[]` for state-only entries). The lease for every entry, including state-only ones (for example a graph change that removes the node, where there is no after-side running state), is taken from `st.leases[(g, n)]`, as the current code does, so `attempt`, `holder` and `expires_at` are always available. The entries gain fields; `goal`, `node` and `holder` stay, so the change is additive.
 
 ### 6. Docs
 
 - **CLI_USAGE.md**
   - `renew` row: "…; `inputs_changed: true` means the inputs changed since start (abandon and restart, or finish knowing it re-runs)".
-  - `edit` row: "the preview lists `live_leases_on_changed_nodes`".
+  - `edit` row: "both the preview and the applied result list `live_leases_on_changed_nodes` (running phases whose inputs the edit changes, with `abandon` and `restart` commands)".
+  - `abandon` row, which today says "the next `start` reclaims it" and is wrong: a plain `start` on an abandoned node is refused with "the lease expired; pass --reclaim" (verbs.py:158-160). New text: "Give up a phase; the node becomes reclaimable, so the next `start` needs `--reclaim`. `--force --note T` acts on anyone's lease."
 - **execute-zzzops SKILL.md**, one bullet:
-  - After an `edit`, check `live_leases_on_changed_nodes`. For each entry, either tell the worker to stop, then run `abandon` and the restart, or let it finish.
+  - After an `edit`, check `live_leases_on_changed_nodes`. For each entry, either tell the worker to stop, then run the entry's printed `abandon` command and then its printed `restart` command (`zzzops start G X --as <LABEL> --reclaim`; a plain `start` is refused after abandon), or let it finish.
   - A worker whose renew reports `inputs_changed` stops and reports back. The root decides.
 
 ## Interfaces and data that change
@@ -111,7 +117,8 @@ Entries are de-duplicated by (goal, node) and use `live_lease_entry` (`stale_bec
 | render | new `live_lease_entry()` |
 | verbs | `impact_scope()` factored out of `impact()` |
 | `edit` output | adds `live_leases_on_changed_nodes` (always) and `warning` (when non-empty) |
-| `renew` output | adds `inputs_changed`, `stale_because`, `abandon`, `restart`, `hint` (only when changed) |
+| `renew` output | adds `inputs_changed`, `stale_because`, `abandon`, `restart`, `hint` (only when changed; evaluated with the renewed lease, so expired-then-renewed leases are covered) |
+| CLI_USAGE `abandon` row | corrected: the next `start` needs `--reclaim` |
 | `validate --policy` impact | `live_leases_on_changed_nodes` entries gain fields and also catch fingerprint-only changes |
 
 No change to goal documents, lease commits, schemas or fingerprints (FP_VERSION is unchanged).
@@ -128,6 +135,7 @@ No change to goal documents, lease commits, schemas or fingerprints (FP_VERSION 
 
 - **Running fp from recorded vs current values.** At `start` they are equal, because the node was `ready`, so its dependencies were current. If an upstream later goes stale without changing its record, the recorded-value fp is unchanged and nothing is reported. That is correct: the worker's actual inputs did not change, and the upstream re-run will report its own change later.
 - **Renew cost.** It adds one portfolio evaluation, which is pure CPU over documents already read. That is acceptable at every-quarter-timeout cadence. It is guarded so it cannot fail a renew.
+- **Expired leases at edit time.** `edit` lists only live leases. A lease that has already expired is reclaimable, not running, so it is not listed. If its worker comes back, its first renew evaluates with the renewed lease and reports `inputs_changed` (test 2b). If it never comes back, the next `start --reclaim` reads current inputs, so nothing is lost.
 - **Held goals.** A held goal keeps its live leases and stays in the portfolio, so a spec edit to a held goal with a live lease is listed. That is deliberate, because the worker is still running. An edit that only holds, unholds or closes a goal changes no fingerprint, so it lists nothing. Edits of held or closed goals without live leases produce output identical to today apart from `live_leases_on_changed_nodes: []`.
 
 ## Tests (.agents/test_engine_sync_edit.py `EditTests`, plus a renew test in test_engine_lifecycle.py)
@@ -137,6 +145,7 @@ No change to goal documents, lease commits, schemas or fingerprints (FP_VERSION 
    - the applied edit (with `--base`) lists the same entry;
    - `stale_agent_phases` is unchanged (0).
 2. `renew` of that lease afterwards returns `inputs_changed: true`, with the same `stale_because` and commands. A renew before the edit has no `inputs_changed` key.
+2b. Expired lease: start `design`, advance the clock past the lease timeout (without abandoning), edit the spec, then `renew`. The renew succeeds and returns `inputs_changed: true` with `stale_because == ["inputs.spec"]`. A control case with the clock advanced but no edit returns no `inputs_changed`.
 3. While `design` runs, an edit touching no consumed input (for example `priority`, or `links`, if they are not node inputs in the test graph) gives `live_leases_on_changed_nodes == []`, and renew has no `inputs_changed`.
 4. Held goal: an edit with `state="held"` on a running goal lists nothing. Closed goal: closing via edit lists nothing, and other closed or held edits keep their current outputs and pass the existing tests unchanged.
 5. Dependent: running `design` on G2 that depends on G1, and an edit on G1 that changes a value G2 consumes, lists G2's lease (scope).
