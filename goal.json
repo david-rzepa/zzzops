@@ -93,43 +93,30 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 3,
-      "correction_runs": 2,
-      "findings": [
-        {
-          "id": "review_design:2:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:5524f253602a9c3f5b82ad36e136f1a5f8852da83c63689f226cf5d2aba5e7af",
-          "text": "Checkpoint overrides must be a full 40-hex sha. At 54d7e83, schemas.py:933 accepts {\"commit\": <any str>}, and done_record (verbs.py:459) resolves it with s.git.rev_parse, which runs in the main repository (gitrun.py:79, cwd=self.primary), not the goal worktree. {\"commit\": \"HEAD\"} therefore resolves to the main checkout's HEAD, usually an integration commit and so an ancestor of the work branch. It passes the is_ancestor check, and the base is recorded as the checkpoint silently. Ref names (main, dev, worktree-only branches) behave the same way. The design's new card text says the literal \"HEAD\" is refused, which is not true at read_dev. Fix: in validate_submit_output, require SHA.match for the override (message: a checkpoint override is {\"commit\": \"<40-hex sha>\"}; omit the key to use the default). Keep the rev_parse and ancestry checks. Card text: 'give {\"commit\": \"<full 40-hex sha>\"}; ref names such as HEAD are refused'. Test: HEAD, a branch name and a short sha each get validation, and a full sha is accepted. Optionally apply the same rule to the {\"commit\"}-only completion at verbs.py:917.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-01T04:40:26Z",
+      "attempt": 4,
+      "correction_runs": 3,
+      "findings": [],
+      "finished_at": "2026-11-01T05:08:47Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:9008e0101ebef0dff6bcfb3075aae0f32f1a20d1",
+          "doc": "v1:blob:2c1af88e84734bdd997eceba5000279525be0586",
           "spec": "v1:sha256:b91ef8783852765cb0c4fc07987d6f0e11f2526f36d7527bcee615c0d6da1b6b"
         },
         "policy": {},
-        "subject": "v1:sha256:bc6ff6a7cb9e64e19d2c9209b1c9706685ddf59ce5125a727ba421feb397b163"
+        "subject": "v1:sha256:a027b92beb5f692ade9db804f71352a7ec41a2ef19b44c2ad749b417a74ed04c"
       },
-      "holder": "claude:e6ad/review_design-1016-3",
-      "input_fp": "v1:sha256:db1cdda76aee351b66dd6a9581dfa7bf4ea9752e2d1dcefa2629ca501736412e",
+      "holder": "claude:e6ad/review_design-1016-4",
+      "input_fp": "v1:sha256:4b6e3bcd2cfbd18e8c72bd8a3ef295763c03055ea833460bbac3f1671569376e",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "8ea45d4a591f18b253f965e5e8fb7a4f28778b77",
-          "commit": "b24da9ffef339e5b38178091db4eff590df09258",
+          "blob": "7e204a9a093d139c3a3c8b1085b50663448fea21",
+          "commit": "107c18a794f9574b2bb6bd497789ec1533e3fdf9",
           "path": ".zzzops/reviews/1016/review_design.md"
         },
-        "summary": "Approved. F2 is resolved: §4a matches read_dev. schemas.py:933 lacks a sha check today, SHA (schemas.py:13) can be reused, done_record's rev_parse/ancestry checks stay valid once the input is a full sha, and fill_current_records (verbs.py:917, called only from edit) gets the full-sha rule plus a needed missing-commit refusal. Docs and tests cover the cases. No new material findings."
+        "summary": "Approved. Attempt 4 adds only the corrections condition to the routine downgrade, with reclaim and no-lease decisions, a table row and test_design verification. Every state card.build receives carries corrections (frontier.py:209-254; forced running is re-evaluated by lease_state; dispute and human-blocked states are refused before build). The no-lease change from routine to the node's own capability is stated and correct. review_design:2:1 is still resolved."
       },
       "reason": "stale",
       "status": "done"
