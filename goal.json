@@ -10,10 +10,10 @@
   "priority": "P2",
   "records": {
     "design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T04:22:16Z",
+      "finished_at": "2026-11-01T04:29:14Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -22,18 +22,21 @@
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/design-1016-1",
+      "holder": "claude:e6ad/design-1016-2",
       "input_fp": "v1:sha256:8ec390f70a3828e06bcc6ecddc38865d0090666980c3b6fadbfc586f9148497b",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "fc9eeed94fdd507fbd89c7622c5b98f05e126148",
-          "commit": "8163743fca3fe265bf6bad49311af9095e1531e9",
+          "blob": "41058bb4ed974088960674262115339d3ca0325a",
+          "commit": "65987079db82af032fd664742cc6717dc3a26968",
           "path": ".zzzops/reviews/1016/design.md"
         },
-        "summary": "G1016 makes four outputs explain themselves: abandon now prints its `start --reclaim` restart command; started cards, including reclaim cards, carry stale_because (changes since the abandoned lease and since the last record, combined) plus local `changed` diff commands for goal-field and artifact inputs, with no fetches; submit refusals over responses list the findings to answer, with their text; and output_schema states that a finding reopens its target, marks checkpoint keys optional, and folds the renew prose into commands.renew.when. CLI_USAGE also documents ZZZOPS_TRACE. Overlaps are assigned: G1014 owns the abandon row wording, the restart shape and running-lease staleness; G1000 owns filtered-finding fields and re-review diffs. For the two shared spots (render.restart_command and card.finding_effect), whichever goal lands second adds the shared piece."
+        "responses": {
+          "review_design:1:1": "fixed: §2 now keeps two sets. stale_because (the union) is shown on the card. record_stale (staleness against the done record only) drives the routine downgrade and previous.output, so lease-since-claim staleness never changes capability. The new test reclaims a no-record implement, and a reopened design, after base moved, and asserts each keeps its own capability. The control asserts that a record-stale base-only start is still routine."
+        },
+        "summary": "Attempt 2 of the G1016 design. It fixes F1. Reclaim cards still show stale_because as the union of lease-since-claim and record staleness, but claim() now also records the record-only set (kind_state.record_stale, not printed). card.build keys the inputs.base -> routine downgrade and the def -> previous.output rule on that record set only. A reclaimed first attempt, or a reclaimed reopened correction, therefore keeps its node's own capability even when base moved. A test covers this, with a control that keeps the record-stale rebase on routine. Also taken: N1 (the non-review finding_effect wording now says 're-runs if that ancestor's output changes'), N2 (the artifact schema text now says --artifact takes the local file and artifact.path is where submit stores it), the checkpoint text (omit the key to default; the literal \"HEAD\" is refused; override with {\"commit\": sha}), and N4 (crash-loop needs_human reclaims under --force --reclaim also get lease-side stale_because). Everything else is unchanged from attempt 1."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
