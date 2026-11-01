@@ -135,6 +135,54 @@
       "reason": "new",
       "status": "done"
     },
+    "integrate": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "carrier_fp": "v1:sha256:782883cdde0856141e8c24693e03cf6da40848019459ef0ab3c0be2541aab7d1",
+          "id": "integrate:conflict",
+          "note": null,
+          "repeats": 1,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "base",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:39d7e7efa02f9e21dfc40f7eaaedb9f83e1115cd91a2d18281b4635b1e4b5ac9",
+          "text": "PR #757 conflicts with dev (merging into dev (d41e740) conflicts in docs/design/HISTORY.md); rebase the work branch",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T22:30:19Z",
+      "fp_parts": {
+        "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
+        "inputs": {
+          "base": "v1:sha256:8a2e8ac0217a3e46b72c1e3ce2d2c6f98e60949f5743134ece85574f6cb677e3",
+          "code": "v1:sha256:ba4f56f2892fd14609bf01fa9dcb8080c14104da5d21e9e3e4441b1469ee4174"
+        },
+        "policy": {
+          "verification.required_ci": [
+            "dev-required-tests"
+          ]
+        }
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:782883cdde0856141e8c24693e03cf6da40848019459ef0ab3c0be2541aab7d1",
+      "ok": false,
+      "output": {
+        "ci": null,
+        "pr": {
+          "base": "dev",
+          "head": "a51f64709c220f1bc2a5a977b4e998ee38ba26e1",
+          "number": 757,
+          "tree": "fe225aa2ad17ae13ddcbd7f13fbe4be0db752288",
+          "url": "https://github.com/david-rzepa/zzzops/pull/757"
+        }
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 2,
       "correction_runs": 1,
