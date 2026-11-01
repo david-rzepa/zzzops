@@ -1,6 +1,11 @@
 # G1028 design: keep findings and their status straight across review rounds and goal edits
 
-**Revision 1.** Read at `read_dev` 8d8437a (G1000, G1020 and G1023 merged). Builds on G1017 design revision 3 (blob 42144d6): G1028 is G1017's case 3. `depends_on` is already `[1017]`, so this PR edits `docs/design/` and adds a HISTORY §4 row (§9). It coordinates with G1022 (approved: multi-lens reviewers and the finding `lens` tag) and G1026 (in design: `owner question:` findings) in §8.
+**Revision 2** answers `review_design` attempt 1.
+- **F1:** `follows` ships as the G1027 capability `finding_follows` rather than an `engine.min` raise. Submit refuses `follows` until the policy requires that capability. Both merge orders against G1027 are stated (§6a, §9, D8).
+- **F2:** a `follows` finding inherits `rounds` but never `upheld`. It is always `upheld: false`, so new text stays open to dispute and escalation (§3.3, D5, tests 9 and 9a).
+- **Review note:** `carried_findings` lists every finding that is live after the edit only because it is carried (§3.1).
+
+Revision 1 read at `read_dev` 8d8437a (G1000, G1020 and G1023 merged). Builds on G1017 design revision 3 (blob 42144d6): G1028 is G1017's case 3. `depends_on` is already `[1017]`, so this PR edits `docs/design/` and adds a HISTORY §4 row (§9). It coordinates with G1022 (approved: multi-lens reviewers and the finding `lens` tag) and G1026 (in design: `owner question:` findings) in §8.
 
 ## 1. Outcome
 
@@ -37,7 +42,7 @@ Such a finding is **carried**. A finding from a fresh carrier works exactly as t
 
 **Card.** Each correction entry gains `stale_review: true` when its carrier is stale. `output_schema.responses` adds one sentence when any correction has it: "A `stale_review` finding came from a review whose inputs have since changed: answer it `fixed:` if your output handles it, or `disputed:` with the reason if the change made it moot." Submit already requires a response for every live correction (`check_responses` over `corrections_of`), so these findings now get answers in the record.
 
-**Edit preview (SPEC §3.16).** `edit` (both the dry run and the applied result) gains `carried_findings`. It lists every finding that is live after the edit only because it is carried, and was live from a fresh carrier before it: `{"goal", "id", "from": <carrier>, "target", "text": <clipped to 120>, "waive": "--set 'records.<carrier>.findings[<i>].status=\"waived\"' --set 'records.<carrier>.findings[<i>].note=\"<who waived it, and why>\"'"}`. A root that means to drop a finding adds those `--set` lines to the same edit. An edit that waives them carries nothing. The applied edit prints `warning` when `carried_findings` is non-empty and nothing was waived: "N open finding(s) stay live on their targets after this edit; see carried_findings".
+**Edit preview (SPEC §3.16).** `edit` (both the dry run and the applied result) gains `carried_findings`. It lists every finding that is live after the edit only because it is carried (its carrier is in `stale`), whether or not it was already carried before the edit. That covers a second edit, and a material lens finding that becomes carried before its filter has run, so the root sees the complete waive list: `{"goal", "id", "from": <carrier>, "target", "text": <clipped to 120>, "waive": "--set 'records.<carrier>.findings[<i>].status=\"waived\"' --set 'records.<carrier>.findings[<i>].note=\"<who waived it, and why>\"'"}`. A root that means to drop a finding adds those `--set` lines to the same edit. An edit that waives them carries nothing. The applied edit prints `warning` when `carried_findings` is non-empty and nothing was waived: "N open finding(s) stay live on their targets after this edit; see carried_findings".
 
 **Plumbing.** `frontier` returns a fifth value, `stale`: the set of carriers with a done record that is not fresh. `GoalResult` gains `stale: set`. There are two call sites, both in `frontier.py` (`portfolio` and `all_terminal_current`). `card._carrier` already finds a correction's carrier, and `stale_review` is `carrier in res.stale`.
 
@@ -61,7 +66,9 @@ Such a finding is **carried**. A finding from a fresh carrier works exactly as t
 - If `<id>` is open, this submission must give it `resolved`. Otherwise: "follows: <id> is still open; resolve it, and let the new finding carry what remains". Keeping both open would leave the target with two findings for one defect.
 - Two new findings may follow the same id (a finding split in two).
 
-**Inherited fields.** When `target` is omitted, it defaults to the followed finding's target, not the subject. When the targets match, the new finding takes `upheld` from the followed one and `rounds = followed.rounds + 1` if the target's response to it was `disputed:` (an agent target), else `followed.rounds`. This is the same arithmetic as a finding kept open, so "resolve and follow" cannot reset the dispute count that escalates to the human (`frontier.escalates`, rounds ≥ 2). When the targets differ, the new finding starts at `rounds: 1`, `upheld: false`.
+**Inherited fields.** When `target` is omitted, it defaults to the followed finding's target, not the subject. When the targets match, the new finding takes `rounds = followed.rounds + 1` if the target's response to it was `disputed:` (an agent target), else `followed.rounds`. This is the same arithmetic as a finding kept open, so "resolve and follow" cannot reset the dispute count that escalates to the human (`frontier.escalates`, rounds ≥ 2). When the targets differ, it starts at `rounds: 1`.
+
+**`upheld` is never inherited.** Every new finding, `follows` or not, starts at `upheld: false`. `upheld` records that the human sided with the reviewer on that finding's text. An upheld finding cannot be disputed (`check_responses`) and never escalates (`escalates`). The reviewer writes a follow-up's text freely. If that text inherited `upheld`, the reviewer could add demands the human never saw, and the target could neither dispute them nor reach the human. A follow-up of an upheld finding is therefore disputable. It keeps the `rounds` count, and a finding is upheld only after it has escalated, so that count is already ≥ 2. The follow-up therefore goes to the human as a `dispute` item as soon as it is live (`escalates`: rounds ≥ 2 and not upheld). The human sees the new text and upholds or waives it. A follow-up of a finding that was never disputed starts below 2 and escalates only after a dispute, as any finding does.
 
 **Display.**
 - Card corrections: `follows: <id>`, plus `follows_text` (the followed finding's text, clipped to 120 characters) when that finding is still in a record.
@@ -96,29 +103,42 @@ These are the designer's choices. The flag is a new, additive name in CLI input,
 | Card `output_schema` | `findings` and `responses` wording | text |
 | Card / renew / abandon commands | `--repo <primary>` appended | additive flag |
 | Submit output (review) | new finding key `follows` | additive input |
-| Stored finding | optional `follows` | **older engines refuse it** (unknown key), see §6 |
+| Stored finding | optional `follows` | **older engines refuse it** (unknown key); capability `finding_follows`, see §6a |
+| `engine/capabilities/finding_follows.txt` | new (G1027 form) | additive |
 | Submit refusals | "already resolved"/"already waived"; `details.needs_status` | message text |
 | `edit` output | `carried_findings`, `warning` | additive |
 | Approve items | `facts`: `follows: …` | text |
 | CLI | global `--repo DIR` | additive |
 
-No goal-schema bump: G1000 added `impact`/`material` to findings the same way, and G1022 adds `lens`.
+No goal-schema bump: G1000 added `impact`/`material` to findings the same way, and G1022 adds `lens`. The stored key is gated by the capability `finding_follows` instead (§6a).
 
 ## 5. Behaviour walk-throughs
 
 - **Dogfood 47 (spec edit after changes_requested).** `review_design:1` raises F1–F4 on `design` and stops at changes_requested. The root edits `spec`. The preview lists F1–F4 under `carried_findings`. After the edit, `review_design` is stale, but `design`'s output is unchanged, so F1–F4 are carried. `design` is `ready (stale)` and its card lists F1–F4 with `stale_review: true`. The designer answers all four and resubmits. Now `design`'s output has changed, so F1–F4 are no longer live. `review_design` re-runs, sees F1–F4 in `previous.findings` with the responses, and gives each a status.
 - **Dogfood 29 (sibling reopen).** `review_tests:2` raises A on `design` and B on `test_design`. `design` answers A and re-runs. That makes `review_tests` stale. B is carried, since `test_design` is unchanged. `test_design` re-runs (stale on `design`), and its card has B with `stale_review: true`.
 - **Op not carried.** `run_tests` fails and raises a finding on `implement`. Then the base moves. `run_tests` is stale, so its finding is not carried. `implement` re-runs for the base (routine) and `run_tests` re-observes.
-- **Partly fixed.** `review_design:2` gives F1 `resolved` and raises G `{"text": "the rollback half is still missing", "follows": "review_design:1:1"}`. G targets `design`, with F1's rounds and upheld. The design card shows `follows` and `follows_text`. `approve_design`'s `facts` shows `follows: review_design:2:1 ← review_design:1:1`.
+- **Partly fixed.** `review_design:2` gives F1 `resolved` and raises G `{"text": "the rollback half is still missing", "follows": "review_design:1:1"}`. G targets `design`, with F1's rounds and `upheld: false`. The design card shows `follows` and `follows_text`. `approve_design`'s `facts` shows `follows: review_design:2:1 ← review_design:1:1`.
 
 ## 6. Risks
 
-- **Mixed engine versions.** An engine without `follows` in `FINDING_KEYS` refuses a goal whose record holds it, and treats the goal as invalid. This is G1000's and G1022's situation, and it gets the same remedy. After merge, the plugin copy used by workers and `engine.min` are raised together (the owner's policy step, as G1022 D9 does for `lens`). Until then nobody writes `follows`, because only the new engine accepts it in submit. The other changes (carrying, cards, `--repo`, refusals) store nothing new.
+- **Mixed engine versions.** An engine without `follows` in `FINDING_KEYS` refuses a goal whose record holds it, and treats the goal as invalid. A new build in one clone could write the key while an old build in another clone, or the root's, still reads the goal. The capability gate in §6a closes this. The other changes (carrying, cards, `--repo`, refusals) store nothing new and need no capability.
 - **Noisy carries after a large spec rewrite.** Findings about text the edit replaced are now carried. Remedies: the preview lists them with waive lines, and a target can answer `disputed: the spec edit removed this`. A dispute costs a re-review round only if the reviewer keeps the finding open.
 - **Escalation of carried disputes.** A carried finding that was already at rounds ≥ 2 escalates to the human as a dispute, as it did before the edit. This is intended: the dispute was never settled.
 - **Lens carry depends on the filter's last verdicts.** A non-material lens finding that no filter ever judged is not carried (it would only have been a candidate). A material one is carried even before its filter has run, because a filter only promotes and never demotes (G1000).
 - **Card size.** About +140 bytes for `--repo` after `argv` is dropped, minus the saving from compacting resolved findings. The card-budget tests are re-measured (§7, test 12).
 - **Merge conflicts with G1022.** Both edit `process_findings`, `_check_new_findings`, `FINDING_KEYS` and `card.previous`, and both add an optional finding key. The edits are small and next to each other. Whichever goal merges second resolves them through its `base` re-run. I recommend no dependency, so neither goal waits for the other (§8).
+
+## 6a. Rollout: capability `finding_follows` (G1027 §3.6)
+
+The stored `follows` key is a new finding key. Under G1027's rule (approved, blob 0c556c2, §3.6 "What ships with a new capability"), this goal ships a capability instead of raising `ENGINE_VERSION`/`engine.min`.
+- **Name:** `finding_follows`. File `plugins/zzzops/zzzops/engine/capabilities/finding_follows.txt`: "Finding key `follows` on review findings: a new finding names the prior finding it narrows (G1028)."
+- **Write gate.** Submit refuses a new finding with `follows` unless the policy requires the capability. It refuses with `validation`, "follows needs the policy to require finding_follows (settings.engine.requires)", and the hint names the policy branch. The check uses G1027's required set, `requires ∪ legacy_caps(min)`. So the first `follows` is written only after every engine that writes to the repository has been made to have the capability, because the floor check refuses writes from an engine that lacks it. This replaces revision 1's claim that "only the new engine accepts it", which did not protect old builds in other clones.
+- **Rollout.** After merge, push `zzzops/policy/requires-finding_follows`, which adds `finding_follows` to `settings.engine.requires`. Follow G1027's §4 steps and MIGRATING wording: upgrade, and never remove the key. Until that branch lands, reviewers use resolve plus a plain new finding, as today. The card's `output_schema` mentions `follows` only when the policy requires the capability, so no reviewer is told to use a refused key.
+- **Both merge orders** (as G1027 §5 does for G1022):
+  - **G1027 merges first:** this PR adds `finding_follows.txt` and appends `"finding_follows"` to the pinned `SHIPPED` set in `.agents/test_engine_capabilities.py` (G1027 test 6). The gate reads the required set directly.
+  - **G1028 merges first:** no capability form exists yet. This PR follows the rule in force at its merge: `ENGINE_VERSION` goes to the next minor at merge. The gate is "`engine.min` ≥ that version", and the rollout raises `engine.min` to it through a policy branch. When G1027's implement re-runs on the new base, it adds `"<that version>": (…already mapped…, "finding_follows")` to `LEGACY_VERSIONS`, adds `finding_follows.txt`, and turns the gate into the required-set check. Policies that raised `engine.min` keep working through the map. This PR's description carries one line saying this for G1027's implement.
+  - **No dependency edge on G1027.** An edge would serialize this goal behind G1027 for a one-file swap. The root passes this paragraph to G1027's implement as a note if G1028 merges first.
+- **G1022 interaction:** independent. G1022 ships `lenses`, this goal ships `finding_follows`, and the files never conflict.
 
 ## 7. Tests
 
@@ -132,7 +152,9 @@ New file `.agents/test_engine_findings_rounds.py`, using the existing fixtures (
 6. **Lens carry.** For a stale lens: a material finding is carried; a non-material `keep` is carried; a non-material `note` stays a note; an unjudged non-material finding is not carried.
 7. **Restated resolved** (acceptance). Restating `resolved` for an already resolved id is accepted, and the record does not hold it again. Restating `open` for it is refused with "already resolved" and the `follows` hint. A waived id gives "already waived". A made-up id gives "unknown finding ids" with `details.needs_status`. The card's `previous.findings` lists only open findings and `previous.resolved` lists the rest.
 8. **`follows` round-trip** (acceptance). It is stored on the record and validated by `validate_finding`. It is shown on the target's card (`follows`, `follows_text`), on the next review card's `previous.findings`, and in the approve item's `facts`.
-9. **`follows` validation and inheritance.** Refused: an id not in the previous review, an id still open, `follows` on a non-review node. When `target` is omitted, it defaults to the followed finding's target. Rounds and upheld are inherited, so a disputed finding followed by a new one escalates on the next disputed round. With a different target, the new finding starts at rounds 1.
+9. **`follows` validation and inheritance.** Refused: an id not in the previous review, an id still open, `follows` on a non-review node. When `target` is omitted, it defaults to the followed finding's target. `rounds` is inherited, so a disputed finding followed by a new one escalates on the next disputed round. `upheld` is always false. With a different target, the new finding starts at rounds 1.
+9a. **Following an upheld finding** (F2). The human upholds F, and the reviewer resolves F and raises G with `follows: F`. G has `upheld: false` and F's rounds (≥ 2), so `next` shows a `dispute` human item for G at once, with G's text. A `disputed:` response to G is accepted by `check_responses`. After the human upholds G, a dispute of it is refused. A follow-up of a never-disputed finding (rounds 1) does not escalate until it has been disputed and kept open.
+9b. **Capability gate** (F1). `follows` is refused when the policy does not require `finding_follows`, with a message naming the capability, and accepted when it does. In the G1028-first order, the same test uses the `engine.min` form. `output_schema` mentions `follows` only when it is required. The capability file exists and is in `SHIPPED` (G1027 test 6) when G1027 has merged.
 10. **`--repo`** (acceptance). The card's submit and renew commands, run in a subprocess from a temporary directory outside the repository, succeed; a relative `--output` resolves against that directory. A linked worktree path works as `--repo`. Without `--repo`, the error names the directory and the hint names `--repo`. `--repo` naming a directory outside any repository gives its own message.
 11. **Printed commands.** Card, renew and abandon commands carry `--repo`, and `next` actions do not.
 12. **Card budget.** The existing budget tests in `test_engine_card_budget.py` still pass with `--repo` and `previous.resolved`.
@@ -154,8 +176,9 @@ This PR edits `docs/design/SPEC.md` and `DESIGN.md` (both are on its base throug
 - SPEC §3.14: card `corrections[].stale_review`, `follows`, `follows_text`; `previous.findings` open only; `previous.resolved`; `output_schema` wording; `--repo` on commands.
 - SPEC §3.15: `facts` `follows`. SPEC §3.16: `edit` `carried_findings` and `warning`.
 - SPEC §1.5, §1.6, §6: the environment error and hint, printed worker commands, the global `--repo`.
+- SPEC §4.5 (capabilities): `finding_follows` in the list of shipped capabilities, and the `follows` write gate. In the G1028-first order, this is instead the `engine.min` version note that G1027 later maps.
 - DESIGN: one line in the findings section saying findings are judged against the target's output, not the carrier's freshness.
-- HISTORY §4 row: `G1028 | #<pr> | carried findings (stale_review, edit carried_findings); closed ids on review cards and restatement; follows; --repo | SPEC §1.5, §1.6, §3.10, §3.14, §3.15, §3.16, §4.9, §4.14, §5.1, §6`.
+- HISTORY §4 row: `G1028 | #<pr> | carried findings (stale_review, edit carried_findings); closed ids on review cards and restatement; follows; --repo | SPEC §1.5, §1.6, §3.10, §3.14, §3.15, §3.16, §4.5, §4.9, §4.14, §5.1, §6`; capability `finding_follows`.
 
 `plugins/zzzops/zzzops/references/CLI_USAGE.md`: `--repo` with the global flags, the Outputs paragraph (`follows`, closed ids need no status), and the `edit` row (`carried_findings`). Shipped prompt templates are not changed. `output_schema` carries the instructions, so this repository's `.zzzops/prompts` copies (policy paths, which a goal PR cannot edit) do not drift.
 
@@ -167,11 +190,12 @@ This PR edits `docs/design/SPEC.md` and `DESIGN.md` (both are on its base throug
 | D2 | Op findings are not carried. | Carrying them: stale observations would reopen code. |
 | D3 | `edit` previews carried findings with waive lines. | A new `--waive` flag: `--set` waiving already exists and is what `skip_refusal` prints. |
 | D4 | Closed ids on review cards move to `previous.resolved`; a restated `resolved` is a no-op; a restated `open` gives "already resolved". | Accepting a restated `open` as a reopen: it would revive a finding whose target has already answered it, outside the response flow. |
-| D5 | `follows` on new findings, with inherited rounds and upheld. | A `partly` status (§3.3). A `follows` that resets rounds: it lets "resolve and follow" dodge escalation. |
+| D5 | `follows` on new findings, inheriting `rounds` only; always `upheld: false`. | A `partly` status (§3.3). A `follows` that resets rounds: it lets "resolve and follow" dodge escalation. Inheriting `upheld`: it puts new text beyond dispute. |
 | D6 | Global `--repo`, printed on worker-facing commands only. | A `cwd` key, the lease, an environment variable, `-C` (§3.4). Printing it on every command: it adds to `next`'s byte limit for no gain, since the root runs in the repository. |
 | D7 | No dependency on G1022 or G1026. | Serializing them: the overlaps are small textual conflicts. |
+| D8 | `follows` ships as capability `finding_follows`, with a submit gate on the required set; both merge orders against G1027 are covered (§6a). | Raising `engine.min`: G1027, which is approved, removes it. Relying on "only new engines accept it": an old build in another clone still reads the goal. |
 
-None of these needs the owner. D1–D5 change only how the engine handles findings it already stores. Undoing them stays inside this goal's code, except for the optional `follows` key, whose rollout copies G1022's approved `lens` precedent. For D6, one option dominates for the reasons given.
+None of these needs the owner. D1–D5 change only how the engine handles findings it already stores. Undoing them stays inside this goal's code, except for the optional `follows` key, whose rollout is fixed by G1027's approved capability rule (D8). For D6, one option dominates for the reasons given.
 
 ## 11. Out of scope
 
