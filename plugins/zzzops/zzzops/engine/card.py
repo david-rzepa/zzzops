@@ -7,7 +7,7 @@ import hashlib
 import json
 
 from engine.canon import canonical, iso
-from engine.schemas import SHA, get_dotted
+from engine.schemas import SHA, get_dotted, is_material
 from engine.frontier import recorded_out, resolve
 from engine.render import clip, command, first_line, run_capability
 from engine.schemas import SHA
@@ -210,7 +210,7 @@ def candidates(res, flt) -> list:
         for f in (records.get(lens) or {}).get("findings") or []:
             if f["status"] == "open":
                 out.append({"id": f["id"], "lens": lens, "target": f["target"], "text": f["text"],
-                            "impact": f.get("impact"), "material": f.get("material", True) is not False,
+                            "impact": f.get("impact"), "material": is_material(f),
                             "response": response_of(res.doc, f["target"], f["id"]) or f.get("response")})
     return sorted(out, key=lambda c: c["id"])
 
@@ -268,7 +268,9 @@ def finding_effect(graph, n) -> str:
 def output_schema(graph, n, s) -> dict:
     out = {}
     if graph.is_review(n):
-        out["decision"] = "approved | changes_requested (approved only with no finding open)"
+        out["decision"] = ("approved | changes_requested (changes_requested only with a material finding open; "
+                           "approve with notes)" if graph.filter_of(n)
+                           else "approved | changes_requested (approved only with no finding open)")
         out["summary"] = "text: your verdict"
         out["findings"] = ("[{\"id\": <prior id>, \"status\": \"open\"|\"resolved\"} for every prior open finding, "
                            "{\"target\"?: <node>, \"text\": …} for new ones]. " + finding_effect(graph, n))

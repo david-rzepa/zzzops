@@ -518,6 +518,11 @@ def _has_dotted(obj, dotted: str) -> bool:
     return True
 
 
+def is_material(f: dict) -> bool:
+    """A finding is material unless it says `material: false` (a prior finding without the key counts as material)."""
+    return f.get("material", True) is not False
+
+
 def get_dotted(obj, dotted: str):
     for part in dotted.split("."):
         obj = obj[part]
