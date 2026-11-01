@@ -38,6 +38,40 @@
       "reason": "new",
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T18:28:08Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:0a05b8704a84c97b9f6c523244d631d109de959989ab93164143c3b2fa976835"
+        },
+        "policy": {},
+        "subject": "v1:sha256:de5ec794bc4f5b5ae10c7c63226922d075a8cc049ae050cdda27b558ba0d1157"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:0a4852dda2207385b9686ab73df3fb6eb01c31e66371562feb88f48e00da82b4",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T18:28:08Z",
+        "decided_by": "Dave (owner), recorded by Claude (root agent)",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approved merging PR #750 (G1020) at head 711f83f into dev: polish of the shipped lens prompts after G1000's review (test_design targeting on code-stage lenses, one 'On code' line in lens_truth.md, notes-only lenses answer approved, is_material helper). Rebased cleanly from zzzops/pr/g1000 onto dev after G1000 merged; review_impl re-approved; required CI passed. The owner asked to merge everything on the Release 1 stack; merged with --admin because of the dev ruleset's last-push rule."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "7e075c5b280e42e245a1c65056e4fc18eb01ead3",
+          "change": "aebd58ab1fd2a2b298636396b304b9b9115a09fb",
+          "commit": "ac8ca367f0e64fc01a28d579d690332c4f82b4e4",
+          "tree": "9916ee23345f6fd444a943b1f782d62cb4f78c3f"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 2,
       "correction_runs": 1,
