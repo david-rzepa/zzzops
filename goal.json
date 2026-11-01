@@ -37,6 +37,48 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:6e99bbbecb1482e33bb1d21f6efd9a7e6fdd26b52029bdd06b233a0f01ab9448",
+          "text": "Section 3's rule 'approved requires no open finding with f.get(\"material\") true' inverts the engine's default: card.candidates (card.py:168), fingerprint (fingerprint.py:50-56) and frontier (frontier.py:296) all count a finding without `material` as material. As written, a filtered lens could approve while an open prior finding lacking the key (e.g. after a policy change adds a filter, or the G1000 rollout) is treated as material by the filter, so the label lies. Fix: use f.get(\"material\", True) is not False (ideally one shared helper) and add a test where an open prior finding without `material` makes `approved` refused.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T07:02:01Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:394e1e533c33985f3c243fadf37d1ad7030b9568",
+          "spec": "v1:sha256:004fd393eae15aa7caaa55c0bef6ff7cddf67af06e809c5ff86993ded391c014"
+        },
+        "policy": {},
+        "subject": "v1:sha256:6e99bbbecb1482e33bb1d21f6efd9a7e6fdd26b52029bdd06b233a0f01ab9448"
+      },
+      "holder": "claude:e6ad/review_design-1020-1",
+      "input_fp": "v1:sha256:565be0a29c913f49ce793bd21815e07ba50c8d4836bf9a1df2f166812ca21c02",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "1c3292c72d7541b0beb8a5a940ead8c445a8d3c4",
+          "commit": "1b7a9f6a4a7e43d66bd1b9a12fbc22f581ab922a",
+          "path": ".zzzops/reviews/1020/review_design.md"
+        },
+        "summary": "Sound design; one fix: the filtered-lens approval predicate must treat a finding without `material` as material (f.get(\"material\", True) is not False), matching candidates/fingerprint/frontier, else a lens can approve while holding a finding the engine counts as material."
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
