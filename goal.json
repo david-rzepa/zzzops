@@ -259,10 +259,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-01T21:50:48Z",
+      "finished_at": "2026-11-01T22:17:24Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -296,13 +296,13 @@
           "python3 -m unittest discover -s .agents -p 'test_engine_lenses.py'"
         ],
         "responses": {
-          "review_tests:2:1": "fixed: test 10's git grep now also has ':(exclude)docs/design/IMPLEMENTATION_PLAN.md' next to the HISTORY.md exclusion, and its docstring says both are historical records."
+          "implement:1:1": "fixed: test_engine_schemas.py CanonTests.test_errors_have_exit_codes now counts 27 exit-1 codes (engine_too_new removed per design §3.2); no placeholder code."
         },
         "tests": {
           "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "e63cf8fbb0da71136303b17fedaec475a0be54e6",
-          "commit": "4c8c5c6147aea89d261c1ee27100f830d088bb99",
-          "tree": "e90a49f542d57355619832fcb6fdb35aaaca79cd"
+          "change": "b264b41e027031ebcb3fe626ded59bc746e59f63",
+          "commit": "2d24885aebf03e2dde23dcf4478ca5b34643a4c4",
+          "tree": "60da5a97d14a3278f4449a06d68156a95bf9f0dd"
         }
       },
       "reason": "reopened",
