@@ -54,4 +54,12 @@ OPS = {
                             workspace=True, policy=("verification.required_ci",)),
     "github.merge": OpSpec("github.merge", 1, gh=True, self_sync=False, module="engine.ops.merge",
                            required_inputs=("pr",), outputs={"merge_commit": "sha", "merged_at": "string"}),
+    # G1025 release lines (SPEC §5.7, §5.8)
+    "git.line_sync": OpSpec("git.line_sync", 1, gh=True, self_sync=True, module="engine.ops.lines",
+                            required_inputs=("approval",), outputs={"merged": "sha", "merge_commit": "sha"},
+                            workspace=True),
+    "git.line_finish": OpSpec("git.line_finish", 1, gh=True, self_sync=True, module="engine.ops.lines",
+                              required_inputs=("approval", "sync"),
+                              outputs={"production_merge": "sha", "back_merges": "object"}, workspace=True),
 }
+LINE_OPS = ("git.line_sync", "git.line_finish")

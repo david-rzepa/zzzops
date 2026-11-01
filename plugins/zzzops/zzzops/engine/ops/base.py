@@ -16,7 +16,8 @@ def run(ctx):
     git, snap = ctx.git, ctx.snap
     ident = Identity(git)
     g, p = ctx.goal, ctx.worktree
-    I = snap.integration
+    T = ctx.target or {"branch": snap.I, "tip": snap.integration}
+    I, I_name = T["tip"], T["branch"]                 # the goal's target (G1025), the integration branch by default
     W = snap.work.get(g)
     SB = snap.stack.get(g)
     br, sb = f"zzzops/work/g{g}", f"zzzops/stack/g{g}"
@@ -28,7 +29,8 @@ def run(ctx):
     if rec and rec["status"] == "done":
         old = rec["output"]["base_commit"]
     else:
-        old = prev.get("old") or (git.out("merge-base", W, I) if W else None)
+        # discovery artifacts are born on the integration tip, whatever the target (G1025): replay from there
+        old = prev.get("old") or (git.out("merge-base", W, snap.integration) if W else None)
     resume = {"resume": ["start", str(g), ctx.node, "--as", "<LABEL>"]}
     # 0. the worktree
     if rebase_in_progress(git, p):
@@ -46,7 +48,7 @@ def run(ctx):
     if bad:
         d = bad[0]
         return Blocked({"category": "dependency", "waiting_for": "human", "reason": "dependency merge not in integration",
-                        "question": f"G{g}: merge commit {merges[d][:7]} of G{d} is not in {snap.I}: the integration "
+                        "question": f"G{g}: merge commit {merges[d][:7]} of G{d} is not in {I_name}: the target "
                                     "branch was rewritten without it. Drop the dependency or wait?"})
     unmerged = sorted((d for d in heads if heads[d] and not merges.get(d)
                        and ctx.dep_kinds.get(int(d)) in ("open", "held")), key=int)
@@ -69,15 +71,18 @@ def run(ctx):
     elif SB and parents(git, SB) == S:
         onto = SB
     else:
-        onto = combine(git, g, S, stack, I in S, snap.I)
+        onto = combine(git, g, S, stack, I in S, I_name)
         if onto is None:
             return Blocked({"category": "dependency", "waiting_for": "dependency", "reason": "deps_conflict",
                             "op_state": {"old": old, "set": S}})
         ups.append((f"refs/heads/{sb}", SB, onto))
     if len(S) < 2 and SB:
-        target = snap.I if S == [I] else f"zzzops/pr/g{stack[0]['goal']}"
+        target = I_name if S == [I] else f"zzzops/pr/g{stack[0]['goal']}"
         post = lambda: retire_stack(ctx, sb, SB, target)
     out = {"branch": br, "base_commit": onto, "stack": stack, "replay_map": {}, "replay_pos": {}}
+    sched = (ctx.state or {}).get("scheduled_for")
+    if sched and (ctx.state or {}).get("reason") == "upstream":
+        out["scheduled_for"] = dict(sched)              # G1025 pass 3: one scheduled restack per agent attempt
     # 2. no artifact yet: the branch is born on the stack base
     if W is None:
         git.run("reset", "-q", "--keep", onto, cwd=p)

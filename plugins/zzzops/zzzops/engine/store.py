@@ -42,6 +42,7 @@ class Snapshot:
     dep_pr: dict = field(default_factory=dict)
     current: bool = True
     known: set = field(default_factory=set)          # every goal id this clone has seen
+    targets: dict = field(default_factory=dict)      # G1025: branch -> tip of the production and open line branches
 
     @property
     def policy_commit(self):
@@ -60,6 +61,9 @@ class Snapshot:
     def advance(self, updates):
         """Apply this invocation's own successful push (SPEC §4.2: the embedded next reuses the snapshot)."""
         for ref, _, new in updates:
+            if ref.startswith("refs/heads/") and ref[len("refs/heads/"):] in self.targets:
+                self.targets[ref[len("refs/heads/"):]] = new
+                continue
             m = re.match(r"^refs/heads/zzzops/(goal|work|pr|stack)/g(\d+)$", ref)
             if m:
                 table = {"goal": self.goals, "work": self.work, "pr": self.pr, "stack": self.stack}[m.group(1)]
@@ -272,6 +276,7 @@ class State:
     policy_branches: list = field(default_factory=list)  # open (unlanded) policy branches
     landed: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
+    ledger: dict = field(default_factory=dict)          # G1025: id -> trailer entry (branching on only)
 
     @property
     def coordinator(self) -> dict:
@@ -412,6 +417,8 @@ def read_state(git: Git, snap: Snapshot, all_goals: bool = False, wanted=()) -> 
                 st.invalid[g] = list(errs)
                 st.invalid_raw[g] = st.docs.pop(g)
             st.warnings += warns
+    if st.settings is not None and (st.settings.get("branching") is not None):
+        st.ledger = build_ledger(git, snap, commits, st)
     for g, errs in sorted(st.invalid.items()):
         st.warnings.append({"kind": "invalid_goal", "message": f"G{g} is invalid: " + "; ".join(errs[:3])})
     for g, new in sorted(snap.rewritten.items()):
@@ -435,6 +442,51 @@ def read_state(git: Git, snap: Snapshot, all_goals: bool = False, wanted=()) -> 
                             "phases may still submit."})
         st.pause = True
     return st
+
+
+def build_ledger(git: Git, snap: Snapshot, commits: dict, st: State) -> dict:
+    """G1025 §3.1: release membership and line ownership of every goal, from its tip commit's trailers. A closed goal
+    without trailers (closed by an older engine, or before branching was on) has its document read through the
+    persistent cat-file batch, so the cost does not grow with the number of such goals."""
+    from engine.lines import entry_of
+    out = {}
+    for g, c in sorted(commits.items()):
+        if g in st.docs:
+            out[g] = entry_of(st.docs[g])
+            continue
+        rel = c.trailer("Release")
+        if rel is not None and rel.isdigit():
+            line = c.trailer("Line")
+            out[g] = {"release": int(rel), "state": c.trailer("State") or "open", "closed": c.trailer("Closed"),
+                      "line": line, "hotfix": c.trailer("Hotfix")}
+            continue
+        doc, _ = read_goal_json(git, snap.goals[g])
+        if isinstance(doc, dict) and isinstance(doc.get("release"), int):
+            out[g] = entry_of(doc)
+    return out
+
+
+def ledger_trailers(doc: dict, settings: dict | None) -> str:
+    """The trailers a goal commit carries with branching on (§3.1); empty otherwise, so commits stay byte-identical."""
+    if not settings or settings.get("branching") is None or not isinstance(doc, dict):
+        return ""
+    lines = [f"Release: {doc.get('release')}"]
+    if doc.get("state") == "closed" and isinstance(doc.get("closed"), dict):
+        lines.append(f"Closed: {doc['closed'].get('reason')}")
+    flow = doc.get("flow") or {}
+    if flow.get("line"):
+        lines.append(f"Line: {flow['line']}:{flow['name']}")
+    if flow.get("hotfix"):
+        lines.append(f"Hotfix: {flow['hotfix']}")
+    return "".join(l + "\n" for l in lines)
+
+
+def with_trailers(message: str, doc: dict, settings: dict | None) -> str:
+    extra = ledger_trailers(doc, settings)
+    if not extra:
+        return message
+    i = message.rfind("Engine: ")
+    return message[:i] + extra + message[i:] if i >= 0 else message + extra
 
 
 def read_goal_json(git: Git, tip: str):
@@ -544,7 +596,7 @@ def _unlock(fh):
 
 # --------------------------------------------------------------------------------------------- writes (§4.4)
 
-ENGINE_REFS = ("refs/heads/zzzops/goal/", "refs/heads/zzzops/lease/", "refs/heads/zzzops/stack/")
+ENGINE_REFS = ("refs/heads/zzzops/goal/", "refs/heads/zzzops/lease/", "refs/heads/zzzops/stack/", "refs/heads/zzzops/sync/")
 
 
 def push_atomic(git: Git, R: str, updates, report_up_to_date: bool = False) -> tuple:

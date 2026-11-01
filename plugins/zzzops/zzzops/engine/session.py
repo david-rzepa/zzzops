@@ -19,7 +19,7 @@ from engine.frontier import orphan_leases, portfolio
 from engine.gitrun import Git, require_environment
 from engine import schemas
 from engine.store import (RemoteError, State, coordinator_fetch, resolve_policy_ref, goal_commit, goal_message, offline_snapshot,
-                          push_atomic, read_state, resolve_integration, resolve_remote, update_mirror)
+                          push_atomic, read_state, resolve_integration, resolve_remote, update_mirror, with_trailers)
 
 WRITE_DEADLINE = 30.0
 
@@ -81,6 +81,7 @@ class Session:
         self.snap = None
         self.state: State | None = None
         self._portfolio = None
+        self._anc = {}
 
     # ------------------------------------------------------------------ opening
     def check_environment(self):
@@ -105,6 +106,7 @@ class Session:
         self.state = read_state(self.git, self.snap, all_goals=all_goals, wanted=goals)
         self._portfolio = None
         self._goals = list(goals)
+        self.fetch_lines()
         return self.state
 
     def refetch(self, goals=(), deps=(), all_goals=False):
@@ -113,6 +115,154 @@ class Session:
             self.snap.preview = resolve_policy_ref(self.git, self.snap, self.policy_ref)
         self.state = read_state(self.git, self.snap, all_goals=all_goals, wanted=goals)
         self._portfolio = None
+        self.fetch_lines()
+
+    # ------------------------------------------------------------------ release lines (G1025)
+    def branching(self):
+        from engine.lines import branching
+        return branching(self.state.settings) if self.state else None
+
+    def fetch_lines(self):
+        """The second fetch round (G1025 design §4): the production branch and every open line's branch, only with
+        settings.branching. Missing branches map to None."""
+        self.snap.targets = {}
+        self._anc = {}
+        b = self.branching()
+        if not b:
+            return
+        from engine.lines import lines_of, merged_ledger
+        lns = lines_of(merged_ledger(self.state.ledger, self.state.docs), self.state.settings)
+        branches = sorted({b["production"]} | {x.branch for x in lns if x.open})
+        self.fetch_branches(branches)
+
+    def fetch_branches(self, branches):
+        R = self.R
+        tips = {}
+        if self.snap.current:
+            p = self.git.run("ls-remote", R, *[f"refs/heads/{br}" for br in branches], check=False, timeout=120)
+            for line in p.stdout.splitlines():
+                parts = line.split("\t")
+                if len(parts) == 2 and parts[1].startswith("refs/heads/"):
+                    tips[parts[1][len("refs/heads/"):]] = parts[0]
+            have = [br for br in branches if br in tips]
+            if have:
+                self.git.run("fetch", "-q", "--no-tags", "--no-write-fetch-head", R,
+                             *[f"+refs/heads/{br}:refs/remotes/{R}/{br}" for br in have], check=False, timeout=120)
+        else:
+            for br in branches:
+                c = self.git.rev_parse(f"refs/remotes/{R}/{br}")
+                if c:
+                    tips[br] = c
+        for br in branches:
+            self.snap.targets[br] = tips.get(br)
+        return tips
+
+    def target_tip(self, branch):
+        if branch is None:
+            return None
+        if branch == self.snap.I:
+            return self.snap.integration
+        if branch not in self.snap.targets:
+            self.fetch_branches([branch])
+        return self.snap.targets.get(branch)
+
+    def ancestor(self, a, b) -> bool:
+        key = (a, b)
+        if key not in self._anc:
+            self._anc[key] = bool(a and b and self.git.exists(a) and self.git.exists(b) and self.git.is_ancestor(a, b))
+        return self._anc[key]
+
+    def upstream(self, docs) -> dict:
+        """G1025: per open goal, its target tip and whether it moved past the goal's base (pass 3), whether each merged
+        dependency is in the target yet (`release_sync`), and for a line goal whether its line moved (`schedule`)."""
+        b = self.branching()
+        if not b:
+            return {}
+        from engine.lines import lines_of, merged_ledger, target_of
+        st = self.state
+        lns = lines_of(merged_ledger(st.ledger, docs), st.settings)
+        open_release = [self.snap.targets.get(x.branch) for x in lns if x.open and x.kind == "release"]
+        out = {}
+        for g, d in sorted(docs.items()):
+            if d.get("state") == "closed":
+                continue
+            graph = st.graphs.get(d.get("graph"))
+            if graph is None:
+                continue
+            tg = target_of(d, st.settings, lns)
+            tip = self.target_tip(tg["branch"])
+            u = {"target": tg["branch"], "tip": tip, "behind": False, "merged_in_target": {}}
+            records = d.get("records") or {}
+            flow = d.get("flow") or {}
+            if flow.get("line"):
+                sr = next((records.get(n) for n in graph.topo if graph.nodes[n].get("schedule")), None)
+                if tip and flow["line"] == "release":
+                    u["behind"] = not self.ancestor(tip, self.snap.integration)
+                elif tip and sr and sr.get("status") == "done":
+                    u["behind"] = tip != (sr.get("output") or {}).get("merged")
+                out[g] = u
+                continue
+            base = next((n for n in graph.topo if graph.nodes[n].get("op") == "git.base"), None)
+            br = records.get(base) if base else None
+            if tip and br and br.get("status") == "done" and not (br.get("output") or {}).get("stack"):
+                bc = (br.get("output") or {}).get("base_commit")
+                u["behind"] = bool(bc) and self.git.exists(bc) and not self.ancestor(tip, bc)
+            for dep in d.get("depends_on") or []:
+                dd = docs.get(dep) or st.docs.get(dep)
+                if not dd or dd.get("state") != "closed" or (dd.get("closed") or {}).get("reason") != "done":
+                    continue
+                dg = st.graphs.get(dd.get("graph"))
+                m = next(((dd.get("records") or {}).get(n, {}).get("output") or {}).get("merge_commit")
+                         for n in (dg.topo if dg else []) if dg.nodes[n].get("op") == "github.merge") if dg else None
+                if not m or not tip or self.ancestor(m, tip):
+                    continue
+                if any(rt and self.ancestor(m, rt) for rt in open_release):
+                    u["merged_in_target"][dep] = False
+            out[g] = u
+        return out
+
+    def line_errors(self, g, d, all_docs) -> list:
+        """G1025 §7: a hotfix name is single-use, and a hotfix member depends only on its line or on merged goals."""
+        x = (d.get("flow") or {}).get("hotfix") if isinstance(d, dict) else None
+        if not x or not self.branching():
+            return []
+        out = []
+        from engine.lines import lines_of, merged_ledger
+        old = (self.state.docs.get(g) or {}).get("flow") or {}
+        lns = lines_of(merged_ledger(self.state.ledger, self.state.docs), self.state.settings)
+        if old.get("hotfix") != x and any(l.kind == "hotfix" and l.name == x and not l.open for l in lns):
+            out.append(f"goal.flow: hotfix {x} is finished; choose a new name")
+        for dep in d.get("depends_on") or []:
+            dd = all_docs.get(dep) or {}
+            same = ((dd.get("flow") or {}).get("hotfix") == x)
+            merged = dd.get("state") == "closed" and (dd.get("closed") or {}).get("reason") == "done"
+            if not (same or merged):
+                out.append(f"goal.depends_on: hotfix {x} may depend only on goals of its line or merged goals, not G{dep}")
+        return out
+
+    def line_warnings(self, d) -> list:
+        """`release_finished` / `release_finishing` for a goal put onto release N (G1025 §6)."""
+        if not self.branching() or (d.get("flow") or {}).get("hotfix"):
+            return []
+        p = self.portfolio()
+        for x in p.lines:
+            if x.kind != "release" or x.name != str(d.get("release")):
+                continue
+            if not x.open:
+                return [{"kind": "release_finished", "message": f"release {x.name} is finished; this goal targets "
+                                                                f"`{self.state.settings['integration_branch']}`"}]
+            res = p.goals.get(x.goal)
+            if res and any(res.graph.nodes[n].get("line_complete") and res.graph.nodes[n]["kind"] == "human"
+                           and res.st[n]["name"] == "current" for n in res.graph.topo):
+                return [{"kind": "release_finishing", "message": f"release {x.name}'s finish is approved; this goal "
+                                                                 "will hold it"}]
+        return []
+
+    def pf_kwargs(self, docs=None) -> dict:
+        st = self.state
+        if not self.branching():
+            return {}
+        return {"ledger": st.ledger, "upstream": self.upstream(docs if docs is not None else st.docs)}
 
     # ------------------------------------------------------------------ evaluation
     @property
@@ -127,7 +277,7 @@ class Session:
             from engine.frontier import Portfolio
             return Portfolio({}, {}, dict(st.invalid), set(st.newer))
         p = portfolio(docs if docs is not None else st.docs, st.graphs, st.leases if leases is None else leases,
-                      st.settings, self.now, st.invalid, st.newer)
+                      st.settings, self.now, st.invalid, st.newer, **self.pf_kwargs(docs))
         if docs is None and leases is None:
             self._portfolio = p
         return p
@@ -140,7 +290,7 @@ class Session:
         return render.Ctx(prefix=cli_prefix(), now=self.now, settings=settings, coordinator=st.coordinator,
                           reader=GitReader(self), goal_commits=dict(self.snap.goals),
                           goal_dates={g: c.committer_date for g, c in st.goal_commits.items()},
-                          repo=self.git.primary if worker else None)
+                          repo=self.git.primary if worker else None, targets=dict(self.snap.targets))
 
     def warnings(self, p) -> list:
         st = self.state
@@ -230,9 +380,11 @@ class Session:
             all_docs = dict(docs)
             all_docs.update(new)
             for g, d in new.items():
+                if "flow" in d:
+                    d["schema"] = 2
                 errs, _ = schemas.validate_goal(d, self.state.docs.get(g), all_docs, self.state.workflow,
                                                 lambda doc, g=g: self.terminals_current(g, doc, all_docs))
-                errs = list(errs) + dependent_release_errors(g, d, all_docs)
+                errs = list(errs) + dependent_release_errors(g, d, all_docs) + self.line_errors(g, d, all_docs)
                 if errs:
                     raise Refused("too_large" if any("too_large" in e for e in errs) else "validation",
                                   f"G{g}: " + "; ".join(errs[:5]), details={"errors": list(errs)})
@@ -240,6 +392,7 @@ class Session:
             for g, d in sorted(new.items()):
                 if d != self.state.docs.get(g):
                     msg = message(g, self.state.docs.get(g), d) if message else goal_message(verb, g, "ok", d["state"])
+                    msg = with_trailers(msg, d, self.state.settings)
                     c = goal_commit(self.git, d, self.snap.goals.get(g), msg)
                     updates.append((f"refs/heads/zzzops/goal/g{g}", self.snap.goals.get(g), c))
             seen = set()
@@ -315,7 +468,8 @@ class Session:
     def terminals_current(self, g, doc, all_docs) -> bool:
         docs = dict(all_docs)
         docs[g] = dict(doc, state="open", closed=None)
-        p = portfolio(docs, self.state.graphs, {}, self.state.settings, self.now, self.state.invalid, self.state.newer)
+        p = portfolio(docs, self.state.graphs, {}, self.state.settings, self.now, self.state.invalid, self.state.newer,
+                      **self.pf_kwargs(docs))
         res = p.goals.get(g)
         return bool(res) and all(res.st[t]["name"] == "current" for t in res.graph.terminal)
 

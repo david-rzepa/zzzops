@@ -74,7 +74,8 @@ def _run(ctx):
     git, snap, gh = ctx.git, ctx.snap, ctx.gh
     ident = Identity(git)
     g, p = ctx.goal, ctx.worktree
-    I = snap.I
+    TG = ctx.target or {"branch": snap.I, "tip": snap.integration}
+    I, I_tip = TG["branch"], TG["tip"]                 # the goal's target branch (G1025), the integration branch by default
     W, B, T = snap.work.get(g), ctx.inputs["base"], ctx.inputs["code"]
     stack = ctx.inputs.get("stack") or []
     if not stack:
@@ -187,9 +188,9 @@ def _run(ctx):
             checks[item.get("name") or item.get("context")] = classify(item)
         return Done({"pr": out_pr, "ci": {"stacked": True, "checks": checks}}, ok=True, summary=f"PR #{pr['number']} stacked")
     # 5b. PRs into I: a conflict first (locally, then GitHub's verdict), then required checks
-    files = local_conflict(git, snap.integration, H)
+    files = local_conflict(git, I_tip, H)
     if files is not None:
-        return conflict(out_pr, pr["number"], I, f"merging into {I} ({snap.integration[:7]}) conflicts in "
+        return conflict(out_pr, pr["number"], I, f"merging into {I} ({I_tip[:7]}) conflicts in "
                                                   + (", ".join(files) or "unknown files"))
     if v["headRefOid"] != H:
         return ctx.wait("GitHub has not seen the PR head yet", 60)

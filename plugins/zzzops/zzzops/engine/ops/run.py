@@ -55,6 +55,8 @@ class OpContext:
     renew: Callable
     session: object = None
     graph: object = None
+    target: dict | None = None                         # G1025: {"branch", "tip"} the goal bases on and merges into
+    state: dict | None = None                          # the node's frontier state before the claim
 
     def wait(self, reason: str, delay: int, question: str | None = None) -> Blocked:
         r = self.record
@@ -127,7 +129,15 @@ def make_context(s, res, X, lease) -> OpContext:
                      dep_kinds=dep_kinds, record=r, corrections=corr,
                      answer=(r or {}).get("answer") if r and r["status"] == "blocked" else None,
                      settings=s.settings, snap=s.snap, git=s.git, gh=gh, worktree=lease.get("workspace"), now=s.now,
-                     renew=lambda: None, session=s, graph=graph)
+                     renew=lambda: None, session=s, graph=graph, target=target_of(s, res))
+
+
+def target_of(s, res) -> dict:
+    """The goal's target branch and tip: the integration branch unless a release line owns the goal (G1025)."""
+    b = (res.target or {}).get("branch")
+    if not b or b == s.snap.I:
+        return {"branch": s.snap.I, "tip": s.snap.integration}
+    return {"branch": b, "tip": s.target_tip(b)}
 
 
 def start_op(s, res, X, label, state, reclaim, force) -> dict:
@@ -149,6 +159,7 @@ def start_op(s, res, X, label, state, reclaim, force) -> dict:
         wt.sync(s.git, Identity(s.git), s.snap, g, "clean", X, lease["attempt"])
     res = s.portfolio().goals[g]
     ctx = make_context(s, res, X, lease)
+    ctx.state = state
     import time
     deadline = None
     while True:
@@ -183,6 +194,7 @@ def start_op(s, res, X, label, state, reclaim, force) -> dict:
             raise Refused("contention", "the work branch moved during the restack; run base again")
         res = s.portfolio().goals[g]
         ctx = make_context(s, res, X, lease)
+        ctx.state = state
 
 
 def finish(s, g, X, label, lease, result, spec, ctx, retry=True) -> dict:

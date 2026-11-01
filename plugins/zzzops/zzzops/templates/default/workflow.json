@@ -506,6 +506,71 @@
           }
         }
       }
+    },
+    "release": {
+      "terminal": [
+        "finish"
+      ],
+      "nodes": {
+        "approve_start": {
+          "description": "The human approves cutting the line branch (recorded by `release cut` or `hotfix start`).",
+          "kind": "human",
+          "prompt": "approve_start.md",
+          "stage": "discovery"
+        },
+        "sync": {
+          "description": "Merge the release branch into the integration branch whenever it has commits the integration branch lacks (a hotfix line only records its tip).",
+          "kind": "op",
+          "op": "git.line_sync",
+          "stage": "delivery",
+          "workspace": true,
+          "schedule": "upstream",
+          "inputs": {
+            "approval": {
+              "from": "approve_start.summary"
+            }
+          },
+          "outputs": {
+            "merged": "sha",
+            "merge_commit": "sha"
+          }
+        },
+        "approve_finish": {
+          "description": "The human approves finishing the line at the synced tip.",
+          "kind": "human",
+          "prompt": "approve_finish.md",
+          "stage": "delivery",
+          "line_complete": true,
+          "review": {
+            "subject": "sync"
+          },
+          "inputs": {
+            "sync": {
+              "from": "sync.merged"
+            }
+          }
+        },
+        "finish": {
+          "description": "Merge the line into the production branch and back into the integration branch (and an open release branch, for a hotfix); the line branch is kept.",
+          "kind": "op",
+          "op": "git.line_finish",
+          "stage": "delivery",
+          "workspace": true,
+          "line_complete": true,
+          "inputs": {
+            "approval": {
+              "from": "approve_finish.summary"
+            },
+            "sync": {
+              "from": "sync.merged"
+            }
+          },
+          "outputs": {
+            "production_merge": "sha",
+            "back_merges": "object"
+          }
+        }
+      }
     }
   }
 }

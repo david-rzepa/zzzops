@@ -25,7 +25,6 @@ Goals that will change the contract and have not landed yet. Every goal listed h
 |---|---|---|
 | G1024 default-policy update notices | SPEC §2.3, §3.2, §3.15, §3.16, §8.3, §9; DESIGN §3.10 | `plugins/zzzops/zzzops/engine contains "policy_update"` |
 | G1031 auto-delete advice with release branching | SPEC §3.16 (`validate` warning `auto_delete_head_branches`), §8.3 step 7; DESIGN §3.15 (`validate` cost) | `plugins/zzzops/zzzops/engine contains "auto_delete_head_branches"` |
-| G1025 release branching | SPEC §2.3, §3.1, §3.2, §3.3, §3.15, §3.16, §4.8, §4.9, §4.20, §5.2, §5.4, §5.5, new §5.7 and §5.8, §6, §7; DESIGN §3.16, §4.1, new release-branching section | `plugins/zzzops/zzzops/engine contains "git.line_sync"` |
 
 Other goals that depend on G1017 need no row: G1026 (its approved design applies its amendment in its own PR without a row), G1029, G1032 and G1034 (skill, prompt or documentation changes only), and G1033 (a package check and hint; its design changes no contract).
 

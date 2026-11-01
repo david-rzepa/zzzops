@@ -26,6 +26,8 @@ verbs:
   reopen G X --note T
   edit G... (--file F... | --set PATH=JSON...) [--base C]...
   validate [G...] | --policy [--dir D]
+  release cut N --answer F            cut release/N from the integration tip (settings.branching)
+  hotfix start X --answer F           start hotfix/X from the production branch (settings.branching)
 
 global flags: --remote R, --integration B
   --policy-ref REF   read-only preview (next, show, validate): read the policy from REF, a zzzops/policy/*
@@ -169,7 +171,8 @@ def cmd_show(argv):
             out["rewritten"] = {"accepted": s.snap.goals[g], "remote": s.snap.rewritten[g]}
         emit(out)
         return 0
-    lines = [f"G{g} {doc['title']} — {doc['state']}, goal commit {s.snap.goals[g]}"]
+    target = f", target {res.target['branch']}" if res and res.target and res.target.get("branch") else ""
+    lines = [f"G{g} {doc['title']} — {doc['state']}{target}, goal commit {s.snap.goals[g]}"]
     records = doc.get("records") or {}
     for n, sstr in states.items():
         r = records.get(n) or {}
@@ -300,7 +303,7 @@ def policy_impact(a, policy, workflow) -> dict:
         return {}
     before = s.portfolio()
     graphs = {n: schemas.build_graph(n, g) for n, g in workflow["graphs"].items()}
-    after = portfolio(st.docs, graphs, st.leases, policy["settings"], s.now, st.invalid, st.newer)
+    after = portfolio(st.docs, graphs, st.leases, policy["settings"], s.now, st.invalid, st.newer, **s.pf_kwargs())
     nodes, staled, reasked, unknown = {}, {}, 0, []
     for g, res in sorted(before.goals.items()):
         res2 = after.goals.get(g)
@@ -356,11 +359,14 @@ def cmd_new(argv):
         settings = st.settings
         known = set(s.snap.known) | set(s.snap.goals) | set(s.snap.deleted) | set(s.snap.rewritten)
         gid = max(known | {settings["goals"]["first_id"] - 1}) + 1
+        effective = s.portfolio().effective or settings["releases"]["current"]
         doc = {"schema": 1, "id": gid, "title": spec["title"], "graph": spec.get("graph", "default"),
                "state": spec.get("state", "open"), "closed": None, "spec": spec["spec"],
-               "priority": spec.get("priority", "P2"), "release": spec.get("release", settings["releases"]["current"]),
+               "priority": spec.get("priority", "P2"), "release": spec.get("release", effective),
                "depends_on": spec.get("depends_on", []), "skip": spec.get("skip", {}),
                "links": spec.get("links", {"issue": None}), "budget": None, "records": {}}
+        if "flow" in spec:
+            doc["schema"], doc["flow"] = 2, spec["flow"]
         all_docs = dict(st.docs)
         all_docs[gid] = doc
         for d in doc["depends_on"] if isinstance(doc["depends_on"], list) else []:
@@ -369,9 +375,12 @@ def cmd_new(argv):
                 if isinstance(dd, dict):
                     all_docs[d] = dd
         errs, _ = schemas.validate_goal(doc, None, all_docs, st.workflow)
+        errs = list(errs) + s.line_errors(gid, doc, all_docs)
         if errs:
             raise Refused("validation", "; ".join(errs[:5]), details={"errors": list(errs)})
-        c = store.goal_commit(s.git, doc, None, store.goal_message("new", gid, "created", doc["state"], request_key=key))
+        line_warnings = s.line_warnings(doc)
+        c = store.goal_commit(s.git, doc, None, store.with_trailers(
+            store.goal_message("new", gid, "created", doc["state"], request_key=key), doc, settings))
         ref = f"refs/heads/zzzops/goal/g{gid}"
         r, stderr = store.push_atomic(s.git, s.R, [(ref, None, c)], report_up_to_date=True)
         if r == "up_to_date":
@@ -386,7 +395,10 @@ def cmd_new(argv):
             s.snap.advance([(ref, None, c)])
             st.docs[gid] = doc
             s._portfolio = None
-            emit(new_output(s, doc, c, key, recovered=False))
+            out = new_output(s, doc, c, key, recovered=False)
+            if line_warnings:
+                out["warnings"] = line_warnings
+            emit(out)
             return 0
         try:
             s.refetch()
@@ -572,6 +584,29 @@ def cmd_edit(argv):
     if not sets and not a.get("file"):
         raise Refused("usage", "edit needs --file or --set")
     emit(verbs.edit(session(a), gids, a.get("file", []), sets, a.get("base", [])))
+    return 0
+
+
+# --------------------------------------------------------------------------------------------- release lines (G1025)
+
+
+@verb("release")
+def cmd_release(argv):
+    from engine import lineverbs
+    a = Args(argv, dict(GLOBAL, answer="value"))
+    if len(a.pos) != 2 or a.pos[0] != "cut" or not a.get("answer"):
+        raise Refused("usage", "release cut N --answer F")
+    emit(lineverbs.run(session(a), "release", a.pos[1], load_json_file(a.get("answer"), "answer")))
+    return 0
+
+
+@verb("hotfix")
+def cmd_hotfix(argv):
+    from engine import lineverbs
+    a = Args(argv, dict(GLOBAL, answer="value"))
+    if len(a.pos) != 2 or a.pos[0] != "start" or not a.get("answer"):
+        raise Refused("usage", "hotfix start X --answer F")
+    emit(lineverbs.run(session(a), "hotfix", a.pos[1], load_json_file(a.get("answer"), "answer")))
     return 0
 
 

@@ -180,6 +180,9 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
     elif hd:
         card["human_decisions"] = hd
     I = session.snap.integration
+    if res.target is not None and res.target.get("branch"):          # G1025: the goal's target tip, not dev
+        I = session.target_tip(res.target["branch"]) or I
+        card["target"] = {"branch": res.target["branch"], "kind": res.target["kind"], "commit": I}
     card["read_dev"] = {"commit": I, "show": f"git show {I}:<path>", "grep": f"git grep <pattern> {I}",
                         "mirror": session.mirror_path()}
     card["workspace"] = lease.get("workspace")

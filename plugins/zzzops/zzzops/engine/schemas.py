@@ -18,7 +18,7 @@ KEYED_TYPES = {"object", "checkpoint", "artifact"}
 CHECKPOINT_KEYS = {"commit", "base", "tree", "change"}
 ARTIFACT_KEYS = {"path", "blob", "commit"}
 GOAL_FIELDS = {"title", "spec", "priority", "release", "links"}
-START_REASONS = {"new", "stale", "reopened", "retry", "not_ok"}
+START_REASONS = {"new", "stale", "reopened", "retry", "not_ok", "upstream"}   # upstream: G1025 schedules
 RESERVED_OUTPUT = "responses"
 REVIEW_PATH = ".zzzops/reviews"
 DOC_LIMIT = 65536
@@ -33,6 +33,9 @@ NODE_FIELDS = {
     "review": {"agent", "human"}, "policy": {"agent", "human", "op"}, "instructions": {"agent", "human"},
     "preserve": {"agent"}, "release_gate": {"agent", "human", "op"}, "rev": {"agent", "human", "op"},
     "timeout": {"agent", "op"}, "skippable": {"agent", "human", "op"}, "lenses": {"agent"},
+    # G1025 release lines: `schedule: "upstream"` re-runs an op whenever its line moved; `line_complete` waits for the
+    # line's open members
+    "schedule": {"op"}, "line_complete": {"human", "op"},
 }
 LENS_FIELDS = {"prompt", "skippable"}
 INPUT_FIELDS = {"from", "optional", "context", "pending"}
@@ -219,7 +222,7 @@ class Graph:
 
 
 def implicit_outputs(node: dict) -> dict:
-    if not node.get("review"):
+    if not node.get("review") and node.get("kind") != "human":
         return {}
     out = {"decision": "string", "summary": "text"}
     if node.get("kind") == "agent":
@@ -293,6 +296,13 @@ def validate_workflow(wf, policy: dict | None = None, prompt_exists=None, ops: d
         return e
     for gname, gdef in graphs.items():
         _validate_graph(e, gname, gdef, policy, prompt_exists, ops)
+    settings = (policy or {}).get("settings") if isinstance(policy, dict) else None
+    if isinstance(settings, dict) and settings.get("branching") is not None:
+        rel = graphs.get(RELEASE_GRAPH)
+        line_ops = {nd.get("op") for nd in ((rel or {}).get("nodes") or {}).values() if isinstance(nd, dict)}
+        if not isinstance(rel, dict) or not {"git.line_sync", "git.line_finish"} <= line_ops:
+            e.add(f"workflow.graphs.{RELEASE_GRAPH}", "settings.branching needs a release graph with the ops "
+                                                     "git.line_sync and git.line_finish (copy it from the template)")
     return e
 
 
@@ -437,7 +447,9 @@ def _validate_node(e: Errors, where, n, nd, nodes, settings, instructions, promp
             else:
                 for msg in spec.validate(nd):
                     e.add(f"{where}", f"op {nd['op']}: {msg}")
-    for b in ("root", "workspace", "release_gate", "skippable"):
+    if "schedule" in nd and nd["schedule"] != "upstream":
+        e.add(f"{where}.schedule", "must be \"upstream\"")
+    for b in ("root", "workspace", "release_gate", "skippable", "line_complete"):
         if b in nd and not isinstance(nd[b], bool):
             e.add(f"{where}.{b}", "must be a boolean")
     if "capability" in nd:
@@ -453,8 +465,8 @@ def _validate_node(e: Errors, where, n, nd, nodes, settings, instructions, promp
         lo, hi = (10, 1440) if kind == "agent" else (2, 240)
         if not _is_int(nd["timeout"]) or not lo <= nd["timeout"] <= hi:
             e.add(f"{where}.timeout", f"must be an integer {lo}-{hi} (minutes)")
-    if kind == "human" and not nd.get("review"):
-        e.add(f"{where}.review", "required on human nodes")
+    if kind == "human" and not nd.get("review") and nd.get("inputs"):
+        e.add(f"{where}.review", "required on human nodes that have inputs")
     review = nd.get("review")
     if review is not None:
         if (not isinstance(review, dict) or "subject" not in review or not set(review) <= {"subject", "filter"}
@@ -618,7 +630,43 @@ PLACEHOLDER = "TODO:"
 # Optional settings keys: absent from the shipped template and undeclared, so changing one stales nothing. A new
 # optional key ships with a new capability (SPEC §4.5, "What ships with a new capability"), which a repository adds to
 # `settings.engine.requires` before using the key.
-OPTIONAL_SETTINGS = {"legacy": {"ignore": "bool"}}
+OPTIONAL_SETTINGS = {"legacy": {"ignore": "bool"},
+                     # G1025: git-flow release lines; requires capability `release_lines` in settings.engine.requires
+                     "branching": {"production": "branch", "release_prefix": "prefix", "hotfix_prefix": "prefix"}}
+RELEASE_GRAPH = "release"
+REF_BAD = re.compile(r"(\.\.|//|@\{|[\x00-\x20~^:?*\[\\\x7f])")
+
+
+def ref_ok(name) -> bool:
+    """A usable branch name (the parts of `git check-ref-format` that matter here)."""
+    return (isinstance(name, str) and bool(name) and not REF_BAD.search(name) and not name.startswith(("/", ".", "-"))
+            and not name.endswith(("/", ".", ".lock")) and "/." not in name)
+
+
+def _check_branching(e: Errors, settings: dict):
+    b = settings.get("branching")
+    if not isinstance(b, dict) or e:
+        return
+    where = "settings.branching"
+    I, prod = settings.get("integration_branch"), b.get("production")
+    rp, hp = b.get("release_prefix"), b.get("hotfix_prefix")
+    if not ref_ok(prod):
+        e.add(f"{where}.production", "must be a valid branch name")
+    if prod == I:
+        e.add(f"{where}.production", "must differ from integration_branch")
+    for k, v in (("release_prefix", rp), ("hotfix_prefix", hp)):
+        if v.startswith("zzzops/"):
+            e.add(f"{where}.{k}", "must not be under zzzops/")
+    if rp.startswith(hp) or hp.startswith(rp):
+        e.add(where, "release_prefix and hotfix_prefix must not overlap")
+    for name in (I, prod):
+        if isinstance(name, str) and name.startswith(rp) and name[len(rp):].isdigit():
+            e.add(where, f"release_prefix + a number would be `{name}`")
+        if isinstance(name, str) and name.startswith(hp):
+            e.add(where, f"`{name}` is under hotfix_prefix")
+    if "release_lines" not in required_caps(settings):
+        e.add(where, "requires capability `release_lines`: add it to settings.engine.requires")
+
 
 # `settings.engine.min` (deprecated, G1027): each numbered engine and the capabilities it had.
 LEGACY_VERSIONS = {"1.0.0": (), "1.1.0": ("lens_findings",), "1.2.0": ("lens_findings", "finding_follows"),
@@ -710,6 +758,7 @@ def validate_policy(p) -> list:
         for k, shape in OPTIONAL_SETTINGS.items():
             if k in settings:
                 _check_shape(e, f"settings.{k}", settings[k], shape)
+        _check_branching(e, settings)
     else:
         _check_shape(e, "settings", settings, SETTINGS_SHAPE)
     ins = p.get("instructions")
@@ -795,6 +844,9 @@ def _check_shape(e: Errors, where, value, shape):
     elif shape == "branch":
         if not _one_line(value) or not value:
             e.add(where, "must be a branch name")
+    elif shape == "prefix":
+        if not isinstance(value, str) or not value.endswith("/") or not ref_ok(value[:-1]):
+            e.add(where, "must be a branch prefix ending in `/`")
     elif shape == "strings":
         if not _strings(value):
             e.add(where, "must be an array of strings")
@@ -847,7 +899,7 @@ def validate_goal(doc, old=None, all_docs: dict | None = None, workflow: dict | 
     if not isinstance(doc, dict):
         e.add("goal", "must be an object")
         return e, warnings
-    e.unknown("goal", doc, GOAL_KEYS)
+    e.unknown("goal", doc, GOAL_KEYS | {"flow"})
     for k in GOAL_KEYS:
         if k not in doc:
             e.add("goal", f"missing key {k!r}")
@@ -855,6 +907,13 @@ def validate_goal(doc, old=None, all_docs: dict | None = None, workflow: dict | 
         return e, warnings
     if doc["schema"] not in GOAL_SCHEMAS or not _is_int(doc["schema"]):
         e.add("goal.schema", f"unknown goal schema {doc['schema']!r}")
+    if "flow" in doc:
+        if doc["schema"] != 2:
+            e.add("goal.flow", "needs goal schema 2")
+        for msg in flow_errors(doc["flow"]):
+            e.add("goal.flow", msg)
+        if isinstance(doc["flow"], dict) and "line" in doc["flow"] and doc.get("graph") != RELEASE_GRAPH:
+            e.add("goal.flow", f"a line goal uses the {RELEASE_GRAPH!r} graph")
     if not _is_int(doc["id"]) or doc["id"] < 1:
         e.add("goal.id", "must be an integer >= 1")
     if not _one_line(doc["title"]) or not 1 <= len(doc["title"]) <= 200:
@@ -955,6 +1014,28 @@ def validate_goal(doc, old=None, all_docs: dict | None = None, workflow: dict | 
     return e, warnings
 
 
+FLOW_LINE_KEYS = {"line", "name", "branch", "from", "cut"}
+
+
+def flow_errors(flow) -> list:
+    """G1025 `flow`: {"hotfix": "<name>"} on a hotfix member, or the line form on a line goal."""
+    if not isinstance(flow, dict):
+        return ["must be an object"]
+    if set(flow) == {"hotfix"}:
+        return [] if ref_ok(flow["hotfix"]) and "/" not in flow["hotfix"] else ["hotfix must be a branch-name part"]
+    if set(flow) != FLOW_LINE_KEYS:
+        return ['must be {"hotfix": "<name>"} or {"line", "name", "branch", "from", "cut"}']
+    out = []
+    if flow["line"] not in ("release", "hotfix"):
+        out.append("line must be release or hotfix")
+    for k in ("name", "branch", "from"):
+        if not ref_ok(flow[k]):
+            out.append(f"{k} must be a branch name")
+    if not (isinstance(flow["cut"], str) and SHA.match(flow["cut"])):
+        out.append("cut must be a full 40-hex sha")
+    return out
+
+
 def find_cycle(docs: dict, start: int):
     """A dependency cycle through `start`, as a list of ids, or None."""
     trail, onpath = [], set()
@@ -1029,8 +1110,8 @@ def validate_record(r) -> list:
         e.add("record.input_fp", "must be a string")
     fp = r["fp_parts"]
     if (not isinstance(fp, dict) or not {"def", "inputs", "policy"} <= set(fp)
-            or not set(fp) <= {"def", "inputs", "policy", "subject", "candidates", "lenses"}):
-        e.add("record.fp_parts", "must hold def, inputs, policy and optionally subject, candidates and lenses")
+            or not set(fp) <= {"def", "inputs", "policy", "subject", "candidates", "lenses", "target"}):
+        e.add("record.fp_parts", "must hold def, inputs, policy and optionally subject, candidates, lenses and target")
     if r["status"] == "blocked":
         if r["ok"] is not False:
             e.add("record.ok", "a blocked record is never ok")
@@ -1353,7 +1434,9 @@ def validate_new_file(n) -> list:
         e.add("new", "must be an object")
         return e
     e.unknown("new", n, {"title", "spec", "priority", "release", "depends_on", "skip", "links", "graph", "state",
-                         "request_key"})
+                         "request_key", "flow"})
+    if "flow" in n and (not isinstance(n["flow"], dict) or set(n["flow"]) != {"hotfix"} or flow_errors(n["flow"])):
+        e.add("new.flow", 'must be {"hotfix": "<name>"} with a branch-name part')
     if not _one_line(n.get("title")) or not 1 <= len(n.get("title") or "") <= 200:
         e.add("new.title", "required: 1-200 characters, one line")
     if not isinstance(n.get("spec"), str) or not n["spec"].strip():
