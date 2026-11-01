@@ -319,7 +319,7 @@ def policy_impact(a, policy, workflow) -> dict:
 @verb("new")
 def cmd_new(argv):
     import time
-    from engine.store import RemoteError, goal_commit, push_atomic
+    from engine import store
     a = Args(argv, dict(GLOBAL, file="value"))
     if not a.get("file") or a.pos:
         raise Refused("usage", "new --file F")
@@ -327,9 +327,15 @@ def cmd_new(argv):
     errs = schemas.validate_new_file(spec)
     if errs:
         raise Refused("validation", "; ".join(errs), details={"errors": list(errs)})
-    s = session(a)
+    key = request_key_of(spec)
+    s = session(a)                                   # refuses --policy-ref before any scan (G1001 §4)
     st = s.open()
+    if s.snap.current:
+        hits = scan_request_key(s, key)
+        if hits:
+            return recover_new(s, spec, key, hits)  # recovering writes nothing, so it precedes require_writable
     s.require_writable()
+    retry_hint = "rerun the same `new`: it is safe to retry"
     deadline = time.monotonic() + 30
     while True:
         st = s.state
@@ -345,39 +351,109 @@ def cmd_new(argv):
         all_docs[gid] = doc
         for d in doc["depends_on"] if isinstance(doc["depends_on"], list) else []:
             if isinstance(d, int) and d not in all_docs and d in s.snap.goals:
-                from engine.store import read_goal_json
-                dd, _ = read_goal_json(s.git, s.snap.goals[d])
+                dd, _ = store.read_goal_json(s.git, s.snap.goals[d])
                 if isinstance(dd, dict):
                     all_docs[d] = dd
         errs, _ = schemas.validate_goal(doc, None, all_docs, st.workflow)
         if errs:
             raise Refused("validation", "; ".join(errs[:5]), details={"errors": list(errs)})
-        from engine.store import goal_message
-        c = goal_commit(s.git, doc, None, goal_message("new", gid, "created", doc["state"]))
+        c = store.goal_commit(s.git, doc, None, store.goal_message("new", gid, "created", doc["state"], request_key=key))
         ref = f"refs/heads/zzzops/goal/g{gid}"
-        r, stderr = push_atomic(s.git, s.R, [(ref, None, c)])
+        r, stderr = store.push_atomic(s.git, s.R, [(ref, None, c)], report_up_to_date=True)
+        if r == "up_to_date":
+            # an identical twin (same document, message and clock) already pushed this exact root commit
+            try:
+                s.refetch()
+            except store.RemoteError as exc:
+                raise Refused("remote", str(exc), hint=retry_hint)
+            emit(new_output(s, doc, c, key, recovered=True))
+            return 0
         if r == "ok":
             s.snap.advance([(ref, None, c)])
             st.docs[gid] = doc
             s._portfolio = None
-            out = {"ok": True, "coordinator": st.coordinator,
-                   "created": {"id": gid, "display": f"G{gid}", "title": doc["title"], "graph": doc["graph"],
-                               "release": doc["release"], "priority": doc["priority"], "depends_on": doc["depends_on"],
-                               "goal_commit": c},
-                   "next": s.render_next(scope=[gid])}
-            emit(out)
+            emit(new_output(s, doc, c, key, recovered=False))
             return 0
-        if r == "remote":
-            raise Refused("remote", f"push to `{s.R}` failed: {stderr.strip().splitlines()[:1]}")
         try:
             s.refetch()
-        except RemoteError as exc:
-            raise Refused("remote", str(exc))
+        except store.RemoteError as exc:
+            raise Refused("remote", str(exc), hint=retry_hint)
+        hits = scan_request_key(s, key)
+        if hits:
+            return recover_new(s, spec, key, hits)  # the push landed but reported failure, or a racing twin won
+        if r == "remote":
+            raise Refused("remote", f"push to `{s.R}` failed: {stderr.strip().splitlines()[:1]}", hint=retry_hint)
         if gid not in s.snap.goals:
             raise Refused("push_refused", "the remote refused creating the goal branch (a branch rule or hook)",
                           hint="exclude zzzops/** from branch rules (SETUP.md)")
         if time.monotonic() > deadline:
             raise Refused("contention", "could not allocate a goal id; retry shortly")
+
+
+NEW_COMPARED = ("graph", "state", "priority", "release", "skip", "links")
+
+
+def norm_depends_on(v):
+    """Sorted, unique ids when depends_on is a list of ints; any other value passes through (validate_goal rejects it)."""
+    if isinstance(v, list) and all(isinstance(d, int) and not isinstance(d, bool) for d in v):
+        return sorted(set(v))
+    return v
+
+
+def request_key_of(spec: dict) -> str:
+    """G1001 §1: the explicit request_key, else sha256 over title, spec and the normalised depends_on."""
+    if "request_key" in spec:
+        return spec["request_key"]
+    from engine import canon
+    return "sha256:" + canon.H({"v": 1, "title": spec["title"], "spec": spec["spec"],
+                                "depends_on": norm_depends_on(spec.get("depends_on", []))})
+
+
+def new_differences(spec: dict, root: dict) -> list:
+    """The request fields that differ from the goal's root document (fields the request omits are not compared)."""
+    out = [k for k in ("title", "spec") if spec[k] != root.get(k)]
+    if norm_depends_on(spec.get("depends_on", [])) != norm_depends_on(root.get("depends_on", [])):
+        out.append("depends_on")
+    return out + [k for k in NEW_COMPARED if k in spec and spec[k] != root.get(k)]
+
+
+def scan_request_key(s, key: str) -> list:
+    """store.find_request_key, plus one refetch and rescan when nothing matched and some goal is only a local ref
+    (another `new` in this clone may have written it after this call's fetch listed the remote)."""
+    from engine import store
+    hits = store.find_request_key(s.git, s.snap, key)
+    if not hits and s.snap.deleted:
+        try:
+            s.refetch()
+        except store.RemoteError as exc:
+            raise Refused("remote", str(exc), hint="rerun the same `new`: it is safe to retry")
+        hits = store.find_request_key(s.git, s.snap, key)
+    return hits
+
+
+def recover_new(s, spec: dict, key: str, hits: list) -> int:
+    gid, root, doc = hits[0]
+    diff = new_differences(spec, doc)
+    if diff:
+        raise Refused("validation", f"request_key {key} already created G{gid} with different contents: {', '.join(diff)}",
+                      details={"goal": gid, "fields": diff}, hint=f"use a different request_key, or `zzzops edit G{gid}`")
+    out = new_output(s, doc, root, key, recovered=True)
+    if len(hits) > 1:
+        ids = [h[0] for h in hits]
+        out["warnings"] = [{"kind": "duplicate_request_key", "goals": ids,
+                            "message": f"request_key {key} created several goals ({', '.join(f'G{g}' for g in ids)}); "
+                                       f"returning G{gid}"}]
+    emit(out)
+    return 0
+
+
+def new_output(s, doc: dict, commit: str, key: str, recovered: bool) -> dict:
+    gid = doc["id"]
+    return {"ok": True, "coordinator": s.state.coordinator,
+            "created": {"id": gid, "display": f"G{gid}", "title": doc["title"], "graph": doc["graph"],
+                        "release": doc["release"], "priority": doc["priority"], "depends_on": doc["depends_on"],
+                        "goal_commit": commit, "recovered": recovered, "request_key": key},
+            "next": s.render_next(scope=[gid])}
 
 
 # --------------------------------------------------------------------------------------------- lifecycle verbs

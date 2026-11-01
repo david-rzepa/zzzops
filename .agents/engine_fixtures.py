@@ -260,8 +260,14 @@ class World:
             raise AssertionError(f"{' '.join(argv)} -> {rc}: {_json.dumps(out, indent=1)[:3000]}")
         return out
 
+    news = 0
+
     def new(self, clone="a", title="Goal", **fields):
-        return self.ok(clone, "new", "--file", self.file(dict({"title": title, "spec": f"spec for {title}"}, **fields)))
+        """Create a goal. The default spec is unique per call, so that calls reusing a title stay distinct requests
+        (`new` is idempotent per request); a test that means the same request passes the same file twice."""
+        self.news += 1
+        spec = f"spec for {title} (#{self.news})"
+        return self.ok(clone, "new", "--file", self.file(dict({"title": title, "spec": spec}, **fields)))
 
     def trace_lines(self):
         if not os.path.exists(self.trace):

@@ -1041,16 +1041,22 @@ def validate_answer_file(kind: str, a) -> list:
     return e
 
 
+REQUEST_KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")   # no colon: an explicit key never looks like "sha256:…"
+
+
 def validate_new_file(n) -> list:
     e = Errors()
     if not isinstance(n, dict):
         e.add("new", "must be an object")
         return e
-    e.unknown("new", n, {"title", "spec", "priority", "release", "depends_on", "skip", "links", "graph", "state"})
+    e.unknown("new", n, {"title", "spec", "priority", "release", "depends_on", "skip", "links", "graph", "state",
+                         "request_key"})
     if not _one_line(n.get("title")) or not 1 <= len(n.get("title") or "") <= 200:
         e.add("new.title", "required: 1-200 characters, one line")
     if not isinstance(n.get("spec"), str) or not n["spec"].strip():
         e.add("new.spec", "required")
     if "state" in n and n["state"] not in ("open", "held"):
         e.add("new.state", "must be open or held")
+    if "request_key" in n and not (isinstance(n["request_key"], str) and REQUEST_KEY.fullmatch(n["request_key"])):
+        e.add("new.request_key", "must be 1-128 characters of A-Z a-z 0-9 . _ -, starting with a letter or digit")
     return e
