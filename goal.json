@@ -40,15 +40,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:585696b0a8e3f8abc71f0c87a240a620b281d518b54ec1db9e4d7733ec4bc2cf",
@@ -56,29 +56,29 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T04:29:31Z",
+      "finished_at": "2026-11-01T04:41:44Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:70c137761708ceadc6591a629571ae434fe46f56",
+          "doc": "v1:blob:8ec7fbf673f2260d90895827429fa7455e445a73",
           "spec": "v1:sha256:1081e6600afea17d81dd4f899ddad04ceddabf62fcc2d3ccb9ddc015a5c6ad57"
         },
         "policy": {},
-        "subject": "v1:sha256:585696b0a8e3f8abc71f0c87a240a620b281d518b54ec1db9e4d7733ec4bc2cf"
+        "subject": "v1:sha256:c4290c4efdd67bf87f4d7d41875adaa93a857dba45151634ea40de63fe408c83"
       },
-      "holder": "claude:e6ad/review_design-1018-1",
-      "input_fp": "v1:sha256:28bfac0cb812689d2200c2047cbcd9961cab26f74a8a3e3ad27411162febe990",
-      "ok": false,
+      "holder": "claude:e6ad/review_design-1018-2",
+      "input_fp": "v1:sha256:9bb206469a60ea580f9f088c3e35968d0cd09777096ed90d8c0a8044bb4dbfb9",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "284303329fb4ec93f1585449455e3210d9610c16",
-          "commit": "2c0348bafef74a97253f67f0a2fc9b87792f67d0",
+          "blob": "33683a43e80151ee061b0733964530e3435c66d6",
+          "commit": "7501fc203e8a221d5684772df5a777e9ba23962a",
           "path": ".zzzops/reviews/1018/review_design.md"
         },
-        "summary": "Fingerprint safety and the change/tree guard are sound (checked: value_of is called only from build after claim; selector_type is plain for path selectors; the guard source matches resolve for node and deps). F1: the 4 KB budget claim is false. The real implement card is already 4,621 bytes at 54d7e83 with everything shrinkable shrunk, and review_impl would be about 4.7 KB with two views, so shrink blobs the new checkpoint views (summary '{') on exactly the cards the fix targets. Redesign the budget (exempt views from shrink and reclaim space from artifact summaries or duplicate command forms, or a smaller view plus an explicit limit decision) and measure real-size cards."
+        "summary": "Approved. F1 resolved: replay reproduced (implement 3,745, review_impl 3,765 synthesized and 3,973 on the real review_impl-z card with both views inline, every card without `previous` <= 4,096); G2 and idempotence hold on all 42 run cards; '4,096 is a target' is stated and G1-G3 are tested; the shrink steps keep runnable `command` strings and useful blob summaries; no function overlap with G1016 or G1000. Four non-blocking implementation notes in the artifact."
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     }
   },
