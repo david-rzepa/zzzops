@@ -1,6 +1,6 @@
 # G1037 design: dogfood Release 1 on a private web app, from migration to a finished release
 
-Attempt 1. Written against read_dev 8d8437a. It replaces G1003 and G1035.
+Attempt 2. Written against read_dev 8d8437a. It replaces G1003 and G1035, and answers review_design:1:1 (§11).
 
 The app's identity and every fact specific to it are kept out of this repository (OD7). **The detailed plan is in the root's private journal**: per-phase steps, evidence about the app, triage proposals, and the release mechanics against the app's own deploy flow. This document is the generic plan the reviewers judge, and it is what the whitepaper can cite.
 
@@ -54,6 +54,7 @@ Identifying words are replaced by `[redacted]`. Everything else is verbatim.
    - The freeze is in effect (OD5).
    - Two fresh clones, one per harness. The owner's own checkout is only read.
    - The private journal is ready: plan, holder map, cost exports, deny patterns.
+   - **The deny list is clean on what already exists.** `git grep -i -E -f <deny list>` over the integration tip prints nothing, and so does the scan of the existing defect goals and of this goal's and G1036's goal branches. This is re-checked whenever the list changes (§6).
    - Any one-time branch housekeeping the app needs before the engine owns refs is listed in the private plan. It is approved with this design, and it stops if it would change any file.
 2. **Install.** One dev build goes into both harnesses, and `validate` shows no environment mismatch (G1033). Each reinstall during the run is journaled, together with the nodes it ran.
 3. **Detect and bootstrap.**
@@ -103,7 +104,7 @@ Identifying words are replaced by `[redacted]`. Everything else is verbatim.
 | A12 | Every defect has its own goal in this repository. |
 | A13 | Per-goal costs are reported and can be recomputed from the data file. |
 | A14 | The lens re-score is reported. |
-| A15 | Nothing public identifies the app. The deny-pattern scan prints nothing over the full history of every zzzops ref the run touched (goal, work, PR and lease branches), every PR title, body and comment the run created, every defect goal document, and the report and data file. |
+| A15 | Nothing public identifies the app. The deny-pattern scan prints nothing over the run's own commits on every zzzops ref it touched, `git log -p <I>..<ref>` with I the integration branch. For goal branches, which share no history with I, that is their whole history. It must also print nothing over the tree of the report and data file, every PR title, body and comment the run created, and every defect goal document. |
 | A16 | The owner's checkout and worktrees are unchanged since the start snapshot. |
 | A17 | No non-run work touched the app during the freeze. |
 
@@ -123,7 +124,8 @@ No permanent test goes into `.agents/`: the checks are commands with recorded ou
 - **Workers:** every worker brief for this goal and its defect goals carries the rule. Each worker reports its scan result.
 - **The patterns file** stays in the private journal and is never committed.
 - **App-side writes** in the private repository are not redacted.
-- **A15** re-scans everything at the end. A hit there is a process defect, purged with the owner's word.
+- **A15** re-scans the run's own output at the end, scoped as in §5. A hit there is a process defect, purged with the owner's word.
+- **List maintenance.** The list uses app-specific compounds and anchored ids, not bare common words. A term that also appears in ordinary engine text or in a generic public spec phrase is narrowed in the list; the public text is not rewritten. Whenever the list changes, the precondition scan (§4, phase 1) is re-run, and any hit is resolved before more writes. A real leak is purged with the owner's word. A false positive is narrowed.
 
 ## 7. Report for G1036 (anonymised)
 
@@ -172,3 +174,12 @@ Defects found during the run follow the same path:
 - Deletions without the owner's word.
 - Graph changes from the re-score.
 - Publishing anything that identifies the app.
+
+## 11. Response to corrections
+
+- **review_design:1:1** (A15 and the write gate could not pass, because the work and PR branches carry the integration branch's history and the list matched existing text there): fixed.
+  - A15 is scoped to the run's own commits, `git log -p <I>..<ref>` for every ref the run touched, plus goal branches, PR text, defect goals and the report tree (§5).
+  - A new precondition requires the integration tip, the existing defect goals and the related goal branches to scan clean before the run, re-checked whenever the list changes (§4 phase 1, §6).
+  - The private list has been tuned to app-specific compounds and anchored ids. The generic phrase in G1032's spec was handled by narrowing the list, and G1032 is unchanged.
+  - The tuned list now prints nothing on the integration tip and on the goal branches of G1031 to G1034, G1036 and G1037.
+  - The private plan carries the same fixes.
