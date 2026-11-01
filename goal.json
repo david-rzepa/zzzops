@@ -37,6 +37,66 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:51ad225c22cdc6d969864e12090359d1bd8b41707642a0122b0a392580884436",
+          "text": "Step 2 of SKILL.md also depends on the unreadable endpoint: 'required_ci (only always-running required check names, read once with `gh api repos/{o}/{r}/rules/branches/<I>`)'. It runs before step 7, so on a free-plan private repo the 403 hits there first, and the design only changes step 7 (and writes required_ci in the fallback, after POLICY was already written in step 2 and validated in step 3). Fix: have the design change step 2 as well: say that when that read returns 403 (or no rules), required_ci is filled from the owner/check-run fallback, and move or cross-reference the fallback so required_ci is set before step 3 validates and step 4 lands the files. Also name docs/BRANCH_PROTECTION.md line 12 (the rules/branches probe) among the edited places, and say the probe in step 7 and that doc is skipped on 403.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:51ad225c22cdc6d969864e12090359d1bd8b41707642a0122b0a392580884436",
+          "text": "Risk text is wrong about the engine: 'A wrong check name makes integrate wait until the existing \"no checks appeared\" block'. That block fires only when the rollup is empty (`not rollup`). With other checks present and a misspelled required name, integrate stays pending and blocks with 'required checks pending too long' after verification.ci_timeout_minutes, with the same fix-required_ci option. Fix: describe both outcomes, and say a wrong name never silently passes (the name stays pending) while an empty list does. Also say where a declined gate is recorded (POLICY has no field for it; for example the intent text or the PR body), since 'record that merges then have no CI gate' has no named location.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T19:29:48Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:ab9cef22ec163432bbc16852f77271fed4bfee57",
+          "spec": "v1:sha256:960d773c4c295e2b5daa47dbbcba12c33472dbfed6137192c92d5fd4b682ed28"
+        },
+        "policy": {},
+        "subject": "v1:sha256:51ad225c22cdc6d969864e12090359d1bd8b41707642a0122b0a392580884436"
+      },
+      "holder": "claude:e6ad/rt5",
+      "input_fp": "v1:sha256:0049bb1d5a691e9350f35f9a5aa8a5b38aad9e8acfdad85be0bd42e7df454ed4",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "6a09f165f9245130bc5df28f5fe75d2dff83634c",
+          "commit": "b4000f71ed4bc7e1c1c57e1b515d88df9d1da34d",
+          "path": ".zzzops/reviews/1032/review_design.md"
+        },
+        "summary": "The engine claims check out on 8d8437a: gh.py only checks gh version and auth; integrate gates on required_ci from statusCheckRollup (an empty list passes with no gate, ops/integrate.py l.203-205); merge uses gh pr merge --match-head-commit with no --auto; the engine calls no rules, rulesets or protection endpoint. But the design misses a second place the skill assumes the read works: bootstrap step 2 reads required_ci with gh api rules/branches/<I>, and step 2 runs before step 7, so on a 403 the owner fails there first. The design must fold step 2 into the fallback. The 'wrong check name' risk text is also inaccurate."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "ab9cef22ec163432bbc16852f77271fed4bfee57",
+          "commit": "f09143a3fe3081ecd1a262ad8570f4fe3eedf133"
+        }
+      },
+      "status": "done"
     }
   },
   "release": 1,
