@@ -9,6 +9,33 @@
   },
   "priority": "P1",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T07:10:40Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:64ae69193ad33c5260fa233cf68c4815659a6c02",
+          "summary": "v1:sha256:c7d143b2619e139df81299d1b136c1f871bba494f671ff7b88c29178048724d5"
+        },
+        "policy": {},
+        "subject": "v1:sha256:75d297c4f9d4d7de984d7707890d1996fcac3f13685c7f2927f761b228ae86aa"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:9533509ad4bb1082022189a0535ee3310ebd4c797a065971c37424b39c379f60",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T07:10:40Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Do not wait for my approval",
+        "summary": "Approved the G1021 design. The spec's premise is corrected: integrate already handles CONFLICTING/DIRTY; the gap is GitHub's lazy UNKNOWN mergeability and an unseen head, which fell through to 'checks pending'. The fix: a local git merge-tree pre-check when the PR targets the integration branch, giving a conflict finding on base at once; ordered waits for head-not-seen and UNKNOWN, bounded by ci_timeout; a human question when no check appears within min(15, ci_timeout) minutes; merge state in the pending reason; a mergeable_lag fake-gh fault and tests; a REPAIR recipe. The integration tip stays out of base's fingerprint. The reviewer's two implementation notes go to implement. Decision made by Claude (root agent) under the owner's standing delegation for Release 1."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "design": {
       "attempt": 1,
       "correction_runs": 0,
