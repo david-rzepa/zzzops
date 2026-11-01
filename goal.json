@@ -41,15 +41,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:4d2ffd04c316513b6e06de5fe93fd3b00b03cb5f76a8e7b306a1d81074bbc440",
@@ -61,7 +61,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:4d2ffd04c316513b6e06de5fe93fd3b00b03cb5f76a8e7b306a1d81074bbc440",
@@ -69,29 +69,29 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T04:22:10Z",
+      "finished_at": "2026-11-01T04:32:04Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:14d91754bedbce4c9f77b937eb87ee8c31d09e30",
+          "doc": "v1:blob:d7d3e64f91bd9fe8264ac1b901a4ddcaa0536992",
           "spec": "v1:sha256:3cda08394ea5edabf2c55b2983b4a2414276e3d3ee81d5b6f5d6364b096221d6"
         },
         "policy": {},
-        "subject": "v1:sha256:4d2ffd04c316513b6e06de5fe93fd3b00b03cb5f76a8e7b306a1d81074bbc440"
+        "subject": "v1:sha256:153b9774468c836cfad989f4ce1e2e30cc62339b3e3fcbe86eb203721760713b"
       },
-      "holder": "claude:e6ad/review_design-1000-1",
-      "input_fp": "v1:sha256:9966ada4d0ab89bb4974a37187b6da5328a48efced2c9c99bf711a89e4332d51",
-      "ok": false,
+      "holder": "claude:e6ad/review_design-1000-2",
+      "input_fp": "v1:sha256:79e1fcff4da7dd70bfb14b37e736a36d2a829ac15b831383fdd905dcd6109a2b",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "15165aa87f6c10f710db06e8c4152cdf96c53a0b",
-          "commit": "a2c5e59572be0abb8baa6d2cf7e3c1aa4a43231e",
+          "blob": "dc263a1e2885699c1cc3a990c4ca7d21e863ef38",
+          "commit": "0274be98b6ea6fcd8ff8df0e2948af773ac22c50",
           "path": ".zzzops/reviews/1000/review_design.md"
         },
-        "summary": "Changes requested (2 findings): the design achieves the spec and the experiment's conclusions follow from its data, but the filter's fingerprint does not cover lens findings (a note can escape it silently), and rollout steps 2-3 lack an owner and trigger and conflict with the owner's Codex plugin pin."
+        "summary": "Approved. F1 resolved: the `candidates` fp part changes only on lens submits or human edits and skips, never on a filter submit, so it cannot loop. Its budget exemption follows a lens run that was itself counted or already exempt, so it cannot be gamed. An unverdicted note is live on every path that reads findings. F2 resolved: owner-gated engine-1.1.0, then lenses, with G1003 held. The coverage figures (28/32, 23/24; 31/32 extrapolated) and 11 of 13 re-derived and consistent. Three non-blocking implement notes."
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     }
   },
