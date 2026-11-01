@@ -29,7 +29,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T19:52:46Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:c064c06c4194ebc7b5e1c8198fc7b9401e3bf4861500e9c8da4fcbda768978fc",
+          "spec": "v1:sha256:823d48ed52cd1df7b523d919e6d60db3c09ec821c9eef5cafaf03f569246a9b5"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1037",
+      "input_fp": "v1:sha256:4b07d0e8ba283464bbc9df63f46d28be7d87f510a34daf6b5afca8083367e8b3",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "dc8a15a2871910b58492a6270b37dcea8a1295fc",
+          "commit": "7267819525efa96d660944c99f419ced6fa5f97f",
+          "path": ".zzzops/reviews/1037/design.md"
+        },
+        "summary": "Generic public plan for the private-app dogfood run (detailed plan kept in the root's private journal): the default graph with the root holding implement, nine phases from install to an engine-driven release whose deploying steps stay outside the engine with separate owner approvals, acceptance checks A1-A17, and owner decisions OD1-OD7 with identifying words redacted. Every public write by root or workers is scanned against a private deny-pattern list; later-release goals are migrated held; G1036 depends on G1037."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
