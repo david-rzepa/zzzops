@@ -52,7 +52,7 @@ The 1.1 default graph replaces `review_design` and `review_impl` with seven revi
 
 **In-flight goals.** Old `review_design`/`review_impl` records become orphans (a warning), never deleted. Goals past `design` get the lenses as `ready (new)`; `base` and everything after it wait behind `filter_design`. No checkpoint is lost, but a kept finding reopens the design and asks `approve_design` again. Land the graph change when no goal is past `approve_design`; the preview lists the goals that are.
 
-**Intent changes** are policy changes (a `zzzops/policy/*` branch, never a goal diff). A change stales `intent_design` and `intent_impl` on every open goal, without counting against the budget; until they and the filters re-run, each goal's later nodes wait. Land intent changes when few goals are in flight.
+**Intent changes** are policy changes (a `zzzops/policy/*` branch, never a goal diff). A change stales every node that declares `policy: ["intent"]` (`review_design` in the 1.3 graph; `intent_design` and `intent_impl` in the 1.1 graph) on every open goal, without counting against the budget; until they and the filters re-run, each goal's later nodes wait. Land intent changes when few goals are in flight.
 
 **Rollback:** a policy branch restoring the old files, keeping `engine.min`. The lens records become orphans; the old review records come back, current again where their inputs did not change. Engine 1.1 to 1.0 is forward-only for goals that ran lenses: use REPAIR's "Bulk revert of one bad release's writes".
 
