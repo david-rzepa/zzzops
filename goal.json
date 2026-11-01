@@ -48,27 +48,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [
-        {
-          "id": "review_design:1:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:1aaf15b7a99e2c6f760d6a1d35a63315aca3d5544ddec84dd009c30e5e86b2fa",
-          "text": "The pending-amendment mechanism has an unowned window. The design checks G1000, G1001, G1014, G1015 and G1016 only once, at G1017's implement time. Any of them that merges after that but before G1017 merges is listed as pending, and its own PR (built on a base without docs/design/) will never edit docs/design/. G1001, G1014 and G1015 are already past base and in test_design while G1017 is at review_design, so they are headed into this window. Consequence: SPEC §3.16, §4.1, §4.17 and §4.19 and DESIGN §10 silently disagree with the engine on dev, and workers reading read_dev act on stale contract text, which is the drift this goal exists to remove. Fix: (1) re-run the five-goal check against the dev tip at G1017's integrate step (or whenever base moves) and apply every goal that has merged by then, from its merged diff and approved design; (2) allow no pending row for a goal that has merged by the time G1017 merges; (3) give each remaining pending row an owner, either a follow-up 'apply pending contract amendments' goal that depends on those goals, or a `zzzops edit` adding the docs/design update to the goal's spec while it is still before implement.",
-          "upheld": false
-        },
         {
           "id": "review_design:2:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:4482a5aae8cd2d5561e11330eb65fc30ff8a5a5d1a9467bdb92d5f0f97954662",
@@ -80,7 +68,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:4482a5aae8cd2d5561e11330eb65fc30ff8a5a5d1a9467bdb92d5f0f97954662",
@@ -88,27 +76,27 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T17:40:59Z",
+      "finished_at": "2026-11-01T17:46:26Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:7597f57f53d0021a1e234d31b497da04a1aa2b0f",
+          "doc": "v1:blob:42144d61b58520a0b331e1b3995235d9ec279a05",
           "spec": "v1:sha256:d510d0f4ee516876f569e5777e626c26cd577acb0bb898776228b91f270a0576"
         },
         "policy": {},
-        "subject": "v1:sha256:1871364187f5e91cf8b89fceb257dc992e99623c412981612df28f64b796a12a"
+        "subject": "v1:sha256:a7dba6a93f66bd84fa2d624494e64582b0ce7a2cf525fca854c9ff94bcaecf4e"
       },
       "holder": "claude:e6ad/rd1017",
-      "input_fp": "v1:sha256:8e8c9e21edbd1e857d58be786b4d867cf87680a2d34fdc4daf5a13ef894c77e0",
-      "ok": false,
+      "input_fp": "v1:sha256:fa9685fffa8dff31b954a7401189490b0249427af32b5f084f53484b6630234d",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "fb1971f22f7a65a1f461766d1a569236e8f76c1d",
-          "commit": "b78f143ff8f80f4f1edd430f850f1ab6919a4269",
+          "blob": "45b0d4be810082dd16be8ab5dd1829684dc3047b",
+          "commit": "a3d759d6196af1e886b7c997329855c5b997be11",
           "path": ".zzzops/reviews/1017/review_design.md"
         },
-        "summary": "The prior finding is resolved: every implement re-checks merged goals, each pending row has an owner and a tree marker, and a guard test exists. Two new findings. F2: the guard assumes CI sees the integration tip, but the dev ruleset has strict_required_status_checks_policy false and validate.yml runs only on pull_request. A goal without depends_on 1017 and G1017 can both merge green, which leaves every later PR failing the guard. Fix: allow pending rows only for owners that depend on 1017, and have G1017 depend on any past-implement contract goal (the G1020 fallback). F3: G1024 changes the contract (provenance record, a policy_update item in next/validate --policy, decline) but has no row, and the implement-time keyword search would miss it. Fix: give it a G1022-style edit (depends_on 1017, a docs/design acceptance line, a marker) and replace the keyword search with a behavioural test."
+        "summary": "Approved. Revision 3 fixes both attempt-2 findings. Every unmerged contract-changing goal is now ordered against G1017 by a dependency. A goal past implement (G1020 if it is still unmerged: integrate is done but #750 is open) becomes a G1017 dependency with no row. A pending row is allowed only for a goal that depends on 1017 (G1022, G1024), so the guard trips only in the owner's own PR, even though dev does not use strict status checks. The design now states the CI facts correctly. G1024 is in the inventory, and its policy_update marker is absent on dev and on the G1000 and G1020 PR branches. The keyword search is replaced by a classification of what each goal changes. The backlog goals it picks out have no records, so adding depends_on 1017 loses no work. No new findings."
       },
       "reason": "stale",
       "status": "done"
