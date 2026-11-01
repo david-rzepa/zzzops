@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import shlex
 import unittest
 
 import engine_fixtures as fx
@@ -49,12 +51,19 @@ class LiveInputChangeBase(Journey):
         self.assert_commands(e, g, node, card["lease"]["attempt"])
         self.assertIsInstance(e.get("note"), str)
 
-    def assert_commands(self, e, g, node, attempt):
+    def assert_commands(self, e, g, node, attempt, repo=False):
+        """`repo`: worker-facing output (renew) carries `--repo <primary>` (G1028); edit's root-facing entries do not."""
         n = self.n(node)
-        self.assertEqual(["abandon", str(g), n, "--attempt", str(attempt)], e["abandon"]["argv"])
-        self.assertEqual(f"zzzops abandon {g} {n} --attempt {attempt}", e["abandon"]["command"])
-        self.assertEqual(["start", str(g), n, "--as", LABEL, "--reclaim"], e["restart"]["argv"])
-        self.assertEqual(f"zzzops start {g} {n} --as {LABEL} --reclaim", e["restart"]["command"])
+        tail, text = [], ""
+        if repo:
+            self.assertEqual("--repo", e["abandon"]["argv"][-2], e["abandon"])
+            tail = ["--repo", e["abandon"]["argv"][-1]]
+            self.assertTrue(os.path.samefile(self.w.clones["a"].path, tail[1]), tail)
+            text = " --repo " + shlex.quote(tail[1])
+        self.assertEqual(["abandon", str(g), n, "--attempt", str(attempt)] + tail, e["abandon"]["argv"])
+        self.assertEqual(f"zzzops abandon {g} {n} --attempt {attempt}" + text, e["abandon"]["command"])
+        self.assertEqual(["start", str(g), n, "--as", LABEL, "--reclaim"] + tail, e["restart"]["argv"])
+        self.assertEqual(f"zzzops start {g} {n} --as {LABEL} --reclaim" + text, e["restart"]["command"])
 
 
 class EditLiveLeaseTests(LiveInputChangeBase):
@@ -184,10 +193,11 @@ class RenewInputsChangedTests(LiveInputChangeBase):
         self.assertTrue(r["ok"])
         self.assertIs(True, r["inputs_changed"])
         self.assertEqual(["inputs.spec"], r["stale_because"])
-        self.assertEqual(e["abandon"], r["abandon"])
-        self.assertEqual(e["restart"], r["restart"])
+        # the same commands as edit's entry, plus --repo (renew is worker-facing, G1028)
+        self.assertEqual(e["abandon"]["argv"], r["abandon"]["argv"][:-2])
+        self.assertEqual(e["restart"]["argv"], r["restart"]["argv"][:-2])
         self.assertIsInstance(r["hint"], str)
-        self.assert_commands(r, g, "design", 1)
+        self.assert_commands(r, g, "design", 1, repo=True)
         # it keeps reporting on later renewals: the comparison is against the fingerprint recorded at start
         self.assertTrue(self.renew(g, "design", now=fx.NOW + 180)["inputs_changed"])
 
@@ -211,7 +221,7 @@ class RenewInputsChangedTests(LiveInputChangeBase):
         self.assertTrue(r["ok"])
         self.assertIs(True, r["inputs_changed"])
         self.assertEqual(["inputs.spec"], r["stale_because"])
-        self.assert_commands(r, g, "design", 1)
+        self.assert_commands(r, g, "design", 1, repo=True)
 
     def test_renew_of_an_expired_lease_without_an_edit_reports_nothing(self):
         g = self.goal()
