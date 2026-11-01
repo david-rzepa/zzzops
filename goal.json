@@ -212,39 +212,39 @@
       "status": "done"
     },
     "review_impl": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T08:33:01Z",
+      "finished_at": "2026-11-01T18:21:15Z",
       "fp_parts": {
         "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
         "inputs": {
-          "code": "v1:sha256:3235d0461a85a4b79c5be8c71d9ab3bb360730843d5ab2ed24c01b422d98d41e",
+          "code": "v1:sha256:0a05b8704a84c97b9f6c523244d631d109de959989ab93164143c3b2fa976835",
           "doc": "v1:blob:137369030420987f7ff4f2f87e69612b97276be0",
           "tests": "v1:sha256:a6a0a4620efdcc175be03e56aafc65795d80c0c417325e3d988d828ed6f35bf5"
         },
         "policy": {},
-        "subject": "v1:sha256:512d4a52308f7c3ee3c97bce8965667209dfae0cc3c57985fd3a705ed841251f"
+        "subject": "v1:sha256:de5ec794bc4f5b5ae10c7c63226922d075a8cc049ae050cdda27b558ba0d1157"
       },
-      "holder": "claude:e6ad/review_impl-1020-1",
-      "input_fp": "v1:sha256:a9f87e378f1f2f78f11c3b69b35043dc23a9360ec106a2b93bef167f8e54bd90",
+      "holder": "claude:e6ad/rt5",
+      "input_fp": "v1:sha256:e10bcb8c1f976d5ee66a40b60495b662cfc27ec0490428d4faa7a59a53515b63",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "55555f18c4309d33461c0e0db49774e2fe5e923d",
-          "commit": "4ebcc8eca42f5250fb2e7602d20574908666fccb",
+          "blob": "9cee11bdcb406f9361ad15bc63030bf45ad39c6c",
+          "commit": "edadbc360b5ee7defbef366375b59c21aa178ac4",
           "path": ".zzzops/reviews/1020/review_impl.md"
         },
-        "summary": "Approved: is_material shared and behaviour-preserving in all four places; filtered-lens approval cannot pass a material (or key-less prior) finding; unfiltered reviews, hint, outcome text, template sentence and lens_truth match design rev 2; diff is G1020-only on G1000's head with frozen tests unchanged."
+        "summary": "Clean rebase onto dev 7e075c5 (G1000 merged). Range-diff: commits 1-6 identical (=); commit 7 (the engine/prompt change) differs only in context lines (neighbouring G1000/G1016 code in card.py), the G1020 additions are unchanged. The branch holds only G1020 commits (7 commits since 7e075c5) and the diff against dev touches only G1020 files (card.py, fingerprint.py, frontier.py, records.py, schemas.py, verbs.py, default POLICY.json, lens_truth.md, the G1020 test); nothing of G1000 remains. Run_tests passed on the full suite."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "code": {
-          "base": "6d4715a1164fd913115f28c8b3bc2df39761be73",
-          "change": "f0638b3a9e505131819cdfc99896f2551adaabcf",
-          "commit": "70531e807ab6e086fb9b64b47fe6e25c7ea99070",
-          "tree": "54731517588e3e6a42894e3fca7f577d699eac79"
+          "base": "7e075c5b280e42e245a1c65056e4fc18eb01ead3",
+          "change": "aebd58ab1fd2a2b298636396b304b9b9115a09fb",
+          "commit": "ac8ca367f0e64fc01a28d579d690332c4f82b4e4",
+          "tree": "9916ee23345f6fd444a943b1f782d62cb4f78c3f"
         }
       },
       "status": "done"
