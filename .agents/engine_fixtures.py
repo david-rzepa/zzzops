@@ -63,11 +63,16 @@ import tempfile
 
 GIT_ENV_KEYS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_CONFIG_GLOBAL",
                 "GIT_CONFIG_NOSYSTEM", "GIT_ATTR_NOSYSTEM")
+# gh credentials and host: with HOME isolated these are all a real gh could authenticate with, so dropping them
+# means no test can reach live GitHub (a `validate` in a World without FakeGitHub then finds gh unauthenticated)
+GH_ENV_KEYS = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_HOST",
+               "GH_CONFIG_DIR")
 
 
 def isolated_env(home: str, extra: dict | None = None) -> dict:
-    """An environment with an isolated HOME and global Git configuration."""
-    env = {k: v for k, v in os.environ.items() if k not in GIT_ENV_KEYS and not k.startswith("ZZZOPS_")}
+    """An environment with an isolated HOME and global Git configuration, and no gh credentials."""
+    env = {k: v for k, v in os.environ.items()
+           if k not in GIT_ENV_KEYS and k not in GH_ENV_KEYS and not k.startswith("ZZZOPS_")}
     gcfg = os.path.join(home, ".gitconfig")
     if not os.path.exists(gcfg):
         with open(gcfg, "w", encoding="utf-8") as fh:
