@@ -1,24 +1,22 @@
-# G1001 design review (attempt 2)
+# G1001 design review (attempt 3)
 
-**Verdict: changes requested, for one small ordering fix.** The core design is sound and meets the spec. A request key goes in a `Request-Key:` trailer on the immutable root commit. The tips are scanned before allocation and after any failed push. The two additions in attempt 2 hold up against the engine at 54d7e83. One control-flow line contradicts a test that is already written, and should be corrected before implementation starts.
+## Verdict
 
-## Prior findings
+**Approved.** No findings are open.
 
-The card lists no prior open findings. The two issues raised by test_design are resolved:
+## Prior finding review_design:2:1 (`--policy-ref` ordering): resolved
 
-- **Same-clone fetch race: resolved.** `coordinator_fetch` builds the goal set from the fetch's porcelain lines. `build_snapshot` then runs `local_goal_refs`, and any local ref the fetch did not list goes into `snap.deleted` (store.py:189-193). `cmd_new` also puts `deleted` into `known` (cli.py:335), so a twin whose local ref was written by a parallel fetch in the same clone would currently push G<N+1>. One refetch and rescan, only when nothing matched and `deleted` is not empty, closes this. The argument that one refetch is enough is correct: the local ref exists only because some fetch listed it on the remote, and `new` never deletes goal refs. The test `test_a_goal_whose_local_ref_outran_this_fetch_is_recovered_not_duplicated` and `test_a_deleted_goal_is_not_recovered` pin both sides.
-- **Identical root bytes: resolved.** I checked this against git directly. A create-only lease push (`--force-with-lease=<ref>:`) of an oid the remote ref already holds exits 0 with porcelain `=\t...\t[up to date]`. A different oid gets `!` (stale info). Git's up-to-date check runs before the lease check, so today `push_atomic` reports `ok`, and both callers would say they created the goal. A scoped `report_up_to_date` keyword that only `cmd_new` passes keeps every other caller unchanged. Skipping the contents check on that path is safe, because identical bytes mean an identical document and an identical trailer.
+The design disputed this finding. The dispute holds when checked against the engine at `54d7e83`.
 
-## Claims checked against 54d7e83
+- `plugins/zzzops/zzzops/engine/cli.py:97-100`: `session(args, environment=True, preview=False)` raises `Refused("usage", "--policy-ref is a read-only preview ...")` whenever `--policy-ref` is set and `preview` is false. It does this before it constructs a `Session`.
+- `cli.py:82`: `GLOBAL` includes `policy-ref`, so `new` parses the flag and does not reject it as unknown.
+- `cli.py:328-330`: `cmd_new` runs `s = session(a)` without `preview=True`, then `s.open()`, then `s.require_writable()`. The design puts the key scan after `s.open()`, so the scan always runs after `session(a)`. A retry with `--policy-ref` is refused with `usage` before any scan.
+- `session.py:186-187` (`require_writable`) is a second guard. `new` never reaches it with `--policy-ref`.
 
-- `cmd_new` raises `remote` without a refetch. It loops to `gid+1` on `rejected` and records no request identity. The goal fetch refspec has no `+`, so a rewritten goal keeps its old accepted tip and its root is unchanged. All of this is as described.
-- `require_writable` holds both the write block and the `--policy-ref` refusal (session.py:185-189). `s.open()` in `cmd_new` is not readonly, so an unreachable remote raises `remote` before any scan. The design's "offline snapshot skips the scan" branch is therefore unreachable in `new`. This is harmless.
+My earlier finding said that `require_writable` was the only refusal. That was wrong. The design now spells out the ordering in section 4: keep `session(a)` ahead of the scan, and do not rely on `require_writable`. Test 10 (`test_policy_ref_is_refused_even_for_a_retry`) pins this ordering, so a later refactor cannot silently break it.
 
-## New finding
+One minor point, not a finding: `cmd_new` loads and validates the new-goal file before it calls `session(a)`. A call with both `--policy-ref` and an invalid file therefore reports `validation` instead of `usage`. The engine already behaves this way today, and it does not affect idempotency.
 
-1. **The scan-before-`require_writable` ordering also skips the `--policy-ref` refusal.** The design says the scan runs before `s.require_writable()`, so that a retry recovers while writes are paused. But `require_writable` is also where `--policy-ref` is refused as a read-only preview. Implemented as written, `new --policy-ref dev --file F` for an existing request returns `recovered: true` (exit 0). The written test `test_policy_ref_is_refused_even_for_a_retry` expects `usage` (exit 1), so a literal implementation fails that test. It also lets a preview-only flag through a write verb. **Fix:** state that `cmd_new` refuses `--policy-ref` (the same `usage` refusal) before the scan, and that only the write-block and engine checks are deferred until after it.
+## New findings
 
-## Non-blocking notes
-
-- **Tests lag the attempt-2 additions.** The work branch has no test for design test 9 (an `up_to_date` push, and `push_atomic` without the keyword still returning `ok`). `test_concurrent_identical_new_creates_one_goal` runs only with distinct clocks, and the shared-`ZZZOPS_NOW` variant is missing. The test node should add both, or the design should drop them.
-- **A residual compound race.** The refetch rule handles one same-clone overtaking. Suppose the refetched snapshot again has a `deleted` id that a parallel same-clone fetch wrote during the refetch, and that id is a twin created after this call's first scan. Then the call allocates above it and both goals land. This needs an unrelated deleted ref plus a new twin plus a second overtaking inside one refetch window. It does not arise in the identical-request test, where only one goal can ever be pushed. The cheap hardening is to repeat the refetch while `deleted` gains ids (bounded by the existing 30 s deadline). Alternatively, name it under Risks. Either is acceptable.
+None. The design's substance is unchanged from attempt 2, which was reviewed earlier. The attempt-3 change only adds the ordering note and test 10, and both are accurate.
