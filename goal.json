@@ -146,6 +146,53 @@
       },
       "reason": "stale",
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T04:53:10Z",
+      "fp_parts": {
+        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "inputs": {
+          "base": "v1:sha256:f0f86e3e5d7131680049bfd289e2d0b91b2df6ab0e5273c2ec770b60152ca61d",
+          "doc": "v1:blob:d7d3e64f91bd9fe8264ac1b901a4ddcaa0536992"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        ".agents/engine_fixtures.py",
+        ".agents/fixtures/graph12/POLICY.json",
+        ".agents/fixtures/graph12/prompts/approve_design.md",
+        ".agents/fixtures/graph12/prompts/approve_merge.md",
+        ".agents/fixtures/graph12/prompts/design.md",
+        ".agents/fixtures/graph12/prompts/implement.md",
+        ".agents/fixtures/graph12/prompts/review_design.md",
+        ".agents/fixtures/graph12/prompts/review_impl.md",
+        ".agents/fixtures/graph12/prompts/review_tests.md",
+        ".agents/fixtures/graph12/prompts/test_design.md",
+        ".agents/fixtures/graph12/workflow.json",
+        ".agents/test_engine_docs.py",
+        ".agents/test_engine_lenses.py"
+      ],
+      "holder": "claude:e6ad/test_design-1000-1",
+      "input_fp": "v1:sha256:2584be26bcae65881ef1eb2003f2a71b1c865c9b264f1330d82055307fa717ae",
+      "ok": true,
+      "output": {
+        "commands": [
+          "python3 -m unittest discover -s .agents -t .agents -p test_engine_lenses.py",
+          "python3 -m unittest discover -s .agents -t .agents -p 'test_*.py'",
+          "python3 .agents/prompt_stats.py --check"
+        ],
+        "tests": {
+          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
+          "change": "8d4ce3781d12b090e7ce2d44c1555d27098700ab",
+          "commit": "a5b5579b95fd8cc2b0af211ff81fa45f0a0ce5a1",
+          "tree": "20af30d3224ad7ba6148ebaa0e5db1f60cceeb21"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
