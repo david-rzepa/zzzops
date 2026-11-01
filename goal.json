@@ -37,6 +37,48 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:f3572d09dcb7c1380a694f05c6d5055633691eabd95866b1df008f475961d5b3",
+          "text": "Remove edit 3 and the .zzzops/prompts grep scope: .zzzops/prompts is policy; engine/ops/integrate.py:104 fails integration with policy-paths on any goal diff touching it, docs/EXECUTION.md says policy changes go via a human zzzops/policy/* branch, and test_engine_card_ux.py:469 already scopes to template prompts for this reason. List the repo prompt copy as a follow-up for a policy branch under Out of scope, and drop the moot template-sync risk note.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T17:33:27Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:8ec96cfda5e325b6bcb2cd67280c3a408b4e2c34",
+          "spec": "v1:sha256:4447c6f351b9f9b9f539d665382a9a7329f445d7b114066930a074148976c382"
+        },
+        "policy": {},
+        "subject": "v1:sha256:f3572d09dcb7c1380a694f05c6d5055633691eabd95866b1df008f475961d5b3"
+      },
+      "holder": "claude:e6ad/rd1023",
+      "input_fp": "v1:sha256:26ff3999e8a1fe1ec357c664ef151b53e57c4dbeb289ef609abd5fbf1241de24",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "fb2f412806e9f12aa3f946af0f79a97b51942745",
+          "commit": "4c5613fe74f52f3342c27e1371b058d82479bc0b",
+          "path": ".zzzops/reviews/1023/review_design.md"
+        },
+        "summary": "Design is accurate and simple, but edit 3 (.zzzops/prompts/test_design.md) touches policy files; integrate.py:104 rejects goal diffs there (policy-paths) and the project requires a zzzops/policy/* branch. Drop that edit and keep tests to engine, references, skills, templates."
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
