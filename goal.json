@@ -150,6 +150,44 @@
       "reason": "stale",
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T06:55:51Z",
+      "fp_parts": {
+        "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
+        "inputs": {
+          "code": "v1:sha256:e65850d0065f9360cd8333fbf7dc1af79ba122e8333228e28efb42fdf5f040f4",
+          "doc": "v1:blob:5ed045be21817ba93e467355960e3c37a4cb091f",
+          "tests": "v1:sha256:e65850d0065f9360cd8333fbf7dc1af79ba122e8333228e28efb42fdf5f040f4"
+        },
+        "policy": {},
+        "subject": "v1:sha256:7b179d2f1dc264d46819cc92ccc98b8655a173ab27263572897505dacef4613d"
+      },
+      "holder": "claude:e6ad/review_impl-1000-1",
+      "input_fp": "v1:sha256:9ee34d3534d634b4b737a2df0c71944ab16931ad85328358905493ecb8d9efc7",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "1bf4dd0ff845fa723b746657ecdfa4a20185f3e7",
+          "commit": "fd32b9e500564d8317f0cffdee4b39e09950c184",
+          "path": ".zzzops/reviews/1000/review_impl.md"
+        },
+        "summary": "Approved: the lens graph, the filter-as-join, promote-never-demote verdicts, candidates freshness, skip refusals, intent and previous.changed all match design rev 4 and the delegate's skipped-node-findings directive. The tests are not weakened, the fixture freeze is exact, the 12->26 count is mechanical and no .zzzops policy file changed. Root follow-up: record the implementer's extra filter validation rules for G1017."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
+          "change": "15eadcd5876053bb888c6f6b3b3e7f35489b21ff",
+          "commit": "e270a250a2337fce3729f80f4bf8711cff0222c0",
+          "tree": "221f1d882da4495d02645fd77b743d6374ebec74"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 3,
       "correction_runs": 2,
