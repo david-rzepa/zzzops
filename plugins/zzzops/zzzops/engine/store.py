@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 from engine import ENGINE_VERSION, GOAL_SCHEMAS, POLICY_SCHEMA, REQUIRES_MIN
 from engine.canon import goal_bytes, version_tuple
-from engine.errors import Refused
+from engine.errors import EngineError, Refused
 from engine.gitrun import Git, GitError
 from engine.leases import parse_message, to_lease
 from engine.ops import OPS
@@ -580,14 +580,16 @@ NEW_HEAD = re.compile(r"^zzzops: new G(\d+)$")
 
 def find_request_key(git: Git, snap: Snapshot, key: str) -> list:
     """G1001: the goals whose root (`new`) commit carries `Request-Key: <key>`, as [(gid, root oid, root goal.json)]
-    sorted by id. Scans the accepted tips of goals present on the remote (not `deleted`) in one `git log`."""
+    sorted by id. Scans the accepted tips of goals present on the remote (not `deleted`) in one `git log`;
+    raises EngineError if that log fails, so a broken scan is never read as "no match"."""
     tips = {g: tip for g, tip in snap.goals.items() if g not in snap.deleted}
     if not tips:
         return []
     p = git.run("log", "--stdin", "--max-parents=0", "--format=%H%x1f%B%x1e",
                 input="".join(f"{t}\n" for t in sorted(set(tips.values()))), check=False)
     if p.returncode != 0:
-        return []
+        # A failed scan is not "no match": allocating then could duplicate a goal that already landed.
+        raise EngineError(f"request-key scan failed: {p.stderr.strip()[:200]}")
     hits = []
     for rec in p.stdout.split("\x1e"):
         oid, sep, body = rec.strip("\n").partition("\x1f")
