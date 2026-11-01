@@ -231,38 +231,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T04:46:40Z",
+      "finished_at": "2026-11-01T05:35:24Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:e13cc44f710cd45197460ce8524bb85d19eb21e7",
-          "tests": "v1:sha256:bab1902f152366b13fd88ba6b174f93e9f951443ae214e15647cc6eae47d63b1"
+          "tests": "v1:sha256:6d64e62645ca8d096809430bf1181bcc67986c01ca736a7640e943cb7838544f"
         },
         "policy": {},
-        "subject": "v1:sha256:3a1b4e4f976c5a1cab48422f9ddd51a3d6ab79076deff38a5876b735f228969c"
+        "subject": "v1:sha256:15c2187530162102a941bb9d818dcc8d05a4184325c1ec4f881990b129013e30"
       },
-      "holder": "claude:e6ad/review_tests-1001-1",
-      "input_fp": "v1:sha256:19508c843a09b3ccfcb51ee1ce80dd3d4208952eb6a73d3f5dc203f3a3809ca7",
+      "holder": "claude:e6ad/review_tests-1001-2",
+      "input_fp": "v1:sha256:283c7305ea3e35a51ba1a95963f0c90929d7f01337a25f0879cc6ee48e8abf44",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "6f7aef8dd726a6cb88651b06333488da5e1b5a18",
-          "commit": "7f4cdb99b8a316f36a70be6c6d52121c03dd7f7a",
+          "blob": "5334ca016da71ee39883e08892bed449fc7ea8c9",
+          "commit": "62196dd94f75bd5c45f175e59582e09a3a37f597",
           "path": ".zzzops/reviews/1001/review_tests.md"
         },
-        "summary": "Approved. The tests cover all 10 design test items and the section 3 and 4 scan and write rules, with meaningful assertions: ids, the recovered flag, the goal_commit equal to the root, ref counts, push and fetch counts from the trace, and error code, details and hint. At c2a6bcc before implementation, 30 of the 35 new tests fail for the intended reasons. The other 5 are deliberate regression guards. The full engine suite (314 tests) shows only those 30 failures, so the fixture change breaks nothing. The threaded race outcomes are deterministic under the design. Only the path taken depends on timing, and test 9 deterministically guards the up_to_date path. No material findings."
+        "summary": "The only change since c2a6bcc is one new test, and the commands list is unchanged. The test makes the real request-key scan git log exit non-zero, then asserts exit 1 with engine_bug, no new goal ref and no push. The full engine suite passes at b81fe97 (315 OK). With 0e491ec's store.py swapped in, only this test fails (new allocates a goal). No findings."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "a20de5c4ca725e92ef5f5cc5c2471b915fe437cf",
-          "commit": "c2a6bccc01516d736e7c90ddf9f290f0ac362ad5",
-          "tree": "09083e301a6f38166b7457423e39a999912715f8"
+          "change": "b40e6ba83a9c5e4b3b27224add17e466a7453d54",
+          "commit": "b81fe97ba04ab1feb5cab2d41803aec9a28c9f26",
+          "tree": "851e522f5401c277e037ddd877434de7123b4bb8"
         }
       },
       "status": "done"
