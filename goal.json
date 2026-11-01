@@ -40,27 +40,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [
-        {
-          "id": "review_design:1:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:2fadddd1bcbc1f49362b4302368f6ea0da00cf19ce4ce6dbd08f3bc32909d4b9",
-          "text": "Reclaim cards would wrongly downgrade capability. card.build sets cap='routine' when stale_because == ['inputs.base'] (card.py:79-80), a rule meant for record-stale rebases. The design puts lease-since-claim staleness on reclaim cards and says existing stale_because rules apply unchanged, so a reclaimed no-record implement or test_design (both consume inputs.base, and base re-runs whenever integration moves) gets capability 'routine' and is routed to the cheapest models for a full first run; same for a reclaimed reopened run. Fix: key the routine downgrade on staleness against a done record only (e.g. the record-stale set, not the union), or only when the abandoned lease's reason was 'stale'; add a test that a no-record implement reclaimed after base moved keeps its own capability. While editing output_schema, also consider: non-review finding_effect should say the phase re-runs 'if that ancestor's output changes' (a dispute leaves it current), and the artifact text should say --artifact takes the local file while artifact.path is where submit stores it.",
-          "upheld": false
-        },
         {
           "id": "review_design:2:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:5524f253602a9c3f5b82ad36e136f1a5f8852da83c63689f226cf5d2aba5e7af",
@@ -68,27 +56,27 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T04:30:56Z",
+      "finished_at": "2026-11-01T04:40:26Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:41058bb4ed974088960674262115339d3ca0325a",
+          "doc": "v1:blob:9008e0101ebef0dff6bcfb3075aae0f32f1a20d1",
           "spec": "v1:sha256:b91ef8783852765cb0c4fc07987d6f0e11f2526f36d7527bcee615c0d6da1b6b"
         },
         "policy": {},
-        "subject": "v1:sha256:9dee8877aba80d515404bf4b03657a52097ee1c5a77b88c9926ce05cc221d14e"
+        "subject": "v1:sha256:bc6ff6a7cb9e64e19d2c9209b1c9706685ddf59ce5125a727ba421feb397b163"
       },
-      "holder": "claude:e6ad/review_design-1016-2",
-      "input_fp": "v1:sha256:252e8d40918b48f5fef8238db9c2a75ab6cc75422462e755a3b3058bffb123cc",
-      "ok": false,
+      "holder": "claude:e6ad/review_design-1016-3",
+      "input_fp": "v1:sha256:db1cdda76aee351b66dd6a9581dfa7bf4ea9752e2d1dcefa2629ca501736412e",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "719498dc5c72d7a2ad6fb7e75faa6025ce0c01cb",
-          "commit": "9ce9e59aff7034bb7391fc889f7c1da121287f27",
+          "blob": "8ea45d4a591f18b253f965e5e8fb7a4f28778b77",
+          "commit": "b24da9ffef339e5b38178091db4eff590df09258",
           "path": ".zzzops/reviews/1016/review_design.md"
         },
-        "summary": "F1 resolved: record_stale (record-only staleness) now drives the routine downgrade and previous.output, so reclaimed new/reopened runs keep their capability; verified against card.py:79/191, verbs.claim and frontier.py:219. New material finding F2: checkpoint overrides accept any string, which done_record resolves with rev_parse in the main repository; {\"commit\":\"HEAD\"} usually resolves to an ancestor of the work branch, passes the ancestry check, and records the wrong checkpoint silently. The design's claim that literal HEAD is refused is false at read_dev. Require a full 40-hex sha for overrides."
+        "summary": "Approved. F2 is resolved: §4a matches read_dev. schemas.py:933 lacks a sha check today, SHA (schemas.py:13) can be reused, done_record's rev_parse/ancestry checks stay valid once the input is a full sha, and fill_current_records (verbs.py:917, called only from edit) gets the full-sha rule plus a needed missing-commit refusal. Docs and tests cover the cases. No new material findings."
       },
       "reason": "stale",
       "status": "done"
