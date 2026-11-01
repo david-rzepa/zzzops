@@ -121,6 +121,43 @@
       "reason": "stale",
       "status": "done"
     },
+    "integrate": {
+      "attempt": 1,
+      "blocked": {
+        "category": "external",
+        "op_state": {
+          "head": "a373b449cecc08c56ae4f1aa2da99e53881be5ba",
+          "pending_since": 1793512031,
+          "polls": 1,
+          "rerun_head": null
+        },
+        "reason": "required checks pending: dev-required-tests",
+        "repeats": 1,
+        "retry_after": "2026-11-01T05:52:11Z",
+        "waiting_for": "time"
+      },
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T05:47:11Z",
+      "fp_parts": {
+        "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
+        "inputs": {
+          "base": "v1:sha256:f0f86e3e5d7131680049bfd289e2d0b91b2df6ab0e5273c2ec770b60152ca61d",
+          "code": "v1:sha256:f48f93c5b03d8f3df9a8104e8779fc0a88361dde6324d6153c4c42a227be561f"
+        },
+        "policy": {
+          "verification.required_ci": [
+            "dev-required-tests"
+          ]
+        }
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:26d47b9bb37394e141af5af1847059f5eba58ec41848cd06e3066eebf722a75b",
+      "ok": false,
+      "output": null,
+      "reason": "new",
+      "status": "blocked"
+    },
     "review_design": {
       "attempt": 3,
       "correction_runs": 2,
