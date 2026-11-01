@@ -11,6 +11,39 @@
   },
   "priority": "P1",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T19:41:59Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:606311b216268f9b2f2f2495e94b654838796672",
+          "summary": "v1:sha256:3512807f62cd1b402ca24c857a527a9c65f94373c58cc65e9ca06ed4151b22d0"
+        },
+        "policy": {},
+        "subject": "v1:sha256:8435a01f1b1ec481399a83466a44700c3bf8d266858e9d5937d2accfaf1eb945"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:5fcb999b5844d9f7682b8869a1f2809e13485caa27c015d0ac2ecbd40671f2d6",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T19:41:59Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approved G1033 design revision 2: the Claude marketplace build rendered the 'official' channel for 0.0.0-dev builds, so package_status() reported a false skill-metadata mismatch with a Codex hint. One shared channel_for_version() rule is used by the build and the check (release bundles stay byte-identical); install_harness() picks a Claude, Codex or neutral reinstall hint from the install path. Tests build the marketplace and run full validate, asserting no `plugin package` entry and no 'skill discovery metadata' (git/gh entries ignored), plus a negative case; the test runs on all platforms. Review approved after one round. After merge, rebuild and update the installed Claude caches."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "606311b216268f9b2f2f2495e94b654838796672",
+          "commit": "7f0befbde4aa4691e0f9a7b8c9b725bb7adfae3b"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 2,
       "correction_runs": 1,
