@@ -96,7 +96,7 @@ class MarketplaceBundleTests(unittest.TestCase):
         files = self.builder.plugin_files(ROOT, "2.0.0")
         workflow = json.loads(files["zzzops/templates/default/workflow.json"])
         nodes = workflow["graphs"]["default"]["nodes"]
-        self.assertEqual(12, len(nodes))
+        self.assertEqual(26, len(nodes))                         # the lens graph (G1000)
         for node in nodes.values():
             if node["kind"] != "op":
                 self.assertIn(f"zzzops/templates/default/prompts/{node['prompt']}", files)
