@@ -15,6 +15,7 @@ from engine.store import push_atomic
 from engine import worktree as wt
 
 RUN_ID = re.compile(r"/actions/runs/(\d+)")
+NO_CHECKS_MINUTES = 15     # an empty check rollup this long on a mergeable PR means no workflow triggered (G1021)
 
 
 def guarded(ctx, body):
@@ -35,6 +36,23 @@ def run(ctx):
 
 def fail(key, text):
     return Done({"pr": None, "ci": None}, ok=False, findings=[{"key": key, "input": "code", "text": text}])
+
+
+def conflict(out_pr, n, I, detail):
+    return Done({"pr": out_pr, "ci": None}, ok=False,
+                findings=[{"key": "conflict", "input": "base",
+                           "text": f"PR #{n} conflicts with {I} ({detail}); rebase the work branch"}])
+
+
+def local_conflict(git, tip, H):
+    """GitHub's 3-way merge of the PR head into the fetched integration tip, run locally (G1021): the conflicting
+    files, or None when it merges cleanly."""
+    r = git.run("merge-tree", "--write-tree", "--name-only", "--no-messages", tip, H, check=False)
+    if r.returncode == 0:
+        return None
+    if r.returncode != 1:
+        raise EngineError(f"git merge-tree failed: {r.stderr.strip()[:300]}")
+    return [line for line in r.stdout.splitlines()[1:] if line]
 
 
 def classify(item) -> str:
@@ -168,23 +186,31 @@ def _run(ctx):
         for item in v.get("statusCheckRollup") or []:
             checks[item.get("name") or item.get("context")] = classify(item)
         return Done({"pr": out_pr, "ci": {"stacked": True, "checks": checks}}, ok=True, summary=f"PR #{pr['number']} stacked")
-    # 5b. PRs into I: a conflict first, then required checks
-    if v["headRefOid"] == H and (v.get("mergeable") == "CONFLICTING" or v.get("mergeStateStatus") == "DIRTY"):
-        return Done({"pr": out_pr, "ci": None}, ok=False,
-                    findings=[{"key": "conflict", "input": "base",
-                               "text": f"PR #{pr['number']} conflicts with {I} ({v.get('mergeStateStatus')}); rebase the work branch"}])
+    # 5b. PRs into I: a conflict first (locally, then GitHub's verdict), then required checks
+    files = local_conflict(git, snap.integration, H)
+    if files is not None:
+        return conflict(out_pr, pr["number"], I, f"merging into {I} ({snap.integration[:7]}) conflicts in "
+                                                  + (", ".join(files) or "unknown files"))
+    if v["headRefOid"] != H:
+        return ctx.wait("GitHub has not seen the PR head yet", 60)
+    m, ms = v.get("mergeable"), v.get("mergeStateStatus")
+    if m == "CONFLICTING" or ms == "DIRTY":
+        return conflict(out_pr, pr["number"], I, ms)
+    if m == "UNKNOWN":
+        return ctx.wait("GitHub is computing mergeability", 60)
+    merge_state = f"mergeable: {m}/{ms}"
     req = list(ctx.settings["verification"]["required_ci"])
     if not req:
         return Done({"pr": out_pr, "ci": {"stacked": False, "required": [], "passed": [], "failed": []}}, ok=True,
                     summary=f"PR #{pr['number']}")
     status = {name: "pending" for name in req}
     urls = {}
-    if v["headRefOid"] == H:
-        for item in v.get("statusCheckRollup") or []:
-            name = item.get("name") or item.get("context")
-            if name in req:
-                status[name] = classify(item)
-                urls[name] = item.get("detailsUrl") or item.get("targetUrl") or ""
+    rollup = v.get("statusCheckRollup") or []
+    for item in rollup:
+        name = item.get("name") or item.get("context")
+        if name in req:
+            status[name] = classify(item)
+            urls[name] = item.get("detailsUrl") or item.get("targetUrl") or ""
     rec = ctx.record
     st = {}
     if rec and rec["status"] == "blocked" and ((rec["blocked"].get("op_state") or {}).get("head") == H):
@@ -209,16 +235,28 @@ def _run(ctx):
                                          "text": f"required check `{n}` failed on {H[:7]}: {urls.get(n, '')}"} for n in failed])
     if pending:
         since, polls = st.get("pending_since", now), st.get("polls", 0)
-        if now - since >= ctx.settings["verification"]["ci_timeout_minutes"] * 60:
+        timeout = ctx.settings["verification"]["ci_timeout_minutes"]
+        keep = {"head": H, "pending_since": since, "polls": polls, "rerun_head": st.get("rerun_head")}
+        if not rollup and now - since >= min(NO_CHECKS_MINUTES, timeout) * 60:
+            return Blocked({"category": "external", "waiting_for": "human", "reason": "no checks appeared",
+                            "question": f"No checks have appeared on PR #{pr['number']} (head {H[:7]}) after "
+                                        f"{(now - since) // 60} minutes ({merge_state}). Workflows may not trigger "
+                                        "for this PR (path filters, disabled Actions, or a conflict). Wait longer, or "
+                                        "fix verification.required_ci through a policy branch?",
+                            "options": ["wait: answer with text 'wait'", "fix verification.required_ci"],
+                            "recommendation": "check the PR's checks and Actions settings on GitHub first",
+                            "op_state": keep})
+        if now - since >= timeout * 60:
             return Blocked({"category": "external", "waiting_for": "human", "reason": "required checks pending too long",
                             "question": f"Required checks {pending} have not finished on PR #{pr['number']} (head {H[:7]}) "
                                         f"after {(now - since) // 60} minutes. They may be path-filtered, renamed or stuck. "
                                         "Wait longer, or fix verification.required_ci through a policy branch?",
                             "options": ["wait: answer with text 'wait'", "fix verification.required_ci"],
                             "recommendation": "check the PR's checks on GitHub first",
-                            "op_state": {"head": H, "pending_since": since, "polls": polls, "rerun_head": st.get("rerun_head")}})
+                            "op_state": keep})
         wait = min(5 * 2 ** polls, 30)
-        return Blocked({"category": "external", "waiting_for": "time", "reason": f"required checks pending: {', '.join(pending)}",
+        return Blocked({"category": "external", "waiting_for": "time",
+                        "reason": f"required checks pending: {', '.join(pending)} ({merge_state})",
                         "retry_after": iso(now + wait * 60),
                         "op_state": {"head": H, "pending_since": since, "polls": polls + 1, "rerun_head": st.get("rerun_head")}})
     return Done({"pr": out_pr, "ci": {"stacked": False, "required": req, "passed": req, "failed": []}}, ok=True,
