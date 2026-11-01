@@ -167,15 +167,15 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_tests:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:87bd55a437a13033ec9a47fb0c9a641f565e3ed399fa0b5007b9122e138792c9",
@@ -187,43 +187,55 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:87bd55a437a13033ec9a47fb0c9a641f565e3ed399fa0b5007b9122e138792c9",
           "text": "Drop the full-suite command. The recorded commands end with `python3 -m unittest discover -s .agents`, the whole suite (about 17 minutes). run_tests runs every command on every attempt, and the full suite is dev-required-tests' job on the PR. Replace it with the extra modules that exercise surfaces this goal changes: test_design_docs (the docs/design edits, the HISTORY §4 row and the pending row), test_engine_sync_edit (it asserts the Engine: trailer) and test_engine_lenses (hand-written trailers; the shipped graph needs lens_findings). Optionally merge the six module commands into one unittest invocation.",
           "upheld": false
+        },
+        {
+          "id": "review_tests:2:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:bc149bfafeee68e7ad136ac98f0bc8e2120545bc75981e756269e1760fa0d866",
+          "text": "Exclude docs/design/IMPLEMENTATION_PLAN.md from test 10, as HISTORY.md already is. At base b452cd7 the grep matches three plan lines: 82 (the engine/__init__.py row naming ENGINE_VERSION), 327 ('SPEC §4.5: the engine floor and ceiling, and requires_min') and 346 (item 21, 'settings.engine.min above ENGINE_VERSION refuses writes'). G1017 moved the plan in as 'a historical record. DESIGN and SPEC win', and G1027's design §4 does not list it among the docs it edits. As written, the test forces the implementation to rewrite a historical record. Fix: add ':(exclude)docs/design/IMPLEMENTATION_PLAN.md' next to the HISTORY.md exclusion, and say in the docstring that both are records.",
+          "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T21:47:34Z",
+      "finished_at": "2026-11-01T21:50:04Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:0c556c21045dcada61dcaab09a6d222e0cdd7d4f",
-          "tests": "v1:sha256:aa3c7a0928d63995c913fc8280253d8421608dd67d52692aaf0148a434788789"
+          "tests": "v1:sha256:72e8b93e3a9a077df2c75e970671fa015db0242d65dd16fac79ddea1c48ab138"
         },
         "policy": {},
-        "subject": "v1:sha256:87bd55a437a13033ec9a47fb0c9a641f565e3ed399fa0b5007b9122e138792c9"
+        "subject": "v1:sha256:3512233c08c2b37c912542aac075f1c9cbab07108ea867c286f298e1bd1e4791"
       },
       "holder": "claude:e6ad/rd1017",
-      "input_fp": "v1:sha256:feb2c03ea4848dab5d062564291b3a0ff522655fd290d4ac6c86eba1bfa06385",
+      "input_fp": "v1:sha256:3885115a069cb43398582fb7814bb79b60f24620470951ad5f7e38b89bd9d2d7",
       "ok": false,
       "output": {
         "decision": "changes_requested",
         "report": {
-          "blob": "fa09b253c0c9f10261b8db557c9cdf31000515a8",
-          "commit": "25f9eb20a4a8132c26c5f843e395e642468f66b2",
+          "blob": "4717623ce935c7fb04bf3e1e91d7df6df5e73667",
+          "commit": "62382bd7e384d9d3c969306b9bf3349d54d286d0",
           "path": ".zzzops/reviews/1027/review_tests.md"
         },
-        "summary": "The tests cover design revision 2. Before the implementation, test_engine_capabilities has 26 tests (14 failures, 10 errors, 2 schema guards passing), and the five edited modules have 13 of 166 failing, all because a feature is missing. The edits to existing tests change only what the design changes. The copied-plugin approach is sound: zzzops.py puts the copy first on sys.path, cli_env sets no PYTHONPATH, and engine_attr uses a fresh interpreter. Two findings. F1: test 10 greps ENGINE_VERSION over all of .agents/, so the frozen both-order fallbacks in G1022 (test_engine_review_lenses), G1025 (test_engine_branching) and G1028 (test_engine_findings_rounds) would fail their PRs if they merge after G1027. Narrow it to non-test .agents modules. F2: drop the ~17-minute full-suite command and add test_design_docs, test_engine_sync_edit and test_engine_lenses instead."
+        "summary": "Both prior findings are resolved. With the new pathspecs, the grep at base still reports engine_fixtures.py, plugins/ and docs/design/ but no test modules, and G1022's, G1025's and G1028's fallbacks are excluded. The full suite is replaced by nine targeted module commands. One new small finding: test 10 still covers docs/design/IMPLEMENTATION_PLAN.md, a historical record (lines 82, 327 and 346 match at base), so it would force the implementation to rewrite history. Exclude it next to HISTORY.md."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "5bff5d01904223d4709327c2f618b5a3805e0a5f",
-          "commit": "1782abd642bd62172545d20379741a255570db46",
-          "tree": "95fd44acdd0e53fcca6ec81221dc424211dd52f5"
+          "change": "02db5585339000f9006cc45aa77f5f956a5e7278",
+          "commit": "4d0d880582f1d1a29e1ccf4cc91ed59f2689b90a",
+          "tree": "ab8e7abf355c113d24df868a86539a6e33ab004e"
         }
       },
       "status": "done"
