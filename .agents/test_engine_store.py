@@ -783,6 +783,29 @@ class IdempotentNewTests(StoreBase):
         self.assertEqual((1, "usage"), (rc, err["error"]["code"]), err)
 
 
+class NewReleaseOrderTests(StoreBase):
+    """G1034 design, Testing 2: the backstop the migrate skill relies on. `new` refuses a dependency on a later
+    release and writes no goal ref."""
+
+    def goal_refs(self):
+        return self.w.remote_git("for-each-ref", "--format=%(refname)", "refs/heads/zzzops/goal/").split()
+
+    def test_new_stores_an_explicit_release(self):
+        out = self.w.ok("a", "new", "--file", self.w.file({"title": "Later", "spec": "s", "release": 2}))
+        self.assertEqual(2, out["created"]["release"])
+
+    def test_new_refuses_a_dependency_on_a_later_release_and_writes_no_goal_ref(self):
+        first = self.w.ok("a", "new", "--file", self.w.file({"title": "Later", "spec": "s", "release": 2}))
+        dep = first["created"]["id"]
+        before = self.goal_refs()
+        rc, err = self.w.run("a", "new", "--file", self.w.file(
+            {"title": "Earlier", "spec": "s", "release": 1, "depends_on": [dep]}))
+        self.assertEqual((1, "validation"), (rc, err["error"]["code"]), err)
+        self.assertIn("release 2", json.dumps(err))
+        self.assertEqual(before, self.goal_refs())
+        self.assertEqual(1, len(self.goal_refs()))
+
+
 class NewFileSchemaTests(unittest.TestCase):
     """G1001 design §1: the optional `request_key` of a new-goal file."""
 

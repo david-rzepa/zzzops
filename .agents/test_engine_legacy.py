@@ -567,8 +567,20 @@ class PackageTests(unittest.TestCase):
         text = (self.PLUGIN / "skills" / SKILL / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("legacy.queries", text)
         self.assertIn("gh api graphql --paginate", text)
-        self.assertIn("--json title,body,state,labels", text)
+        self.assertIn("--json title,body,state,labels,milestone", text)
         self.assertNotIn("--comments", text)
+
+    def test_skill_assigns_a_release_per_goal(self):
+        """G1034 design, Testing 1: load-bearing phrases only."""
+        text = (self.PLUGIN / "skills" / SKILL / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("--json title,body,state,labels,milestone", text)
+        self.assertRegex(text, r"(?i)\brelease\b.{0,200}\bowner\b.{0,200}\bconfirm|\bconfirm.{0,200}\brelease\b")
+        self.assertIn("may not depend on a goal of a later release", text)
+        self.assertRegex(text, r"(?is)dependency order|dependencies first")
+        self.assertRegex(text, r"(?s)`release`.{0,120}`priority`.{0,120}`depends_on`")
+        migrating = (self.PLUGIN / "zzzops" / "references" / "MIGRATING.md").read_text(encoding="utf-8")
+        self.assertNotIn("#695", migrating)
+        self.assertIn("later release", migrating)
 
 
 # --------------------------------------------------------------------------------------------- 14: bounded cost

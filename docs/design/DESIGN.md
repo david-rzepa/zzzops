@@ -1192,7 +1192,7 @@ There is no compatibility layer for retired internals. ZzzOps is not used to man
    - **Creating the new goal.** `zzzops new` with the spec, dependencies, release and a `links.issue` reference.
    - **Carrying finished work forward**, at the agent's judgment. Point the work branch `zzzops/work/g<id>` at the accepted checkpoint commit, then use `zzzops edit` to record finished nodes. The CLI completes checkpoints given as a commit (`base`, `tree`, `change`) and fingerprints for records marked current (SPEC §4.18). When unsure, leave a node to re-run.
    - **Old-node to new-node correspondence:** understand → design, review_understanding → review_design, approve_understanding → approve_design (`decided_by: "unknown (pre-reset)"`), test_design → test_design, review_test_design → review_tests, implement → implement, review_implement → review_impl. Publication nodes are not carried; the operations re-observe.
-   - **Release assignments** from #695 (all release 1).
+   - **Release assignments:** proposed per goal at triage and confirmed by the owner; release order is checked before any goal is created.
    - **Housekeeping:** closing moot or delivered issues, and removing stale labels, is optional.
 4. **Delete nothing.** The reset never deletes or rewrites branches, worktrees, refs, issues or comments. Old comments stay on GitHub untouched as the archive.
 
