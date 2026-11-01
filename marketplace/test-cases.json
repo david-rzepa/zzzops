@@ -3,52 +3,52 @@
   "positive": [
     {
       "id": "P-001",
-      "prompt": "Review and initialize this project's ZzzOps policy.",
-      "expected_behavior": "The policy-review skill inspects the repository, proposes a project charter and operating policy, and waits for explicit approval before initialization becomes usable.",
-      "expected_result_shape": "A concise policy summary, consequential questions when needed, and validated .zzzops policy artifacts only after approval.",
+      "prompt": "Initialize this repository for ZzzOps.",
+      "expected_behavior": "The bootstrap skill writes .zzzops/POLICY.json, workflow.json and prompts from the shipped templates, validates them with `zzzops validate --policy`, and lands them on the integration branch only after the user agrees.",
+      "expected_result_shape": "Validated .zzzops policy files on the integration branch and a short list of harness and GitHub settings to check.",
       "fixture": "A public test repository the user can push to, with no existing .zzzops policy."
     },
     {
       "id": "P-002",
       "prompt": "Use ZzzOps to capture a goal to add a documented JSON export command.",
-      "expected_behavior": "The capture skill checks for duplicates, relates the work to reviewed project value, gathers consequential details, and creates one GitHub Issue without making code or Git changes.",
-      "expected_result_shape": "One linked managed goal with acceptance criteria, priority, scope, and a resumable next action.",
+      "expected_behavior": "The add-goal skill writes the spec with the user and creates one goal on a zzzops/goal/* branch, without code changes, then dispatches the goal's design to a worker.",
+      "expected_result_shape": "One goal (G<id>) with its spec and acceptance criteria, and its design phase under way.",
       "fixture": "An initialized public test repository with a ZzzOps policy and push access."
     },
     {
       "id": "P-003",
       "prompt": "Work all available ZzzOps goals until blocked.",
-      "expected_behavior": "The execution skill validates policy and portfolio state, reserves actionable work, implements one falsifiable chunk at a time, verifies it, and stops at required human review.",
-      "expected_result_shape": "Evidence-backed progress with separate commits and a linked pull request or a categorized durable blocker.",
-      "fixture": "An initialized public test repository containing one ready, bounded documentation goal."
+      "expected_behavior": "The execute skill runs `zzzops next`, dispatches ready phases to workers, runs the Git and GitHub operations, and stops at the human decisions it must not answer itself (design and merge approvals).",
+      "expected_result_shape": "Progress recorded on the goal branches, a pull request for a delivered goal, and the pending human decisions listed with their questions.",
+      "fixture": "An initialized public test repository containing one goal whose design has been approved."
     },
     {
       "id": "P-004",
-      "prompt": "Migrate the TODOs in this repository into ZzzOps.",
-      "expected_behavior": "The migration skill inventories repository TODO sources, presents a reviewable plan, and imports only approved work while preserving useful source context.",
-      "expected_result_shape": "A migration plan followed by linked managed goals and durable migration fingerprints after approval.",
-      "fixture": "An initialized public test repository with a small TODO.md and two inline TODO comments."
+      "prompt": "What is ZzzOps waiting for right now?",
+      "expected_behavior": "The execute skill runs `zzzops next` and reports actions, human items and waits with their times, without changing anything.",
+      "expected_result_shape": "A short list of what is ready, what needs the user, and what is waiting until when.",
+      "fixture": "An initialized public test repository with two goals, one waiting on the other."
     },
     {
       "id": "P-005",
-      "prompt": "Suggest valuable work for this repository, but do not create anything.",
-      "expected_behavior": "The suggestion skill performs an evidence-led dry run against reviewed objectives and returns proposals without creating issues or changing files.",
-      "expected_result_shape": "A short ranked proposal list with evidence, value, scope, and explicit preview-only status.",
-      "fixture": "An initialized public test repository with readable code, documentation, history, and no actionable goals."
+      "prompt": "Approve the design for the export goal.",
+      "expected_behavior": "The execute skill shows the design approval item (question, design summary, reviewer verdict), records the user's words verbatim with the printed `answer` command, and never records an approval the user did not give.",
+      "expected_result_shape": "The approval recorded with the user's quote, and the goal's delivery phases becoming ready.",
+      "fixture": "An initialized public test repository with one goal whose design review has passed."
     }
   ],
   "negative": [
     {
       "id": "N-001",
       "scenario": "Capture a goal whose body includes an API key pasted by the user.",
-      "expected_behavior": "Refuse to store the credential, ask for a redacted description or approved private link, and make no GitHub write.",
-      "why_not": "Managed goals inherit repository visibility and must not contain secrets or raw restricted data."
+      "expected_behavior": "Refuse to store the credential, ask for a redacted description or approved private link, and make no Git or GitHub write.",
+      "why_not": "Goals live on repository branches, inherit repository visibility, and must not contain secrets or raw restricted data."
     },
     {
       "id": "N-002",
-      "scenario": "Execute source changes before the project's ZzzOps policy has been reviewed and approved.",
-      "expected_behavior": "Stop with an initialization or policy-review blocker and direct the user to the review workflow.",
-      "why_not": "Goals do not grant authority and unreviewed project policy cannot authorize implementation."
+      "scenario": "Execute goals in a repository that has no ZzzOps policy on its integration branch.",
+      "expected_behavior": "Stop with the `not_bootstrapped` blocker and point to the bootstrap skill; make no write.",
+      "why_not": "Without a policy and workflow on the integration branch, no phase may run."
     },
     {
       "id": "N-003",

@@ -198,7 +198,8 @@ class Sim:
         ready = s["ready"]
         attempt = (r0["attempt"] if r0 else 0) + 1
         fence = rec.make_fence(graph, doc, ready["fp"], ready["fp"], self.now)
-        result = rec.human_findings(graph, n, r0, list(findings), attempt, decision, quote, fence)
+        result = rec.human_findings(graph, n, r0, list(findings), attempt, decision, quote, fence,
+                                    skip=doc.get("skip") or {})
         out = {"decision": decision, "summary": "s", "decided_by": decided_by, "quote": quote, "decided_at": iso(self.now)}
         auto = rec.auto_responses(graph, n, ready.get("corrections") or [], decided_by)
         if auto:

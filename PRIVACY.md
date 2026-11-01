@@ -44,10 +44,10 @@ Users can:
 - use a private GitHub repository and restrict repository collaborators;
 - redact sensitive context or link to an approved private system instead of placing it in a goal;
 - review, edit, or remove local ZzzOps state and manage GitHub records using their normal repository controls;
-- review or rewrite goal documents with `zzzops edit`, and delete branches with their normal Git controls; and
+- update goal documents with `zzzops edit` (earlier versions remain in the goal branch's Git history, as with any Git history; removing them means rewriting that history on the remote and on every clone, as the `REPAIR.md` purge recipe describes), and delete other branches with their normal Git controls; and
 - request privacy, support, or security assistance at [zzzops.support@gmail.com](mailto:zzzops.support@gmail.com).
 
-If restricted data is entered accidentally, remove or redact it from local and GitHub records where possible, and rotate any exposed credential through its provider.
+If restricted data is entered accidentally, rotate any exposed credential through its provider first, then purge it from the goal's history (the `REPAIR.md` purge recipe) and from other GitHub records where possible.
 
 ## Security and children
 

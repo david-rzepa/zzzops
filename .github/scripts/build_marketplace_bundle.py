@@ -304,7 +304,7 @@ def zip_bytes(files: dict[str, bytes]) -> bytes:
             info = ZipInfo(relative, ZIP_TIMESTAMP)
             info.compress_type = ZIP_DEFLATED
             info.create_system = 3
-            info.external_attr = 0o100644 << 16
+            info.external_attr = (0o100755 if relative.startswith("bin/") else 0o100644) << 16
             archive.writestr(info, data, compress_type=ZIP_DEFLATED, compresslevel=9)
     temporary.seek(0)
     return temporary.read()

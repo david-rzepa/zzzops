@@ -32,6 +32,9 @@ class Reader:
     def artifact_url(self, commit: str, path: str) -> str | None:
         return None
 
+    def has(self, oid: str) -> bool:
+        return False
+
 
 @dataclass
 class Ctx:
@@ -236,6 +239,9 @@ def approve_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:
         prev = {"decided_at": (r["output"] or {}).get("decided_at"), "quote": (r["output"] or {}).get("quote")}
         if s["ready"].get("stale_because"):
             prev["stale_because"] = s["ready"]["stale_because"]
+        diff = interdiff(ctx, res, n, r)
+        if diff:
+            prev["interdiff"] = diff
         item["previous"] = prev
     fp = s["fp"]
     argv = ["answer", str(g), n, "--fp", fp, "--file", FILE]
@@ -246,6 +252,18 @@ def approve_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:
     item["answer_template"] = {"decision": "approved", "summary": "<what was approved, in your words>",
                                "quote": "<the human's words, verbatim>", "decided_by": "<name>"}
     return item
+
+
+def interdiff(ctx: Ctx, res: GoalResult, n: str, r: dict) -> str | None:
+    """§4.11/§4.20: omitted when the subject checkpoint's change is unchanged; else a range-diff of the goal's own
+    commits, when the reviewed commit exists locally."""
+    subj = res.graph.subject(n)
+    sr = (res.doc.get("records") or {}).get(subj) or {}
+    for k, old in (r.get("reviewed") or {}).items():
+        cur = (sr.get("output") or {}).get(k)
+        if isinstance(cur, dict) and cur.get("change") != old.get("change") and ctx.reader.has(old["commit"]):
+            return f"git range-diff {old['base']}..{old['commit']} {cur['base']}..{cur['commit']}"
+    return None
 
 
 def blocked_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:

@@ -27,11 +27,12 @@ TRANSIENT = re.compile(r"(timed? ?out|timeout|connection|network|rate limit|HTTP
 
 
 def gh_repo(session) -> str | None:
-    if os.environ.get("GH_REPO"):
-        return os.environ["GH_REPO"]
+    """SPEC §5.6: parsed from the remote's URL; an inherited GH_REPO is only a fallback."""
     url = session.git.config(f"remote.{session.R}.url") or ""
     m = re.match(r"^(?:https://|ssh://)?(?:git@)?[^/:]+[/:]([^/]+)/([^/]+?)(?:\.git)?/?$", url)
-    return f"{m.group(1)}/{m.group(2)}" if m else None
+    if m:
+        return f"{m.group(1)}/{m.group(2)}"
+    return os.environ.get("GH_REPO") or None
 
 
 class Gh:

@@ -107,7 +107,8 @@ def process_findings(graph: Graph, doc: dict, X: str, r0: dict | None, given: li
     return result, ok
 
 
-def human_findings(graph: Graph, X: str, r0: dict | None, given: list, attempt: int, decision: str, quote: str, fence) -> list:
+def human_findings(graph: Graph, X: str, r0: dict | None, given: list, attempt: int, decision: str, quote: str, fence,
+                   skip=()) -> list:
     """A human review answer (SPEC §4.15)."""
     result = [dict(f, status="resolved") for f in ((r0 or {}).get("findings") or []) if f["status"] == "open"]
     new = list(given or [])
@@ -116,8 +117,8 @@ def human_findings(graph: Graph, X: str, r0: dict | None, given: list, attempt: 
     anc = graph.ancestors(X)
     for k, f in enumerate(new, 1):
         T = f.get("target") or graph.subject(X)
-        if T not in anc or T == X:
-            raise Refused("validation", f"finding target {T!r} must be an ancestor of {X}")
+        if T not in anc or T == X or T in skip:
+            raise Refused("validation", f"finding target {T!r} must be a non-skipped ancestor of {X}")
         tf, ta = fence(T)
         result.append({"id": f"{X}:{attempt}:{k}", "target": T, "target_fp": tf, "target_attempt": ta,
                        "text": f["text"], "status": "open", "response": None, "rounds": 1, "upheld": False, "note": None})

@@ -1,6 +1,6 @@
 # ZzzOps CLI
 
-Every verb prints one JSON object (`show` prints text unless `--json`). Run it as the `command` the CLI prints (`zzzops …` with the plugin launcher on `PATH`, or `"<python>" "<path>/zzzops.py" …`; in PowerShell prefix it with `& `). Global flags: `--remote R`, `--integration B`. Exit codes: 0 ok; 1 refused (fix the input or the state); 2 remote unreachable or the push refused by a rule; 3 lost a race (re-read and retry); 4 policy blocked.
+Every verb prints one JSON object (`show` prints text unless `--json`). **Running it:** with the plugin's launcher on `PATH` (Claude Code), `zzzops <verb> …`. Otherwise run `<python> <plugin>/zzzops/zzzops.py <verb> …`, where `zzzops.py` is the file next to this reference's folder (`../zzzops.py` from here) and `<python>` is the first of `python3`, `python` and `py -3` that reports Python 3.10 or later (`<python> --version`). After the first call, run every command exactly as the CLI prints it (its `command` field); in PowerShell prefix it with `& `. Global flags: `--remote R`, `--integration B`. Exit codes: 0 ok; 1 refused (fix the input or the state); 2 remote unreachable or the push refused by a rule; 3 lost a race (re-read and retry); 4 policy blocked.
 
 | Verb | Use |
 |---|---|

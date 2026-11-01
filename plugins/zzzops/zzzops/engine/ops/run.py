@@ -149,9 +149,9 @@ def start_op(s, res, X, label, state, reclaim, force) -> dict:
     res = s.portfolio().goals[g]
     ctx = make_context(s, res, X, lease)
     import time
-    deadline = time.monotonic() + 30
-    with Renewer(s, g, X, lease["attempt"], lease["timeout"]) as renewer:
-        while True:
+    deadline = None
+    while True:
+        with Renewer(s, g, X, lease["attempt"], lease["timeout"]) as renewer:
             ctx.renew = renewer.renew_once
             try:
                 result = spec.run(ctx)
@@ -159,25 +159,29 @@ def start_op(s, res, X, label, state, reclaim, force) -> dict:
                 raise
             except Exception as exc:
                 raise Refused("op_error", f"{nd['op']} failed: {exc}", hint="the lease expires; start --reclaim retries it")
-            if nd["op"] != "git.base":
-                break
-            W0 = ctx.snap.work.get(g)
-            try:
-                return finish(s, g, X, label, lease, result, spec, ctx, retry=False)
-            except Refused as exc:
-                if exc.code != "goal_changed" or time.monotonic() > deadline:
-                    raise
-            # the finish was rejected: re-run in-process when the lease is unchanged and W moved only by reviews
-            L = verbs.valid_lease(s, g, X)
-            W1 = s.snap.work.get(g)
-            ident = Identity(s.git)
-            if (L is None or L.attempt != lease["attempt"] or not W0 or not W1
-                    or not s.git.is_ancestor(W0, W1)
-                    or not all(ident.is_review(c) for c in s.git.out("rev-list", f"{W0}..{W1}").split())):
-                raise Refused("contention", "the work branch moved during the restack; run base again")
-            res = s.portfolio().goals[g]
-            ctx = make_context(s, res, X, lease)
-    return finish(s, g, X, label, lease, result, spec, ctx)
+        # the renewer is stopped: a renewal can no longer race the finish
+        if nd["op"] != "git.base" or not isinstance(result, Done):
+            return finish(s, g, X, label, lease, result, spec, ctx)
+        W0 = ctx.snap.work.get(g)
+        try:
+            return finish(s, g, X, label, lease, result, spec, ctx, retry=False)
+        except Refused as exc:
+            if exc.code != "goal_changed":
+                raise
+        # §5.1: the finish was rejected; re-run in-process while the lease is ours and W moved only by reviews
+        deadline = deadline or time.monotonic() + 30
+        if time.monotonic() > deadline:
+            raise Refused("contention", "the goal kept changing during the restack; run base again")
+        L = verbs.valid_lease(s, g, X)
+        W1 = s.snap.work.get(g)
+        ident = Identity(s.git)
+        if L is None or L.attempt != lease["attempt"] or L.timeout == 0:
+            raise Refused("superseded", f"G{g} {X} attempt {lease['attempt']} lost its lease during the restack")
+        if W1 != W0 and not (W0 and W1 and s.git.is_ancestor(W0, W1)
+                             and all(ident.is_review(c) for c in s.git.out("rev-list", f"{W0}..{W1}").split())):
+            raise Refused("contention", "the work branch moved during the restack; run base again")
+        res = s.portfolio().goals[g]
+        ctx = make_context(s, res, X, lease)
 
 
 def finish(s, g, X, label, lease, result, spec, ctx, retry=True) -> dict:

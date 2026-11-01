@@ -303,7 +303,7 @@ def read_state(git: Git, snap: Snapshot, all_goals: bool = False, wanted=()) -> 
                                  hint="run the bootstrap skill")
     else:
         floor_check(st)
-        if st.write_block is None:
+        if st.write_block is None or st.write_block.code == "engine_too_new":       # a newer engine reads but does not write
             errors = [e for e in (perr, werr) if e]
             if not errors:
                 errors = list(schemas.validate_policy(st.policy_raw))
@@ -321,7 +321,7 @@ def read_state(git: Git, snap: Snapshot, all_goals: bool = False, wanted=()) -> 
                 st.settings = st.policy["settings"]
                 st.graphs = {n: schemas.build_graph(n, g) for n, g in st.workflow["graphs"].items()}
                 want = st.settings["integration_branch"]
-                if want != snap.I:
+                if want != snap.I and st.write_block is None:
                     msg = (f"this clone is configured for `{snap.I}`; the policy says `{want}`: run "
                            f"`git config zzzops.integrationBranch {want}`")
                     st.blockers.append({"kind": "wrong_integration_branch", "message": msg})

@@ -30,7 +30,7 @@ A dependent goal does not wait for its dependency to merge: once the dependency'
 Every human item has a plain question, summaries (never bare hashes), a facts line, and the exact command to record your answer. An answer is fenced: if the question changed since you saw it, it is refused and the new one is shown. "Not yet" records nothing. You can also merge a PR on GitHub yourself; ZzzOps records it.
 
 ## Pausing, policy changes and recovery
-- Hold one goal with `zzzops edit G --set 'state="held"'`; stop everything by stopping the agents.
+- Hold one goal with `zzzops edit G --file hold.json --base <goal commit>`, where `hold.json` is `{"set": {"state": "held"}}` and the goal commit comes from `zzzops show G` (without `--base`, `edit` only previews). Stop everything by stopping the agents.
 - A `zzzops/policy/*` branch pauses all new work until it lands on the integration branch (or is deleted): that is how policy changes.
 - An interrupted phase leaves its lease to expire; `start --reclaim` takes it over, and the late phase's submit is refused. Committed work stays in the worktree, with salvage commands.
 - Repairs are plain Git recipes: [REPAIR.md](../plugins/zzzops/zzzops/references/REPAIR.md). Setup problems: [SETUP.md](../plugins/zzzops/zzzops/references/SETUP.md).

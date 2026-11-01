@@ -10,12 +10,12 @@ Use ZzzOps when a task is too important or too long-lived to exist only in one c
 
 ### 1. Install ZzzOps
 
-ZzzOps v2 is an [Agent Plugin](https://agent-plugins.org/). For Codex, install it from the [official ZzzOps listing in the Codex Plugins Directory](https://chatgpt.com/plugins/plugins_6a7892fe4c548191a9e0dbfb8ac2c987), then open a new Codex task in the repository where you want to use it.
+ZzzOps is an [Agent Plugin](https://agent-plugins.org/). For Codex, install it from the [official ZzzOps listing in the Codex Plugins Directory](https://chatgpt.com/plugins/plugins_6a7892fe4c548191a9e0dbfb8ac2c987), then open a new Codex task in the repository where you want to use it.
 
-As a secondary Git option, pin an immutable release tag:
+As a secondary Git option, pin an immutable release tag (this engine ships from v3.0.0; v2.x is the pre-reset engine):
 
 ```powershell
-codex plugin marketplace add david-rzepa/zzzops@v2.0.1
+codex plugin marketplace add david-rzepa/zzzops@<release tag>
 codex plugin add zzzops@zzzops
 ```
 

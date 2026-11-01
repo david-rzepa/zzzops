@@ -5,7 +5,7 @@ description: ZzzOps v0.0.0-dev — development plugin. Capture/add/create/record
 
 # Add Goal
 
-Communicate as [the shared guide](../../rules/COMMUNICATION.md) says, and respect its data boundary.
+Communicate as [the shared guide](../../rules/COMMUNICATION.md) says, and respect its data boundary. Run the CLI as [CLI usage](../../zzzops/references/CLI_USAGE.md) says (without the `zzzops` launcher on `PATH`: `<python> ../../zzzops/zzzops.py`, Python 3.10 or later).
 
 Capture the goal with the human, create it, and let its design start at once. Read [CLI usage](../../zzzops/references/CLI_USAGE.md) once.
 

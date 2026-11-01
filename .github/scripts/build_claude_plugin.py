@@ -32,6 +32,8 @@ def write_marketplace(root: Path, output: Path, version: str) -> Path:
             destination = output.joinpath(*path.parts)
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_bytes(data)
+            if path.parts[-2:-1] == ("bin",):
+                destination.chmod(0o755)
     except Exception:
         if owns_output and output.exists():
             shutil.rmtree(output)

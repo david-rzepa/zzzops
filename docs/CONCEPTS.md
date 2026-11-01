@@ -41,10 +41,6 @@ Agents resolve only definitions explicitly linked by the document and load each 
 
 Material definition changes require review of affected policy, prompts, goals, acceptance behavior, and compatibility notes. Concepts explain meaning and decision tests; user and safety authority, repository instructions, reviewed policy, and goal state remain authoritative.
 
-## Default evidence workflow
+## Where the concepts are used
 
-The shipped workflow is one configurable evidence DAG. Discovery records each human-facing uncertainty as a **stable question** with its source, blocked decision, status, answer, revision, and provenance. Root owns those questions and preserves settled answers until their exact source or an admitted finding changes. Delegated investigators answer technical unknowns, and independent review members cover acceptance, maintainability, and each evidenced risk without turning risk labels into hidden orchestration.
-
-Decomposition selects a leaf or a composition. An atomic result is a reviewed non-applicability decision for decomposition: it must prove one indivisible workspace responsibility, no independently deliverable boundary, and no useful parallel ownership. It then retains the complete leaf delivery path. A composition instead consumes immutable child delivery results in the parent integration workspace; child work never depends on the parent's integration, publication, or merge.
-
-Migration verification and independent migration review precede publication whenever released contracts or supported prior states exist. Explicitly targeted reads of closed goals remain available, while broad portfolio discovery does not hydrate closed goals merely to manufacture evidence.
+The execute skill links *safe useful work* (what to do while human decisions are pending), *bounded commitment* (what a blocked worker may still do) and *exact head* (what `merge` merges); the add-goal skill links *effective engineering rigor* (how thorough a spec must be). The engine itself does not interpret concepts: the workflow, its fingerprints and its human gates are defined in `.zzzops/workflow.json` and [How execution works](EXECUTION.md).

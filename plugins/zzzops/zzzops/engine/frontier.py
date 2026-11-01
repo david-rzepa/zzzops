@@ -208,7 +208,8 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
         corr = sorted((x for _, x in live[n]), key=lambda x: x["id"])
         if L:
             if L.attempt >= (r["attempt"] if r else 0) + 3:
-                st[n] = {"name": "needs_human", "kind": "crash_loop", "cap": "lease", "lease": L, "fp": f, "parts": parts}
+                st[n] = {"name": "needs_human", "kind": "crash_loop", "cap": "lease", "lease": L, "fp": f, "parts": parts,
+                         "corrections": corr}
                 continue
             st[n] = {"name": "reclaimable", "lease": L, "fp": f, "parts": parts, "corrections": corr}
             continue
@@ -229,14 +230,16 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
                 st[n] = {"name": "needs_human", "kind": "blocked", "blocked": b, "fp": r["input_fp"], "record": r}
                 continue
             if wf == "agent" and b.get("repeats", 1) >= 3:
-                st[n] = {"name": "needs_human", "kind": "crash_loop", "cap": "repeat", "blocked": b, "fp": f, "parts": parts}
+                st[n] = {"name": "needs_human", "kind": "crash_loop", "cap": "repeat", "blocked": b, "fp": f, "parts": parts,
+                         "corrections": corr}
                 continue
             s = {"name": "ready", "reason": "retry", "instructions": b.get("instructions"), "answer": r.get("answer")}
         elif corr:
             s = {"name": "ready", "reason": "reopened"}
         elif not r["ok"]:
             if node["kind"] == "op" and any(x["status"] == "open" and x.get("repeats", 1) >= 3 for x in r.get("findings") or []):
-                st[n] = {"name": "needs_human", "kind": "crash_loop", "cap": "op_finding", "record": r, "fp": f, "parts": parts}
+                st[n] = {"name": "needs_human", "kind": "crash_loop", "cap": "op_finding", "record": r, "fp": f, "parts": parts,
+                         "corrections": corr}
                 continue
             own = sorted({x["target"] for x in r.get("findings") or [] if any(cc == n and y is x for cc, y in live.get(x["target"], []))})
             if own:
@@ -303,25 +306,53 @@ def closed_view(doc: dict, graph: Graph | None) -> dict:
 
 
 def goal_order(docs: dict) -> tuple:
-    """(order, cyclic): topological order over depends_on, ties by id; members of cycles are excluded."""
-    order, state, cyclic = [], {}, set()
+    """(order, cyclic): topological order over depends_on, ties by id; every member of a dependency cycle (a
+    strongly connected component of two or more goals, or a self-dependency) is excluded."""
+    index, low, stack, on, comps = {}, {}, [], set(), []
+    counter = [0]
 
-    def visit(g, trail):
-        if state.get(g) == 2:
+    def strong(v):
+        index[v] = low[v] = counter[0]
+        counter[0] += 1
+        stack.append(v)
+        on.add(v)
+        for w in sorted(d for d in docs[v].get("depends_on") or [] if d in docs):
+            if w not in index:
+                strong(w)
+                low[v] = min(low[v], low[w])
+            elif w in on:
+                low[v] = min(low[v], index[w])
+        if low[v] == index[v]:
+            comp = []
+            while True:
+                w = stack.pop()
+                on.discard(w)
+                comp.append(w)
+                if w == v:
+                    break
+            comps.append(comp)
+
+    for g in sorted(docs):
+        if g not in index:
+            strong(g)
+    cyclic = set()
+    for comp in comps:
+        if len(comp) > 1 or comp[0] in (docs[comp[0]].get("depends_on") or []):
+            cyclic.update(comp)
+    order, done = [], set()
+
+    def visit(g):
+        if g in done or g in cyclic:
             return
-        if state.get(g) == 1:
-            cyclic.update(trail[trail.index(g):])
-            return
-        state[g] = 1
+        done.add(g)
         for d in sorted(docs[g].get("depends_on") or []):
             if d in docs:
-                visit(d, trail + [g])
-        state[g] = 2
+                visit(d)
         order.append(g)
 
     for g in sorted(docs):
-        visit(g, [])
-    return [g for g in order if g not in cyclic], cyclic
+        visit(g)
+    return order, cyclic
 
 
 def portfolio(docs: dict, graphs: dict, leases: dict, settings: dict, now: int, invalid: dict | None = None,

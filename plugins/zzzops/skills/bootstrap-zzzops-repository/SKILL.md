@@ -5,7 +5,7 @@ description: ZzzOps v0.0.0-dev — development plugin. Initialize or review repo
 
 # Bootstrap ZzzOps
 
-Communicate as [the shared guide](../../rules/COMMUNICATION.md) says, and respect its data boundary. Command reference: [CLI usage](../../zzzops/references/CLI_USAGE.md).
+Communicate as [the shared guide](../../rules/COMMUNICATION.md) says, and respect its data boundary. Run the CLI as [CLI usage](../../zzzops/references/CLI_USAGE.md) says (without the `zzzops` launcher on `PATH`: `<python> ../../zzzops/zzzops.py`, Python 3.10 or later). Command reference: [CLI usage](../../zzzops/references/CLI_USAGE.md).
 
 A checklist over the shipped templates, `zzzops validate` and plain `git`/`gh`. Nothing here is a ZzzOps verb. Templates: `../../zzzops/templates/default/` (`POLICY.json`, `workflow.json`, `prompts/`).
 

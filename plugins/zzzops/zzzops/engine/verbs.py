@@ -138,7 +138,7 @@ def finish_output(s, g, updates, closed, extra=None) -> dict:
 def start(s, g: int, X: str, label: str, reclaim=False, force=False) -> dict:
     s.open(goals=[g], deps=dependency_ids(s, g))
     st = s.state
-    if st.policy_branches and st.write_block is None:
+    if st.policy_branches:
         b = st.policy_branches[0]
         raise Refused("policy_branch", f"a policy change is in progress on zzzops/policy/{b['topic']}: new work is paused",
                       hint=f"land the branch on {s.snap.I} and delete it, or delete it to abandon the change")
@@ -179,6 +179,11 @@ def start(s, g: int, X: str, label: str, reclaim=False, force=False) -> dict:
         for (lg, node), L in sorted(st.leases.items()):
             if lg == g and node != X and res.graph.nodes.get(node, {}).get("workspace") and valid_lease(s, g, node) and L.live(s.now):
                 raise Refused("workspace_busy", f"G{g} {node} holds the goal worktree", details={"node": node, "holder": L.holder})
+    if nd.get("workspace") and reclaim and not force:
+        wp = wt.worktree_path(s.git, g)
+        if os.path.isdir(wp) and not wt.is_clean(s.git, wp):
+            raise Refused("dirty_worktree", f"the goal worktree {wp} has uncommitted changes from the previous attempt",
+                          hint="inspect it; pass --force to reclaim anyway")
     if nd["kind"] == "agent" and p.live_agents >= s.settings["parallelism"]["max_workers"]:
         raise Refused("capacity", f"{p.live_agents} agent phases are running (max {s.settings['parallelism']['max_workers']})")
     if nd["kind"] == "op":
@@ -319,18 +324,22 @@ def submit(s, g: int, X: str, N: int, label: str, output=None, artifact=None, bl
 
     def mutate(sess, docs):
         work.clear()
+        cur = docs.get(g)
+        r_prev = ((cur or {}).get("records") or {}).get(X)
+        L = valid_lease(sess, g, X)
+        if L is None and r_prev and r_prev["attempt"] == N and r_prev["holder"] == label:
+            raise Applied(r_prev)                              # our earlier submit landed (lost response), even if it closed the goal
+        if cur is not None and cur["state"] == "closed":
+            raise Refused("superseded", f"Stop this phase: G{g} was closed ({cur['closed']['reason']}).",
+                          hint=superseded_hint(sess, g, X, N))
         res = goal_result(sess, g)
         doc = copy.deepcopy(docs[g])
         graph = res.graph
         if X not in graph.nodes:
-            L = sess.state.leases.get((g, X))
             raise Refused("superseded", "this phase cannot finish: the node was removed from the workflow",
                           hint=superseded_hint(sess, g, X, N))
         nd = graph.nodes[X]
-        L = valid_lease(sess, g, X)
         r0 = (doc.get("records") or {}).get(X)
-        if L is None and r0 and r0["attempt"] == N and r0["holder"] == label:
-            raise Applied(r0)
         if L is None or L.attempt != N:
             raise Refused("superseded", "Stop this phase. Nothing you sent landed.", hint=superseded_hint(sess, g, X, N))
         if L.timeout == 0:
@@ -533,6 +542,8 @@ def renew(s, g: int, X: str, N: int) -> dict:
     deadline = time.monotonic() + 30
     while True:
         s.open(goals=[g]) if s.snap is None else s.refetch([g])
+        if s.state.write_block is not None:
+            raise s.state.write_block                          # never a false "superseded" (policy unreadable)
         L = valid_lease(s, g, X)
         if not L or L.attempt != N:
             raise Refused("superseded", f"G{g} {X} attempt {N} is no longer the lease",
@@ -553,6 +564,10 @@ def renew(s, g: int, X: str, N: int) -> dict:
 
 def abandon(s, g: int, X: str, N: int | None, force=False, note=None) -> dict:
     s.open(goals=[g])
+    if s.state.write_block is not None:
+        raise s.state.write_block
+    if force:
+        s.require_writable([g])
     L = valid_lease(s, g, X)
     if not L:
         raise Refused("not_found", f"G{g} {X} has no lease")
@@ -637,7 +652,8 @@ def answer(s, g: int, X: str, fp: str, path: str) -> dict:
             r0 = records.get(X)
             attempt = (r0["attempt"] if r0 else 0) + 1
             fence = rec.make_fence(graph, doc, ready["fp"], ready["fp"], s.now)
-            findings = rec.human_findings(graph, X, r0, a.get("findings") or [], attempt, a["decision"], a["quote"], fence)
+            findings = rec.human_findings(graph, X, r0, a.get("findings") or [], attempt, a["decision"], a["quote"], fence,
+                                          skip=doc.get("skip") or {})
             out = {"decision": a["decision"], "summary": a["summary"], "decided_by": a["decided_by"], "quote": a["quote"],
                    "decided_at": a.get("decided_at") or iso(s.now)}
             auto = rec.auto_responses(graph, X, ready.get("corrections") or [], a["decided_by"])

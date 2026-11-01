@@ -20,7 +20,7 @@ Re-read the live sources before each marketplace submission and after a material
 | Requirement | ZzzOps disposition and evidence |
 | --- | --- |
 | Clear, original, reliable purpose | ZzzOps provides reviewed durable project-goal workflows. The README describes the complete user-facing surface; plugin and prompt validation run in required CI. |
-| Accurate name, description, capabilities, and side effects | The Codex manifest declares `Write`; its long description and the README disclose GitHub Issue writes, existing GitHub authentication, and policy-governed Git/PR operations. |
+| Accurate name, description, capabilities, and side effects | The Codex manifest declares `Write`; its long description and the README disclose that goals are written to Git branches of the user's repository, the use of existing Git and GitHub authentication, and policy-governed Git/PR operations. |
 | MCP tool annotations and server security | Not applicable: ZzzOps is skills-only and ships no MCP server, tools, API, hosted backend, or UI. Reassess before adding any such surface. |
 | Authentication and minimum permissions | ZzzOps requests no separate credential. It uses the user's existing Codex, Git, and GitHub environment, and deterministic checkpoints fail when required access is unavailable. |
 | Privacy notice and minimization | [The privacy policy](../PRIVACY.md) lists processed data, purposes, recipients, retention, controls, and restricted-data exclusions. |

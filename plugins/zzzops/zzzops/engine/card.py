@@ -176,9 +176,9 @@ def previous(session, res, n, s) -> dict | None:
     if res.graph.is_review(n):
         subj = res.graph.subject(n)
         sr = (res.doc.get("records") or {}).get(subj) or {}
-        responses = ((sr.get("output") or {}).get("responses")) or {}
+        from engine.records import response_of
         prev["findings"] = [{"id": f["id"], "target": f["target"], "text": f["text"], "status": f["status"],
-                             "response": responses.get(f["id"], f.get("response"))}
+                             "response": response_of(res.doc, f["target"], f["id"]) or f.get("response")}
                             for f in r.get("findings") or [] if f["target"] != n]
         for k, old in (r.get("reviewed") or {}).items():
             cur = (sr.get("output") or {}).get(k)

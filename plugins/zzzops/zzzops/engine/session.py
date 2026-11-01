@@ -50,6 +50,9 @@ class GitReader(render.Reader):
         blob = self.s.git.hash_object(text.encode("utf-8"))
         return {"summary": render.first_line(text, 200), "blob": blob, "read": f"git cat-file -p {blob}"}
 
+    def has(self, oid):
+        return self.s.git.exists(oid)
+
     def artifact_url(self, commit, path):
         web = self.s.web_base()
         return f"{web}/blob/{commit}/{path}" if web else None
@@ -137,8 +140,15 @@ class Session:
 
     def render_next(self, scope=None, all_=False) -> dict:
         p = self.portfolio()
+        warnings = self.warnings(p)
+        paused = self.state.pause
+        if not self.snap.current:
+            # §4.2 offline_snapshot: leases are unknown, so lease-dependent states are unknown and nothing is offered
+            paused = True
+            warnings.append({"kind": "offline", "message": f"`{self.R}` is unreachable: showing the last fetch; leases "
+                                                           "and policy branches are unknown, so no action is offered"})
         return render.render_next(self.ctx(), p, scope=scope, all_=all_, blockers=self.state.blockers,
-                                  warnings=self.warnings(p), paused=self.state.pause)
+                                  warnings=warnings, paused=paused)
 
     def mirror(self):
         if self.snap is not None and self.snap.integration:
@@ -219,9 +229,15 @@ class Session:
             r, stderr = push_atomic(self.git, self.R, updates)
             if r == "ok":
                 self.snap.advance(updates)
+                for ref, _, nv in updates:
+                    m = re.match(r"^refs/heads/zzzops/lease/g(\d+)/(.+)$", ref)
+                    if m and not nv:
+                        self.state.leases.pop((int(m.group(1)), m.group(2)), None)
+                        self.state.lease_commits.pop((int(m.group(1)), m.group(2)), None)
                 for g, d in new.items():
                     self.state.docs[g] = d
                 self._portfolio = None
+                self.housekeep(skip=set(new))
                 return "ok", updates, closed
             if r == "remote":
                 raise Refused("remote", f"push to `{self.R}` failed: {first_line(stderr)}")
@@ -242,6 +258,34 @@ class Session:
                 raise Refused("contention", "too many concurrent writes to this goal; retry shortly")
             time.sleep(random.uniform(0, delay))
             delay = min(2 * delay, 4)
+
+    def housekeep(self, skip=()):
+        """§4.4 worktree housekeeping: after a successful write, remove at most one local worktree of a closed goal
+        whose branch tip is known to be on the remote and which is clean. Best effort; failures are ignored."""
+        from engine import worktree as wt
+        root = os.path.join(self.git.primary, ".zzzops", "worktrees")
+        try:
+            names = sorted(os.listdir(root))
+        except OSError:
+            return
+        for name in names:
+            m = re.match(r"^g(\d+)$", name)
+            if not m or int(m.group(1)) in skip:
+                continue
+            g = int(m.group(1))
+            c = self.state.goal_commits.get(g)
+            if not c or c.trailer("State") != "closed":
+                continue
+            try:
+                p = wt.worktree_path(self.git, g)
+                local = wt.local_tip(self.git, g)
+                known = self.snap.work.get(g) or self.git.rev_parse(f"refs/remotes/{self.R}/zzzops/work/g{g}")
+                if local and local == known and wt.is_clean(self.git, p):
+                    self.git.run("worktree", "remove", p)
+                    self.git.run("branch", "-q", "-D", wt.branch(g), check=False)
+            except Exception:
+                pass
+            return
 
     def terminals_current(self, g, doc, all_docs) -> bool:
         docs = dict(all_docs)

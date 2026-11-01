@@ -207,22 +207,16 @@ def build_graph(name: str, gdef: dict, order: bool = True) -> Graph:
 
 def _topo(g: Graph) -> list:
     """Topological order of producers before consumers; ties by declaration order (SPEC §3.1 rule 4)."""
-    order, state = [], {}
     names = list(g.nodes)
-
-    def visit(n, trail):
-        if state.get(n) == 2:
-            return
-        if state.get(n) == 1:
-            raise ValueError("cycle: " + " -> ".join(trail + [n]))
-        state[n] = 1
-        for p in sorted((p for p in g.producers(n) if p in g.nodes), key=names.index):
-            visit(p, trail + [n])
-        state[n] = 2
-        order.append(n)
-
-    for n in names:
-        visit(n, [])
+    prods = {n: [p for p in g.producers(n) if p in g.nodes] for n in names}
+    order, placed = [], set()
+    while len(order) < len(names):
+        ready = [n for n in names if n not in placed and all(p in placed for p in prods[n])]
+        if not ready:
+            stuck = [n for n in names if n not in placed]
+            raise ValueError("cycle: " + " -> ".join(stuck))
+        order.append(ready[0])
+        placed.add(ready[0])
     return order
 
 
