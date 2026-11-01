@@ -1,6 +1,12 @@
 # G1027 design: declared engine capabilities replace ENGINE_VERSION and engine.min
 
-Revision 1. Read at dev `c3791a0`.
+Revision 2. Read at dev `c3791a0`. It answers review_design:1:1 and 1:2, and takes the review's three notes.
+- **1:1:** G1025's capability is `release_lines`. The root recorded that name in G1025's approval. Under G1025's own design, schema-2 goals and `settings.branching` are both gated by that capability; GOAL_SCHEMAS still guards reading. Both merge orders are covered, and there is no new dependency edge. The stale line references are gone (§5).
+- **1:2:** the maintainers' rule is now SPEC §4.5's complete list, restated as "what ships with a new capability" (§3.6). The docs/design edit list names every section that defines or mentions the floor or the ceiling (§4), and test 10 also greps docs/design.
+- **Notes:**
+  - MIGRATING and the policy-branch PR body say to upgrade and never to remove `requires`, and the DESIGN amendment records the trade-off against `evo:H4` (§3.3).
+  - `DETECTOR` hashes both `legacy.py` and `scripts/cleanup_legacy.py` (§3.5).
+  - `store.py:321` is named (§2, §3.2).
 
 ## 1. Outcome
 
@@ -19,6 +25,7 @@ Size: about 60 changed lines of engine code across `__init__.py`, `schemas.py`, 
 - `store.py:454-475` `floor_check`. `schemas.policy_floor`, a tolerant pre-read, gives `(schema_version, engine.min)`.
   - **Too old:** `engine.min > ENGINE_VERSION` blocks with `engine_too_old` (pause, `write_block`, hint "upgrade the plugin").
   - **Too new:** `engine.min < REQUIRES_MIN` blocks with `engine_too_new`. `REQUIRES_MIN` is `0.0.0`, so this branch can never fire.
+  - **Read-only special case:** `store.py:321` reads goals while writes are blocked only by `engine_too_new` ("a newer engine reads but does not write").
 - `schemas.py:530`: `SETTINGS_SHAPE["engine"] = {"min": "version"}`, which is required. `schemas.py:547-549` has the rule "any new optional key must raise ENGINE_VERSION".
 - `store.py:581` `goal_message` and `verbs.py:658` (abandon) write the trailer `Engine: {ENGINE_VERSION}`. Nothing in the engine parses that trailer. REPAIR uses it twice, with `git log --grep='^Engine: <version>$'`:
   - the "Upgrade the engine" rollback;
@@ -73,7 +80,7 @@ Names must match `^[a-z][a-z0-9_]*$` (`NODE_ID`). A test checks every file name 
   - `pause` and `write_block = Refused("engine_too_old", msg, hint="upgrade the plugin", details={"missing": missing})` are set as today.
   - The schema-version half of the floor (`schema_version > POLICY_SCHEMA`) is unchanged.
 - **Unknown names.** A name this engine has never heard of is simply missing. That is the mechanism: a newer policy names a capability an older engine lacks.
-- **Removed: the ceiling (`engine_too_new`, `REQUIRES_MIN`).** It can never fire today, and it is defined only in terms of `engine.min`. The code `engine_too_new` leaves `errors.py`, `cli.py:217` and SPEC §4.5. No engine has ever emitted it, so no consumer exists. If a future engine must refuse to coexist with older ones, its goal designs that rule with capabilities.
+- **Removed: the ceiling (`engine_too_new`, `REQUIRES_MIN`).** It can never fire today, and it is defined only in terms of `engine.min`. The code `engine_too_new` leaves `errors.py`, `cli.py:217`, `store.py:321` and the SPEC and DESIGN sections in §4. At `store.py:321`, the condition becomes `st.write_block is None`. No engine has ever emitted it, so no consumer exists. If a future engine must refuse to coexist with older ones, its goal designs that rule with capabilities.
 
 ### 3.3 Migration: `engine.min` through a fixed map
 
@@ -89,6 +96,11 @@ LEGACY_VERSIONS = {"1.0.0": (), "1.1.0": ("lens_findings",)}   # engine.min (dep
 - **Deprecation warning.** `validate` (both the repository form and `--policy --dir`) adds a warning when `engine.min` is present: `{"kind": "engine_min_deprecated", "message": "settings.engine.min is deprecated: replace it with settings.engine.requires (<mapped names, or none>) through a policy branch"}`.
   - The warning appears only on `validate`, not on every `next`, so agents' cards and `next` stay quiet.
 - **No lockout sentinel for old engines.** A 1.0 or 1.1 engine that reads `requires` sees an unknown key, reports `policy_invalid`, pauses and refuses writes. That fails closed. The only cost is a less specific message, for dev builds that the owner has already approved locking out.
+  - **Trade-off against `evo:H4`.** DESIGN §3.10 reads the floor tolerantly "so an agent never 'fixes' a new key by deleting it". `policy_invalid` on `requires` is exactly the prompt for that wrong fix. Two things mitigate it:
+    - A change can land only through a reviewed policy branch.
+    - MIGRATING, REPAIR's "Upgrade the engine" and the PR body of the policy branch that adds `requires` each say: "an older build that reports `policy_invalid` on `settings.engine.requires` must be upgraded; never remove the key."
+
+    The DESIGN amendment records this trade-off.
   - Rejected: telling policies to also set `engine.min` to a high sentinel such as `2.0.0`, so that old engines say `engine_too_old`. The product's own tags are already `v2.x`, so a "2.0.0" in POLICY would be read as a product version. That is the two-numbers confusion this goal removes.
 - **The default template** (`templates/default/POLICY.json`) becomes `"engine": {"requires": ["lens_findings"]}`, because its graph writes lens records. New repositories then declare what their graph needs from the start.
 - **This repository's `.zzzops/POLICY.json`** is not changed by this PR: policy changes go through policy branches (§5).
@@ -110,18 +122,30 @@ LEGACY_VERSIONS = {"1.0.0": (), "1.1.0": ("lens_findings",)}   # engine.min (dep
 
 ### 3.5 Legacy cache key
 
-- `legacy.py` gets `DETECTOR = sha256(<legacy.py source bytes, CRLF-normalised>)[:12]`, and the key becomes `cache_key(DETECTOR, url, signals)`.
-- The key exists so that a new detector re-checks. Hashing the detector's own source does that automatically: any edit to the detection rules changes the key, and no number needs bumping.
+- `legacy.py` gets `DETECTOR`, and the key becomes `cache_key(DETECTOR, url, signals)`.
+  - `DETECTOR` is the first 12 hex digits of a sha256 over the CRLF-normalised bytes of `legacy.py` and of `scripts/cleanup_legacy.py`.
+  - The second file is included because `legacy.py:44-56` loads `LEGACY_ROOTS` and the ignore markers from it.
+- The key exists so that a new detector re-checks. Hashing the detector's own sources does that automatically: any edit to the detection rules, or to the roots and markers they load, changes the key, and no number needs bumping.
 - After the upgrade, every clone re-checks exactly once (one `ls-remote` and at most one search). That is the same cost as any engine upgrade today.
 - The record's `engine` field (shown as `checked.engine`) holds `build_id()`. The key name stays the same, so output consumers are unaffected.
 - `cache_key`'s first parameter is renamed `detector`.
 
 ### 3.6 Maintainers' rule (replaces "raise ENGINE_VERSION")
 
-A goal that adds a format or behaviour an older engine must not touch adds `engine/capabilities/<name>.txt` in its own PR. Examples: a new optional settings key, a new record or finding key, or a new node field. The same goal's rollout tells repositories to add `<name>` to `settings.engine.requires` before the first such write. This rule replaces:
-- the comment at `schemas.py:547-549`;
-- the sentence in CLI_USAGE's legacy paragraph;
-- the "next minor at merge" rules in G1022's and G1025's designs (§5).
+SPEC §4.5's "What ships with an `engine.min` bump (one list)" becomes **"What ships with a new capability (one list)"**. Every item is kept. A goal ships a new capability, as `engine/capabilities/<name>.txt` in its own PR, when it makes any of these changes:
+- **A new goal schema.** Reading is still gated by `GOAL_SCHEMAS`: an older engine reports `engine_too_old` and treats such goals as read-only. The capability gates the policy that lets the new engine write them.
+- **Fingerprint semantics:** a change to fingerprint, canonical-JSON, `code_tree` or `change` semantics, including an `FP_VERSION` change.
+- **Op semantics:** any op `version` change.
+- **Lease format:** a change to the lease message format.
+- **New policy or workflow format:** any new POLICY or workflow key, field or op. This includes optional settings keys, node fields, and record or finding keys.
+
+The same goal's rollout tells repositories to add `<name>` to `settings.engine.requires` before the first such write. The other places that state the old rule say the same thing, in the same words:
+- **SPEC §4.8 and DESIGN D4:** a fingerprint version bump goes "always together with a new capability".
+- **SPEC's op-version sentence:** an op `version` bump goes "always together with a new capability".
+- **The comment at `schemas.py:547-549`**, which points to SPEC §4.5's list.
+- **The maintainers' sentence in CLI_USAGE's legacy paragraph.**
+
+This rule replaces the "next minor at merge" rules in G1022's and G1025's designs (§5).
 
 ## 4. Interfaces and data that change
 
@@ -148,7 +172,26 @@ Docs:
   4. Land the branch and delete it.
 
   The rollback removes the names, and finds the newer build's writes with `--grep='^Engine: <build id>$'`, the build id coming from `zzzops --version`. The bulk-revert recipe says "build id" for "version".
-- **docs/design** (G1017's rule): SPEC §3.2 (settings shape), §4.5 (floor; ceiling removed), the goal-commit trailer definition and `--version`; DESIGN's version-floor rationale; a HISTORY §4 row; and this goal's README pending row is deleted.
+- **docs/design** (G1017's rule). The section names below come from the rev 6.3 sources that G1017 moves. The implementer finds them in the moved files with test 10's grep.
+  - **SPEC:**
+    - §3.2: the settings shape (`engine.min` optional and deprecated, `requires`).
+    - §4.5: the tolerant floor read and the floor itself. The ceiling is removed, and the bump list is restated as in §3.6.
+    - The `blockers` kinds: `engine_too_old` gains `missing`; `engine_too_new` goes.
+    - The exit-code and error table: `engine_too_new` goes.
+    - The tolerant read order.
+    - The `new` and `start` verb rows: "outside `engine.min`" and `engine_too_new`.
+    - §4.8: fingerprint versions, and the op-version sentence (both per §3.6).
+    - The goal-commit trailer definition, and `--version`.
+    - The REPAIR summaries ("Upgrade the engine", bulk revert by build id).
+    - Test-list item 75 (the floor test), restated as tests 1-3 below.
+  - **DESIGN:**
+    - §3.10's floor, ceiling and upgrade bullets, including the `evo:H4` trade-off from §3.3.
+    - The settings list.
+    - The failure table row for an old engine.
+    - D4 (fingerprint version per §3.6).
+    - Invariant 21.
+  - **HISTORY:** a §4 row.
+  - **README:** delete this goal's pending row, if one exists.
 
 ## 5. Coordination with in-flight goals
 
@@ -162,9 +205,11 @@ The rule: every goal that would have raised `ENGINE_VERSION` declares a capabili
 - **G1024** (depends on 1027, design waiting). Two points for its design:
   - Its template provenance record must not use an engine version. A template digest and/or `build_id()` serve.
   - If its record adds an optional settings key, or any other format a pre-G1024 engine rejects, it adds capability **`policy_update`** and requires it. If the record is a separate file that older engines ignore, it needs no capability.
-- **G1025** (being redesigned). Capability **`release_lines`**: the optional `settings.branching` block.
-  - Goal schema 2 is already guarded by `GOAL_SCHEMAS` (`engine_too_old` on a newer goal schema). It needs no capability.
-  - Its rollout requires `release_lines` instead of "engine.min raised to G1025's version" (its design, lines 55 and 258). If it merges before G1027, the same before/after rule applies.
+- **G1025** (design approved; depends on 1017, not 1027). Capability **`release_lines`**. The root recorded this name in G1025's approve_design, replacing the `branching` that G1025's design text uses. The policy block stays `settings.branching`.
+  - **What it gates.** As G1025's design says, `release_lines` gates both a policy that sets `settings.branching` and the writing of schema-2 goal documents. `GOAL_SCHEMAS` still guards reading: an older engine treats a schema-2 goal as newer and read-only. G1027 leaves those details to G1025.
+  - **G1027 merges first:** G1025's implement adds `engine/capabilities/release_lines.txt`, and its rollout requires `release_lines` instead of raising `engine.min`.
+  - **G1025 merges first:** if it raised `ENGINE_VERSION`, G1027's implement adds that version to `LEGACY_VERSIONS` with the capabilities then shipped, and adds `release_lines.txt`. If it merged already declaring `release_lines` against a capabilities form that did not exist yet, G1027 adopts its file as is.
+  - **No dependency edge.** Adding G1025→G1027 would make G1025's approved design stale (root decision). The root passes this paragraph to G1025's implement as a note, as for G1022.
 - **This repository** (G1000 rollout step 3, after G1022): the lens policy branch sets `settings.engine.requires` to the capabilities its graph needs, `["lens_findings", "lenses"]`, and removes `engine.min`. The owner approved locking out 1.0 engines, and the Codex agent on 15b59a5 is finished.
   - If the earlier floor branch already landed with `engine.min: 1.1.0` or `1.2.0`, it keeps working through the map, and `validate` warns until a policy branch replaces it.
 
@@ -188,7 +233,10 @@ New `.agents/test_engine_capabilities.py`, plus edits to the existing tests list
    - `validate` shows `engine.build` and `engine.capabilities`.
 8. **Legacy key.** The key uses `DETECTOR` and not the build id (rewritten `test_engine_legacy.py:99-154`), and `checked.engine` is the build id. A changed build id with the same detector does not trigger a re-check.
 9. **Template.** The default template validates and requires `lens_findings`. Bootstrap copies it.
-10. **No stale references.** `git grep -nE 'ENGINE_VERSION|REQUIRES_MIN|engine_too_new'` over `plugins/` and `.agents/` is empty. docs/design passes G1017's guard.
+10. **No stale references.** `git grep -nE 'ENGINE_VERSION|REQUIRES_MIN|requires_min|engine_too_new|engine\.min bump'` is empty over `plugins/`, `.agents/` and `docs/design/` (excluding `docs/design/HISTORY.md`, which keeps history).
+    - The test that asserts this sits in `test_engine_capabilities.py` and also excludes itself.
+    - `engine.min` itself may still appear, as the deprecated key.
+    - docs/design passes G1017's guard.
 
 The full suite (`python3 -m unittest discover -s .agents`) passes.
 
