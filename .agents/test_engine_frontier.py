@@ -114,17 +114,18 @@ class FrontierTests(Base):
         st = self.state(1, "implement")
         self.assertEqual("reopened", st["reason"])
 
-    def test_stale_review_findings_are_not_live(self):
+    def test_stale_review_findings_stay_live_while_the_target_is_unchanged(self):
+        # G1028 §3.1 (replaces "stale review findings are not live"): the finding is carried
         s = self.s
         s.goal(1)
         self.to(1, "review_design")
         rid = self.n("review_design")
         s.start(1, rid)
         s.submit(1, rid, findings=[{"text": "missing risks"}])
-        # the spec changes: the review is stale, so its finding is not live
+        # the spec changes: the review is stale, but design's output is unchanged, so its finding stays live
         s.docs[1]["spec"] = "a different spec"
         self.assertEqual(("ready", "stale"), (self.state(1, "design")["name"], self.state(1, "design")["reason"]))
-        self.assertEqual([], self.state(1, "design")["corrections"])
+        self.assertEqual([rid + ":1:1"], [f["id"] for f in self.state(1, "design")["corrections"]])
 
     def test_finding_submitted_while_subject_running_keeps_target_fp(self):
         # H1: a running state's fp is computed from recorded values

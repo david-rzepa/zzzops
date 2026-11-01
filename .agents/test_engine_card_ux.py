@@ -62,7 +62,8 @@ class AbandonRestartTests(CardJourney):
         g = self.goal()
         self.A.start(g, self.n("design"))
         out = self.w.ok("a", "abandon", str(g), self.n("design"), "--attempt", "1")
-        self.assertEqual(["start", str(g), self.n("design"), "--as", "<LABEL>", "--reclaim"], out["restart"]["argv"])
+        self.assertEqual(["start", str(g), self.n("design"), "--as", "<LABEL>", "--reclaim", "--repo"],
+                         out["restart"]["argv"][:-1])          # G1028: worker commands carry --repo <primary>
         self.assertIn("--reclaim", out["restart"]["command"])
         self.assertIn("restart", out["hint"])
         rc, err = self.w.run("b", "start", str(g), self.n("design"), "--as", self.B.label)
@@ -75,7 +76,8 @@ class AbandonRestartTests(CardJourney):
         g = self.goal()
         self.A.start(g, self.n("design"))
         out = self.w.ok("b", "abandon", str(g), self.n("design"), "--force", "--note", "stuck")
-        self.assertEqual(["start", str(g), self.n("design"), "--as", "<LABEL>", "--reclaim"], out["restart"]["argv"])
+        self.assertEqual(["start", str(g), self.n("design"), "--as", "<LABEL>", "--reclaim", "--repo"],
+                         out["restart"]["argv"][:-1])          # G1028: worker commands carry --repo <primary>
 
 
 # --------------------------------------------------------------------------------------------- 2. stale_because / changed
@@ -340,8 +342,8 @@ class CardTextTests(CardJourney):
         when = c["commands"]["renew"]["when"]
         self.assertIn(str(c["lease"]["renew_every_minutes"]), when)
         self.assertIn(str(c["lease"]["timeout_minutes"]), when)
-        self.assertEqual(["renew", str(c["goal"]), c["node"], "--attempt", str(c["lease"]["attempt"])],
-                         c["commands"]["renew"]["argv"])
+        self.assertEqual(["renew", str(c["goal"]), c["node"], "--attempt", str(c["lease"]["attempt"]), "--repo"],
+                         c["commands"]["renew"]["argv"][:-1])            # G1028: --repo <primary>
 
     def test_non_review_card_with_artifact(self):
         g = self.goal()
