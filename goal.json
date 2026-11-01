@@ -12,10 +12,10 @@
   "priority": "P2",
   "records": {
     "design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T19:01:24Z",
+      "finished_at": "2026-11-01T19:05:00Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -29,13 +29,16 @@
       "ok": true,
       "output": {
         "doc": {
-          "blob": "829886d7e9ff6dca106c72d3412ad08a6587b4ca",
-          "commit": "4c15904b721870efbacf385a636ebad3e5f8ac75",
+          "blob": "f4c441999a3da82b48323c1b35d7f55058578cc7",
+          "commit": "de0a93e6b0d434e027def936e7ef655c30d55c6d",
           "path": ".zzzops/reviews/1029/design.md"
         },
-        "summary": "Skill-only design: the add-goal skill reads settings.intent from the coordinator commit's .zzzops/POLICY.json before `new`, skips with 'intent not captured yet' when it is absent or a TODO: placeholder, and otherwise quotes any conflicting intent sentence and offers change the goal / amend the intent (drafted, owner-worded, on a reviewed zzzops/policy/intent-<topic> branch, previewed with --policy-ref) / proceed. For amend or proceed, the spec ends with a fixed `Project intent:` paragraph, which already reaches the Intent lens through the existing goal.spec input in both the 26-node graph and G1022's review_design; lens_intent.md gains one paragraph honouring it. No engine change (no `new` output, goal field or capability; rejected with reasons), so G1027 is untouched; tests cover the capture signals, label agreement between skill and lens, and that the design-stage intent node has the spec input; docs/design DESIGN §3.12 plus any Intent-lens passage are amended with a HISTORY §4 row."
+        "responses": {
+          "review_design:1:1": "fixed: D4 makes Amend and Proceed the owner's choice in their own words; with no owner present the goal is created without the paragraph and the Intent lens raises the departure (an owner question under G1026). Step 3 never offers an approve_design skip for a goal with a `Project intent:` paragraph and drops the skip if an edit adds one. D3's lens paragraph honours it only when it quotes the owner's words with a date (D2 format, `Owner (<date>): \"<words>\"`); otherwise it accepts nothing. New D5: approve_design.md has the presenting agent read goal.spec via `show --json` and show the paragraph verbatim next to the lens verdicts (prompt guidance, not a new node input, so no workflow change); a spec edit stales design and so re-runs approve_design. Test 2 checks the label in the skill, lens_intent.md and approve_design.md, plus the no-skip and 'accepts nothing' sentences. A fabricated quote is the remaining risk, listed under Risks; approval exposes it to the owner."
+        },
+        "summary": "Revision 2 answers review_design:1:1: Amend and Proceed need the owner's own words (with no owner present the goal is created without a `Project intent:` paragraph and the Intent lens raises the departure, an owner question under G1026); the skill never offers an approve_design skip for a goal with the paragraph and drops one if an edit adds it; the lens honours the paragraph only when it quotes the owner's words with a date; approve_design.md shows it next to the lens verdicts; test 2 checks the label in all three prompts. The rest is unchanged: the skill compares the goal with settings.intent before `new`, skips a placeholder or absent intent, offers change / amend (reviewed zzzops/policy/intent-<topic> branch, owner-worded) / proceed, and the engine does not change; docs/design DESIGN §3.12 and the Intent-lens passages get amended with a HISTORY §4 row."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
