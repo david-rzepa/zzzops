@@ -388,9 +388,9 @@ class IdempotentNewTests(StoreBase):
         real = engine.store.push_atomic
         calls = []
 
-        def landed_then_failed(git, R, updates):
+        def landed_then_failed(git, R, updates, **kw):
             calls.append(updates)
-            real(git, R, updates)
+            real(git, R, updates, **kw)
             return "remote", "simulated"
 
         f = self.w.file({"title": "Flaky", "spec": "network"})
@@ -409,7 +409,7 @@ class IdempotentNewTests(StoreBase):
     def test_push_that_did_not_land_still_reports_remote(self):
         from unittest import mock
         f = self.w.file({"title": "Down", "spec": "network"})
-        with mock.patch("engine.store.push_atomic", lambda git, R, updates: ("remote", "simulated")):
+        with mock.patch("engine.store.push_atomic", lambda git, R, updates, **kw: ("remote", "simulated")):
             rc, out = InProcess(self.w, "a").run("new", "--file", f)
         self.assertEqual(2, rc, out)
         self.assertEqual("remote", out["error"]["code"])
@@ -426,10 +426,10 @@ class IdempotentNewTests(StoreBase):
         f = self.w.file({"title": "Twin", "spec": "race"})
         twin = {}
 
-        def twin_lands_first(git, R, updates):
+        def twin_lands_first(git, R, updates, **kw):
             if not twin:
                 twin.update(self.w.ok("b", "new", "--file", f, now=self.w.now + 1))     # a distinct root commit
-            return real(git, R, updates)
+            return real(git, R, updates, **kw)
 
         with mock.patch("engine.store.push_atomic", twin_lands_first):
             rc, out = InProcess(self.w, "a").run("new", "--file", f)
@@ -458,22 +458,33 @@ class IdempotentNewTests(StoreBase):
             calls.append(1)
             return real(git, R, I, lines, rewritten, goals, deps)
 
+        self.w.reset_trace()
         with mock.patch("engine.store.build_snapshot", stale_first):
             rc, out = InProcess(self.w, "a").run("new", "--file", f)
         self.assertEqual(0, rc, out)
         self.assertEqual((1000, True), (out["created"]["id"], out["created"]["recovered"]))
         self.assertEqual(first["created"]["goal_commit"], out["created"]["goal_commit"])
         self.assertEqual(["refs/heads/zzzops/goal/g1000"], self.goal_refs())
+        self.assertGreaterEqual(len(calls), 2, "the call must refetch once before allocating")
+        self.assertEqual([], self.pushes())                          # recovered before any id was allocated
 
     # 3. concurrent identical calls
 
     def test_concurrent_identical_new_creates_one_goal(self):
+        # distinct clocks, so each call builds a distinct root commit
+        self.race_identical(lambda i: self.w.now + i)
+
+    def test_concurrent_identical_new_with_one_clock_reports_exactly_one_fresh_create(self):
+        """Design §4: identical calls in the same second build the same root commit; the losers' create-only pushes
+        are `up_to_date` and must count as recoveries, so exactly one call reports recovered:false."""
+        self.race_identical(lambda i: self.w.now)
+
+    def race_identical(self, clock):
         f = self.w.file({"title": "Same", "spec": "same request"})
         results = []
 
         def make(clone, i):
-            # distinct clocks, so each call builds a distinct root commit (as real calls do)
-            results.append(self.w.run(clone, "new", "--file", f, now=self.w.now + i))
+            results.append(self.w.run(clone, "new", "--file", f, now=clock(i)))
 
         threads = [threading.Thread(target=make, args=(c, 2 * i + j)) for i in range(5) for j, c in enumerate(("a", "b"))]
         for t in threads:
@@ -486,6 +497,62 @@ class IdempotentNewTests(StoreBase):
         self.assertEqual(["refs/heads/zzzops/goal/g1000"], self.goal_refs())
         self.assertEqual(1, sum(1 for _, o in results if o["created"]["recovered"] is False))
         self.assertTrue(any(o["created"]["recovered"] for _, o in results))
+
+    # 9. an up-to-date create push
+
+    def test_an_up_to_date_create_push_counts_as_recovered(self):
+        """A twin with the same file and the same ZZZOPS_NOW pushes the identical root first. This call's scans are
+        patched to miss, so only the `up_to_date` push result can make it a recovery."""
+        import engine.store
+        from unittest import mock
+        real = engine.store.push_atomic
+        f = self.w.file({"title": "Twin", "spec": "same second"})
+        twin, results, kws = {}, [], []
+
+        def twin_lands_first(git, R, updates, **kw):
+            if not twin:
+                twin.update(self.w.ok("b", "new", "--file", f))         # same clock: the identical root commit
+            kws.append(kw)
+            r = real(git, R, updates, **kw)
+            results.append(r[0])
+            return r
+
+        with mock.patch("engine.store.push_atomic", twin_lands_first), \
+                mock.patch("engine.store.find_request_key", lambda git, snap, key: []):
+            rc, out = InProcess(self.w, "a").run("new", "--file", f)
+        self.assertEqual(0, rc, out)
+        self.assertEqual([{"report_up_to_date": True}], kws)
+        self.assertEqual(["up_to_date"], results)
+        self.assertIs(False, twin["created"]["recovered"])
+        self.assertEqual((1000, True), (out["created"]["id"], out["created"]["recovered"]))
+        self.assertEqual(twin["created"]["goal_commit"], out["created"]["goal_commit"])
+        self.assertEqual(default_key("Twin", "same second"), out["created"]["request_key"])
+        self.assertEqual([(1000, "design")], [(a["goal"], a["node"]) for a in out["next"]["actions"]])
+        self.assertEqual(["refs/heads/zzzops/goal/g1000"], self.goal_refs())
+
+    def test_push_atomic_reports_up_to_date_only_when_asked(self):
+        from engine import store
+        from engine.session import Session
+        out = self.w.ok("a", "new", "--file", self.w.file({"title": "U", "spec": "s"}))
+        c, ref = out["created"]["goal_commit"], "refs/heads/zzzops/goal/g1000"
+        with fx.env_of(self.w.cli_env()):
+            cwd = os.getcwd()
+            os.chdir(self.w.clones["a"].path)
+            try:
+                s = Session()
+                s.open()
+                self.assertEqual("ok", store.push_atomic(s.git, s.R, [(ref, None, c)])[0])
+                self.assertEqual("up_to_date", store.push_atomic(s.git, s.R, [(ref, None, c)], report_up_to_date=True)[0])
+                # a real create still reports ok with the keyword; a lost create-only lease is still rejected
+                self.w.seed.git("fetch", "-q", "origin", ref)
+                other = self.w.seed.git("commit-tree", self.w.seed.git("rev-parse", "FETCH_HEAD^{tree}"), "-m", "x")
+                self.w.seed.git("push", "-q", "origin", f"{other}:refs/heads/zzzops/goal/g1001")
+                self.assertEqual("ok", store.push_atomic(s.git, s.R, [("refs/heads/zzzops/goal/g1002", None, c)],
+                                                         report_up_to_date=True)[0])
+                self.assertEqual("rejected", store.push_atomic(s.git, s.R, [("refs/heads/zzzops/goal/g1001", None, c)],
+                                                               report_up_to_date=True)[0])
+            finally:
+                os.chdir(cwd)
 
     # 4. a key reused with different contents
 
@@ -597,13 +664,23 @@ class IdempotentNewTests(StoreBase):
         rc, out = self.w.run("a", "new", "--file", self.w.file({"title": "T", "spec": "S", "request_key": "k1"}))
         self.assertFalse(rc == 0 and out["created"]["recovered"] and out["created"]["id"] == 1000, out)
 
+    def fetches(self):
+        return [l for l in self.w.trace_lines() if l["cmd"][:2] == ["git", "fetch"]]
+
     def test_a_deleted_goal_is_not_recovered(self):
+        """Design §3: a goal still in `snap.deleted` after the one refetch really is gone, and stays excluded."""
         f = self.w.file({"title": "Gone", "spec": "s"})
         self.w.ok("a", "new", "--file", f)
         self.w.ok("b", "next")                                        # b has seen it
+        self.w.reset_trace()
+        self.w.ok("b", "new", "--file", self.w.file({"title": "Baseline", "spec": "nothing deleted yet"}))
+        baseline = len(self.fetches())                                # fetches of a `new` with snap.deleted empty
         self.w.remote_git("update-ref", "-d", "refs/heads/zzzops/goal/g1000")
+        self.w.reset_trace()
         out = self.w.ok("b", "new", "--file", f)
-        self.assertEqual((1001, False), (out["created"]["id"], out["created"]["recovered"]))
+        self.assertEqual((1002, False), (out["created"]["id"], out["created"]["recovered"]))
+        self.assertEqual(baseline + 1, len(self.fetches()), "exactly one refetch, then allocate")
+        self.assertEqual(1, len(self.pushes()))
 
     def test_several_matches_return_the_lowest_id_with_a_warning(self):
         push_root(self.w, 1000, key="dup-key", title="T", spec="S")
