@@ -37,44 +37,10 @@
       "status": "done"
     },
     "base": {
-      "attempt": 2,
-      "blocked": {
-        "category": "conflict",
-        "commands": {
-          "resume": [
-            "start",
-            "1000",
-            "base",
-            "--as",
-            "<LABEL>"
-          ]
-        },
-        "instructions": "In /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1000: resolve the conflicts in plugins/zzzops/zzzops/engine/card.py plugins/zzzops/zzzops/engine/frontier.py, `git add` them, run `git -c core.editor=true rebase --continue`, then run the resume command. Do not change the meaning of the goal's commits.",
-        "op_state": {
-          "old": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "onto": "6747a5ea3c91aedd39089d1811a415680521bfed",
-          "work": "fd32b9e500564d8317f0cffdee4b39e09950c184"
-        },
-        "reason": "rebase conflict in plugins/zzzops/zzzops/engine/card.py plugins/zzzops/zzzops/engine/frontier.py",
-        "repeats": 1,
-        "waiting_for": "agent"
-      },
-      "correction_runs": 1,
-      "findings": [
-        {
-          "id": "base:reopen:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "base",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:c20159227db7645411b84e82a670965729dd6e276a409e981d90d8df25775793",
-          "text": "PR conflicts with dev after G1014/G1018/G1001/G1015 merged (GitHub CONFLICTING/DIRTY, so no CI runs); rebase onto the current dev tip. See G1021.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-01T07:04:14Z",
+      "attempt": 3,
+      "correction_runs": 2,
+      "findings": [],
+      "finished_at": "2026-11-01T07:15:40Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
         "inputs": {
@@ -85,10 +51,34 @@
       },
       "holder": "claude:e6ad/op",
       "input_fp": "v1:sha256:a63dd4f9b663828d20c7af5969db386d8dca78d1dc6caa436946320590be78d6",
-      "ok": false,
-      "output": null,
-      "reason": "reopened",
-      "status": "blocked"
+      "ok": true,
+      "output": {
+        "base_commit": "6747a5ea3c91aedd39089d1811a415680521bfed",
+        "branch": "zzzops/work/g1000",
+        "replay_map": {
+          "0274be98b6ea6fcd8ff8df0e2948af773ac22c50": "4e8240d2ce836f87a5ef0aae9ab17f5494023f9d",
+          "03a1def500198ab779be831b9d787d46d50200d0": "baa6e5e3898154406ad0f6d7489a9ad42c1ee61e",
+          "10cb8273510ca4e752e16206f9d27f65c5b94c1e": "faec9f9eaff7bcd778f4293ef28dabbf35d41a7b",
+          "12e8d294774894fd488b77f8ee3f1d39e639d260": "4087d8dfccdc23f95c22852061f7f8ac291ca5fb",
+          "7c6e9e0721233aaac54f9f96ef7e0054b8d24bc0": "230ee5961132030ec4ee43fcd1b3fe44198ffea5",
+          "806ee652d7d478c082940dedb3fe39f1f2872686": "9f93b3b4aad11677d062f443fa379c55bf8e3d9d",
+          "8f3253a9e9d120863520f165ec19b07064207cd9": "01e556c83c573ce0d22fe99f7b3c45643afb2407",
+          "9e54d1e2e440f0eee18733a1f454bf332e8446b9": "f12d7ebeb0060669d904025be9407ef23018adf3",
+          "a2c5e59572be0abb8baa6d2cf7e3c1aa4a43231e": "0b3de232d1ead02942834e05a6d5ae4d4e590ecb",
+          "a5b5579b95fd8cc2b0af211ff81fa45f0a0ce5a1": "63c757e5b48a9e0170d00ec55d4e30130c8d68f0",
+          "d40bb54ba38284f74c156c1dc777e4059928f534": "aacf8ce6788a4172a29c39789e8ca24d45d08c1e",
+          "d5e46d1972ced6a2a3f08ced98b8a81bc7742888": "91aec68b8273e1b648b15a16b9087d99c81ac51e",
+          "e270a250a2337fce3729f80f4bf8711cff0222c0": "6476249c590625ad6628f56f728f7c8eea02b9f2",
+          "fd32b9e500564d8317f0cffdee4b39e09950c184": "53e430bfea8645f7a19d62241acb7d7b65683c5c"
+        },
+        "replay_pos": {
+          "5281509e1915f634071b33da43c550629922906e": "28ee9a2b95818c1562afa3ea1c66c7631214566b",
+          "9b1fbaafabd674dd69f7600340fc34702632ae43": "f455c98e24c087d47de06a18ac1f08f23b9eb566"
+        },
+        "stack": []
+      },
+      "reason": "retry",
+      "status": "done"
     },
     "design": {
       "attempt": 4,
