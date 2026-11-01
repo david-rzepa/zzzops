@@ -192,7 +192,30 @@ class World:
         path = os.path.join(self.tmp, name)
         subprocess.run(["git", "clone", "-q", REMOTE_URL, path], check=True, env=self.env, capture_output=True)
         self.clones[name] = GitDir(path, self.env)
+        self.seed_legacy_cache(name)
         return self.clones[name]
+
+    def legacy_cache(self, name) -> str:
+        """<git-common>/zzzops/legacy.json of a clone (G1015)."""
+        return os.path.join(self.clones[name].path, ".git", "zzzops", "legacy.json")
+
+    def seed_legacy_cache(self, name):
+        """A clean legacy cache, written with the engine's own key and writer, so `next` makes no legacy check
+        unless a test asks for one (G1015 design §7). Skipped before engine.legacy exists."""
+        try:
+            from engine import ENGINE_VERSION, legacy
+        except ImportError:
+            return
+        from engine.canon import iso
+        legacy.write_cache(os.path.join(self.clones[name].path, ".git"), {
+            "schema": 1, "key": legacy.cache_key(ENGINE_VERSION, REMOTE_URL, ()), "engine": ENGINE_VERSION,
+            "checked_at": iso(self.now), "github": "ok", "retry_after": None, "error": None,
+            "issues": [], "issue_count": 0, "linked": [], "refs": 0})
+
+    def drop_legacy_cache(self, name):
+        """A cold legacy cache: the next `next` runs a check."""
+        if os.path.exists(self.legacy_cache(name)):
+            os.remove(self.legacy_cache(name))
 
     def bootstrap(self, policy=None, workflow=None, prompts=True, settings=None, first_id=1000):
         policy = policy or load_template("POLICY.json")

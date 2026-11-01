@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -133,6 +134,90 @@ def do_merge(st, pr, method, by="zzzops"):
                 other["baseRefName"] = pr["baseRefName"]
 
 
+# --------------------------------------------------------------------------------------------- legacy search (G1015)
+
+SEARCH_ALIAS = re.compile(r"(\w+)\s*:\s*search\s*\(([^)]*)\)")
+SEARCH_TERM = re.compile(r'-?[\w.-]+:(?:"[^"]*"|[^\s"]+)|"[^"]*"|\S+')
+
+
+def graphql_request(argv):
+    """The GraphQL document and variables of `gh api graphql` (-f/-F/--raw-field/--field, or --input - JSON)."""
+    fields, i = {}, 0
+    while i < len(argv):
+        a = argv[i]
+        if a in ("-f", "-F", "--raw-field", "--field") and i + 1 < len(argv):
+            k, _, v = argv[i + 1].partition("=")
+            fields[k] = v
+            i += 2
+            continue
+        if a == "--input" and i + 1 < len(argv):
+            body = json.loads(sys.stdin.read() if argv[i + 1] == "-" else open(argv[i + 1], encoding="utf-8").read())
+            fields.update(body.get("variables") or {})
+            fields["query"] = body.get("query", "")
+            i += 2
+            continue
+        if a in ("--jq", "-q", "--paginate", "--template", "-t"):
+            die(f"fake gh: api graphql {a} is not supported by the fake")
+        i += 1
+    doc = fields.pop("query", "")
+    return doc, fields
+
+
+def search_matches(st, q, issue):
+    """GitHub issue search over the subset the legacy check uses: repo:, is:issue, is:open, label:a,b (OR),
+    -label:x, and a quoted phrase with in:body (matched by the issue's `body_marker`)."""
+    phrase = False
+    for t in SEARCH_TERM.findall(q):
+        neg = t.startswith("-")
+        key, _, val = t.lstrip("-").partition(":")
+        if t.startswith('"'):
+            phrase = True
+            continue
+        if not val:
+            die(f"fake gh: unsupported search term {t!r}")
+        val = val.strip('"')
+        if key == "repo":
+            ok = val == st["repo"]
+        elif key == "is" and val == "issue":
+            ok = True
+        elif key == "is" and val == "open":
+            ok = bool(issue.get("open", True))
+        elif key == "label":
+            ok = bool(set(val.split(",")) & set(issue.get("labels") or []))
+        elif key == "in" and val == "body":
+            continue
+        else:
+            die(f"fake gh: unsupported search term {t!r}")
+        if ok == neg:
+            return False
+    return not phrase or bool(issue.get("body_marker"))
+
+
+def graphql(st, argv):
+    if (st.get("faults") or {}).get("graphql_error"):
+        die("GraphQL: Something went wrong while executing your query. (search)")
+    doc, variables = graphql_request(argv)
+    aliases = SEARCH_ALIAS.findall(doc)
+    if not aliases:
+        die("fake gh: api graphql supports only the legacy issue search")
+    data, received = {}, {}
+    for alias, args in aliases:
+        m = re.search(r'query\s*:\s*(?:"((?:[^"\\]|\\.)*)"|\$(\w+))', args)
+        if not m:
+            die(f"fake gh: search alias {alias} has no query")
+        q = json.loads(f'"{m.group(1)}"') if m.group(1) is not None else variables.get(m.group(2), "")
+        received[alias] = q
+        hits = sorted(i["number"] for i in st.get("legacy_issues") or [] if search_matches(st, q, i))
+        first = re.search(r"first\s*:\s*(\d+)", args)
+        n = min(int(first.group(1)) if first else 100, 100)
+        data[alias] = {"issueCount": len(hits), "nodes": [{"number": h} for h in hits[:n]],
+                       "pageInfo": {"hasNextPage": len(hits) > n, "endCursor": None}}
+    st.setdefault("graphql_searches", []).append(received)
+    save(st)
+    print(json.dumps({"data": data}))
+    return 0
+
+
 def main(argv):
     if argv[:1] == ["--version"]:
         print("gh version 2.60.0 (fake)")
@@ -147,6 +232,10 @@ def main(argv):
         faults["transient"] -= 1
         save(st)
         die("HTTP 502: Bad Gateway (https://api.github.com/graphql)")
+    if argv[:1] == ["api"] and faults.get("auth"):
+        die("To get started with GitHub CLI, please run: gh auth login", 4)
+    if argv[:2] == ["api", "graphql"]:
+        return graphql(st, argv[2:])
     if argv[:1] == ["api"]:
         print("[]")
         return 0
