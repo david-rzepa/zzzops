@@ -43,15 +43,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:51ad225c22cdc6d969864e12090359d1bd8b41707642a0122b0a392580884436",
@@ -63,7 +63,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:51ad225c22cdc6d969864e12090359d1bd8b41707642a0122b0a392580884436",
@@ -71,33 +71,33 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T19:29:48Z",
+      "finished_at": "2026-11-01T19:30:57Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:ab9cef22ec163432bbc16852f77271fed4bfee57",
+          "doc": "v1:blob:3c035f648197f2c9da42ad22607e39d4fc319f2c",
           "spec": "v1:sha256:960d773c4c295e2b5daa47dbbcba12c33472dbfed6137192c92d5fd4b682ed28"
         },
         "policy": {},
-        "subject": "v1:sha256:51ad225c22cdc6d969864e12090359d1bd8b41707642a0122b0a392580884436"
+        "subject": "v1:sha256:9f53282ab58dfafb329b81dc65d2469faec7587e1b9e1eeb4487b47affd52b87"
       },
       "holder": "claude:e6ad/rt5",
-      "input_fp": "v1:sha256:0049bb1d5a691e9350f35f9a5aa8a5b38aad9e8acfdad85be0bd42e7df454ed4",
-      "ok": false,
+      "input_fp": "v1:sha256:3b7af5c8caad2f0c8e0fafe25b848ddfef62d9fc1c84bded9200cd2c55f5fe7d",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "6a09f165f9245130bc5df28f5fe75d2dff83634c",
-          "commit": "b4000f71ed4bc7e1c1c57e1b515d88df9d1da34d",
+          "blob": "17e16028b56332a43c43d22fb5ce4fd1f6a150ea",
+          "commit": "032e9f10108c10257cdc2c25973daac95cfae6bf",
           "path": ".zzzops/reviews/1032/review_design.md"
         },
-        "summary": "The engine claims check out on 8d8437a: gh.py only checks gh version and auth; integrate gates on required_ci from statusCheckRollup (an empty list passes with no gate, ops/integrate.py l.203-205); merge uses gh pr merge --match-head-commit with no --auto; the engine calls no rules, rulesets or protection endpoint. But the design misses a second place the skill assumes the read works: bootstrap step 2 reads required_ci with gh api rules/branches/<I>, and step 2 runs before step 7, so on a 403 the owner fails there first. The design must fold step 2 into the fallback. The 'wrong check name' risk text is also inaccurate."
+        "summary": "Both findings resolved. 1:1: the fallback now starts at SKILL.md step 2, so required_ci is set before step 3 validates and step 4 lands; step 7 skips the rules probes and docs/BRANCH_PROTECTION.md line 12 is named. 1:2: the risk text now matches the engine (misspelled name with other checks present gives 'required checks pending too long' after ci_timeout_minutes; 'no checks appeared' only on an empty rollup), a declined CI gate is recorded in the bootstrap commit or PR message, and the guard test fails on any rules/rulesets/protection api call. Non-blocking: the Outcome and Finding sections still say step 7 only, update them when implementing."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "ab9cef22ec163432bbc16852f77271fed4bfee57",
-          "commit": "f09143a3fe3081ecd1a262ad8570f4fe3eedf133"
+          "blob": "3c035f648197f2c9da42ad22607e39d4fc319f2c",
+          "commit": "099bd1fbabd4fd19005b285c1a6289073b8759bc"
         }
       },
       "status": "done"
