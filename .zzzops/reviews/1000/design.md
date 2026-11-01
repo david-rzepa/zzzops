@@ -2,9 +2,11 @@
 
 ## 1. Outcome
 
-The shipped default graph (`plugins/zzzops/zzzops/templates/default/`) replaces `review_design` and `review_impl` with seven independent review lenses. They run in parallel on the design, and again on the implementation. An independent filter node per subject then decides which findings reopen the work and which become non-blocking notes. The project's intent becomes a declared policy input that the Intent lens reads. This repository adopts the graph afterwards through `zzzops/policy/*` branches.
+The shipped default graph (`plugins/zzzops/zzzops/templates/default/`) replaces `review_design` and `review_impl` with seven independent review lenses. They run in parallel on the design, and again on the implementation. An independent filter node per subject then decides which findings reopen the work and which become non-blocking notes. The project's intent becomes a declared policy input that the Intent lens reads. This repository adopts the graph afterwards through two policy branches that the root opens after G1000 merges, the first only on the owner's go-ahead (§12).
 
-The lens set comes from the experiment in §11. The spec's five-lens hypothesis covered 17 of the 32 material issues found (12 of the 24 that would have caused harm). The recommended seven cover 31 of 32 (23 of 24).
+The lens set comes from the experiment in §11. The spec's five-lens hypothesis covered 17 of the 32 material issues found (12 of the 24 that would have caused harm). The seven lenses as actually run cover 28 of 32 (23 of 24); that is measured. The merged seven prompts of §4 were not run as written: their extrapolated coverage, the union of the lenses each absorbs, is 31 of 32 (23 of 24).
+
+**Changes in revision 3** (answering `review_design` round 1): the filter's fingerprint now covers the candidate findings, and a note without a verdict counts as kept (§7, F1). The rollout is a list of root follow-ups with an owner gate, and G1003 is held until the lens graph is in force (§12, F2). Coverage is reported as measured (§11). The demotion count is corrected to 11 of 13. The budget is stated in rounds (§14). D9 is resolved by G1017, and the contract amendments are listed in §17.
 
 ## 2. Decisions (for `approve_design`)
 
@@ -17,8 +19,8 @@ The lens set comes from the experiment in §11. The spec's five-lens hypothesis 
 | D5 | **The template ships a placeholder intent** (strings starting with `TODO:`). `validate --policy` passes on it, with an `intent_placeholder` warning; a missing `settings.intent` is an error. The bootstrap skill requires the warning to be gone. Together these satisfy both acceptance bullets literally. **Owner: confirm, or choose the strict alternative.** | Strict alternative: the template has no intent, so `validate --dir <template>` fails with exactly that error. That contradicts "validate --policy passes for the template", and five lenses objected to it. |
 | D6 | **New node field `skippable`** (default `true`). It is `false` on `intent_*`, `simplicity_*`, `filter_*` and `approve_merge`. `edit` also refuses to add a skip of a node that has live findings: waive the findings first, visibly. | Inferring skippability from optional inputs (implicit, and it can disagree with the inputs). Visibility of skips alone, without the refusal (the "skip the objecting lens" attack). |
 | D7 | **Re-review pointer:** `reviewed` also records the subject's artifact blobs, and the card shows `previous.changed = git diff <old blob> <new blob>`. `reviewed` is written only on a fresh submit, when the lease's fingerprint equals the current one, the same condition as `target_fp`. | Recording the subject at submit time even for a stale lease. The diff would then start from a version the lens never read. The same latent bug exists for checkpoints today, and this fixes both. |
-| D8 | **Three-step rollout:** (1) G1000's PR; (2) release, plus `zzzops/policy/engine-1.1.0` raising `engine.min` before any 1.1 write (the REPAIR "Upgrade the engine" recipe); (3) `zzzops/policy/lenses` with this repository's graph, prompts and intent. The owner approves the intent text on that PR. | One change (integrate refuses goal diffs that touch policy files). Raising the floor in step 3 (1.1 writes would be unreadable by 1.0 clones in between). |
-| D9 | **SPEC.md and DESIGN.md** live outside this repository. Implement edits them as §15 lists, and the root shows their diff at `approve_merge`. I propose a child goal to bring them into the repository. | Leaving the edits evidenced only by implement's own summary (a Truth finding). |
+| D8 | **Three-step rollout, run by the root:** (1) G1000's PR. (2) `zzzops/policy/engine-1.1.0` raising `engine.min`, opened **only after the owner says go**, because it strands the Codex agent the owner has pinned to the 15b59a5 plugin copies. Repointing Codex stays with the owner and is out of scope. (3) `zzzops/policy/lenses`, with this repository's graph, prompts and the Appendix B intent strawman. The owner rewrites and approves the intent on that PR. G1003 is held from G1000's `approve_merge` until step 3 lands (§12). | One change (integrate refuses goal diffs that touch policy files). Raising the floor automatically at merge (it would break the owner's pinned Codex agent mid-work). Raising it in step 3 (lens records would then be written while 1.0 clones may still run). |
+| D9 | **SPEC.md and DESIGN.md:** G1017 brings them into the repository. G1000 does not edit the external copies. §17 lists G1000's contract amendments for G1017 to apply, or to list as pending, whichever lands first. | Editing the external copies and showing their diff at `approve_merge` (draft 2; unreviewable in the PR). |
 
 ## 3. The shipped graph (26 nodes)
 
@@ -43,7 +45,7 @@ design ─┬→ intent_design ──────┐
 | `approve_design` | inputs `summary`, `doc`, `filter` (`filter_design.summary`); context: each lens summary (optional for skippable lenses) |
 | `base` | context `filter_design.summary` replaces `design_review`, so `skip.approve_design` still waits for the lenses and the filter |
 | `test_design`, `review_tests`, `implement`, `run_tests` | unchanged |
-| `<lens>_impl` (×7) | review of `implement` with `filter: filter_impl`; inputs `doc`, `tests`, `code`, context `checks`; `intent_impl` also has `spec` and `policy: ["intent"]` |
+| `<lens>_impl` (×7) | review of `implement` with `filter: filter_impl`; inputs `doc`, `tests`, `code` (`implement.code.change`, as `review_impl` today), context `checks`; `intent_impl` also has `spec` and `policy: ["intent"]`. G1018 makes such sub-field inputs show the full checkpoint (commit, base, diff) on the card. Until it lands, code-lens workers use the WORKER.md workaround |
 | `filter_impl` | as `filter_design`, with inputs `doc`, `code` and the code-lens summaries |
 | `integrate` | context `filter` (`filter_impl.summary`) plus each code-lens summary, replacing `review` |
 | `approve_merge` | `skippable: false`; context as `integrate`, replacing `impl_review` |
@@ -83,23 +85,24 @@ Removed: `review_design`, `review_impl`, `review_design.md`, `review_impl.md`. B
 
 ## 6. Project intent
 
-- **Form:** `settings.intent = {"purpose": text, "serves": text, "not": [text], "principles": [text]}`, with extra keys allowed (text or list of text). `SETTINGS_SHAPE` gains it as the one optional key.
+- **Form:** `settings.intent = {"purpose": text, "serves": text, "not": [text], "principles": [text]}`, with extra keys allowed (text or list of text). `SETTINGS_SHAPE` gains it as the one optional key. *Implementation:* `schemas._check_shape` requires every key of a shape dict and allows no extras, so this needs one small new shape kind (an optional key whose value is an open dict of text or list of text). It must not loosen the check for other keys.
 - **Required** by the graph, not by the schema: a node that declares `policy: ["intent"]` fails `validate --policy` when the key is missing, through the existing rule 6. Values starting with `TODO:` give the warning `intent_placeholder`.
 - **Seen:** `card.build` adds `"policy": {key: value}` for an agent node's declared keys, using the same inline or blob view as inputs.
 - **Staleness:** the existing `policy` part of the fingerprint. A change stales `intent_design` and `intent_impl` on every open goal, and does not count against the budget (existing rule). `validate --policy-ref` already prints the impact; MIGRATING.md advises landing intent changes when few goals are in flight.
 - **Changing it** is a policy change: a `zzzops/policy/*` branch, never a goal diff.
 - **Bootstrap step 2** gains: "Capture the project's intent with the owner: what it is for, whom it serves, what it deliberately is not, and the principles that must survive change. Record their words."
-- **This repository:** Appendix B holds questions and a strawman. The owner rewrites it, and approves the final text on the step-3 policy PR, not through G1000's `approve_design`.
+- **This repository:** Appendix B holds questions and a strawman. The root puts the strawman on `zzzops/policy/lenses` (§12 step 3). The owner rewrites it and approves the final text on that policy PR, not through G1000's `approve_design`.
 
 ## 7. Nitpick filter (engine)
 
 - **Lens findings.** A review declaring `filter` must give `impact` (non-empty text) and `material` (boolean) on every new finding. These are two new optional finding keys. Other reviews, human answers and op findings are unchanged: always material, no new fields.
 - **A filtered lens's record is always `ok`.** Its findings are candidates, and blocking happens through the subject reopening. The lens's `decision` keeps its existing consistency rule and is shown in displays.
 - **Filter card:** `candidates` lists the open findings on its lenses' latest records: `{id, lens, target, text, impact, material, response}`.
-- **Filter submit:** `verdicts` must give `keep` or `note`, with a reason, for exactly the candidates whose `material` is false. A missing or extra id is refused, so nothing is dropped silently. The filter's record is always `ok`.
-- **Liveness** (frontier pass 1, one added condition): a finding carried by a filtered lens is live only if the filter's latest record is done and fresh (its input fingerprint, from recorded values, equals its record's), and the finding is `material` or has the verdict `keep`. A note is an open finding whose verdict is `note`. Notes never reopen work, never count against the budget, and carry forward while the lens keeps them open.
+- **Filter submit:** `verdicts` must give `keep` or `note`, with a reason, for exactly the non-material candidates on the filter's card. A missing or extra id is refused, so nothing is dropped silently. The filter's record is always `ok`.
+- **The filter's freshness covers its candidates (F1).** `fp_parts` gains a `candidates` part for a node that is some review's `review.filter`: the sorted `[id, material]` pairs of the open findings on its lenses' latest records. It is computed the way the `subject` part is, from the records. So a lens that re-runs and adds, closes or relabels a finding stales the filter, even when the lens's summary and the design did not change: the intent herd, a lens prompt `rev` bump, or a def-stale "resubmit it". `stale_keys` reports `candidates`. A candidates-only stale does not count against the budget, like `def` and `policy.*` in `frontier.counts`, because the lens re-run that caused it is already counted or exempt.
+- **Liveness** (frontier pass 1, one added condition): a finding carried by a filtered lens is live only if the filter's latest record is done and fresh. Fresh means its input fingerprint, from recorded values and the current candidates, equals the record's. While the filter is stale, its lenses' findings wait for it: the filter is the join. Once it is fresh, a finding is live unless it is non-material **and** the filter's latest record gives it the verdict `note`. So a note with no verdict counts as kept. The fingerprint rule makes that case unreachable, and the default makes any gap fail toward keeping, as the spec asks, rather than silently dropping the note. A note is an open finding whose verdict is `note`. Notes never reopen work, never count against the budget, and carry forward while the lens keeps them open.
 - **Displays:** a target's card lists `notes` (text, impact, lens, the filter's reason). Human items for nodes that consume a filter list them grouped by lens.
-- **Independence:** `start` refuses a filter holder who produced the subject, through the same `independence` check as reviews.
+- **Independence:** `start` refuses a filter holder who produced the subject, through the same `independence` check as reviews. *Implementation:* `start` finds the subject only through `graph.subject(X)` (`verbs.py:174`), and a filter is not a review. So `Graph` derives a filter's subject from the lenses that name it in `review.filter`. Validation requires every lens naming one filter to share one subject.
 - **Join:** the filter reads every lens's summary, so it runs once all non-skipped lenses are current, and the subject reopens once per round. A crash-looping lens raises its own `crash_loop` item. The filter waits visibly behind it ("blocked: concurrency_design").
 
 ## 8. Re-review "what changed" pointer (engine)
@@ -118,7 +121,7 @@ Removed: `review_design`, `review_impl`, `review_design.md`, `review_impl.md`. B
 |---|---|---|
 | `skippable` field; skip refusals; no skip options in items | `schemas.py`, `verbs.py`, `render.py` | acceptance: refused skip; Adversary I22 |
 | `settings.intent` (optional shape), placeholder warning, card `policy` section | `schemas.py`, `cli.py`, `card.py` | spec: intent as a declared input |
-| `review.filter`; filtered-lens `ok`; `impact`/`material`; `candidates`/`verdicts`; liveness condition; `notes` | `schemas.py`, `records.py`, `frontier.py`, `card.py`, `render.py`, `verbs.py` | spec: nitpick filter (owner request) |
+| `review.filter`; filtered-lens `ok`; `impact`/`material`; `candidates`/`verdicts`; the `candidates` fingerprint part; liveness condition; `notes`; filter subject for independence | `schemas.py`, `records.py`, `fingerprint.py`, `frontier.py`, `card.py`, `render.py`, `verbs.py` | spec: nitpick filter (owner request) |
 | `reviewed` artifacts, fresh-only; `previous.changed` | `records.py`, `card.py` | spec: the small engine change; Concurrency I28 |
 | PR body lists review summaries and skips | `ops/integrate.py` | spec |
 | `ENGINE_VERSION = "1.1.0"` | `__init__.py` | Rollout I9 |
@@ -135,6 +138,8 @@ The draft's reopen-batching rule, specialised intent message, 2 KB intent cap an
 - **Adjudication.** I judged each draft finding against the design: **S** (harmful if ignored), **A** (adopted improvement), **N** (nit) or **X** (false or already handled). "Material" means S+A, the findings that changed this design. Findings are grouped into issues (I1–I41) to measure uniqueness.
 
 **Cost.** Every lens run cost about the same, because reading the documents dominates: about 42k tokens and 25–40 s on the draft, and about 35k tokens and 23–51 s on the replay. The filter cost about 40k tokens and 17 s. A lens set therefore costs about N × 42k tokens per review round.
+
+"Unique issues" in this table are unique among all sixteen lenses; the per-set uniqueness is given below it.
 
 | Lens | Draft findings | Material (S+A) | Nit+noise | Unique issues | Replay known defects | Unique known defects | Verdict |
 |---|---|---|---|---|---|---|---|
@@ -155,16 +160,20 @@ The draft's reopen-batching rule, specialised intent message, 2 KB intent cap an
 | Migration (control) | 6 | 5 | 1 | – | 0 | – | **keep as Rollout**, absorbs Reversibility (3 unique harmful issues as a pair) |
 | UX (control) | 6 | 4 | 2 | – | 0 | – | merge into Experience |
 
-**Coverage** (union of 24 harmful and 8 adopt-only draft issues, plus the 8 known defects any lens found; 4 known defects were found by no lens: `m4:F2`, `m4:F3`, `x:M9`, `x:M11`):
+**Coverage.** There are 32 issues. 24 come from the draft round: 16 harmful and 8 adopt-only. The other 8 are the known defects that some lens found on the replay, all harmful. So 24 of the 32 are harmful. Four known defects were found by no lens: `m4:F2`, `m4:F3`, `x:M9`, `x:M11`. "Measured" rows count the lenses as they were actually run. "Extrapolated" rows count the union of the lenses each merged prompt absorbs; the merged prompts of §4 were never run as written.
 
-| Set | Issues covered | Harmful covered | Cost per round |
-|---|---|---|---|
-| Spec hypothesis (5) | 17/32 | 12/24 | 5 runs |
-| **Recommended merged seven** | **31/32** | **23/24** | 7 runs + 1 filter |
-| Seven without Experience | 29/32 | 23/24 | 6 + 1 |
-| All sixteen | 32/32 | 24/24 | 16 runs |
+| Set | Basis | Issues covered | Harmful covered | Cost per round |
+|---|---|---|---|---|
+| Spec hypothesis (5) | measured | 17/32 | 12/24 | 5 runs |
+| **The seven as run** (intent, simplicity, truth, adversary, concurrency, migration, experience) | **measured** | **28/32** | **23/24** | 7 runs + 1 filter |
+| The same without Experience | measured | 25/32 | 22/24 | 6 + 1 |
+| Merged seven (§4 prompts) | extrapolated | 31/32 | 23/24 | 7 + 1 |
+| Merged seven without Experience | extrapolated | 29/32 | 23/24 | 6 + 1 |
+| All sixteen | measured | 32/32 | 24/24 | 16 runs |
 
-Within the recommended set, the unique harmful issues are: Adversary 7, Rollout 3, Concurrency 2, Intent 1, Truth 1, Simplicity 0, Experience 0. Simplicity and Experience stay because the spec makes Simplicity mandatory for code entropy, which a design round cannot measure, and because Experience is the only lens for the human on the other end. The code-lens set mirrors the design set without data, and should be re-scored on real `implement` reviews.
+D1 rests on the measured row. Merging adds only three adopt-only issues: I12, I21a and I41. GT6, a low-severity defect, is the one harmful issue the seven miss.
+
+Unique harmful issues per lens, measured: Adversary 7 (GT2, GT3, GT7, GT12, I10, I22, I32), Rollout (Migration) 4 (I3b, I7, I8, I9), Concurrency 2 (GT11, I28), Truth 2 (I3a, I23), Intent 1 (I25), Experience 1 (I4), Simplicity 0. Experience is the only lens among the seven that caught I4, which forced humans to label their findings. Simplicity stays because the spec makes it mandatory for code entropy, which a design round cannot measure. The code-lens set mirrors the design set without data, and should be re-scored on real `implement` reviews.
 
 **Nit rate with and without the filter (draft round, 93 findings):**
 
@@ -194,7 +203,7 @@ Within the recommended set, the unique harmful issues are: Adversary 7, Rollout 
 | Migration | 17% | 0% |
 | UX | 67% | 0% |
 
-On the replay, a claim-only rule lost 3 of 8 found defects (GT3, GT6, GT8). D2 lost 1 (GT6, low severity). The filter's promotions were all correct (8/8 on the draft). Its demotions of material claims were wrong in 10 of 13 cases, so D2 does not let it demote.
+On the replay, a claim-only rule lost 3 of 8 found defects (GT3, GT6, GT8). D2 lost 1 (GT6, low severity). The filter's promotions were all correct (8/8 on the draft). Its demotions of material claims were wrong in 11 of 13 cases (in3, tr5, re2, co2, ne1, ad2, ad3, mi2, mi3, mi4, ux1), so D2 does not let it demote.
 
 **Prompt control.** Without the "approving is good, give impact" guidance, the five hypothesis lenses raised 38 findings instead of 29, all five requested changes instead of four, and the nit rate stayed the same (37% vs 41%). The guidance cuts volume, and the material claim is what separates nits from harm.
 
@@ -202,9 +211,15 @@ On the replay, a claim-only rule lost 3 of 8 found defects (GT3, GT6, GT8). D2 l
 
 ## 12. Rollout and migration
 
-1. **G1000's PR** into `dev`: engine, template, fixture freeze, tests, skills, references, `package.py` and `docs/EXECUTION.md`. It touches no `.zzzops/` policy file.
-2. **Release 1.1.0.** Then, before anything uses it, run `zzzops/policy/engine-1.1.0` raising `engine.min`: wait until nothing is running, refresh the Codex and Claude Code plugins, then land. A 1.0 clone then reports `engine_too_old` rather than misreading records. This repository's graph is unchanged at this point, and its reviews work as before, because no new field is required outside filtered lenses.
-3. **`zzzops/policy/lenses`:** this repository's `workflow.json` (§3), `prompts/` (seven lens prompts and `filter.md`; delete `review_design.md` and `review_impl.md`), and POLICY.json (`settings.intent` in the owner's words, and the instruction `review`). PROJECT.md's "Overall goal" points to the intent. Preview it with `validate --policy-ref` and `next --policy-ref`.
+G1000 delivers step 1. Steps 2 and 3 are follow-ups that the root performs after G1000 merges. The root records them on G1000's `approve_merge` item, so the owner sees them when approving the merge. Repointing the Codex plugin is not a step: the owner controls it and does it when they choose.
+
+1. **G1000's PR** into `dev`: engine, template, fixture freeze, tests, skills, references, `package.py` and `docs/EXECUTION.md`. It touches no `.zzzops/` policy file. **Before approving the merge, the root holds G1003** (`zzzops edit 1003 --set 'state="held"' --base C`). The dogfood run must use the lens graph, and G1000's merge would otherwise unblock it on the 12-node graph.
+   - *Between steps 1 and 2:* this repository still runs the 12-node graph. The root's Claude Code plugin may move to 1.1 while the owner's Codex agent stays on the 15b59a5 copies (1.0). That mix is safe. The old graph writes no new finding keys, workflow fields or settings, and a 1.0 engine reads 1.1's `reviewed` entries (§8; `card.previous` skips entries without `change`).
+2. **`zzzops/policy/engine-1.1.0`, gated on the owner.** After the merge, the root asks the owner: "Raising `engine.min` to 1.1.0 makes every 1.0 engine, including the Codex agent pinned to 15b59a5, refuse with `engine_too_old`. May I open `zzzops/policy/engine-1.1.0`?" The root opens the branch only on an explicit yes, following REPAIR's "Upgrade the engine" recipe: wait until nothing is running, then land. An open policy branch blocks all workflow work, so no goal advances under a half-applied upgrade. If the owner says not yet, the root waits and other work continues on the old graph. G1003 stays held.
+3. **`zzzops/policy/lenses`, after step 2 has landed.** It changes this repository's `workflow.json` (§3) and `prompts/` (the seven lens prompts and `filter.md`; it deletes `review_design.md` and `review_impl.md`). It also changes POLICY.json: `settings.intent`, starting as the Appendix B strawman, and the instruction `review`. PROJECT.md's "Overall goal" points to the intent. Before pushing, the root previews the change from a local ref with `validate --policy-ref` and `next --policy-ref`. It pushes the branch when the owner is ready to review, because an open branch stops all work. The owner rewrites the strawman and approves the intent text on that PR. The branch lands only with the owner's text.
+4. **After step 3 lands,** the root unholds G1003 (`--set 'state="open"'`).
+
+**Which goals wait.** G1003 (dogfood) waits for step 3, through the hold. G1002 (whitepaper) does not wait: it describes the shipped graph that step 1 delivers, and it can run on either graph. Every other goal pauses only while a policy branch is open, which the engine already enforces.
 
 **In-flight goals at step 3:**
 - `review_design`/`review_impl` records become orphans (a warning). They are not deleted.
@@ -238,10 +253,14 @@ On the replay, a claim-only rule lost 3 of 8 found defects (GT3, GT6, GT8). D2 l
   - Notes appear on the target's next card and on the approval item.
   - Notes do not count against the budget.
   - A crash-looping lens leaves the filter visibly blocked.
+  - **Unjudged note (F1):** the filter is fresh and every lens is current. Then `settings.intent` changes, and `intent_design` re-runs with the same summary and one new non-material finding. Check that `filter_design` becomes stale with `stale_keys == ["candidates"]` and that the design stays current, not reopened and not advanced past, until the filter re-submits. After a `keep` verdict the design reopens. After a `note` verdict the design stays current, and the note shows on its next card. The filter re-run does not count against the budget. Repeat with a lens `rev` bump in place of the intent change.
+  - **Missing verdict fails safe:** a hand-built filter record that is fresh but lacks a verdict for an open note (written directly to `goal.json`, as a human might) makes that note live.
+  - A filter holder who produced the subject is refused at `start`.
 - **Intent:**
   - The Intent lens card shows `policy.intent`.
   - Changing it stales only `intent_*`.
   - The placeholder warning works.
+  - An unknown extra intent key with a text value passes, a non-text value fails, and other settings keys still reject extras (the new shape kind).
 - **Pointer:**
   - A stale-lease submit records no `reviewed`.
   - A missing old blob says "review in full".
@@ -250,36 +269,45 @@ On the replay, a claim-only rule lost 3 of 8 found defects (GT3, GT6, GT8). D2 l
 
 ## 14. Risks
 
-- **Cost:** about 8 agent runs per review round instead of 1. A round costs about 7 × 42k tokens plus the filter. Mitigated by skips, `previous.changed` and the one-reopen-per-round join. The budget (`3 × agent nodes`) grows from 18 to 60.
+- **Cost:** about 8 agent runs per review round instead of 1. A round costs about 7 × 42k tokens plus the filter. Mitigated by skips, `previous.changed` and the one-reopen-per-round join. The budget (`3 × agent nodes`) grows from 18 to 60, but that is less generous than it looks. One full design correction round now costs up to 9 counted runs (design, 7 lenses, filter) instead of 2. So 60 allows about 6–7 full rounds per subject, where 18 allowed about 9. Skipped lenses still count toward the limit's size but not its use. A goal that runs out raises the existing budget item, and the owner can raise `budget` per goal.
 - **The filter cannot demote,** so the residual nit rate among blocking findings is about 11%. Reviewers' prompts and disputes handle the rest.
 - **The intent change herd:** one change re-runs two Intent reviews on every open goal. Preview it first.
 - **One shipped lens set** is now part of every bootstrapped project. Renames follow REPAIR's rename recipe.
 
 ## 15. Docs
 
-- **SPEC** (design-reset folder, outside this repository):
-  - §3.1: `skippable`, `review.filter`, filter outputs and the wiring rule.
-  - §3.2: `settings.intent`.
-  - §3.6: finding `impact`/`material`.
-  - §4.9: the filtered-lens liveness condition and filtered-lens `ok`.
-  - §4.14: verdict validation and fresh-only `reviewed`.
-  - §4.18: the edit skip refusal.
-  - §4.20: `policy`, `candidates`, `notes`, `previous.changed`.
-  - §5.4: PR body.
-  - §7: the 26-node graph and its JSON.
-  - §8.2/§8.3: prompts and bootstrap step 2.
-- **DESIGN** (same folder): §4.1 graph and table; §3.8 filter and notes; §10 new items (skippable, intent, filter, pointer, PR body).
+- **SPEC and DESIGN:** G1017 brings them into the repository. G1000 does not edit them; §17 lists the amendments.
 - **In this repository:**
   - MIGRATING.md: adopting the lens graph, in-flight goals, rollback, lens-set edit checklist.
   - `package.py`: the prompt list.
   - The bootstrap, add-goal and execute skills.
   - `docs/EXECUTION.md`: the diagram.
 
-## 16. Out of scope, and a proposed child goal
+## 16. Out of scope
 
-**Out of scope:** lens applicability predicates in the engine; a requirements Q&A phase; findings targeting `goal.spec`; red-before-green (#457); PR-comment interpretation; decomposition; re-scoring the code-lens set on real implementation reviews.
+Lens applicability predicates in the engine; a requirements Q&A phase; findings targeting `goal.spec`; red-before-green (#457); PR-comment interpretation; decomposition; re-scoring the code-lens set on real implementation reviews; repointing the Codex plugin (owner-controlled); the card rendering of checkpoint sub-field inputs (G1018); moving SPEC and DESIGN into the repository (G1017).
 
-**Proposed child goal (created only after approval):** "Bring SPEC.md and DESIGN.md into the repository (docs/design/) so that design changes are reviewed in goal diffs."
+## 17. Contract amendments (for G1017)
+
+G1017 applies these to the in-repository SPEC and DESIGN if G1000 has merged first. Otherwise it lists them under "pending amendments: G1000".
+
+- **SPEC:**
+  - §3.1: node field `skippable` (default `true`); `review.filter`; filter outputs `summary` and `verdicts`; the wiring rule (a filter's input from a skippable lens is `optional`, one from a non-skippable lens is required; lenses naming one filter share one subject).
+  - §3.2: `settings.intent` (`purpose`, `serves`, `not`, `principles`, extra text keys); the `intent_placeholder` warning.
+  - §3.6: finding keys `impact` and `material`, required on new findings of a filtered review only.
+  - §4.9: a filtered lens's record is `ok`. The filter's fingerprint gains the `candidates` part. Liveness: a filtered lens's finding is live only once the filter is fresh, and then unless it is non-material with verdict `note`. A missing verdict counts as kept.
+  - §4.10: a `candidates`-only stale does not count against the budget.
+  - §4.14: verdict validation (exactly the card's non-material candidates); `reviewed` records artifact blobs, on a fresh submit only.
+  - §4.18: `edit` refuses a skip of a non-skippable node, and a new skip of a node with live findings.
+  - §4.20: card sections `policy`, `candidates`, `notes`, `previous.changed`.
+  - Independence: a filter's subject is derived from its lenses.
+  - §5.4: the PR body's `## Reviews` section.
+  - §7: the 26-node default graph and its JSON.
+  - §8.2/§8.3: the lens prompts, `filter.md`, the instruction `review`, and bootstrap step 2 (capture intent).
+- **DESIGN:**
+  - §3.8: the filter and notes, including why it may promote but never demote (§11 data) and why its freshness covers candidates.
+  - §4.1: the graph and table.
+  - §10: new items (skippable, intent, filter, pointer, PR body), plus the rollout order of §12 with its owner gate.
 
 ## Appendix B: this repository's intent — questions and strawman for the owner
 
