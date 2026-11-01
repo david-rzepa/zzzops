@@ -2,7 +2,9 @@
 
 Read at integration commit 54d7e83. Coordinated with G1014 (approved design, attempt 2) and G1000 (design under review).
 
-Attempt 3. It fixes review finding F2 (review_design:2:1): a checkpoint override must be a full 40-hex sha, so ref names such as `HEAD` and short shas are refused instead of resolving in the main repository (see §4a). It also settles the `previous.output` rule on purpose (§2: it stays `== ["def"]`).
+Attempt 4. It fixes review_tests:2:2: the `routine` downgrade now also requires that the node has no live corrections, because a reopened node on a node with `inputs.base` (`implement`, `test_design`) has a stale record as soon as base moves (§2). This covers plain starts as well as reclaims.
+
+Attempt 3 fixed review finding F2 (review_design:2:1): a checkpoint override must be a full 40-hex sha, so ref names such as `HEAD` and short shas are refused instead of resolving in the main repository (see §4a). It also settles the `previous.output` rule on purpose (§2: it stays `== ["def"]`).
 
 Attempt 2 fixed F1 (reclaim cards could downgrade capability to `routine`; see §2, "Capability and `previous.output`") and took notes N1, N2 and N4, and the checkpoint wording fix (dogfood item 17).
 
@@ -51,11 +53,17 @@ The union matters for display. On attempt 3, after a stale attempt 2 was abandon
 
 **Capability and `previous.output` (fix for F1).** Both existing rules that read `stale_because` in `card.build` assume a done record whose inputs moved. They now read `record_stale` instead:
 
-- `record_stale == ["inputs.base"]` gives capability `routine`. Only the base moved since the accepted output, so the work is a rebase.
+- `record_stale == ["inputs.base"]` **and no live corrections** (`not kind_state["corrections"]`) gives capability `routine`. Only the base moved since the accepted output and no finding asks for a change, so the work is a rebase. The frontier already puts `corrections` on every ready, reclaimable and crash-loop state (frontier.py:213-254), so `card.build` reads it from `kind_state` with no new plumbing.
 - `record_stale == ["def"]` adds `previous.output`. **Decision:** keep today's exact match, only moving it from `stale_because` to `record_stale`. `previous.output` comes with the hint "If it still holds, resubmit it." (card.py:193). That advice is safe only when the node definition is the only thing that changed. If `def` moved together with `spec` or an upstream output, the previous output answers an older question, and inviting a resubmit would be wrong. Widening to `"def" in record_stale` would also change behaviour outside this goal's scope.
 - `reason == "retry"` still wins and gives `reasoning`, as today.
 
-Lease-since-claim staleness never changes capability. A reclaimed first attempt (`new`, no record) or a reclaimed `reopened` correction (record current, so `record_stale` is empty) keeps the node's own capability, even when its only lease-side change is `inputs.base`. Base re-runs whenever the integration branch moves, so this is the common case for `implement` and `test_design`. Keying the rule on the record set is simpler than looking at the abandoned lease's reason, and it stays correct after several reclaims.
+Lease-since-claim staleness never changes capability. A reclaimed first attempt (`new`, no record, so `record_stale` is empty) keeps the node's own capability, even when its only lease-side change is `inputs.base`.
+
+A node carrying live corrections also keeps its own capability, whatever `record_stale` says. Live corrections are not part of `fp_parts` (frontier.py:207-239), so on a node with `inputs.base` the record of a reopened node becomes stale on `["inputs.base"]` as soon as the integration branch moves. Base re-runs whenever dev moves, so this is the common case for `implement` and `test_design`. Without the corrections condition such a correction run would be handed to a `routine` model as a rebase. **Decision, both paths:**
+- *Reclaim* (lease present): a reclaimed `reopened` correction after base moved has `record_stale == ["inputs.base"]` and corrections, so it keeps its own capability.
+- *No lease* (plain `start`): the frontier checks staleness before corrections, so a reopened node whose base has since moved is `ready`/`stale` with `["inputs.base"]` and carries its corrections. Today it gets `routine`. Under this rule it keeps its own capability. This is a deliberate behaviour change for that one case: an open finding is real work, not a rebase.
+
+A ready-stale node with only `inputs.base` stale and no corrections still gets `routine`, on a plain start and after an abandon and reclaim. Keying the rule on the record set plus the corrections list is simpler than looking at the abandoned lease's reason, and it stays correct after several reclaims.
 
 **Reuse of G1014.** G1014's `live_input_changes` compares a before portfolio with an after portfolio. At reclaim there is no before portfolio, only the abandoned lease's recorded `Fp-Parts`. The reusable piece is the comparison G1014's `renew` makes: `stale_keys(L.fp_parts, current parts)`. G1016 uses the same expression and adds no second helper. **Decision:** no shared function, because it would be a one-line wrapper. Recorded here so reviewers do not ask for one.
 
@@ -130,7 +138,7 @@ Add one line after the verb table: "`ZZZOPS_TRACE=<file>` appends one JSON line 
 | `abandon` output | adds `restart`, `hint` |
 | task card | `stale_because` also on reclaim cards (union of lease and record staleness); new optional `changed`; top-level `renew` removed; `commands.renew.when` added |
 | `output_schema` text | findings consequence sentence; checkpoint "optional" / omit-the-key wording; artifact `--artifact` vs `artifact.path` wording |
-| `card.build` capability | `routine` downgrade and `previous.output` keyed on record staleness only (`kind_state.record_stale`, not printed) |
+| `card.build` capability | `routine` downgrade keyed on record staleness only (`kind_state.record_stale`, not printed) and on no live corrections, which also changes a plain start of a reopened node after base moved (now keeps its own capability); `previous.output` keyed on `record_stale` |
 | `submit` `validation` refusal on responses | `details.respond_to`, `details.no_longer_live`, new hint |
 | `submit` checkpoint override | must be a full 40-hex sha; ref names and short shas get `validation` (F2) |
 | `edit` `{"commit"}`-only record completion | same full-sha rule; a missing commit is refused instead of stored as null |
@@ -155,7 +163,7 @@ Add one line after the verb table: "`ZZZOPS_TRACE=<file>` appends one JSON line 
 - **Abandon** (test_engine_lifecycle.py): `abandon` returns `restart.argv == ["start", g, "design", "--as", "<LABEL>", "--reclaim"]`. Running it with a real label succeeds, and a plain `start` is still refused with `not_ready`.
 - **Reclaim after a spec edit:** start `design`, then `edit --set spec=…`, `abandon`, and `start --reclaim`. The card has `reason: reclaim`, `stale_because == ["inputs.spec"]`, and a `changed["inputs.spec"].diff` whose output (run with git) contains the new spec line. Control: abandon and reclaim with no edit, and the card has neither key.
 - **Union:** a record-stale attempt 2 is abandoned, then reclaimed with no further edit. Attempt 3's card still lists the record-stale keys.
-- **Capability (F1):** start `implement` (no record, reason `new`), advance the integration branch so `base` re-runs, then `abandon` and `start --reclaim`. The card has `stale_because == ["inputs.base"]` and `run.capability == "bounded"` (implement's own), not `routine`. Same check for a reclaimed `reopened` correction run on `design` after base moved: its capability is `architectural`. Control: a ready-stale `implement` whose record is stale only on `inputs.base` still gets `routine`, both on plain `start` and after an abandon and reclaim.
+- **Capability (F1):** start `implement` (no record, reason `new`), advance the integration branch so `base` re-runs, then `abandon` and `start --reclaim`. The card has `stale_because == ["inputs.base"]` and `run.capability == "bounded"` (implement's own), not `routine`. Corrections (review_tests:2:2), on `test_design` (which has `inputs.base`): after a review reopens it, restack base, then (a) a plain `start` gives `reason: stale`, `stale_because == ["inputs.base"]`, non-empty `corrections`, and test_design's own capability, not `routine`; (b) start, restack base, `abandon` and `start --reclaim` give `stale_because == ["inputs.base"]` and the same own capability. Control: a ready-stale `implement` whose record is stale only on `inputs.base` and has no corrections still gets `routine`, both on plain `start` and after an abandon and reclaim.
 - **Crash-loop reclaim (N4):** a `needs_human` crash-loop node with a live lease, taken with `--force --reclaim` after a spec edit, gets `stale_because == ["inputs.spec"]`.
 - **Artifact pointer:** a reclaim after `design` re-ran upstream gives `changed["inputs.doc"].diff == "git diff <old> <new>"`. With the old blob deleted locally, the entry is the "not available" note, and the trace shows no extra fetch (`ZZZOPS_TRACE` line count unchanged).
 - **Submit refusal:** start `design`. A review raises a finding on it while it runs (submitted with a second agent). Then `design` submits without `responses`. The refusal has `details.respond_to[0]` with the finding's id, `from`, `target == "design"` and text. A response to a finding resolved meanwhile appears in `no_longer_live`.
