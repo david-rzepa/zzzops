@@ -167,15 +167,15 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_tests:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:3f5c622df7a1d1eedca67779fb9bee70437abdd8e9a6458da117af6119131c6c",
@@ -183,35 +183,35 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T21:32:16Z",
+      "finished_at": "2026-11-01T21:34:43Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:6f4c7854b055f0ef632f22312336a6e094a53cd5",
-          "tests": "v1:sha256:def3442a061fc7ec7bc51b9a6ed48330e893331533d16c174071bc3f9e7aeb0a"
+          "tests": "v1:sha256:f24180556c7db342e38b7b1e592c04459f956a0be681b445c94dde442c4cc1a5"
         },
         "policy": {},
-        "subject": "v1:sha256:3f5c622df7a1d1eedca67779fb9bee70437abdd8e9a6458da117af6119131c6c"
+        "subject": "v1:sha256:55120e18520ea9480004949703f43fc3fd7fe27ba75e70c866de8f342fb8c5aa"
       },
       "holder": "claude:e6ad/rd1022",
-      "input_fp": "v1:sha256:a19d16bafd2ff29e62e304afb7dc61c43e52bd3eadb1f3f74b9873d14319d7c1",
-      "ok": false,
+      "input_fp": "v1:sha256:d9b016fd610854a74a67da2ac4c3281074a0b1f10f4f91d75b913bc5d83d892f",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "4019f52206bb815fd75f8acdc73a6d69f1eb9308",
-          "commit": "983e7c419afee71d56808f2db73873a6d79c59ba",
+          "blob": "a8f1be7aaa9c27f863e466e7f1bd65e3d0a3d488",
+          "commit": "b8ac60f42b938a48c6e5a9d6ec82133208526673",
           "path": ".zzzops/reviews/1028/review_tests.md"
         },
-        "summary": "The new file covers design section 7 items 1-13 plus 9a/9b, and run from the worktree root it collects all 30 tests, all failing pre-implementation. The four edited existing tests change only what the design reverses. One fix: the module-level `from engine import ENGINE_VERSION` breaks the whole file in the G1027-first order, because G1027 deletes ENGINE_VERSION, so 9b's G1027 branch is dead code."
+        "summary": "The module-level ENGINE_VERSION import is gone: the order is detected by CAPS_DIR or engine.CAPABILITIES, and ENGINE_VERSION is read with getattr only in the G1028-first branches. With ENGINE_VERSION deleted and CAPABILITIES set, the module imports and takes the requires path. All 30 tests still collect from the root and fail pre-implementation. review_tests:1:1 resolved."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "744fe1c34411a09eea0b49e8ed70e19347b6c51c",
-          "commit": "f0048e09efca47fda8251c5ca70a4636b0721a0a",
-          "tree": "ac8a4a869220366457349c7e75632b259fcdee6b"
+          "change": "9ed79971974472fe654806fc9861e601a30e9c3a",
+          "commit": "d3fae5202ffe6946a19f005e6e4c259e18aa8b1f",
+          "tree": "117a41c52857aa537086f2de5c6a5e5389a50cfc"
         }
       },
       "status": "done"
