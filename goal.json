@@ -241,10 +241,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-01T21:48:44Z",
+      "finished_at": "2026-11-01T21:50:48Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -278,14 +278,13 @@
           "python3 -m unittest discover -s .agents -p 'test_engine_lenses.py'"
         ],
         "responses": {
-          "review_tests:1:1": "fixed: test 10's git grep keeps plugins/ and docs/design/ (minus HISTORY.md) but over .agents/ now excludes ':(exclude,glob).agents/test_*.py', so only the shared fixtures and helpers (engine_fixtures.py, engine_sim.py, ...) are guarded; other goals' test modules may keep their getattr or lazy-import fallbacks. The docstring records why.",
-          "review_tests:1:2": "fixed: the full-suite command is gone. The commands are now one discover per module: test_engine_capabilities, the five edited modules (store, review_fixes, schemas, legacy, identity), and test_design_docs, test_engine_sync_edit and test_engine_lenses."
+          "review_tests:2:1": "fixed: test 10's git grep now also has ':(exclude)docs/design/IMPLEMENTATION_PLAN.md' next to the HISTORY.md exclusion, and its docstring says both are historical records."
         },
         "tests": {
           "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "02db5585339000f9006cc45aa77f5f956a5e7278",
-          "commit": "4d0d880582f1d1a29e1ccf4cc91ed59f2689b90a",
-          "tree": "ab8e7abf355c113d24df868a86539a6e33ab004e"
+          "change": "e63cf8fbb0da71136303b17fedaec475a0be54e6",
+          "commit": "4c8c5c6147aea89d261c1ee27100f830d088bb99",
+          "tree": "e90a49f542d57355619832fcb6fdb35aaaca79cd"
         }
       },
       "reason": "reopened",
