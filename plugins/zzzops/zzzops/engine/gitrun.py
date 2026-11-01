@@ -52,12 +52,19 @@ class Git:
 
     # ------------------------------------------------------------------ discovery
     @classmethod
-    def discover(cls, cwd: str | Path, now: int) -> "Git":
+    def discover(cls, cwd: str | Path, now: int, flag: bool = False) -> "Git":
+        """`flag`: cwd came from --repo (SPEC §1.5, G1028), which the error then names."""
         env = base_env()
         p = subprocess.run(["git", "-C", str(cwd), "rev-parse", "--git-common-dir"], capture_output=True, text=True, env=env)
         if p.returncode != 0:
-            raise Refused("environment", "not inside a Git repository",
-                          details={"cwd": str(cwd), "git": p.stderr.strip()[:500]})
+            if flag:
+                raise Refused("environment", f"--repo {cwd} is not inside a Git repository",
+                              details={"repo": str(cwd), "git": p.stderr.strip()[:500]},
+                              hint="Pass --repo a directory inside the repository (or one of its worktrees).")
+            raise Refused("environment", f"not inside a Git repository: {cwd}",
+                          details={"cwd": str(cwd), "git": p.stderr.strip()[:500]},
+                          hint="Run zzzops from the repository, or pass --repo <a directory inside it>. Task-card "
+                               "commands already carry --repo.")
         common = Path(p.stdout.strip())
         if not common.is_absolute():
             common = (Path(cwd) / common).resolve()
