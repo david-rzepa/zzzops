@@ -42,15 +42,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:65aea1189755d4441772298bc3609fd097f5f21fc8aeaa51c901e50c94c5daea",
@@ -58,33 +58,33 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T19:37:31Z",
+      "finished_at": "2026-11-01T19:41:27Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:2adddada44fe4f179b53e2f1dfaf589a0cfc0cf3",
+          "doc": "v1:blob:606311b216268f9b2f2f2495e94b654838796672",
           "spec": "v1:sha256:8b64570e05d92537c5291643a3706f35bffd605782d3d9c867408925aa7b4aec"
         },
         "policy": {},
-        "subject": "v1:sha256:65aea1189755d4441772298bc3609fd097f5f21fc8aeaa51c901e50c94c5daea"
+        "subject": "v1:sha256:8435a01f1b1ec481399a83466a44700c3bf8d266858e9d5937d2accfaf1eb945"
       },
       "holder": "claude:e6ad/rd1017",
-      "input_fp": "v1:sha256:01c65d8edc4930225f60937eb2bf720be9e95f0e3e068a473a9243efce8d00b9",
-      "ok": false,
+      "input_fp": "v1:sha256:3c81340fb029d80d52e925dcc9911b6404f68a40ceae95b9469c8646365d5f2d",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "8d675e0037d717ae6cf0f10a2eae476f855c12f7",
-          "commit": "a917a55ee83d1cdf2c2198d67aff282070ee2dda",
+          "blob": "6a376f916a71bbc591be30d035eb047299dbda76",
+          "commit": "b22f4ec1c6d3fbd74d418d42c6fec1efce6e998c",
           "path": ".zzzops/reviews/1033/review_design.md"
         },
-        "summary": "The cause and fix are right. I reproduced at 8d8437a that a 0.0.0-dev Claude build fails package_status with the reported detail, and that making only the rendered channel follow the version gives ok:true. The shared channel_for_version rule, the harness detection order (cachebuster, Claude base, Codex base, generated-marketplace layout, None) and the neutral fallback are sound, and they match the real install layouts. One finding: the planned tests assert environment == [], but validate's environment also includes gh_problems (gh missing or unauthenticated). CI exports no GH_TOKEN, so the new marketplace test and the acceptance checks would fail even with the fix. Assert on the plugin-package entry instead, or put a fake gh on PATH."
+        "summary": "Approved. review_design:1:1 is resolved: the tests now assert only that no environment entry starts with 'plugin package' and none contains 'skill discovery metadata'. That prefix covers both package_check failure forms (cli.py:242-249), and gh and git entries are ignored, so the tests pass in CI without a token. A wrong-channel negative case proves the assertion can fire and that the hint names Claude Code. All three notes were taken: the test is in NATIVE_COVERAGE and runs via sys.executable zzzops.py; exact-dict package_status assertions are grepped at implement; a comment explains the <m> segment. No new findings."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "2adddada44fe4f179b53e2f1dfaf589a0cfc0cf3",
-          "commit": "b49df20abb3e715cb28f427f1533e8f8356035b7"
+          "blob": "606311b216268f9b2f2f2495e94b654838796672",
+          "commit": "7f0befbde4aa4691e0f9a7b8c9b725bb7adfae3b"
         }
       },
       "status": "done"
