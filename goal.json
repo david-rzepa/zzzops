@@ -39,7 +39,20 @@
     "base": {
       "attempt": 1,
       "correction_runs": 0,
-      "findings": [],
+      "findings": [
+        {
+          "id": "base:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "base",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:c20159227db7645411b84e82a670965729dd6e276a409e981d90d8df25775793",
+          "text": "PR conflicts with dev after G1014/G1018/G1001/G1015 merged (GitHub CONFLICTING/DIRTY, so no CI runs); rebase onto the current dev tip. See G1021.",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-01T04:32:54Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
