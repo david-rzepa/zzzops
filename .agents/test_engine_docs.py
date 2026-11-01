@@ -82,7 +82,7 @@ class CliWithoutRepositoryTests(unittest.TestCase):
         p = subprocess.run([sys.executable, cli, "--help"], cwd=nowhere, capture_output=True, text=True)
         self.assertEqual(0, p.returncode, p.stderr)
         self.assertIn("usage: zzzops", p.stdout)
-        p = subprocess.run([sys.executable, cli, "validate", "--policy", "--dir", str(fx.TEMPLATES)], cwd=nowhere,
+        p = subprocess.run([sys.executable, cli, "validate", "--policy", "--dir", str(fx.SHIPPED)], cwd=nowhere,
                            capture_output=True, text=True)
         self.assertEqual(0, p.returncode, p.stderr + p.stdout)
         self.assertTrue(json.loads(p.stdout)["ok"])
