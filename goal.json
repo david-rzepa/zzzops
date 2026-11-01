@@ -37,6 +37,41 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T19:40:18Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:41fa9a84fd500cf41af800b3fa7393c26f40724c",
+          "spec": "v1:sha256:7b783336f72e8d5bd10e9b0585cc79e2c22a7c9710dcf68cc883678f88f2bfa4"
+        },
+        "policy": {},
+        "subject": "v1:sha256:8b2c0134893ee10fcb6bbe7ffed6900168b0f87771553721f76d6d2607104245"
+      },
+      "holder": "claude:e6ad/rt5",
+      "input_fp": "v1:sha256:b9ccea23ed474d779e1616d5cb40cd151d4073f89738114e1ff3ca650d78cce0",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "7c625018540cd3d4528efcd82f8ad98e46d4228d",
+          "commit": "a845380f2745bb645d0b8766bf7c5ee0641164fc",
+          "path": ".zzzops/reviews/1034/review_design.md"
+        },
+        "summary": "The design meets the spec and its engine claims hold on dev 8d8437a: cli.py new takes release (default releases.current, l.353), schemas.validate_goal rule 4 refuses a dependency on a later release and a cycle before anything is pushed, request_key makes a rerun of an identical file safe (cli.py l.336-340), edit --set exists, MIGRATING.md line 43 and SKILL.md steps 3 to 5 read as described, the one existing --json assertion is at test_engine_legacy.py:570, and G1004-G1013 are release 2. Skill-only with a CLI-level backstop test is the right size; the batch verb, dry run and helper script rejections are reasoned and stay inside this goal, so no owner question. Non-blocking notes in the report: state the MERGE-group release rule, fix the 'the the private app' typo, and keep the skill test to a few load-bearing phrases."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "41fa9a84fd500cf41af800b3fa7393c26f40724c",
+          "commit": "8e4beb230c0287573562725820f7df4f201fd40b"
+        }
+      },
+      "status": "done"
     }
   },
   "release": 1,
