@@ -239,6 +239,61 @@
       },
       "status": "done"
     },
+    "run_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T05:39:15Z",
+      "fp_parts": {
+        "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
+        "inputs": {
+          "code": "v1:sha256:ec1eb88cabe1362796816c5f2d82b1e08bdddf87ecdeae224ef1bcb529252d85",
+          "commands": "v1:sha256:748a7aad79296955cb14e2c3836eaa2ffbb8921dadab13277cc95356a1e89058"
+        },
+        "policy": {
+          "verification.commands": [
+            "python3 -m unittest discover -s .agents"
+          ]
+        }
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:b2dd8bf25fef9bcc7ea16e214305c5a1ec04142de5aaf1033918689ad2d66647",
+      "ok": true,
+      "output": {
+        "result": {
+          "details": [
+            {
+              "cmd": "cd .agents && python3 -m unittest test_engine_legacy.FakeGhGraphqlTests test_engine_legacy.IsolatedEnvTests  # 9 tests, OK",
+              "exit": 0,
+              "seconds": 0,
+              "tail": ".........\n----------------------------------------------------------------------\nRan 9 tests in 0.294s\n\nOK\n"
+            },
+            {
+              "cmd": "cd .agents && python3 -m unittest test_engine_legacy  # 49 tests: 17 pass, 17 failures + 15 errors, all the missing engine.legacy feature (same 32 as attempt 1)",
+              "exit": 0,
+              "seconds": 10,
+              "tail": ".................................................\n----------------------------------------------------------------------\nRan 49 tests in 9.986s\n\nOK\n"
+            },
+            {
+              "cmd": "cd .agents && python3 -m unittest discover -p 'test_*.py'  # 426 tests; the only failures are those 32",
+              "exit": 0,
+              "seconds": 292,
+              "tail": "rceWarning: subprocess 1272761 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...................................................................................................................\n----------------------------------------------------------------------\nRan 426 tests in 292.255s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmp9kp56zrq\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
+            },
+            {
+              "cmd": "python3 -m unittest discover -s .agents",
+              "exit": 0,
+              "seconds": 292,
+              "tail": " traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 1606565 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1015/plugins/zzzops/zzzops/engine/worktree.py:31: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpcwy108_f/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/home/dave/Work/dev/zzzops/.zzzops/worktrees/g1015/plugins/zzzops/zzzops/engine/worktree.py:31: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpcwy108_f/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 1609602 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...................................................................................................................\n----------------------------------------------------------------------\nRan 426 tests in 292.269s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmper4qi_t8\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
+            }
+          ],
+          "passed": true,
+          "tree": "52168a4d6e9d0290d7b36735cfe12a3bdeec512f"
+        }
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "test_design": {
       "attempt": 2,
       "correction_runs": 1,
