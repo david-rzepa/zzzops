@@ -140,28 +140,28 @@
       "status": "done"
     },
     "integrate": {
-      "attempt": 1,
+      "attempt": 2,
       "blocked": {
         "category": "external",
         "op_state": {
-          "head": "6f74591acfe8a832a305f78ec0be7e37f4739695",
-          "pending_since": 1793516207,
+          "head": "6d4715a1164fd913115f28c8b3bc2df39761be73",
+          "pending_since": 1793519094,
           "polls": 1,
           "rerun_head": null
         },
         "reason": "required checks pending: dev-required-tests",
-        "repeats": 1,
-        "retry_after": "2026-11-01T07:01:47Z",
+        "repeats": 2,
+        "retry_after": "2026-11-01T07:49:54Z",
         "waiting_for": "time"
       },
-      "correction_runs": 0,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T06:56:47Z",
+      "finished_at": "2026-11-01T07:44:54Z",
       "fp_parts": {
         "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
         "inputs": {
-          "base": "v1:sha256:f0f86e3e5d7131680049bfd289e2d0b91b2df6ab0e5273c2ec770b60152ca61d",
-          "code": "v1:sha256:4494c4b20d0026d5df2f1ddbaaa8d8dc32441f8dabef159f35ae7da0e0775144"
+          "base": "v1:sha256:bdd8faa768559c4b8a65bd74f02c7fcb133d59b44c4c97504864a4c68afc3ad5",
+          "code": "v1:sha256:af3b0368ff9b9e16651a4a035578501d987e2f2a6bbe585f8bc6dab1eb2faece"
         },
         "policy": {
           "verification.required_ci": [
@@ -170,10 +170,10 @@
         }
       },
       "holder": "claude:e6ad/op",
-      "input_fp": "v1:sha256:3d5825056faeafa8c642555fddc1fb573d7d581830e3c0e89af57937ebc02b26",
+      "input_fp": "v1:sha256:c143e3e0dce59558658d73444ba657211c7cd109f7ca745b3e5ed61075f8afa1",
       "ok": false,
       "output": null,
-      "reason": "new",
+      "reason": "stale",
       "status": "blocked"
     },
     "review_design": {
