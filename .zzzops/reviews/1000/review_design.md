@@ -1,62 +1,56 @@
-# G1000 review_design, round 2: independent re-review of design revision 3
+# G1000 review_design, round 3: re-review of design revision 4
 
-**Verdict: approved.** Both prior findings are resolved. The new `candidates` fingerprint part cannot loop, and it cannot be used to dodge the budget. "A note with no verdict counts as kept" holds on every path that reads findings. The coverage and demotion figures now agree throughout, and I re-derived them from Appendix C. I have no new material findings. Three small notes for implement follow at the end.
+**Verdict: approved.** Revision 4 closes the skip window that `review_tests` found, and it opens no new material hole. The new rule says that `edit` refuses a new `skip.<n>` while `n`'s latest record has any open finding that is not a note. That rule is stated the same way in D6, §5 and §17 §4.18. It is tested in §13 journey 6. Both of my prior findings stay resolved. I have two non-blocking notes below.
 
-I checked the claims against `read_dev` 54d7e83.
+I checked against design revision 4 (blob 5ed045b), the diff from revision 3, `review_tests-1000.md` and `read_dev` 1c1387a.
 
 ## Prior findings
 
-| id | status | basis |
+| id | status | why |
 |---|---|---|
-| review_design:1:1 (F1, the filter's freshness does not cover candidates) | **resolved** | §7 adds the `candidates` part ([id, material] of open findings on the lenses' latest records) and the fail-safe liveness default. §13 tests both the herd case and the rev-bump case, plus a hand-built record that has no verdict. |
-| review_design:1:2 (F2, the rollout has no owner or trigger) | **resolved** | D8 and §12 make steps 2–3 root follow-ups, recorded on `approve_merge`. Step 2 needs the owner's explicit yes, which matches OWNER.md item 1. G1003 is held before the merge and unheld after step 3, and G1002's exemption is reasoned. The design does not take the Codex repoint as an `approve_merge` go-ahead, which is correct under the owner's constraint. My suggestion there is withdrawn. |
+| review_design:1:1 (F1, filter blind to new notes) | resolved | Unchanged since round 2. The filter's fingerprint includes `candidates`, and a note with no verdict counts as kept (§7, §17 §4.9). |
+| review_design:1:2 (F2, owner and trigger for rollout steps 2-3) | resolved | Unchanged since round 2 (§12). |
 
-## F1: the checks you asked for
+The `review_tests` finding (review_tests:1:1, a skip during the join window) is answered as well. See the next section.
 
-**It cannot loop.** `candidates` is computed only from lens records. Finding `status`, `id` and the material flag are stored in the record (`records.process_findings`). A filter submit writes only the filter's own record. Nothing the filter does changes its own `candidates`.
+## The new rule
 
-The only things that change it are:
-- a lens submit;
-- a human `edit` or waive;
-- a skip, since `R` excludes skipped nodes (`frontier.py:150`).
+**It closes the window.**
+- Before revision 4, the refusal applied only to *live* findings. A filtered lens's findings are not live until its filter is fresh (§7).
+- The rule now covers every open finding except a note. A note is an open finding with the verdict `note` on its filter's fresh latest record.
+- So a finding counts whether it is live, waiting for the filter, or waiting for re-review. Between the lens's submit and the filter's fresh submit, the finding is open and has no fresh `note` verdict, so the skip is refused. This is exactly the I22 case: skip the lens after it has raised a finding.
 
-Each of these is an external event, so a filter re-run happens at most once per such event. Carrying a note forward keeps the same id and refreshes only `target_fp`, which is not in the part. So a lens that re-confirms the same notes leaves the filter fresh, and the prior verdicts still apply. That is the right behaviour. A filter lease overtaken by a lens submit lands stale and re-runs once.
+**"Note" is judged only from a fresh filter record.** "Fresh" is §7's definition: the input fingerprint covers the recorded values and the current candidates.
+- A lens re-run that adds a new note makes the filter stale (the F1 fix). The new note then has no verdict, so it blocks the skip.
+- An old `note` verdict on a stale filter does not count either.
+- So nothing can be classed as a note without a filter verdict that is current for the current candidate set. The rule fails toward refusing.
 
-**It cannot be gamed to dodge the budget.** The exemption applies only when `stale_keys == ["candidates"]`, which extends `frontier.counts` (`frontier.py:461`) in the same way as `def` and `policy.*`.
+**A re-running lens.** "Latest record" is the previous record. If that record holds open findings that are waiting for re-review, they block the skip. That is correct.
 
-A candidates-only stale happens only after a lens run. That lens run is counted by `counts`, unless it was itself a `def` or `policy` stale. Those are driven by policy or a human and are already exempt today. Any other reason the filter goes stale (`inputs.doc`, a lens summary) still counts. `retry` and `not_ok` still count.
+**Unfiltered review nodes (older graphs).** These have no filter, so every open finding blocks a skip. That is stricter than 1.0, but only as an `edit` guard. Records, frontier and cards stay the same, so I3/I4 hold.
 
-So no worker can create unlimited free runs: each free filter run follows a lens run that was counted or was already exempt.
+**The waiver is visible.**
+- `render.py:196` already lists waived findings on approval items ("waived: ...").
+- The refusal message points to `status="waived"` with a `note`.
+- So the skip-after-waive path shows up on `approve_design` and `approve_merge`, as D6 asks.
 
-**"No verdict counts as kept" holds on every path that reads findings:**
-- **Frontier pass 1** (`frontier.py:156–171`): §7 adds the condition on the filter being fresh and on the finding not being `note`. An unverdicted note passes, so it is live.
-- **The target's corrections, re-open and `previous`**: derived from `live`, so an unverdicted note is a correction.
-- **The `notes` card section and approval items**: they list only findings whose verdict is `note` ("A note is an open finding whose verdict is `note`"), so an unverdicted note never shows as a note.
-- **`edit`'s refusal to skip a node with live findings**: uses `live`, so an unverdicted note blocks the skip.
-- **Budget**: counted per record, not per finding, so a note's status cannot change it.
-- **Material findings while the filter is stale**: they wait, and consumers wait too. `approve_design` has `filter` as a required input. `base`, `integrate` and `approve_merge` take the filter as a context input, and context inputs gate readiness (`frontier.resolve`). So nothing advances past a stale filter, as the §13 test requires.
-- **1.0 engines**: a 1.0 engine reading lens records fails closed. `FINDING_KEYS` is unchanged there, and record validation allows only `{def, inputs, policy, subject}` in `fp_parts` (`schemas.py:754`). Lens records exist only after step 3, which comes after the engine.min raise.
+**Consistency.** D6, §5, §13 journey 6, §17 §4.18 and the revision-4 changelog all state the same predicate. §5 also says the rule reuses §7's note test, which keeps the implementation small.
 
-## Numbers
+**Tests (§13 journey 6).** Three cases are added:
+- a skip refused before `filter_design` runs, while another lens is still running;
+- the same skip accepted after a visible waiver;
+- a skip allowed when the lens's only open findings are notes judged `note` on a fresh filter.
 
-I re-derived coverage from C.1 (S/A issues) and C.2 (ground-truth defects found):
+These cover both sides of the predicate. The added per-lens independence assertion and the intent-staleness check at the implementation stage answer `review_tests`' two notes.
 
-| Set | Issues | Harmful |
-|---|---|---|
-| Seven as run | 28/32 | 23/24 |
-| Seven as run, without Experience | 25/32 | 22/24 |
-| Merged seven | 31/32 | 23/24 |
-| Merged seven, without Experience | 29/32 | 23/24 |
-| Spec hypothesis | 17/32 | 12/24 |
+## Non-blocking notes
 
-- Only Experience covers I4, I11 and I13.
-- The seven miss I12, I21a, I41 and GT6.
-- Every figure matches §1, the §11 table and the §11 text.
-- The demotion count is "11 of 13" in its one place (§11), and no "10 of 13" remains.
-- §14 now states the budget in rounds.
-
-## Notes (non-blocking; for implement)
-
-1. **D1's alternatives cell is stale.** It still rejects all sixteen lenses "for one more low-severity issue". That was true against the extrapolated merged seven. Against the measured seven, D1's stated basis, sixteen adds four issues: GT6 (harmful, low severity) plus the adopt-only I12, I21a and I41, which merging recovers. One clause would fix it. The decision itself is unaffected.
-2. **Two code paths need updating.** `schemas.py:754` must allow `candidates` in `fp_parts`. `fp_parts(graph, node, vals, subject_record, settings)` must also receive the lens records, or the candidate list, both in pass 1 and in pass 2's running-lease fingerprint (`frontier.py:197`). If pass 2 is missed, every filter submit lands stale once. That does not loop, but it wastes a run per round. The §10 row already lists both files.
-3. **A naming clash.** Finding records already have a `note` key (`records.py:98`), and the verdict value is also `note`. Implement should keep the verdict only in the filter's `verdicts` output, as §7 says, so the two are not confused in displays.
+1. **A lens with no record yet, or one re-running from a clean record, can still be skipped while it runs.**
+   - Its latest record has no open finding, so `edit` accepts the skip.
+   - Then the lens submits. `verbs.submit` checks only the lease, not the skip, so the record lands. Frontier drops it (`frontier.py:150`), and any material finding in it goes unseen.
+   - This is not the I22 attack, because nobody can see a finding before its submit. It is also the same as skipping before the lens starts, which the human sees as "skipped: <reason>".
+   - Still, a recorded material finding that nobody ever shows is a small "silent drop". It is cheap to close in implementation in one of two ways:
+     - `edit` adding `skip.<n>` also ends `n`'s valid lease, so the submit is refused with "superseded";
+     - or approval items list the open findings on skipped nodes.
+   - Optional. The engine behaves this way for any node today.
+2. **`edit --set ...status="resolved"` bypasses the waiver display.** An edit can mark an open finding `resolved` instead of `waived`, and then the skip is accepted with "waived: none" on the item. This is not new; revision 3's rule had the same gap. It is still visible in git history, and the skill rule requires the human's words. One way to close it: the refusal message names only `waived`, and `edit` refuses to set `resolved` on a finding. That is a possible follow-up, not a design change.
