@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-01T18:06:33Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [
     1016
   ],
@@ -197,6 +202,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T18:06:33Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:72f5c3f8e9478e4a02f58abf5623b68a24624dbf7b2517be83816c17a892d430"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:05166b4fb0e28be1b30a143967f1ccf87bf5c9a22d256e0ab47665edc017d8bf",
+      "ok": true,
+      "output": {
+        "merge_commit": "c3791a0d0a9c0246e3d8783e0765b067de31761d",
+        "merged_at": "2026-11-01T18:06:31Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -398,6 +425,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Found by the Missing lens in the review-lens experiment (2026-11-01). G1016 makes submit and edit refuse checkpoint overrides that are not full 40-hex shas, but two places still show the old `{\"commit\": \"<sha>\"}` form:\n1. records.py:244, the checkpoint_required refusal hint.\n2. MIGRATING.md:26, the record-completion step for `edit`.\nChange both to `\"<full 40-hex sha>\"`, matching the card, CLI_USAGE and the prompts.\n\nAcceptance: a test asserts the checkpoint_required hint says `full 40-hex sha`; the docs test checks MIGRATING.md; no other `\"commit\": \"<sha>\"` remains in the engine, references, skills or templates (grep in a test).",
-  "state": "open",
+  "state": "closed",
   "title": "Say full 40-hex sha everywhere a checkpoint override is shown"
 }
