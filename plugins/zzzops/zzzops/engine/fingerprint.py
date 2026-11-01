@@ -5,7 +5,7 @@ from __future__ import annotations
 from engine import FP_VERSION
 from engine.canon import H
 from engine.ops import OPS
-from engine.schemas import Graph, get_dotted
+from engine.schemas import Graph, get_dotted, is_material
 
 V = FP_VERSION + ":"
 
@@ -53,7 +53,7 @@ def candidates(graph: Graph, f: str, records: dict) -> list:
     for lens in graph.lenses(f):
         for x in (records.get(lens) or {}).get("findings") or []:
             if x["status"] == "open":
-                out.append([x["id"], x.get("material", True) is not False])
+                out.append([x["id"], is_material(x)])
     return sorted(out)
 
 

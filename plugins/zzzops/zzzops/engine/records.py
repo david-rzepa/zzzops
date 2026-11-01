@@ -10,7 +10,7 @@ from engine.canon import iso, parse_iso
 from engine.errors import Refused
 from engine.fingerprint import out_fp
 from engine.frontier import counts
-from engine.schemas import Graph
+from engine.schemas import Graph, is_material
 
 SANITIZE = re.compile(r"[^A-Za-z0-9_-]")
 
@@ -118,7 +118,11 @@ def process_findings(graph: Graph, doc: dict, X: str, r0: dict | None, given: li
         result.append(nf)
     if graph.is_review(X):
         ok = decision == "approved"
-        if ok and any(f["status"] == "open" for f in result):
+        if graph.filter_of(X):             # a filtered lens may approve with notes (`material: false`)
+            if ok and any(f["status"] == "open" and is_material(f) for f in result):
+                raise Refused("validation", "approved requires no open material finding; "
+                              "a lens may approve with notes (material: false)")
+        elif ok and any(f["status"] == "open" for f in result):
             raise Refused("validation", "approved requires no open findings")
         if not ok and not any(f["status"] == "open" for f in result):
             raise Refused("validation", "changes_requested requires an open finding")
