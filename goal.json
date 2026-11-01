@@ -10,10 +10,10 @@
   "priority": "P2",
   "records": {
     "design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T04:04:19Z",
+      "finished_at": "2026-11-01T04:08:48Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -22,18 +22,22 @@
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/design-1014-1",
+      "holder": "claude:e6ad/design-1014-2",
       "input_fp": "v1:sha256:26bbd2d8fa5239394b9efe7e2cd325f8f35f855923dc8e8d6e134e23a4e55867",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "8431de9a41fea3d5da1e4618a142e9778198d7f8",
-          "commit": "4ce80deabc85a728c516972907fea0e87f9304ba",
+          "blob": "6133138ad0d302b59d4184b15a459e555b1bdf61",
+          "commit": "9a970b917b8c6064032b97a4330f41829a6bc1db",
           "path": ".zzzops/reviews/1014/design.md"
         },
-        "summary": "A running node's state already carries the input fingerprint computed from recorded values. edit's impact preview misses it because it compares only state strings, which stay \"running\" whatever the inputs. The design adds a shared helper, frontier.live_input_changes(before, after), which flags live leases whose fingerprint changed. edit's dry run and applied result list these leases in a new live_leases_on_changed_nodes field (holder, attempt, expires_at, stale_because, abandon and `start --reclaim` commands); stale_agent_phases keeps its meaning. After a successful push, renew compares the current fingerprint with the lease's Input-Fp and adds inputs_changed with the same commands. policy_impact reuses the helper and so also catches fingerprint-only changes; nothing is fetched beyond what each verb already fetches."
+        "responses": {
+          "review_design:1:1": "fixed: section 4 now evaluates s.portfolio(leases={**s.state.leases, (g, X): dataclasses.replace(L, last_active=s.now)}). The node is therefore always running with the recorded-values fp, even when the lease had expired before the renew (session.portfolio's leases= argument bypasses the cached portfolio). Added test 2b (advance the clock past the timeout, edit the spec, renew, assert inputs_changed with stale_because [inputs.spec], plus a no-edit control) and a risk note on expired leases at edit time.",
+          "review_design:1:2": "fixed: section 6 now corrects the CLI_USAGE abandon row to 'Give up a phase; the node becomes reclaimable, so the next `start` needs `--reclaim`. `--force --note T` acts on anyone's lease.' The execute-zzzops skill bullet now says to run the entry's printed abandon and then its printed restart command (start G X --as <LABEL> --reclaim), and notes that a plain start is refused. The interfaces table lists the docs fix."
+        },
+        "summary": "Revised G1014 design (attempt 2). Approach unchanged: keep fp parts on the running state, add frontier.live_input_changes() and render.live_lease_entry(), and add live_leases_on_changed_nodes (+warning) to edit preview and applied results. renew reports inputs_changed against L.input_fp, and validate --policy also catches fingerprint-only changes. Fixes: renew now evaluates the portfolio with the renewed lease (last_active=s.now) so leases that expired before the renew are still checked (new test 2b). The CLI_USAGE abandon row is corrected to say the next start needs --reclaim, and the skill bullet names the printed restart command. Both non-blocking notes are taken: the edit row covers preview and applied result, and policy_impact takes every entry's lease from st.leases."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
