@@ -147,6 +147,56 @@
       "reason": "stale",
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_tests:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 3,
+          "target_fp": "v1:sha256:97ddf2666721e95e943021ce56da3502670a8a007cc9f1072d77f98c19ec47f0",
+          "text": "Skip refusal misses findings waiting on the filter. D6/§5 refuse a new skip.<n> only while n has live findings, but under §7 a filtered lens's findings are not live until the filter is fresh. Between the lens submit and the filter's next fresh submit (every round, until the slowest lens finishes or indefinitely behind a crash-looping lens), `edit --set skip.<lens>` is accepted. Frontier drops skipped nodes from R (frontier.py:148), so the findings never become candidates or reopen anything. Impact: a material finding the target never saw is deleted by a one-line edit, and the human sees only 'skipped: <reason>'. That is the skip-visibility-only alternative D6 rejected (I22 / ad2). Fix: edit refuses a new skip.<n> while n's latest record has an open finding that is live or waiting for its filter (pass-1 liveness without the filter-fresh condition), or more simply any open non-note finding. Waiving first stays the visible path. Update §5, D6 and §17 §4.18, and add a test_6 case where the skip is refused before the filter runs.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T05:02:26Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:d7d3e64f91bd9fe8264ac1b901a4ddcaa0536992",
+          "tests": "v1:sha256:203843a613a579afa4dd7cc4f76f058b387f0a7d7b022f24f4be3b92a36fc5b0"
+        },
+        "policy": {},
+        "subject": "v1:sha256:bd7c8b8d402403f0970d484bb923db593cbcd00a7016e796c17c3a0898c30fb7"
+      },
+      "holder": "claude:e6ad/review_tests-1000-1",
+      "input_fp": "v1:sha256:947dc5c83438627aac241d7aec573926e2c6305b28ea443e976d8cc31f8e3a49",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "de09c926aa4b93b7e7c64bf050fcc82330b9d6b8",
+          "commit": "7c6e9e0721233aaac54f9f96ef7e0054b8d24bc0",
+          "path": ".zzzops/reviews/1000/review_tests.md"
+        },
+        "summary": "Tests are sound: the freeze is byte-identical and weakens nothing, §13 and the acceptance are fully covered, the docstring contracts match the design, and all 46 red tests fail because the feature is missing. One material design gap: edit refuses a skip only for live findings, so a lens can be skipped while its findings wait for the filter, which silently drops them (I22). Fix: refuse while the lens has findings that are live or waiting for the filter, and add a test_6 case."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
+          "change": "8d4ce3781d12b090e7ce2d44c1555d27098700ab",
+          "commit": "a5b5579b95fd8cc2b0af211ff81fa45f0a0ce5a1",
+          "tree": "20af30d3224ad7ba6148ebaa0e5db1f60cceeb21"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
