@@ -239,14 +239,14 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T05:34:39Z",
+      "finished_at": "2026-11-01T06:10:05Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:7818a8b7c3d001fb7340e806b59de3f5b81a30aeb9a0816df5e595d0a8a88d20",
+          "code": "v1:sha256:0bbabdb4ef507eac02aacf38d98d19ab842fa43312c7dc76cc5c094af385a789",
           "commands": "v1:sha256:9e98bc44659441e89c38978ea8600798fbc4e09a2995b34548de0daaa832d9ec"
         },
         "policy": {
@@ -256,7 +256,7 @@
         }
       },
       "holder": "claude:e6ad/op",
-      "input_fp": "v1:sha256:0d8b8efd26a7803be1e26c688007ddb245943286914d34c1531b7bfce3f5a001",
+      "input_fp": "v1:sha256:02e400f4b17880824ceedf919e105cd7eb26f1ede20e81030e95f090a1266806",
       "ok": true,
       "output": {
         "result": {
@@ -264,8 +264,8 @@
             {
               "cmd": "cd .agents && python3 -m unittest test_engine_card_ux test_engine_lifecycle test_engine_schemas test_engine_journeys test_engine_docs",
               "exit": 0,
-              "seconds": 93,
-              "tail": "....................................................................................................\n----------------------------------------------------------------------\nRan 100 tests in 93.896s\n\nOK\n"
+              "seconds": 90,
+              "tail": "....................................................................................................\n----------------------------------------------------------------------\nRan 100 tests in 90.587s\n\nOK\n"
             },
             {
               "cmd": "python3 .agents/prompt_stats.py --check",
@@ -276,15 +276,15 @@
             {
               "cmd": "python3 -m unittest discover -s .agents",
               "exit": 0,
-              "seconds": 278,
-              "tail": " traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 1043467 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1016/plugins/zzzops/zzzops/engine/worktree.py:31: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpmweq0jsy/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/home/dave/Work/dev/zzzops/.zzzops/worktrees/g1016/plugins/zzzops/zzzops/engine/worktree.py:31: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpmweq0jsy/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 1046744 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...................................................................................................................\n----------------------------------------------------------------------\nRan 407 tests in 278.401s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmpq7kdtnlx\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
+              "seconds": 266,
+              "tail": " traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2555226 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1016/plugins/zzzops/zzzops/engine/worktree.py:31: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpa_1melrr/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/home/dave/Work/dev/zzzops/.zzzops/worktrees/g1016/plugins/zzzops/zzzops/engine/worktree.py:31: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpa_1melrr/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2556443 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...................................................................................................................\n----------------------------------------------------------------------\nRan 407 tests in 266.463s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmp2rfzlh0u\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
             }
           ],
           "passed": true,
-          "tree": "f56d75480bd332815ae0ba3688d4fbe765d5265d"
+          "tree": "5b016358250323c1276ed81145ad1c782d23e507"
         }
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "test_design": {
