@@ -1,0 +1,21 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [
+    1000,
+    1020
+  ],
+  "graph": "default",
+  "id": 1022,
+  "links": {
+    "issue": null
+  },
+  "priority": "P1",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Follow-up to G1000, from the owner's direction after a second lens experiment (2026-11-01). G1000 ships seven lens nodes per subject (26 nodes). The experiment showed a single reviewer working through several lenses matches or beats separate lens agents at about a quarter of the cost, because every separate agent repeats the discovery work.\n\nEvidence (scratchpad implx/RESULTS.md and run/exp/replay_multi_scores.md; restate the numbers in the design appendix, since the scratchpad is not in the repo):\n- Implementation, G1016 attempt 1 with 6 planted defects plus its real review_impl defect (a duplicated capability rule in render.py, outside the diff). Five separate implementation lenses: 6/7 for 337k tokens. The seven copied design lenses: 6/7 for 436k. The old single reviewer: 5/7 for 86k. No separate lens found the real defect. One multi-lens reviewer (Compliance, Correctness, Missing, Tests, Craft), three runs: 7, 7 and 6 of 7, at 82-87k each, finding the real defect in 2 of 3 runs. The Missing lens alone found it as material.\n- Design, revision 6 stacked-delivery replay (12 known defects). Seven separate lenses: 7/12 for ~245k. One multi-lens reviewer: 4/12 per run (41k each). One multi-lens run plus a separate Adversary: 7/12 for ~76k.\n\nChange the shipped default graph:\n1. Design review: one multi-lens reviewer node with the seven design lenses (intent, simplicity, truth, adversary, concurrency, rollout, experience) and one separate `adversary_design` node, both feeding `filter_design`.\n2. Implementation review: one multi-lens reviewer node with the implementation lenses Compliance (including changed interfaces), Correctness (including security), Missing (outside the diff: other implementations, callers, docs, prompts and config sharing the changed rule), Tests and Craft, feeding `filter_impl`. Findings carry a `lens` tag.\n3. Keep G1000's engine work: the filter (promote, never demote), impact/material, skip refusal, project intent and previous.changed. The reviewer prompts must tell the reviewer to work lens by lens and not stop at the first problems.\n4. Lens selection stays user-configurable: a goal (and a project's workflow.json) chooses which lenses the multi-lens reviewer applies, and Intent, Simplicity/Craft and Missing cannot be removed. Decide in the design whether this is a node input, a goal field or the skip mechanism, and show it on approval items and in the PR body.\n5. Migration: G1000's lens policy branch for this repository must adopt this graph instead of the 26-node graph if it has not landed yet. Otherwise this goal's rollout says how in-flight goals move from lens nodes to the consolidated nodes.\n\nAcceptance:\n- The template graph validates; the node count and review fan-in are tested.\n- Card snapshots show the lens checklist on both reviewer cards, and the `lens` tag in output_schema.\n- A test shows a goal removing an optional lens, and a refusal when it tries to remove a mandatory one.\n- prompt_stats budgets hold.\n- DESIGN and SPEC amendments are listed for G1017.\n- G1003's dogfood run re-scores the consolidated set on real goals.",
+  "state": "open",
+  "title": "Consolidate review lenses: one multi-lens reviewer per subject, plus a separate design Adversary"
+}
