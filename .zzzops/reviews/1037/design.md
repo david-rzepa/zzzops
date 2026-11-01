@@ -1,6 +1,6 @@
 # G1037 design: dogfood Release 1 on a private web app, from migration to a finished release
 
-Attempt 2. Written against read_dev 8d8437a. It replaces G1003 and G1035, and answers review_design:1:1 (§11).
+Attempt 3. Written against read_dev 8d8437a. It replaces G1003 and G1035. It simplifies the redaction rule per OD8 and answers review_design:1:1 (§11).
 
 The app's identity and every fact specific to it are kept out of this repository (OD7). **The detailed plan is in the root's private journal**: per-phase steps, evidence about the app, triage proposals, and the release mechanics against the app's own deploy flow. This document is the generic plan the reviewers judge, and it is what the whitepaper can cite.
 
@@ -25,21 +25,22 @@ Identifying words are replaced by `[redacted]`. Everything else is verbatim.
 - **OD4:** "Push per migrated goal". Local-only commits that belong to a migrated goal are pushed to that goal's work branch. The owner's uncommitted state is out of scope.
 - **OD5:** "Freeze, hotfixes via engine". No other work happens on the app during the run. Urgent fixes become engine hotfix goals.
 - **OD6:** "Both real, approved separately". Each deploying step needs its own owner approval, at a time the owner names.
-- **OD7:** "Anonymised entirely", and later "Purge, keep plan private". Nothing in this repository identifies the app (§6).
+- **OD7:** "Anonymised entirely", and later "Purge, keep plan private". Nothing in this repository names the app (§6).
+- **OD8:** "I don't think we need to worry too much about scrubbing secrets, that's intent drift in my opinion..". The scrub machinery is dropped. The convention stays (§6).
 
 ## 3. The graph: what each node means
 
 | Node | Meaning for G1037 | Who |
 |---|---|---|
 | `design` | This plan (public, generic) and the private detailed plan. | worker |
-| `review_design` (+ `adversary_design`, `filter_design`) | Is the plan feasible? Are deploy and data safe? Is the redaction rule enforced? Which owner questions are left open (G1026)? | workers |
+| `review_design` (+ `adversary_design`, `filter_design`) | Is the plan feasible? Are deploy and data safe? Is the naming convention kept? Which owner questions are left open (G1026)? | workers |
 | `approve_design` | The owner approves. This is the authority to write to the app's repository within the plan, and nothing more: it grants no deploy authority (OD6). | owner |
 | `base` | Unchanged. It runs once every dependency has merged, so the build under test is the complete Release 1 engine. | op |
 | `test_design` | Commits the acceptance checks (§5) into the report skeleton before the run starts. | worker |
 | `review_tests` | Do the checks cover the spec and OD1 to OD7? Can each one be falsified? | worker |
 | `implement` | Executes the run (§4) and commits the anonymised report and data at milestones. **The root holds this lease** and renews it while it drives the app. A lapse is reclaimed with `start --reclaim`. | root |
 | `run_tests` | Unchanged: the suite runs on the report commit. | op |
-| `review_impl` | Re-runs the checks' read-only commands, recomputes the tables from the data file, runs the redaction scan, and confirms that every listed defect goal exists. | worker |
+| `review_impl` | Re-runs the checks' read-only commands, recomputes the tables from the data file, runs the A15 name check, and confirms that every listed defect goal exists. | worker |
 | `integrate`, `approve_merge`, `merge` | Unchanged: a docs PR, approved by the owner. | op / owner / op |
 
 **Rejected alternatives:**
@@ -53,8 +54,7 @@ Identifying words are replaced by `[redacted]`. Everything else is verbatim.
    - Dependencies merged: the Release 1 engine goals, plus G1029 and G1031 to G1034.
    - The freeze is in effect (OD5).
    - Two fresh clones, one per harness. The owner's own checkout is only read.
-   - The private journal is ready: plan, holder map, cost exports, deny patterns.
-   - **The deny list is clean on what already exists.** `git grep -i -E -f <deny list>` over the integration tip prints nothing, and so does the scan of the existing defect goals and of this goal's and G1036's goal branches. This is re-checked whenever the list changes (§6).
+   - The private journal is ready: plan, holder map and cost exports.
    - Any one-time branch housekeeping the app needs before the engine owns refs is listed in the private plan. It is approved with this design, and it stops if it would change any file.
 2. **Install.** One dev build goes into both harnesses, and `validate` shows no environment mismatch (G1033). Each reinstall during the run is journaled, together with the nodes it ran.
 3. **Detect and bootstrap.**
@@ -104,7 +104,7 @@ Identifying words are replaced by `[redacted]`. Everything else is verbatim.
 | A12 | Every defect has its own goal in this repository. |
 | A13 | Per-goal costs are reported and can be recomputed from the data file. |
 | A14 | The lens re-score is reported. |
-| A15 | Nothing public identifies the app. The deny-pattern scan prints nothing over the run's own commits on every zzzops ref it touched, `git log -p <I>..<ref>` with I the integration branch. For goal branches, which share no history with I, that is their whole history. It must also print nothing over the tree of the report and data file, every PR title, body and comment the run created, and every defect goal document. |
+| A15 | The report and this goal's public artifacts do not name the app. Checked by a quick grep for the app's name and repository slug before the report is published. |
 | A16 | The owner's checkout and worktrees are unchanged since the start snapshot. |
 | A17 | No non-run work touched the app during the freeze. |
 
@@ -112,20 +112,11 @@ The spec's "every migrated goal closes done" is read under OD1 as applying to Re
 
 No permanent test goes into `.agents/`: the checks are commands with recorded outputs.
 
-## 6. Redaction rule (OD7)
+## 6. Naming convention (OD7, OD8)
 
-- **Scope:** every public write by the root **or any worker** is redacted, then scanned before it is made. That covers:
-  - goal-branch content: summaries, findings, responses, designs, review artifacts and human-item records;
-  - owner quotes, with identifying words replaced by `[redacted]` and the replacement noted;
-  - commit messages and branch names;
-  - PR titles, bodies and comments;
-  - defect goal documents, which cite app goals only as "app G<id>".
-- **Scan:** `grep -i -E -f <private deny-patterns file>` runs over the exact text before every `submit`, `answer`, `edit`, `new`, PR write and commit in this repository. A hit blocks the write until the text is rewritten.
-- **Workers:** every worker brief for this goal and its defect goals carries the rule. Each worker reports its scan result.
-- **The patterns file** stays in the private journal and is never committed.
-- **App-side writes** in the private repository are not redacted.
-- **A15** re-scans the run's own output at the end, scoped as in §5. A hit there is a process defect, purged with the owner's word.
-- **List maintenance.** The list uses app-specific compounds and anchored ids, not bare common words. A term that also appears in ordinary engine text or in a generic public spec phrase is narrowed in the list; the public text is not rewritten. Whenever the list changes, the precondition scan (§4, phase 1) is re-run, and any hit is resolved before more writes. A real leak is purged with the owner's word. A false positive is narrowed.
+- The app is never named in this repository. Public artifacts (designs, reviews, findings, defect goals, PR text, the report) describe it generically. Owner quotes are verbatim, with identifying words replaced by `[redacted]`.
+- The detailed plan and every app-specific fact stay in the root's private journal.
+- Before the report is published, one quick grep checks it and this goal's public artifacts for the app's name and repository slug (A15). There is no per-write gate, history-wide scan or deny list (OD8).
 
 ## 7. Report for G1036 (anonymised)
 
@@ -159,7 +150,7 @@ Defects found during the run follow the same path:
 ## 9. Risks
 
 - **Production impact:** low-risk Release 1 content, separate approvals for each deploying step, and tip binding.
-- **Leaks into public text:** §6 and A15.
+- **Naming the app in public text:** the convention in §6, plus A15.
 - **Owner load and CI throughput:** both measured, not worked around.
 - **Mixed engine versions during the run:** every node is journaled with its engine version.
 - **A long dependency chain:** this delays G1036's writing.
@@ -177,9 +168,4 @@ Defects found during the run follow the same path:
 
 ## 11. Response to corrections
 
-- **review_design:1:1** (A15 and the write gate could not pass, because the work and PR branches carry the integration branch's history and the list matched existing text there): fixed.
-  - A15 is scoped to the run's own commits, `git log -p <I>..<ref>` for every ref the run touched, plus goal branches, PR text, defect goals and the report tree (§5).
-  - A new precondition requires the integration tip, the existing defect goals and the related goal branches to scan clean before the run, re-checked whenever the list changes (§4 phase 1, §6).
-  - The private list has been tuned to app-specific compounds and anchored ids. The generic phrase in G1032's spec was handled by narrowing the list, and G1032 is unchanged.
-  - The tuned list now prints nothing on the integration tip and on the goal branches of G1031 to G1034, G1036 and G1037.
-  - The private plan carries the same fixes.
+- **review_design:1:1:** fixed. The owner judged the scrub machinery intent drift (OD8), so A15 is reduced to a name check on the report and this goal's artifacts.
