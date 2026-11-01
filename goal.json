@@ -1,0 +1,20 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [
+    1017
+  ],
+  "graph": "default",
+  "id": 1032,
+  "links": {
+    "issue": null
+  },
+  "priority": "P2",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Found while designing G1003 (2026-11-01). Bootstrap step 7 assumes `gh api repos/{o}/{r}/rules/branches/<I>` and ruleset reads work, but a private repository on GitHub's free plan returns 403 for both. The skill gives no path for that case, so required_ci and merge settings cannot be read or set.\n\nGive the skill (and validate's environment checks) a documented fallback: detect 403, explain that branch protection is unavailable on the plan, ask the owner for the required check names (or read them from recent PR check runs), record them in POLICY, and note that merges are then guarded by the engine's own CI gate only.\n\nAcceptance: the skill documents the fallback; if validate or integrate change, engine tests cover the 403 path; docs/design edits per G1017's rule.",
+  "state": "open",
+  "title": "Bootstrap works when rulesets and branch protection are unreadable"
+}
