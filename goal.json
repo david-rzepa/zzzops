@@ -31,23 +31,10 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 2,
-      "correction_runs": 1,
-      "findings": [
-        {
-          "id": "design:reopen:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:c6e31258b328306d5bf228e48fd79b58157753d12e7e530777ed7495bf0e4922",
-          "text": "owner direction OD8 (relayed by coordinator): simplify redaction to a naming convention",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-01T19:58:13Z",
+      "attempt": 3,
+      "correction_runs": 2,
+      "findings": [],
+      "finished_at": "2026-11-01T19:59:15Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -61,14 +48,14 @@
       "ok": true,
       "output": {
         "doc": {
-          "blob": "e872fd9a5b3a7d74385a749b6a4663171decf7d8",
-          "commit": "f7be8230a3e555c49c03f31c04683ca7b80a134e",
+          "blob": "c495b1136ee90fc5ed28882069ea22a47a8ffa15",
+          "commit": "02aac7d7ff10826643d0499ee566bc37ea960fee",
           "path": ".zzzops/reviews/1037/design.md"
         },
         "responses": {
-          "review_design:1:1": "fixed: A15 now scans only the run's own commits (git log -p <I>..<ref> for each touched ref; goal branches have no shared history so their full history), plus PR text, defect goals and the report tree; new precondition (§4 phase 1, §6) requires a clean scan of the integration tip, existing defect goals and related goal branches, re-run on every list change; the private list was tuned to app-specific compounds and anchored ids (generic spec phrase narrowed in the list, G1032 unchanged) and now scans clean on the integration tip and on goal branches G1031-G1034, G1036, G1037."
+          "design:reopen:1": "fixed: owner judged the scrub machinery intent drift (OD8, recorded verbatim); A15 reduced to a name check on the report and this goal's artifacts; per-write gate, history scan and deny-list tuning dropped (§6)."
         },
-        "summary": "Attempt 2 scopes A15 to the run's own output (git log -p <I>..<ref> per touched ref, goal branches, PR text, defect goals, report tree) and adds a precondition that the deny list scans clean on the integration tip and existing defect goals, re-checked whenever the list changes; the list is maintained as app-specific compounds and anchored ids. The private plan and deny list were updated accordingly; the plan is otherwise unchanged."
+        "summary": "Attempt 3 records OD8 (the owner judged secret-scrubbing machinery intent drift) and simplifies the redaction rule to a naming convention: the app is never named, public artifacts stay generic, owner quotes have identifying words replaced, the detailed plan stays private, and A15 is one grep of the report and this goal's artifacts for the app's name and slug before publication. The run plan is otherwise unchanged."
       },
       "reason": "reopened",
       "status": "done"
