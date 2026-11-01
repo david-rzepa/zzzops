@@ -1,0 +1,20 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [
+    1000
+  ],
+  "graph": "default",
+  "id": 1020,
+  "links": {
+    "issue": null
+  },
+  "priority": "P2",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Found in G1000's code review, while dogfooding Release 1.\n1. With review_impl.md gone, no lens prompt tells a code reviewer to target `test_design` for test problems. Findings about tests land on `implement`, which cannot change frozen tests, and cost a dispute round. Add one line to every code-stage lens prompt (or the shared `review` instruction): 'On code, target test_design for problems in the tests.'\n2. lens_truth.md has two 'On code:' lines; merge them.\n3. A lens whose only findings are notes must still answer `changes_requested`, so approval items show it as requesting changes although it blocks nothing. Decide and fix: either such a lens answers `approved` with notes, or approval items label notes-only lenses as 'notes only'.\n4. This repo's own .zzzops/prompts are updated through the lenses policy branch (G1000 rollout step 3), not by this goal.\n\nAcceptance:\n- prompt_stats budgets hold.\n- A card snapshot shows the test_design targeting line on code-stage lens cards.\n- Approval-item rendering for a notes-only lens is tested.",
+  "state": "open",
+  "title": "Polish the shipped lens prompts after the first lens-graph review"
+}
