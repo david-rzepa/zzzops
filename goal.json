@@ -230,10 +230,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T18:34:16Z",
+      "finished_at": "2026-11-01T18:39:50Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -253,14 +253,18 @@
           "python3 -m unittest discover -s .agents -p 'test_design_docs.py' -v",
           "python3 -m unittest discover -s .agents -p 'test_*.py'"
         ],
+        "responses": {
+          "review_tests:1:1": "fixed: added AMENDMENT_SENTINELS (keyed by goal/PR) and test_applied_amendments_are_in_the_documents. Each term is verified absent from the rev 6.3 sources: #742 --policy-ref; G1001 request_key, Request-Key:; G1014 inputs_changed; G1015 legacy_policy, settings.legacy; G1016 no_longer_live, respond_to; G1018 'shrink' in SPEC (the card shrink steps, SPEC §4.20; rev 6.3 SPEC never says shrink); G1021 'no checks appeared' (the 15-minute no-checks human question reason in ops/integrate.py); G1000 filter_design in SPEC and DESIGN (kept by G1022's design); G1020 'approved with'; G1023 '<full 40-hex sha>'. No node counts or engine.min.",
+          "review_tests:1:2": "fixed: added REQUIRED_PENDING and test_known_case_3_goals_are_pending_or_logged. For G1022 (marker path templates/default/workflow.json), G1024 (engine dir) and G1025 (engine dir, from the root's OWNER note; marker contains \"git.line_sync\"), each goal must have either a pending row with that marker path or a HISTORY §4 row naming it, not both, so the test stays green after the goal lands. G1026-G1028 depend on 1017 but have no known sections yet (case 3 without a row), so they are not required. Also added the comments from the non-blocking notes (live goal state; HISTORY names reports in prose)."
+        },
         "tests": {
           "base": "8d8437af244f85c4dd6cb20c1ed502140cb9ff77",
-          "change": "67527b52b49a21f4012394337a3590d7412edfdb",
-          "commit": "559bbb6a5b9af71adc06c01fbde2b75b732654ff",
-          "tree": "d4018f21cef227a4910e39eb8b4d02e2138a519d"
+          "change": "1d0cba500e9c899b9546bc886fc391cc857f253d",
+          "commit": "8e6185a8aed9ad4125526dd00adf6a0ac81c1818",
+          "tree": "650b501a8fa647285cb3c52578a29651ef759b6a"
         }
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     }
   },
