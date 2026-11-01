@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-01T22:07:26Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [
     1017
   ],
@@ -208,6 +213,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T22:07:26Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:29de8e3db364de75e87c370bf88c47cc78ca65aadcdc76825e0ad9e3b82e548a"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:e31661a76fdab7a61c3436f4e404f05b45a43f8e70f3023a05bf96563fd9c5f8",
+      "ok": true,
+      "output": {
+        "merge_commit": "d41e740c6788a6eb6391e0beafad677f4b086766",
+        "merged_at": "2026-11-01T22:07:24Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -442,6 +469,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Found while designing G1003 (2026-11-01). `zzzops validate`, run from the Claude marketplace cache built by .github/scripts/build_claude_plugin.py (zzzops-claude-marketplace-c3791a0-20261101) on a fresh clone of another repository, reported `environment: \"plugin package: skill discovery metadata does not match the plugin build: skills/add-zzzops-goal/SKILL.md; reinstall ZzzOps from its Codex marketplace.\"`. A correct Claude install must not report a mismatch, and the hint must name the harness the plugin was installed for.\n\nFind why the Claude build's SKILL.md differs from what the package check expects (build step rewriting the file, or the check assuming the Codex bundle), fix it, and make the reinstall hint harness-aware.\n\nAcceptance: a test builds the Claude marketplace (as CI's installed-cache acceptance does) and runs validate from it with no environment error; the hint names Claude or Codex correctly; docs/design edits if the contract changes.",
-  "state": "open",
+  "state": "closed",
   "title": "Claude installs report a false skill-metadata mismatch with a Codex reinstall hint"
 }
