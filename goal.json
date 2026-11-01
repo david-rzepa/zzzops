@@ -135,23 +135,21 @@
       "status": "done"
     },
     "integrate": {
-      "attempt": 2,
+      "attempt": 3,
       "blocked": {
         "category": "external",
         "op_state": {
-          "head": "d16af88baa41fdba4dab1a90c646614b2291cf85",
           "pending_since": 1793570366,
-          "polls": 1,
-          "rerun_head": null
+          "polls": 2
         },
-        "reason": "required checks pending: dev-required-tests (mergeable: MERGEABLE/BLOCKED)",
+        "reason": "GitHub is computing mergeability",
         "repeats": 1,
-        "retry_after": "2026-11-01T22:04:26Z",
+        "retry_after": "2026-11-01T22:06:32Z",
         "waiting_for": "time"
       },
-      "correction_runs": 1,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-01T21:59:26Z",
+      "finished_at": "2026-11-01T22:04:32Z",
       "fp_parts": {
         "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
         "inputs": {
