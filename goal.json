@@ -8,7 +8,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T04:24:35Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "spec": "v1:sha256:d510d0f4ee516876f569e5777e626c26cd577acb0bb898776228b91f270a0576"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/design-1017-1",
+      "input_fp": "v1:sha256:d41c20832f1c1ccfccb27b6aa7f56a8420b344d9aba869b457f3c4a272113d54",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "9e3d642213de86aaa10bd1d22aeb8417cb583121",
+          "commit": "602e04ad20da2378588fbda00765be7192e8e216",
+          "path": ".zzzops/reviews/1017/design.md"
+        },
+        "summary": "Move the approved rev 6.3 DESIGN.md and SPEC.md, plus the completed IMPLEMENTATION_PLAN as a historical record, into docs/design/ with numbering intact, so every existing DESIGN §/SPEC §/Step citation in engine and tests still resolves. Review reports, passes, audit and HTML renders stay outside; a new HISTORY.md summarises them and indexes every cited REV5/REV6 amendment id, and a docs/design/README.md states SPEC is the contract and DESIGN the rationale. The scrub removes absolute paths (all in the plan), the owner name in examples and example session labels; --policy-ref is applied now, and G1000/G1001/G1014/G1015/G1016 are applied only if merged by implement time, otherwise listed as pending (all five are open at read_dev). Nothing new ships in the plugin; only two engine docstrings change to the in-repo path, and a small test guards against external-folder references, broken links and unindexed amendment ids."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
