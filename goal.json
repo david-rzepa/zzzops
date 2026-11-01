@@ -1,0 +1,21 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [
+    1000,
+    1018
+  ],
+  "graph": "default",
+  "id": 1019,
+  "links": {
+    "issue": null
+  },
+  "priority": "P2",
+  "records": {},
+  "release": 2,
+  "schema": 1,
+  "skip": {},
+  "spec": "Found while dogfooding Release 1. Round-2-and-later review cards carry a `previous` section of 1.3 to 4.7 KB: prior findings with full text, the previous output, and diffs. These are the only real cards that still exceed the 4 KB card target after G1018's shrink rework. Bound `previous` so that re-review cards fit the target without losing what a reviewer needs.\n- Prior findings appear as id, status, target and a short summary, with a read command for the full text.\n- The previous output is a summary plus a blob pointer.\n- The G1000 `previous.changed` diff is a command, not inlined text.\n- Never drop a prior finding the reviewer must give a status for.\n\nAcceptance:\n- Replayed real round-2 review cards from the Release 1 run (G1000, G1001, G1014, G1015 and G1016 re-reviews) fit 4 KB, or reach G1018's 'nothing left to shrink' guarantee with `previous` no longer the largest part.\n- Every open prior finding id is still listed.\n- Tests use real-size fixtures.",
+  "state": "open",
+  "title": "Bound the previous section on re-review task cards"
+}
