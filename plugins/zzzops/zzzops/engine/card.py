@@ -1,27 +1,62 @@
-"""Task card construction (SPEC §3.14, §4.20): at most 4,096 bytes."""
+"""Task card construction (SPEC §3.14, §4.20): aimed at 4,096 bytes; see `shrink`."""
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
 
 from engine.canon import canonical, iso
 from engine.frontier import recorded_out, resolve
-from engine.render import command, first_line
+from engine.render import clip, command, first_line
 
 CARD_LIMIT = 4096
 INLINE = 600
+SUMMARY = 120
+
+
+def key_summary(v) -> str:
+    """One line for a blobbed dict or list: scalars as k=v, lists as `k: N items`, dicts as `k: {…}`."""
+    if isinstance(v, list):
+        return f"{len(v)} items"
+    parts = []
+    for k in sorted(v):
+        x = v[k]
+        if isinstance(x, list):
+            parts.append(f"{k}: {len(x)} items")
+        elif isinstance(x, dict):
+            parts.append(f"{k}: {{…}}")
+        else:
+            parts.append(f"{k}={x if isinstance(x, str) else json.dumps(x, ensure_ascii=False)}")
+    return clip("; ".join(parts), SUMMARY)
+
+
+def _blob(reader, v, summary_limit=200) -> dict:
+    """A blob view of a text, dict or list; with no reader, a same-size stand-in (used only to measure)."""
+    text = v if isinstance(v, str) else json.dumps(v, indent=2, sort_keys=True, ensure_ascii=False)
+    if reader is not None:
+        out = dict(reader.blob_view(text))
+    else:
+        data = text.encode("utf-8")
+        b = hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+        out = {"summary": "", "blob": b, "read": f"git cat-file -p {b}"}
+    out["summary"] = first_line(text, summary_limit) if isinstance(v, str) else key_summary(v)
+    return out
 
 
 def view(reader, v):
     if len(canonical(v)) <= INLINE:
         return v
-    text = v if isinstance(v, str) else json.dumps(v, indent=2, sort_keys=True, ensure_ascii=False)
-    return reader.blob_view(text)
+    return _blob(reader, v)
 
 
-def checkpoint_view(cp):
-    return {"commit": cp["commit"], "tree": cp["tree"], "change": cp["change"],
-            "diff": f"git diff {cp['base']} {cp['commit']} -- ':/' ':(top,exclude).zzzops/reviews'"}
+def checkpoint_view(cp, sub=None):
+    """The card view of a checkpoint; `tree` only for a whole checkpoint or a `.tree` selector."""
+    out = {"commit": cp["commit"], "base": cp["base"], "change": cp["change"],
+           "diff": f"git diff {cp['base']} {cp['commit']} -- ':/' ':(top,exclude).zzzops/reviews'"}
+    if sub in (None, "tree"):
+        out["tree"] = cp["tree"]
+    return out
 
 
 def value_of(session, res, n, name, v):
@@ -29,12 +64,19 @@ def value_of(session, res, n, name, v):
     sel = res.graph.selectors[n][name]
     if v is None:
         return None
-    t = res.graph.output_types.get(sel.node, {}).get(sel.output) if sel.kind in ("node", "deps") and not sel.path else None
+    ot = res.graph.output_types.get(sel.node, {}).get(sel.output) if sel.kind in ("node", "deps") else None
+    t = ot if not sel.path else None
+    sub = sel.path[0] if ot == "checkpoint" and tuple(sel.path) in (("change",), ("tree",)) else None
     reader = session.ctx().reader
 
     def one(x, producer_out=None, goal=res.goal):
         if x is None:
             return None
+        if sub:
+            full = producer_out.get(sel.output) if isinstance(producer_out, dict) else None
+            if isinstance(full, dict) and full.get(sub) == x and all(k in full for k in ("commit", "base", "change")):
+                return checkpoint_view(full, sub)
+            return view(reader, x)
         if t == "checkpoint" and isinstance(x, dict):
             return checkpoint_view(x)
         if t == "artifact" and isinstance(x, dict):
@@ -55,7 +97,9 @@ def value_of(session, res, n, name, v):
             dv = session.portfolio().views.get(int(d), {})
             cur[d] = one(x, (dv.get("cur") or {}).get(sel.node), int(d))
         return cur
-    producer_out = res.cur.get(sel.node) if sel.kind == "node" else None
+    producer_out = None
+    if sel.kind == "node":
+        producer_out = res.cur[sel.node] if sel.node in res.cur else recorded_out(res.doc, sel.node)
     return one(v, producer_out)
 
 
@@ -194,39 +238,101 @@ def previous(session, res, n, s) -> dict | None:
     return prev or None
 
 
+def _is_view(v) -> bool:
+    """A checkpoint view, or a container holding one (never blobbed)."""
+    if isinstance(v, dict):
+        return ("commit" in v and "diff" in v) or any(_is_view(x) for x in v.values())
+    if isinstance(v, list):
+        return any(_is_view(x) for x in v)
+    return False
+
+
+def _summaries(obj):
+    """Every blob view (or artifact view) with a summary, outside `previous`."""
+    if isinstance(obj, dict):
+        if "blob" in obj and "read" in obj and isinstance(obj.get("summary"), str):
+            yield obj
+        for k, v in obj.items():
+            if k != "previous":
+                yield from _summaries(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _summaries(v)
+
+
+def _steps(card: dict) -> list:
+    """Every shrink step in order: lossless, clip, then blob the largest inline text first."""
+    steps = []
+    if any(isinstance(v, dict) and "argv" in v for v in (card.get("commands") or {}).values()):
+        steps.append(("drop", "commands.argv"))
+    ctx_cmds = (card.get("context") or {}).get("commands")
+    if ctx_cmds is not None and ctx_cmds == (card.get("commands_to_run") or {}).get("list"):
+        steps.append(("point", "context.commands"))
+    if any(len(v["summary"]) > SUMMARY for v in _summaries(card)):
+        steps.append(("clip", "summaries"))
+    blobs = []
+    if isinstance(card.get("prompt"), dict) and "text" in card["prompt"]:
+        blobs.append((len(card["prompt"]["text"]), ("prompt",)))
+    for k, v in (card.get("instructions") or {}).items():
+        if isinstance(v, dict) and "text" in v:
+            blobs.append((len(v["text"]), ("instructions", k)))
+    for sect in ("inputs", "context"):
+        for k, v in (card.get(sect) or {}).items():
+            if v is None or _is_view(v) or (isinstance(v, dict) and "blob" in v):
+                continue
+            if isinstance(v, (str, dict, list)):
+                blobs.append((len(v) if isinstance(v, str) else len(canonical(v)), (sect, k)))
+    for i, c in enumerate(card.get("corrections") or []):
+        if isinstance(c.get("text"), str) and len(c["text"]) > 200 and "full" not in c:
+            blobs.append((len(c["text"]), ("corrections", i)))
+    blobs.sort(key=lambda b: -b[0])
+    return steps + [("blob",) + path for _, path in blobs]
+
+
+def _apply(card: dict, step: tuple, reader) -> dict:
+    card = copy.deepcopy(card)
+    kind = step[0]
+    if kind == "drop":
+        for v in card["commands"].values():
+            if isinstance(v, dict):
+                v.pop("argv", None)
+    elif kind == "point":
+        card["context"]["commands"] = "see commands_to_run"
+    elif kind == "clip":
+        for v in _summaries(card):
+            v["summary"] = clip(v["summary"], SUMMARY)
+    elif step[1] == "prompt":
+        card["prompt"] = _blob(reader, card["prompt"]["text"], SUMMARY)
+    elif step[1] == "instructions":
+        card["instructions"][step[2]] = _blob(reader, card["instructions"][step[2]]["text"], SUMMARY)
+    elif step[1] == "corrections":
+        c = card["corrections"][step[2]]
+        c["full"] = {k: v for k, v in _blob(reader, c["text"], SUMMARY).items() if k != "summary"}
+        c["text"] = c["text"][:200]
+    else:
+        card[step[1]][step[2]] = _blob(reader, card[step[1]][step[2]], SUMMARY)
+    return card
+
+
+def shrink_candidates(card: dict, reader=None) -> list:
+    """The shrink steps that would make this card smaller, in the order `shrink` tries them."""
+    n = len(canonical(card))
+    return [st for st in _steps(card) if len(canonical(_apply(card, st, None))) < n]
+
+
 def shrink(card: dict, reader) -> dict:
-    """While the card is over 4,096 bytes, replace the largest inline text with a view reference."""
-    for _ in range(60):
-        if len(canonical(card)) <= CARD_LIMIT:
+    """While the card is over 4,096 bytes, apply the first step that makes it smaller: drop `argv`, point
+    `context.commands` at `commands_to_run`, clip blob summaries to 120 characters, then blob the largest
+    inline text. Checkpoint views are never blobbed, and a card never leaves larger than it entered."""
+    for _ in range(100):
+        n = len(canonical(card))
+        if n <= CARD_LIMIT:
             return card
-        cands = []
-        if "text" in card.get("prompt", {}):
-            cands.append((len(card["prompt"]["text"]), ("prompt",)))
-        for k, v in card.get("instructions", {}).items():
-            if "text" in v:
-                cands.append((len(v["text"]), ("instructions", k)))
-        for sect in ("inputs", "context"):
-            for k, v in card.get(sect, {}).items():
-                if isinstance(v, str):
-                    cands.append((len(v), (sect, k)))
-                elif isinstance(v, (dict, list)) and "blob" not in (v if isinstance(v, dict) else {}):
-                    cands.append((len(canonical(v)), (sect, k)))
-        for i, c in enumerate(card.get("corrections", [])):
-            if len(c["text"]) > 200:
-                cands.append((len(c["text"]), ("corrections", i)))
-        cands = [c for c in cands if c[0] > 100]
-        if not cands:
-            break
-        _, path = max(cands, key=lambda c: c[0])
-        if path[0] == "prompt":
-            card["prompt"] = reader.blob_view(card["prompt"]["text"])
-        elif path[0] == "instructions":
-            card["instructions"][path[1]] = reader.blob_view(card["instructions"][path[1]]["text"])
-        elif path[0] == "corrections":
-            c = card["corrections"][path[1]]
-            c["full"] = reader.blob_view(c["text"])
-            c["text"] = c["text"][:200]
+        for st in shrink_candidates(card):
+            out = _apply(card, st, reader)
+            if len(canonical(out)) < n:
+                card = out
+                break
         else:
-            v = card[path[0]][path[1]]
-            card[path[0]][path[1]] = reader.blob_view(v if isinstance(v, str) else json.dumps(v, indent=2, sort_keys=True))
+            return card
     return card

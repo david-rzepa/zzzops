@@ -160,7 +160,7 @@ def approve_context(ctx: Ctx, res: GoalResult, n: str, vals: dict) -> list:
 
 def checkpoint_view(ctx: Ctx, cp: dict) -> dict:
     diff = f"git diff {cp['base']} {cp['commit']} -- ':/' ':(top,exclude).zzzops/reviews'"
-    view = {"diff": diff}
+    view = {"commit": cp["commit"], "base": cp["base"], "diff": diff}
     stat = ctx.reader.diffstat(cp["base"], cp["commit"])
     if stat:
         view["diffstat"] = stat
