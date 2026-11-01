@@ -38,6 +38,40 @@
       "reason": "new",
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T18:06:27Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:0bd0456d963ff1c9ec69c0b4aef93296de6e4d49bc486aea06823c68efe14998"
+        },
+        "policy": {},
+        "subject": "v1:sha256:3d9e10be2b76ea5c0546fa48f3a692965bfb86cec6909288275846dbf6da47fd"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:7488cc4f763a671e92fc3c34228d76baaeb4d32e7d04f580b09bd471639f4d44",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T18:06:27Z",
+        "decided_by": "Dave (owner), recorded by Claude (root agent)",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approved merging PR #751 (G1023) at head 6545c09 into dev: the checkpoint_required hint and MIGRATING.md now say <full 40-hex sha>, with tests for both and a grep over engine, references, skills and templates. Checked against dev after G1000 merged: merges cleanly and no other old-form text exists. Code review approved; required CI passed. The owner asked to merge everything on the Release 1 stack; merged with --admin because of the dev ruleset's last-push rule."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "a05fb9714f105b4b6da43deafde535ea6eed8a88",
+          "change": "8c9cee6da7570e0b95c54680db3ecb09140a7299",
+          "commit": "92e8eff0e2ffa8683fc156ccbbd5c677f6961b6c",
+          "tree": "82343a15cf504568f2fde4de45302a9825daf728"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 1,
       "correction_runs": 0,
