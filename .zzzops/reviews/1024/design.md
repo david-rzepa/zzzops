@@ -1,6 +1,8 @@
 # G1024 design: tell repositories when the shipped default policy changed, and offer a reviewed update
 
-Revision 1. Read at dev `c3791a0` (card) and re-checked at `8d8437a` (G1020 merged since, which changed `templates/default/POLICY.json` and `prompts/lens_truth.md`: one more silent default change of the kind this goal reports).
+Revision 2. The only change from revision 1: the spec gained G1017's acceptance line ("This PR edits docs/design/SPEC.md and DESIGN.md for every contract change it makes (the sections in G1017's pending row), adds a HISTORY §4 row and deletes the G1024 pending row"). §5 now states it as this PR's acceptance and covers the verb outputs it adds, and §6 gains test 10 for it. Nothing else changed.
+
+Read at dev `c3791a0` and re-checked at `8d8437a` (G1020 merged since, which changed `templates/default/POLICY.json` and `prompts/lens_truth.md`: one more silent default change of the kind this goal reports).
 
 ## 1. Outcome
 
@@ -231,7 +233,7 @@ It is a warning, not a `policy_invalid` error. A stricter validation would pause
 | CLI_USAGE: a "Default policy updates" paragraph beside "Legacy state" | reference | Text |
 | MIGRATING: a short "Shipped default updates" section that later graph changes (G1022) extend | reference | Text |
 
-**docs/design** (G1017's rule; G1024 depends on G1017). This PR applies the following and deletes the G1024 pending row; its marker, `engine contains "policy_update"`, is satisfied by `defaults.py`.
+**docs/design** (G1017's rule; G1024 depends on G1017). The spec's acceptance line makes this part of the PR. It edits docs/design/SPEC.md and DESIGN.md for every contract change it makes: the sections in G1017's pending row, plus every other section that defines `next` or `validate` output or the bootstrap checklist, wherever this design changes them. It adds a HISTORY §4 row and deletes the G1024 pending row in `docs/design/README.md`. Its marker, `plugins/zzzops/zzzops/engine contains "policy_update"`, is satisfied by `defaults.py`, so G1017's guard fails on this PR until the row is gone. The edits:
 - **SPEC:**
   - §2.3: rows for `.zzzops/TEMPLATE.json` and `templates/history/`.
   - §3.2: a closing paragraph defining TEMPLATE.json, without renumbering.
@@ -269,6 +271,12 @@ New `.agents/test_engine_defaults.py`, using the engine fixtures' bootstrapped r
    - A computation that raises (patched) drops the item, and the verb succeeds.
 8. **Preview.** `next --policy-ref <branch>`, where the branch has the update and the reviewed record, shows no item while the integration tip still does.
 9. **Skill text.** The bootstrap skill names `record.reviewed`, the decline, and `validate --policy-ref`. The execute skill names `policy_update`.
+
+10. **Design docs (acceptance).** In this PR's tree:
+    - G1017's `test_no_landed_goal_is_pending` passes, so no G1024 row remains.
+    - `docs/design/HISTORY.md` §4 has a G1024 row.
+    - `git grep -n 'TEMPLATE.json\|policy_update\|policy_merge_markers' -- docs/design/SPEC.md docs/design/DESIGN.md` finds each name in SPEC (§2.3, §3.2, §3.15/§3.16, §8.3) and `policy_update` in DESIGN §3.10.
+    - review_impl checks these against §5.
 
 New `.agents/test_template_history.py`:
 - Every `templates/default` file's id is in the store with identical normalised bytes, and the failure message names `.agents/template_history.py --write`.
