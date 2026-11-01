@@ -204,10 +204,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T20:40:52Z",
+      "finished_at": "2026-11-01T21:22:32Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -226,16 +226,19 @@
       "ok": true,
       "output": {
         "commands": [
-          "python3 -m unittest -v test_prompt_stats test_agent_plugin test_engine_lenses.ShippedTemplateTests"
+          "cd .agents && python3 -m unittest -v test_prompt_stats test_agent_plugin test_engine_lenses.ShippedTemplateTests"
         ],
+        "responses": {
+          "review_tests:1:1": "fixed: the command now starts with `cd .agents &&`, so it runs from the worktree root (verified from .agents: 33 tests, only the two new-behaviour tests fail). Also took the non-blocking note: the spec-link test now selects nodes with stage == discovery."
+        },
         "tests": {
           "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "e92b17b5860edb30eb452104a32b39db006da81d",
-          "commit": "0dffafab215930125098f4321f28c1edca0e98db",
-          "tree": "a71917f28004e46a62f1799ac7fc3d320eb074bf"
+          "change": "013087883bf6279714942d59c6e186e865319336",
+          "commit": "f2ac13cde7428d487c03fcfd51086fc789d21929",
+          "tree": "f089c1e2380de39ac8be5b0138f3aa0892c73eff"
         }
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     }
   },
