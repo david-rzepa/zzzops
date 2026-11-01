@@ -11,7 +11,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T17:41:54Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:199c45642f008b1c35c884a5ffe2293535fe58231fd58e9b2303fd9e859158cf",
+          "spec": "v1:sha256:af94133f2c4c82135155cab3d35c4bb3c6f008f2d589a6ffaf8ce5df843a9015"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1022",
+      "input_fp": "v1:sha256:88f392f1d31864e95a6f0e05607e193ec75ce0fbe02a1eaf4ccf1482f89592c7",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "0424a9a0a2592feab90f62d7d1357560a0492f5c",
+          "commit": "c8922ad412a6d701a2f9e9ea6a686ed3dd6023ce",
+          "path": ".zzzops/reviews/1022/design.md"
+        },
+        "summary": "Replace G1000's 26-node lens graph with 15 nodes: one multi-lens reviewer per subject (review_design with the seven design lenses, review_impl with compliance, correctness, missing, tests and craft), plus a separate adversary_design, all feeding G1000's unchanged filters. The project declares the lens set with a new node field `lenses`; a goal removes optional lenses through the existing skip mechanism with keys `<node>:<lens>` (non-skippable lenses refused), shown on approval items and the PR body, and a new `lens` finding key tags every finding. Engine change is about 120 lines (one node field, one finding key, one fingerprint part, card/render/PR display); rollout replaces G1000's step-3 policy branch with this graph and raises the floor straight to 1.2.0. Appendix A restates the experiment: multi-lens impl 7/7/6 of 7 at 82-87k vs 6/7 at 337k for separate lenses; design multi plus separate Adversary 7/12 at ~76k vs 7/12 at ~245k."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
