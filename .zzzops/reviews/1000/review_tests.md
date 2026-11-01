@@ -1,27 +1,20 @@
-# Review of the tests: G1000, attempt 3
+# review_tests for G1000 (attempt 4, after rebase onto dev 6747a5e)
 
-Subject: tests checkpoint 12e8d29 (base 54d7e83). Design: `.zzzops/reviews/1000/design.md`, revision 4. The only change since the approved tests is 12e8d29, which edits two tests in `.agents/test_engine_lenses.py`.
+**Decision: approved.** No findings.
 
-## 1. `test_a_fresh_filter_record_without_a_verdict_keeps_the_note` (design §13, "Missing verdict fails safe"; §7 liveness)
+## Scope
+The tests were approved at 12e8d29 (base 54d7e83). G1000 was rebased onto dev 6747a5e; the test checkpoint is now 4087d8d. This review checks that the rebase left the tests unchanged and that they still pass.
 
-The test no longer asserts `filter_design == "current"` after the hand edit. It now asserts two things: the filter is not in a `ready (stale…)` state, and the filter record's `input_fp` has not changed. Once the note goes live, design reopens and the filter, which is downstream of design, is blocked. So `current` was the wrong expectation.
+## Rebase check
+`git range-diff 54d7e83..12e8d29 6747a5e..4087d8d`:
+- Test commits: `63c757e` (freeze the 12-node graph, lens tests), `91aec68` (rev 4 skip refusals, per-lens independence, impl intent staleness, skipped-node findings) and `4087d8d` (filter freshness without the state string; re-run intent_design) are all `=`, so they are byte-identical patches.
+- Review/design doc commits: all `=`.
+- Adapted commits: only `28ee9a2` (engine) and `f455c98` (skills and references docs). The engine changes are merge adaptations to dev's refactors: card shrink moved to `_steps`/`_apply` (G1018), and the `fp_parts(..., R)` call moved into the new `rparts` form in `frontier.py` (G1014). The docs changes keep dev's new text (G1001 idempotent `new`, G1014 edit/live-lease guidance, G1015 legacy item, migrate skill) next to the G1000 additions. None of this touches test code or test fixtures.
 
-- The `input_fp` check is close to a tautology, because the hand edit only touches `output.verdicts`. It is harmless, though. The real proof that the filter is fresh is still in the test: `design == "ready (reopened)"`, and the design card's corrections are exactly `[nid]`. Under §7, a filtered lens's finding is live only when the filter's latest record is done and fresh. So the note reopening design is only possible if the engine treats the hand-built record as fresh and counts the missing verdict as "kept". That is exactly the property §13 asks for.
-- The test is not weakened. The unjudged note still goes live and still reaches the target's card.
+## Execution (on a `git archive` of 4087d8d)
+- `.agents/test_engine_lenses.py`: 61 tests, OK (218 s). The only output is a harmless ResourceWarning from an unclosed file in a test helper.
+- `.agents/test_engine_docs.py`: 3 tests, OK.
+- `.agents/test_marketplace_bundle.py`: 10 tests, OK.
 
-## 2. `test_changing_intent_at_the_impl_stage_stales_only_the_intent_lenses` (design §13, intent staleness at both stages; D4, §6)
-
-After the intent change, the test re-runs `intent_design`, plus `filter_design` if it is no longer current, before reading the states. Without that re-run, the stale design-stage intent lens holds the downstream impl nodes behind it, and `intent_impl` cannot show its own stale state. This re-run is needed to observe the property at the implementation stage. It does not mask it:
-
-- `intent_impl` must still be exactly `ready (stale: policy.intent)`.
-- Every node's stale set, minus `intent_design` and `intent_impl`, must still be empty. None of the other nodes are re-run, so a stale non-intent node would still fail the test.
-- Every other impl lens, and `implement`, must still be `current`.
-- The filter re-run is conditional. It only re-settles the design-stage join and does not reach any impl-stage assertion. The F1 tests cover the filter's own staleness separately.
-
-## Run
-
-I extracted 12e8d29 with `git archive` and ran both tests with `python -m unittest`: both pass (13.7s).
-
-## Verdict
-
-Both edits follow design revision 4 and keep what the tests prove. The unjudged note still goes live, and only the intent lenses go stale. No findings. Approved.
+## Prior findings
+None open.
