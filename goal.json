@@ -164,63 +164,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 3,
-      "correction_runs": 2,
-      "findings": [
-        {
-          "id": "review_tests:2:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:eb0632d034ed8ede0bed3fef27234d6c36d1228367a79093427636a49eb1b470",
-          "text": "The submitted commands were narrowed. Attempt 1 submitted [\"cd .agents && python3 -m unittest test_engine_card_ux test_engine_lifecycle test_engine_schemas test_engine_journeys test_engine_docs\", \"python3 .agents/prompt_stats.py --check\"]; records.test_design.output.commands now has only card_ux and lifecycle. run_tests would skip test_engine_schemas (the design changes schemas.py's checkpoint override check), test_engine_journeys (the design says they must pass unchanged), test_engine_docs and the prompt budget check (the design edits the template prompts). Restore the full attempt-1 list.",
-          "upheld": false
-        },
-        {
-          "id": "review_tests:2:2",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:cc689178c4dd4fc6dc080732ee1287f852e488e8c87b9b6258e19181dfa4f32a",
-          "text": "Section 2's capability rule does not achieve its stated intent. The design says a reclaimed reopened correction has 'record current, so record_stale is empty' and keeps its own capability, under the rule record_stale == ['inputs.base'] gives routine. On a node with inputs.base (test_design, implement: the case the design calls common), base moving during the reopened attempt makes the record stale too. Live corrections are not part of fp_parts (frontier.py:207-239: reopened requires input_fp == f), so the design's own rec_sb code gives record_stale == ['inputs.base'], and the stated rule yields routine. The verification bullet (line 158) uses design, which has no inputs.base, so it hides this. The rewritten test asserts 'reasoning' and asks implement for an unstated 'no live corrections' condition. State the rule that achieves the intent, e.g. routine only when record_stale == ['inputs.base'] and the node has no live corrections. Also decide the no-lease case: a plain start of a reopened node after base moved is ready/stale with ['inputs.base'], since the frontier checks staleness before corrections, and today it gets routine while carrying corrections. Then align the verification bullet with the test (test_design).",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-01T05:13:53Z",
+      "attempt": 4,
+      "correction_runs": 3,
+      "findings": [],
+      "finished_at": "2026-11-01T05:31:48Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:2c1af88e84734bdd997eceba5000279525be0586",
-          "tests": "v1:sha256:5a5938beaa030820f63d62c79b26731c38de27adbfdaae603fc8c3bcdad8c849"
+          "tests": "v1:sha256:140a73fbeb6b9e0d0f69b0b14d6f1603a5b2b85b370d27c55d76f254b0bf87c3"
         },
         "policy": {},
-        "subject": "v1:sha256:8894cf723cf6487e6c552bbf998152f96fbb41b92cea0181e1c18afbaae7c4d4"
+        "subject": "v1:sha256:f0c18c77195be0f9c0086e82a1cba76a4df27ef20eb4959a327d25bff0586c3a"
       },
-      "holder": "claude:e6ad/review_tests-1016-3",
-      "input_fp": "v1:sha256:c95ec54bcaa532d2184d0b77147dddc33f0c7b2244ba6a40cee969469abb0848",
+      "holder": "claude:e6ad/review_tests-1016-4",
+      "input_fp": "v1:sha256:c7c226b156a2c669430417220c78b1b4964ec2f87f1b19ee51a3b0ff9728e6a0",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "b569e30696cd7fd1bad5774c0c3543df661fedbb",
-          "commit": "8880f272dea3ec0c19eb1e33c86e783d1ef0608e",
+          "blob": "4f89d2ecae4b6f6137f4d8c4d115891d40c1ef1f",
+          "commit": "601a958d761ad09d706b29a4bca621d7bd338a35",
           "path": ".zzzops/reviews/1016/review_tests.md"
         },
-        "summary": "Approved. Full commands list restored in records.test_design.output.commands. Capability tests match design attempt 4 section 2: reclaim and plain-start of a reopened test_design after base moved assert corrections present and own capability (reasoning); the no-corrections control still expects routine. Pre-implementation the plain-start test fails 'reasoning' != 'routine' and the reclaim tests fail on missing stale_because, the right reasons. Docs test checks only template prompts."
+        "summary": "Approved. The only change since attempt 3 (ff6fb6e) is sound: the missing-old-blob test now matches fetch_work_of's exact refspec '+refs/heads/zzzops/work/g<G>:...' (session.py:177), which the coordinator glob '+refs/heads/zzzops/work/g<G>*:...' (store.py:114) cannot match. A mutation that calls fetch_work_of on the changed-input path makes the test fail, so it catches a real call. The commands are still the full list, and they pass at ff6fb6e."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "da481f3209de656775b79bcc1873219d0cc66aa4",
-          "commit": "e0d8f73b6d5b157d6b19a89745655707ac5fa92b",
-          "tree": "000f90069e57c732dfdcd4debd08fc79d408b13f"
+          "change": "ec2f744ee88addec9468a3e2cf86c99fa517fcdd",
+          "commit": "ff6fb6e8f12d84e4c1348eada23cf6bc827a11e0",
+          "tree": "f56d75480bd332815ae0ba3688d4fbe765d5265d"
         }
       },
       "status": "done"
