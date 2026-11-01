@@ -1,7 +1,9 @@
 {
   "budget": null,
   "closed": null,
-  "depends_on": [],
+  "depends_on": [
+    1017
+  ],
   "graph": "default",
   "id": 1009,
   "links": {
@@ -12,7 +14,7 @@
   "release": 2,
   "schema": 1,
   "skip": {},
-  "spec": "Optionally attach observed token usage (input, cached, output, reasoning) to an agent node's submit, keyed by goal id, node, attempt and holder label, read from the harness's local session records (Codex token_count events, Claude Code transcripts) through a bounded adapter. Store it as a non-fingerprinted field on the node record in the goal document (or a sidecar on the goal branch), never prompts or transcripts; missing data is recorded as unknown, not zero. Add a read (e.g. show --json or a small report) that aggregates usage per goal and per node. Forward-only, no backfill; telemetry failure never blocks submit. Changed vs old wording: no activity ledger or backend writes per event; data rides on the existing CAS goal write.\n\nMigrated from GitHub issue #545 after the engine reset (#740).",
+  "spec": "Optionally attach observed token usage (input, cached, output, reasoning) to an agent node's submit, keyed by goal id, node, attempt and holder label, read from the harness's local session records (Codex token_count events, Claude Code transcripts) through a bounded adapter. Store it as a non-fingerprinted field on the node record in the goal document (or a sidecar on the goal branch), never prompts or transcripts; missing data is recorded as unknown, not zero. Add a read (e.g. show --json or a small report) that aggregates usage per goal and per node. Forward-only, no backfill; telemetry failure never blocks submit. Changed vs old wording: no activity ledger or backend writes per event; data rides on the existing CAS goal write.\n\nMigrated from GitHub issue #545 after the engine reset (#740).\n- This PR edits docs/design/SPEC.md and DESIGN.md for every contract change it makes and adds a HISTORY §4 row.",
   "state": "open",
   "title": "Record attributable token usage per goal node attempt"
 }
