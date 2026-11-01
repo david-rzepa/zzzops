@@ -9,6 +9,33 @@
   },
   "priority": "P2",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T04:10:39Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:6133138ad0d302b59d4184b15a459e555b1bdf61",
+          "summary": "v1:sha256:7378a1218741c057c1adad2536559fc8b24ddce7724d4996b72d3ec640861d2a"
+        },
+        "policy": {},
+        "subject": "v1:sha256:aca1a77d5ce262b6d750f6c0e6df11acfa8283c2fa8782c0f502dd584afc12e0"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:b3992630075b3fcdd9dbddcd04bab85adcb17616d5f049268ae3ba0a698b96ca",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T04:10:39Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Do not wait for my approval",
+        "summary": "Approved the G1014 design (attempt 2): running states keep their fingerprint parts; a shared live_input_changes helper feeds edit (preview and result), renew (evaluated with the renewed lease, so expired-then-renewed leases are checked) and validate --policy[-ref]; entries carry abandon and start --reclaim commands; CLI_USAGE abandon row and the execute skill are corrected. Decision made by Claude (root agent) under the owner's standing delegation for Release 1."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "design": {
       "attempt": 2,
       "correction_runs": 1,
