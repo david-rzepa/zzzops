@@ -9,6 +9,7 @@ import json
 from engine.canon import canonical, iso
 from engine.frontier import recorded_out, resolve
 from engine.render import clip, command, first_line
+from engine.schemas import SHA
 
 CARD_LIMIT = 4096
 INLINE = 600
@@ -120,8 +121,8 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
     cap = nd.get("capability", "bounded")
     if s.get("reason") == "retry":
         cap = "reasoning"
-    elif s.get("stale_because") == ["inputs.base"]:
-        cap = "routine"
+    elif s.get("record_stale") == ["inputs.base"] and not s.get("corrections"):
+        cap = "routine"     # only the base moved since the accepted output and no finding asks for a change: a rebase
     timeout = lease["timeout"]
     every = max(1, timeout // 4)
     card = {"ok": True, "coordinator": session.state.coordinator, "goal": g, "title": doc["title"], "node": n,
@@ -130,10 +131,13 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
                     "models": list(settings["routing"]["tiers"].get(cap, []))},
             "lease": {"branch": f"zzzops/lease/g{g}/{n}", "attempt": lease["attempt"], "holder": lease["holder"],
                       "timeout_minutes": timeout, "renew_every_minutes": every, "expires_at": iso(lease["expires_at"])},
-            "renew": f"Renew every {every} minutes (timeout {timeout}). After any pause, renew first.",
             "reason": lease["card_reason"]}
     if s.get("stale_because"):
         card["stale_because"] = s["stale_because"]
+        ch = changed(session, res, n, (s.get("changed_from") or {}).get("parts"), s.get("parts") or lease["parts"],
+                     (s.get("changed_from") or {}).get("since"), s["stale_because"])
+        if ch:
+            card["changed"] = ch
     prompt_text = reader.prompt(nd["prompt"]) or ""
     card["prompt"] = {"text": prompt_text} if len(prompt_text.encode("utf-8")) <= INLINE else \
         dict(reader.blob_view(prompt_text), blob=lease.get("prompt") or reader.blob_view(prompt_text).get("blob"))
@@ -154,7 +158,7 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
             card["commands_to_run"] = {"from": "commands", "list": cmds, "note": "Run these in the workspace before you submit."}
     card["corrections"] = [{"id": f["id"], "from": _carrier(res, f), "text": f["text"], "rounds": f["rounds"],
                             "upheld": f["upheld"]} for f in s.get("corrections") or []]
-    prev = previous(session, res, n, s)
+    prev = previous(session, res, n, dict(s, stale_because=s.get("record_stale")))   # previous.output: record staleness
     if prev:
         card["previous"] = prev
     if suggested:
@@ -178,7 +182,8 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
         "submit": command(ctx, ["submit", str(g), n, "--attempt", N, "--as", holder, "--output", "<F>"]
                           + (["--artifact", "<A>"] if arts else [])),
         "blocked": command(ctx, ["submit", str(g), n, "--attempt", N, "--as", holder, "--blocked", "<F>"]),
-        "renew": command(ctx, ["renew", str(g), n, "--attempt", N]),
+        "renew": dict(command(ctx, ["renew", str(g), n, "--attempt", N]),
+                      when=f"every {every} minutes (timeout {timeout}); after any pause, renew first"),
         "abandon": command(ctx, ["abandon", str(g), n, "--attempt", N])}
     return shrink(card, reader)
 
@@ -190,23 +195,69 @@ def _carrier(res, f):
     return f["id"].split(":")[0]
 
 
+def changed(session, res, n, old_parts, new_parts, since, keys) -> dict:
+    """One cheap, local pointer per stale key that has one: a goal-field input gets a goal.json diff since `since`,
+    an artifact input a blob diff. Never fetches."""
+    out = {}
+    graph = res.graph
+    old_in = (old_parts or {}).get("inputs") or {}
+    new_in = (new_parts or {}).get("inputs") or {}
+    tip = session.snap.goals.get(res.goal)
+    for key in keys:
+        if not key.startswith("inputs."):
+            continue
+        name = key[len("inputs."):]
+        sel = graph.selectors[n].get(name)
+        if sel is None:
+            continue
+        if sel.kind == "goal":
+            if not tip or since is None:
+                continue
+            old = session.git.out("rev-list", "-1", "--first-parent", f"--before={since}", tip).strip()
+            if old and old != tip:
+                out[key] = {"diff": f"git diff {old} {tip} -- goal.json"}
+        elif graph.selector_type(sel) == "artifact":
+            a, b = _blob_of(old_in.get(name)), _blob_of(new_in.get(name))
+            if not (a and b):
+                continue
+            out[key] = {"diff": f"git diff {a} {b}"} if session.git.exists(a) else {"note": "previous version not available"}
+    return out
+
+
+def _blob_of(part):
+    if not isinstance(part, str) or ":blob:" not in part:
+        return None
+    sha = part.rsplit(":blob:", 1)[1]
+    return sha if SHA.match(sha) else None
+
+
+def finding_effect(graph, n) -> str:
+    """What a finding from this phase does (one place for G1000's filtered-review branch)."""
+    if graph.is_review(n):
+        return "Each open finding reopens its target: it re-runs and must answer it in responses."
+    return "a finding reopens that ancestor; this phase re-runs if that ancestor's output changes."
+
+
 def output_schema(graph, n, s) -> dict:
     out = {}
     if graph.is_review(n):
         out["decision"] = "approved | changes_requested (approved only with no finding open)"
         out["summary"] = "text: your verdict"
         out["findings"] = ("[{\"id\": <prior id>, \"status\": \"open\"|\"resolved\"} for every prior open finding, "
-                           "{\"target\"?: <node>, \"text\": …} for new ones]")
+                           "{\"target\"?: <node>, \"text\": …} for new ones]. " + finding_effect(graph, n))
     else:
         for k, t in graph.output_types[n].items():
             if t == "checkpoint":
-                out[k] = ("checkpoint: the suggested checkpoint if any, else HEAD (a phase that adds no commit keeps its "
-                          "previous checkpoint); or {\"commit\": sha}")
+                out[k] = ("checkpoint (optional): omit the key to default to the suggested checkpoint if any, else your "
+                          "work branch's HEAD (a phase that adds no commit keeps its previous checkpoint). To override, "
+                          "give {\"commit\": \"<full 40-hex sha>\"}; ref names such as HEAD and short shas are refused. "
+                          "If a restack rewrote the previous checkpoint, submit refuses with checkpoint_required and asks "
+                          "for one.")
             elif t == "artifact":
-                out[k] = "artifact: write the file and pass it with --artifact"
+                out[k] = "artifact: write it to a local file and pass that file with --artifact; artifact.path is where submit stores it."
             else:
                 out[k] = t
-        out["findings"] = "optional: [{\"target\": <ancestor node>, \"text\": …}]"
+        out["findings"] = "optional: [{\"target\": <ancestor node>, \"text\": …}]; " + finding_effect(graph, n)
     if s.get("corrections"):
         out["responses"] = "required for: " + ", ".join(f["id"] for f in s["corrections"])
     return out

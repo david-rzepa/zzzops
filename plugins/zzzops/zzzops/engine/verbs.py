@@ -11,13 +11,13 @@ import time
 
 from engine import records as rec
 from engine import schemas
-from engine.canon import EMPTY_TREE, iso
+from engine.canon import EMPTY_TREE, iso, parse_iso
 from engine.errors import Refused
 from engine.fingerprint import out_fp, stale_keys
 from engine.frontier import live_input_changes, recorded_out, resolve
 from engine.identity import Identity
 from engine.leases import lease_ref, message as lease_message
-from engine.render import command, lease_commands, live_lease_entry, state_string
+from engine.render import command, lease_commands, live_lease_entry, restart_command, state_string
 from engine.store import goal_message, parse_commit, push_atomic
 from engine import worktree as wt
 
@@ -283,8 +283,29 @@ def claim(s, res, X, label, state, reclaim, force, extra_updates=()):
     lease = {"attempt": attempt, "holder": label, "timeout": timeout, "expires_at": s.now + timeout * 60,
              "reason": reason, "card_reason": "reclaim" if st0["name"] in ("reclaimable", "running") else reason,
              "prompt": prompt, "workspace": workspace, "tip": c, "work": work, "fp": fp, "parts": parts,
-             "kind_state": dict(state, stale_because=state.get("stale_because"))}
+             "kind_state": dict(state, **staleness(s, st0, state, r, parts))}
     return lease, workspace
+
+
+def staleness(s, st0, state, r, parts) -> dict:
+    """The card's `stale_because` (since the record and, for a reclaim, since the abandoned attempt started),
+    `record_stale` (since the record only; it drives capability) and where the `changed` pointers start."""
+    L_old = st0.get("lease")
+    rec_sb = set(stale_keys(r.get("fp_parts"), parts)) if r and r.get("input_fp") != state.get("fp") else set()
+    sb = rec_sb | (set(stale_keys(L_old.fp_parts, parts)) if L_old is not None else set())
+    out = {"stale_because": sorted(sb) or None, "record_stale": sorted(rec_sb) or None, "changed_from": None}
+    if sb:
+        old = {"inputs": dict((L_old.fp_parts.get("inputs") or {}) if L_old else {})}
+        since = []
+        if L_old is not None:
+            since.append(claimed_at(s, L_old.tip))
+        if rec_sb:
+            old["inputs"].update({k: v for k, v in ((r.get("fp_parts") or {}).get("inputs") or {}).items()
+                                  if f"inputs.{k}" in rec_sb})
+            since.append(parse_iso(r["finished_at"]) if r.get("finished_at") else None)
+        since = [x for x in since if x is not None]
+        out["changed_from"] = {"parts": old, "since": min(since) if since else None}
+    return out
 
 
 def suggestion_for_card(s, res, X, lease, workspace):
@@ -440,7 +461,8 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
         raise Refused(code, "; ".join(errs[:5]), details={"errors": list(errs)},
                       hint="put long text in the artifact" if code == "too_large" else None)
     corr = corrections_of(res, X)
-    rec.check_responses(out.get("responses", {}), corr)
+    carriers = {f["id"]: c for c, f in res.live.get(X, [])}
+    rec.check_responses(out.get("responses", {}), corr, carriers, s.ctx().reader.blob_view)
     if not out.get("responses"):
         out.pop("responses", None)
     vals_rec, _ = resolve(graph, doc, X, lambda p: recorded_out(doc, p), s.portfolio().views)
@@ -612,7 +634,9 @@ def abandon(s, g: int, X: str, N: int | None, force=False, note=None) -> dict:
         raise Refused("remote", f"push to `{s.R}` failed")
     if r == "rejected":
         raise Refused("contention", "the lease or goal moved; retry")
-    out = {"ok": True, "coordinator": s.state.coordinator, "expired": f"zzzops/lease/g{g}/{X}"}
+    out = {"ok": True, "coordinator": s.state.coordinator, "expired": f"zzzops/lease/g{g}/{X}",
+           "restart": restart_command(s.ctx(), g, X),
+           "hint": "The node is now reclaimable: a plain start is refused; run restart."}
     if note:
         out["note"] = note
     return out
@@ -943,7 +967,11 @@ def fill_current_records(s, d: dict) -> dict:
                 base = vals.get("base")
                 if base is None:
                     raise Refused("validation", f"records.{n}.{k}: cannot complete the checkpoint (no base)")
+                if not (isinstance(cp["commit"], str) and schemas.SHA.match(cp["commit"])):
+                    raise Refused("validation", f"records.{n}.{k}.commit must be a full 40-hex sha")
                 c = s.git.rev_parse(cp["commit"])
+                if not c:
+                    raise Refused("validation", f"records.{n}.{k}.commit {cp['commit']} does not exist")
                 r["output"][k] = {"commit": c, "base": base, "tree": ident.code_tree(c), "change": ident.change(base, c)}
         if n in pending:
             from engine.frontier import portfolio as pf

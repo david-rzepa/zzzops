@@ -38,8 +38,14 @@ def response_of(doc: dict, target: str, fid: str) -> str:
     return (((r or {}).get("output") or {}).get("responses") or {}).get(fid, "")
 
 
-def check_responses(responses: dict, corrections: list):
-    """Keys equal the live correction ids; 'fixed: '/'disputed: '; no dispute of an upheld finding."""
+RESPOND_INLINE = 600
+
+
+def check_responses(responses: dict, corrections: list, carriers: dict | None = None, view=None):
+    """Keys equal the live correction ids; 'fixed: '/'disputed: '; no dispute of an upheld finding.
+
+    On a key mismatch the refusal lists the findings to answer (`carriers`: id -> carrying node; `view(text)` gives
+    the full-text reference for a clipped text)."""
     ids = {f["id"] for f in corrections}
     given = set(responses or {})
     if given != ids:
@@ -49,7 +55,18 @@ def check_responses(responses: dict, corrections: list):
             msg.append("respond to: " + ", ".join(missing))
         if extra:
             msg.append("no live finding: " + ", ".join(extra))
-        raise Refused("validation", "; ".join(msg), hint="answer every correction in `responses` with 'fixed: …' or 'disputed: …'")
+        respond_to = []
+        for f in sorted((f for f in corrections if f["id"] in missing), key=lambda f: f["id"]):
+            item = {"id": f["id"], "from": (carriers or {}).get(f["id"], f["id"].split(":")[0]), "target": f["target"],
+                    "text": f["text"], "upheld": bool(f.get("upheld"))}
+            if len(f["text"].encode("utf-8")) > RESPOND_INLINE:
+                item["text"] = f["text"].encode("utf-8")[:RESPOND_INLINE].decode("utf-8", "ignore")
+                if view is not None:
+                    item["full"] = view(f["text"])
+            respond_to.append(item)
+        raise Refused("validation", "; ".join(msg), details={"respond_to": respond_to, "no_longer_live": extra},
+                      hint="Findings arrived while you ran: answer each in `responses` with 'fixed: …' or 'disputed: …' "
+                           "(drop the ones under no_longer_live), then resubmit.")
     for f in corrections:
         text = responses[f["id"]]
         if not re.match(r"^(fixed|disputed): \S", text or ""):

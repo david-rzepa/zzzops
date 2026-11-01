@@ -946,8 +946,10 @@ def validate_submit_output(graph: Graph, node: str, out) -> list:
             if t == "checkpoint":
                 if k in out:
                     v = out[k]
-                    if not isinstance(v, dict) or set(v) != {"commit"} or not isinstance(v["commit"], str):
-                        e.add(f"output.{k}", "a checkpoint override is {\"commit\": \"<sha>\"}")
+                    if (not isinstance(v, dict) or set(v) != {"commit"} or not isinstance(v["commit"], str)
+                            or not SHA.match(v["commit"])):
+                        e.add(f"output.{k}", "a checkpoint override is {\"commit\": \"<40-hex sha>\"}; omit the key to use "
+                                             "the default")
                 continue
             if k not in out:
                 e.add("output", f"missing output {k!r}")
