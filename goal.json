@@ -10,7 +10,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T19:32:39Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:38bd2bb7e360625c8d4fd7863ee482fb7080b82f31a6acb087c3ad8deb301589",
+          "spec": "v1:sha256:8b64570e05d92537c5291643a3706f35bffd605782d3d9c867408925aa7b4aec"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1033",
+      "input_fp": "v1:sha256:754e9fe3814a407216bc9bde7610164daf94f7654350b51225145c557bdafb13",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "2adddada44fe4f179b53e2f1dfaf589a0cfc0cf3",
+          "commit": "b49df20abb3e715cb28f427f1533e8f8356035b7",
+          "path": ".zzzops/reviews/1033/design.md"
+        },
+        "summary": "Cause: build_marketplace_bundle.plugin_files always renders the 'official' channel. The Claude build is run with the canonical 0.0.0-dev version, but package_status expects 'development' for that version. So every generated Claude marketplace, and every Claude install made from one (including ~/.claude/plugins/cache/zzzops/zzzops/unknown), fails skills/add-zzzops-goal/SKILL.md. Fix: one shared package.channel_for_version used by both the build and the check, plus an install_harness() that works from the install path. It makes the reinstall hint name Claude Code, Codex, or both. CI's Claude acceptance and a new cross-platform test run the full validate from a generated marketplace and require no environment entries. No DESIGN/SPEC contract change."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
