@@ -36,6 +36,40 @@
       "reason": "stale",
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T18:04:39Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:a06cb57d8598146667540a9fe8819f3afd5b4f241a5f85a4876c3e5b723e6687"
+        },
+        "policy": {},
+        "subject": "v1:sha256:831e57f547ab4512135e44627878f2bb5506351af2ef7cfe1f1b28e459fb5819"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:18acce0e0305f5c76c1016e2de1bd7f3db7b08f7939e244b15d802ca7b861cdc",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T18:04:39Z",
+        "decided_by": "Dave (owner), recorded by Claude (root agent)",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approved merging PR #748 (G1000) at head 62e63c783688b96fa8fdb9afb1499d386d029394 into dev: the 26-node lens graph (seven lenses per subject, filter_design and filter_impl), impact/material on lens findings, the filter that promotes notes but never demotes material findings, skippable nodes and the skip refusal, settings.intent with the placeholder warning, previous.changed for re-reviews, and ENGINE_VERSION 1.1.0. Rebased onto dev a05fb97 with both conflicts re-reviewed; required CI passed. Follow-up G1022 consolidates the graph to 15 nodes. The owner asked to merge everything on the Release 1 stack; merged with --admin because of the dev ruleset's last-push rule."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "a05fb9714f105b4b6da43deafde535ea6eed8a88",
+          "change": "97c185d5cf500b2a1e8f64e4bceef8ab4c51f73e",
+          "commit": "d417d47a911ed1d0b2bbbe5af77828ef8a8ba956",
+          "tree": "c23c5d333a09d2e6ba12370e4ecf9595769ac40a"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 5,
       "correction_runs": 4,
