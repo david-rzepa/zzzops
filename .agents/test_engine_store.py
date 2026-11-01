@@ -263,5 +263,445 @@ class GoalIntegrityTests(StoreBase):
         self.assertEqual({1000, 1001}, {a["goal"] for a in out["actions"]})
 
 
+
+# --------------------------------------------------------------------------------------------- G1001: idempotent `new`
+
+def default_key(title, spec, depends_on=()):
+    """The default request key (G1001 design §1): sha256 over the canonical title, spec and sorted, unique depends_on."""
+    from engine import canon
+    return "sha256:" + canon.H({"v": 1, "title": title, "spec": spec, "depends_on": sorted(set(depends_on))})
+
+
+def push_root(w: fx.World, gid: int, key=None, head_id=None, **fields):
+    """Push a parentless goal commit for G<gid>, as `new` writes it, optionally with a Request-Key trailer."""
+    from engine import ENGINE_VERSION
+    doc = {"schema": 1, "id": gid, "title": "Forged", "graph": "default", "state": "open", "closed": None,
+           "spec": "forged spec", "priority": "P2", "release": 1, "depends_on": [], "skip": {},
+           "links": {"issue": None}, "budget": None, "records": {}}
+    doc.update(fields)
+    s = w.seed
+    data = json.dumps(doc, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+    blob = s.git("hash-object", "-w", "--stdin", input=data)
+    tree = s.git("mktree", input=f"100644 blob {blob}\tgoal.json\n")
+    trailer = f"Request-Key: {key}\n" if key else ""
+    msg = f"zzzops: new G{head_id or gid}\n\nOutcome: created\nState: open\n{trailer}Engine: {ENGINE_VERSION}\n"
+    c = s.git("commit-tree", tree, "-m", msg)
+    s.git("push", "-q", "origin", f"{c}:refs/heads/zzzops/goal/g{gid}")
+    return c
+
+
+class InProcess:
+    """Run the CLI in this process with a World clone's environment (so engine functions can be patched)."""
+
+    def __init__(self, w: fx.World, clone: str):
+        self.w, self.clone = w, clone
+
+    def run(self, *argv):
+        import contextlib
+        import io
+        from engine import cli
+        buf = io.StringIO()
+        cwd = os.getcwd()
+        try:
+            with fx.env_of(self.w.cli_env()), contextlib.redirect_stdout(buf):
+                os.chdir(self.w.clones[self.clone].path)
+                rc = cli.main(list(argv))
+        finally:
+            os.chdir(cwd)
+        return rc, json.loads(buf.getvalue())
+
+
+class IdempotentNewTests(StoreBase):
+    """G1001: `zzzops new` returns the goal that already exists for the same request."""
+
+    def goal_refs(self):
+        return self.w.remote_git("for-each-ref", "--format=%(refname)", "refs/heads/zzzops/goal/").split()
+
+    def root_of(self, gid):
+        return self.w.remote_git("rev-list", "--max-parents=0", f"refs/heads/zzzops/goal/g{gid}")
+
+    def tip(self, gid):
+        return self.w.remote_git("rev-parse", f"refs/heads/zzzops/goal/g{gid}")
+
+    def pushes(self):
+        return [l for l in self.w.trace_lines() if l["cmd"][:2] == ["git", "push"]]
+
+    # 1. exact retry
+
+    def test_exact_retry_recovers_the_same_goal_without_a_push(self):
+        f = self.w.file({"title": "Retry me", "spec": "same request"})
+        first = self.w.ok("a", "new", "--file", f)
+        self.assertIs(False, first["created"]["recovered"])
+        key = default_key("Retry me", "same request")
+        self.assertEqual(key, first["created"]["request_key"])
+        self.w.reset_trace()
+        again = self.w.ok("a", "new", "--file", f)
+        self.assertEqual(first["created"]["id"], again["created"]["id"])
+        self.assertIs(True, again["created"]["recovered"])
+        self.assertEqual(key, again["created"]["request_key"])
+        self.assertEqual(first["created"]["goal_commit"], again["created"]["goal_commit"])
+        for k in ("display", "title", "graph", "release", "priority", "depends_on"):
+            self.assertEqual(first["created"][k], again["created"][k], k)
+        self.assertEqual([], self.pushes())
+        self.assertEqual(["refs/heads/zzzops/goal/g1000"], self.goal_refs())
+        self.assertEqual([(1000, "design")], [(a["goal"], a["node"]) for a in again["next"]["actions"]])
+
+    def test_retry_from_another_clone_with_a_copy_of_the_file_recovers(self):
+        body = {"title": "Copied", "spec": "s", "depends_on": []}
+        first = self.w.ok("a", "new", "--file", self.w.file(body))
+        again = self.w.ok("b", "new", "--file", self.w.file(dict(body)))
+        self.assertEqual((first["created"]["id"], True), (again["created"]["id"], again["created"]["recovered"]))
+        self.assertEqual(1, len(self.goal_refs()))
+
+    def test_root_commit_carries_the_request_key_trailer_before_engine(self):
+        out = self.w.ok("a", "new", "--file", self.w.file({"title": "T", "spec": "S", "request_key": "my-key.1"}))
+        self.assertEqual("my-key.1", out["created"]["request_key"])
+        msg = self.w.remote_git("log", "-1", "--format=%B", out["created"]["goal_commit"])
+        lines = msg.splitlines()
+        self.assertEqual("zzzops: new G1000", lines[0])
+        self.assertIn("Request-Key: my-key.1", lines)
+        self.assertLess(lines.index("Request-Key: my-key.1"), next(i for i, l in enumerate(lines) if l.startswith("Engine: ")))
+        # no other verb writes the trailer
+        self.w.ok("a", "edit", "1000", "--set", 'priority="P1"', "--base", self.tip(1000))
+        self.assertNotIn("Request-Key:", self.w.remote_git("log", "-1", "--format=%B", self.tip(1000)))
+
+    def test_default_key_ignores_depends_on_order(self):
+        self.w.new(title="dep a")
+        self.w.new(title="dep b")
+        first = self.w.ok("a", "new", "--file", self.w.file({"title": "child", "spec": "c", "depends_on": [1001, 1000]}))
+        self.assertEqual(default_key("child", "c", [1000, 1001]), first["created"]["request_key"])
+        again = self.w.ok("a", "new", "--file", self.w.file({"title": "child", "spec": "c", "depends_on": [1000, 1001]}))
+        self.assertEqual((1002, True), (again["created"]["id"], again["created"]["recovered"]))
+        self.assertEqual(3, len(self.goal_refs()))
+
+    def test_title_and_spec_are_hashed_exactly_as_given(self):
+        a = self.w.ok("a", "new", "--file", self.w.file({"title": "T", "spec": "S"}))
+        b = self.w.ok("a", "new", "--file", self.w.file({"title": "T", "spec": "S\n"}))
+        self.assertNotEqual(a["created"]["id"], b["created"]["id"])
+        self.assertIs(False, b["created"]["recovered"])
+
+    # 2. a push that lands but reports failure
+
+    def test_push_that_landed_but_reported_remote_failure_is_recovered(self):
+        import engine.store
+        from unittest import mock
+        real = engine.store.push_atomic
+        calls = []
+
+        def landed_then_failed(git, R, updates):
+            calls.append(updates)
+            real(git, R, updates)
+            return "remote", "simulated"
+
+        f = self.w.file({"title": "Flaky", "spec": "network"})
+        with mock.patch("engine.store.push_atomic", landed_then_failed):
+            rc, out = InProcess(self.w, "a").run("new", "--file", f)
+        self.assertEqual(0, rc, out)
+        self.assertEqual(1, len(calls))
+        self.assertIs(True, out["created"]["recovered"])
+        self.assertEqual(1000, out["created"]["id"])
+        self.assertEqual(self.root_of(1000), out["created"]["goal_commit"])
+        self.assertEqual(["refs/heads/zzzops/goal/g1000"], self.goal_refs())
+        # a later retry is an ordinary recovery
+        again = self.w.ok("b", "new", "--file", f)
+        self.assertEqual((1000, True), (again["created"]["id"], again["created"]["recovered"]))
+
+    def test_push_that_did_not_land_still_reports_remote(self):
+        from unittest import mock
+        f = self.w.file({"title": "Down", "spec": "network"})
+        with mock.patch("engine.store.push_atomic", lambda git, R, updates: ("remote", "simulated")):
+            rc, out = InProcess(self.w, "a").run("new", "--file", f)
+        self.assertEqual(2, rc, out)
+        self.assertEqual("remote", out["error"]["code"])
+        self.assertIn("retry", out["error"].get("hint", ""))
+        self.assertEqual([], self.goal_refs())
+        # rerunning once the remote is back creates the goal
+        out = self.w.ok("a", "new", "--file", f)
+        self.assertEqual((1000, False), (out["created"]["id"], out["created"]["recovered"]))
+
+    def test_rejected_push_recovers_a_twin_that_won_the_race(self):
+        import engine.store
+        from unittest import mock
+        real = engine.store.push_atomic
+        f = self.w.file({"title": "Twin", "spec": "race"})
+        twin = {}
+
+        def twin_lands_first(git, R, updates):
+            if not twin:
+                twin.update(self.w.ok("b", "new", "--file", f, now=self.w.now + 1))     # a distinct root commit
+            return real(git, R, updates)
+
+        with mock.patch("engine.store.push_atomic", twin_lands_first):
+            rc, out = InProcess(self.w, "a").run("new", "--file", f)
+        self.assertEqual(0, rc, out)
+        self.assertIs(False, twin["created"]["recovered"])
+        self.assertEqual(twin["created"]["id"], out["created"]["id"])
+        self.assertIs(True, out["created"]["recovered"])
+        self.assertEqual(twin["created"]["goal_commit"], out["created"]["goal_commit"])
+        self.assertEqual(1, len(self.goal_refs()))
+
+    def test_a_goal_whose_local_ref_outran_this_fetch_is_recovered_not_duplicated(self):
+        """Two `new` calls in one clone: the other call's fetch wrote refs/zzzops/goal/origin/g1000 after this call's
+        fetch listed the remote, so this snapshot sees G1000 only as a local ref (`deleted`). The goal exists on the
+        remote; the request must recover it, not allocate G1001 (seen as a flaky duplicate in the threaded test)."""
+        import engine.store
+        from unittest import mock
+        f = self.w.file({"title": "Outran", "spec": "fetch race"})
+        first = self.w.ok("b", "new", "--file", f)
+        self.w.ok("a", "next")                                        # a's local goal ref exists
+        real = engine.store.build_snapshot
+        calls = []
+
+        def stale_first(git, R, I, lines, rewritten, goals, deps):
+            if not calls:
+                lines = [l for l in lines if not l[3].endswith("/g1000")]
+            calls.append(1)
+            return real(git, R, I, lines, rewritten, goals, deps)
+
+        with mock.patch("engine.store.build_snapshot", stale_first):
+            rc, out = InProcess(self.w, "a").run("new", "--file", f)
+        self.assertEqual(0, rc, out)
+        self.assertEqual((1000, True), (out["created"]["id"], out["created"]["recovered"]))
+        self.assertEqual(first["created"]["goal_commit"], out["created"]["goal_commit"])
+        self.assertEqual(["refs/heads/zzzops/goal/g1000"], self.goal_refs())
+
+    # 3. concurrent identical calls
+
+    def test_concurrent_identical_new_creates_one_goal(self):
+        f = self.w.file({"title": "Same", "spec": "same request"})
+        results = []
+
+        def make(clone, i):
+            # distinct clocks, so each call builds a distinct root commit (as real calls do)
+            results.append(self.w.run(clone, "new", "--file", f, now=self.w.now + i))
+
+        threads = [threading.Thread(target=make, args=(c, 2 * i + j)) for i in range(5) for j, c in enumerate(("a", "b"))]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual([0] * 10, [rc for rc, _ in results], [o for rc, o in results if rc][:2])
+        self.assertEqual({1000}, {o["created"]["id"] for _, o in results})
+        self.assertEqual(1, len({o["created"]["goal_commit"] for _, o in results}))
+        self.assertEqual(["refs/heads/zzzops/goal/g1000"], self.goal_refs())
+        self.assertEqual(1, sum(1 for _, o in results if o["created"]["recovered"] is False))
+        self.assertTrue(any(o["created"]["recovered"] for _, o in results))
+
+    # 4. a key reused with different contents
+
+    def test_explicit_key_reused_with_a_different_spec_is_refused(self):
+        self.w.ok("a", "new", "--file", self.w.file({"title": "K", "spec": "one", "request_key": "rk-1"}))
+        rc, err = self.w.run("b", "new", "--file", self.w.file({"title": "K", "spec": "two", "request_key": "rk-1"}))
+        self.assertEqual(1, rc, err)
+        self.assertEqual("validation", err["error"]["code"])
+        self.assertEqual(1000, err["error"]["details"]["goal"])
+        self.assertIn("spec", err["error"]["details"]["fields"])
+        self.assertNotIn("title", err["error"]["details"]["fields"])
+        self.assertIn("rk-1", err["error"]["message"])
+        self.assertIn("G1000", err["error"]["message"])
+        self.assertEqual(1, len(self.goal_refs()))
+
+    def test_default_key_with_a_different_explicit_priority_is_refused(self):
+        self.w.ok("a", "new", "--file", self.w.file({"title": "P", "spec": "s"}))
+        rc, err = self.w.run("a", "new", "--file", self.w.file({"title": "P", "spec": "s", "priority": "P1"}))
+        self.assertEqual((1, "validation"), (rc, err["error"]["code"]), err)
+        self.assertEqual(1000, err["error"]["details"]["goal"])
+        self.assertEqual(["priority"], err["error"]["details"]["fields"])
+        self.assertEqual(1, len(self.goal_refs()))
+
+    def test_retry_that_omits_an_optional_field_the_original_set_is_recovered(self):
+        first = self.w.ok("a", "new", "--file", self.w.file({"title": "O", "spec": "s", "priority": "P1",
+                                                              "links": {"issue": 7}, "state": "held"}))
+        again = self.w.ok("a", "new", "--file", self.w.file({"title": "O", "spec": "s"}))
+        self.assertEqual((first["created"]["id"], True), (again["created"]["id"], again["created"]["recovered"]))
+        self.assertEqual("P1", again["created"]["priority"])                 # built from the root document
+
+    def test_retry_that_sets_a_field_to_the_value_the_original_defaulted_to_is_recovered(self):
+        first = self.w.ok("a", "new", "--file", self.w.file({"title": "D", "spec": "s"}))
+        again = self.w.ok("a", "new", "--file", self.w.file({"title": "D", "spec": "s", "priority": "P2",
+                                                              "graph": "default"}))
+        self.assertEqual((first["created"]["id"], True), (again["created"]["id"], again["created"]["recovered"]))
+
+    def test_retry_after_the_current_release_moved_is_recovered(self):
+        f = self.w.file({"title": "R", "spec": "s"})
+        first = self.w.ok("a", "new", "--file", f)
+        p = json.loads(json.dumps(self.w.policy))
+        p["settings"]["releases"]["current"] = 2
+        self.w.push_dev({".zzzops/POLICY.json": json.dumps(p, indent=2) + "\n"})
+        again = self.w.ok("a", "new", "--file", f)
+        self.assertEqual((first["created"]["id"], True), (again["created"]["id"], again["created"]["recovered"]))
+        self.assertEqual(first["created"]["release"], again["created"]["release"])
+
+    # 5. distinct requests stay distinct
+
+    def test_same_title_with_distinct_specs_makes_two_goals(self):
+        a = self.w.ok("a", "new", "--file", self.w.file({"title": "Same title", "spec": "first"}))
+        b = self.w.ok("a", "new", "--file", self.w.file({"title": "Same title", "spec": "second"}))
+        self.assertEqual([1000, 1001], [a["created"]["id"], b["created"]["id"]])
+        self.assertEqual([False, False], [a["created"]["recovered"], b["created"]["recovered"]])
+        self.assertEqual(2, len(self.goal_refs()))
+
+    def test_identical_contents_with_distinct_explicit_keys_make_two_goals(self):
+        a = self.w.ok("a", "new", "--file", self.w.file({"title": "T", "spec": "S", "request_key": "first"}))
+        b = self.w.ok("a", "new", "--file", self.w.file({"title": "T", "spec": "S", "request_key": "second"}))
+        self.assertEqual([1000, 1001], [a["created"]["id"], b["created"]["id"]])
+        self.assertIs(False, b["created"]["recovered"])
+
+    def test_distinct_depends_on_makes_a_distinct_request(self):
+        self.w.new(title="dep")
+        a = self.w.ok("a", "new", "--file", self.w.file({"title": "T", "spec": "S"}))
+        b = self.w.ok("a", "new", "--file", self.w.file({"title": "T", "spec": "S", "depends_on": [1000]}))
+        self.assertEqual([1001, 1002], [a["created"]["id"], b["created"]["id"]])
+
+    # 6. recovery reads the root, not the tip
+
+    def test_recovery_after_the_title_was_edited(self):
+        f = self.w.file({"title": "Original", "spec": "s"})
+        first = self.w.ok("a", "new", "--file", f)
+        self.w.ok("a", "edit", "1000", "--set", 'title="Renamed"', "--base", self.tip(1000))
+        self.assertNotEqual(first["created"]["goal_commit"], self.tip(1000))
+        again = self.w.ok("b", "new", "--file", f)
+        self.assertEqual((1000, True), (again["created"]["id"], again["created"]["recovered"]))
+        self.assertEqual(first["created"]["goal_commit"], again["created"]["goal_commit"])
+        self.assertEqual(self.root_of(1000), again["created"]["goal_commit"])
+        self.assertEqual("Original", again["created"]["title"])          # the response the first call printed
+        self.assertEqual(1, len(self.goal_refs()))
+
+    def test_recovery_of_a_closed_goal(self):
+        f = self.w.file({"title": "Closed later", "spec": "s"})
+        first = self.w.ok("a", "new", "--file", f)
+        close = self.w.file({"set": {"state": "closed", "closed.reason": "cancelled", "closed.note": "not needed"}})
+        self.w.ok("a", "edit", "1000", "--file", close, "--base", self.tip(1000))
+        rc, again = self.w.run("b", "new", "--file", f)
+        self.assertEqual(0, rc, again)
+        self.assertEqual((1000, True), (again["created"]["id"], again["created"]["recovered"]))
+        self.assertEqual(first["created"]["goal_commit"], again["created"]["goal_commit"])
+        self.assertEqual([], again["next"]["actions"])                  # a closed goal has an empty scoped `next`
+        self.assertEqual(1, len(self.goal_refs()))
+
+    # scan scope
+
+    def test_legacy_roots_without_a_trailer_never_match(self):
+        push_root(self.w, 1000, title="Legacy", spec="old request")
+        out = self.w.ok("a", "new", "--file", self.w.file({"title": "Legacy", "spec": "old request"}))
+        self.assertEqual((1001, False), (out["created"]["id"], out["created"]["recovered"]))
+
+    def test_a_root_whose_head_names_another_goal_never_matches(self):
+        push_root(self.w, 1000, key="k1", head_id=1005, title="T", spec="S")
+        out = self.w.ok("a", "new", "--file", self.w.file({"title": "T", "spec": "S", "request_key": "k1"}))
+        self.assertIs(False, out["created"]["recovered"])
+        self.assertNotEqual(1000, out["created"]["id"])
+
+    def test_a_root_whose_document_id_differs_never_matches(self):
+        push_root(self.w, 1000, key="k1", title="T", spec="S", id=1003)
+        rc, out = self.w.run("a", "new", "--file", self.w.file({"title": "T", "spec": "S", "request_key": "k1"}))
+        self.assertFalse(rc == 0 and out["created"]["recovered"] and out["created"]["id"] == 1000, out)
+
+    def test_a_deleted_goal_is_not_recovered(self):
+        f = self.w.file({"title": "Gone", "spec": "s"})
+        self.w.ok("a", "new", "--file", f)
+        self.w.ok("b", "next")                                        # b has seen it
+        self.w.remote_git("update-ref", "-d", "refs/heads/zzzops/goal/g1000")
+        out = self.w.ok("b", "new", "--file", f)
+        self.assertEqual((1001, False), (out["created"]["id"], out["created"]["recovered"]))
+
+    def test_several_matches_return_the_lowest_id_with_a_warning(self):
+        push_root(self.w, 1000, key="dup-key", title="T", spec="S")
+        push_root(self.w, 1001, key="dup-key", title="T", spec="S")
+        out = self.w.ok("a", "new", "--file", self.w.file({"title": "T", "spec": "S", "request_key": "dup-key"}))
+        self.assertEqual((1000, True), (out["created"]["id"], out["created"]["recovered"]))
+        warnings = list(out.get("warnings") or []) + list(out["next"].get("warnings") or [])
+        dup = [x for x in warnings if x.get("kind") == "duplicate_request_key"]
+        self.assertEqual(1, len(dup), warnings)
+        self.assertIn("1000", json.dumps(dup[0]))
+        self.assertIn("1001", json.dumps(dup[0]))
+        self.assertEqual(2, len(self.goal_refs()))
+
+    def scan(self, *keys):
+        """Run store.find_request_key in process on clone a; returns ([hits per key], [git log argvs])."""
+        from engine import store
+        from engine.session import Session
+        logs = []
+        with fx.env_of(self.w.cli_env()):
+            cwd = os.getcwd()
+            os.chdir(self.w.clones["a"].path)
+            try:
+                s = Session()
+                s.open()
+                run = s.git.run
+
+                def spy(*args, **kw):
+                    if next((a for a in args if not a.startswith("-")), "") == "log":
+                        logs.append(list(args))
+                    return run(*args, **kw)
+
+                s.git.run = spy
+                hits = [store.find_request_key(s.git, s.snap, k) for k in keys]
+            finally:
+                os.chdir(cwd)
+        return hits, logs
+
+    def test_find_request_key_with_no_goals_returns_nothing_and_runs_no_log(self):
+        hits, logs = self.scan(default_key("T", "S"))
+        self.assertEqual([[]], hits)
+        self.assertEqual([], logs)                                    # `git log --stdin` with no tips would walk HEAD
+
+    def test_find_request_key_returns_the_root_and_its_document(self):
+        f = self.w.file({"title": "Found", "spec": "s", "request_key": "find-me"})
+        first = self.w.ok("a", "new", "--file", f)
+        self.w.ok("a", "edit", "1000", "--set", 'title="Edited"', "--base", self.tip(1000))
+        self.w.new(title="other")
+        (hits, missing), logs = self.scan("find-me", "missing")
+        self.assertEqual([], missing)
+        self.assertEqual(1, len(hits))
+        gid, root, doc = hits[0]
+        self.assertEqual((1000, first["created"]["goal_commit"]), (gid, root))
+        self.assertEqual(("Found", 1000), (doc["title"], doc["id"]))
+        self.assertEqual(2, len(logs), logs)                          # one git invocation per scan
+        for argv in logs:
+            self.assertIn("--max-parents=0", argv)
+            self.assertIn("--stdin", argv)
+
+    # writes and previews
+
+    def test_exact_retry_recovers_while_writes_are_blocked(self):
+        f = self.w.file({"title": "Blocked", "spec": "s"})
+        first = self.w.ok("a", "new", "--file", f)
+        p = json.loads(json.dumps(self.w.policy))
+        p["settings"]["engine"]["min"] = "99.0.0"
+        self.w.push_dev({".zzzops/POLICY.json": json.dumps(p)})
+        again = self.w.ok("b", "new", "--file", f)                     # recovering writes nothing
+        self.assertEqual((first["created"]["id"], True), (again["created"]["id"], again["created"]["recovered"]))
+        rc, err = self.w.run("b", "new", "--file", self.w.file({"title": "Blocked", "spec": "other"}))
+        self.assertEqual((1, "engine_too_old"), (rc, err["error"]["code"]))
+
+    def test_policy_ref_is_refused_even_for_a_retry(self):
+        f = self.w.file({"title": "Preview", "spec": "s"})
+        self.w.ok("a", "new", "--file", f)
+        rc, err = self.w.run("a", "new", "--policy-ref", "dev", "--file", f)
+        self.assertEqual((1, "usage"), (rc, err["error"]["code"]), err)
+
+
+class NewFileSchemaTests(unittest.TestCase):
+    """G1001 design §1: the optional `request_key` of a new-goal file."""
+
+    def errs(self, key):
+        from engine import schemas
+        return schemas.validate_new_file({"title": "T", "spec": "S", "request_key": key})
+
+    def test_valid_keys_are_accepted(self):
+        for key in ("a", "Z", "0", "issue-812", "my_key.v2", "a" * 128, "A1._-z"):
+            self.assertEqual([], self.errs(key), key)
+
+    def test_invalid_keys_are_rejected(self):
+        for key in ("", "sha256:abc", "a:b", "a" * 129, "a" * 200, "-lead", ".lead", "_lead", "has space",
+                    "new\nline", "é", 5, None, ["k"]):
+            self.assertTrue(self.errs(key), key)
+            self.assertTrue(any("request_key" in str(e) for e in self.errs(key)), (key, self.errs(key)))
+
+    def test_absent_key_is_still_valid(self):
+        from engine import schemas
+        self.assertEqual([], schemas.validate_new_file({"title": "T", "spec": "S"}))
+
 if __name__ == "__main__":
     unittest.main()
