@@ -227,10 +227,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T21:36:50Z",
+      "finished_at": "2026-11-01T21:46:35Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -270,22 +270,25 @@
       "ok": true,
       "output": {
         "commands": [
-          "python -m unittest discover -s .agents -p test_engine_review_lenses.py",
-          "python -m unittest discover -s .agents -p test_engine_lenses.py",
-          "python -m unittest discover -s .agents -p test_engine_lens_polish.py",
-          "python -m unittest discover -s .agents -p test_engine_names.py",
-          "python -m unittest discover -s .agents -p test_marketplace_bundle.py",
-          "python -m unittest discover -s .agents -p test_design_docs.py",
-          "python .agents/prompt_stats.py --check"
+          "python3 -m unittest discover -s .agents -p test_engine_review_lenses.py",
+          "python3 -m unittest discover -s .agents -p test_engine_lenses.py",
+          "python3 -m unittest discover -s .agents -p test_engine_lens_polish.py",
+          "python3 -m unittest discover -s .agents -p test_engine_names.py",
+          "python3 -m unittest discover -s .agents -p test_marketplace_bundle.py",
+          "python3 -m unittest discover -s .agents -p test_design_docs.py",
+          "python3 .agents/prompt_stats.py --check"
         ],
+        "responses": {
+          "review_tests:1:1": "fixed: the test now imports `engine` and checks engine/capabilities/lenses.txt first; when present it asserts shipped POLICY.json settings.engine.requires contains `lenses` and returns. Otherwise it reads getattr(engine, 'ENGINE_VERSION', None), asserts it exists and is >= 1.2.0. No ImportError in the G1027-first order. Commands now use python3."
+        },
         "tests": {
           "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "004467a58a810eb9b65ecb37f975e8ac9ebdf0cc",
-          "commit": "73cdb03a8877aec4a858729d39607cb0de0d34d1",
-          "tree": "7f17c2d5f952ad71ac9882d57d126154b134dcb8"
+          "change": "2aae91270fddb06d14ec81f624e75e5afadf615a",
+          "commit": "18fdceb5b257202f44b9beaf1967f6e55a47bfdc",
+          "tree": "1f8363b0befef2d65d131ec52edc8373c86ae47e"
         }
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     }
   },
