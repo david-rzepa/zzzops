@@ -193,6 +193,41 @@
         }
       },
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T21:32:46Z",
+      "fp_parts": {
+        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "inputs": {
+          "base": "v1:sha256:8a2e8ac0217a3e46b72c1e3ce2d2c6f98e60949f5743134ece85574f6cb677e3",
+          "doc": "v1:blob:f240bd5994202bea10cb430a216b74cce56ace63"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        ".agents/test_design_docs.py",
+        ".agents/test_engine_branching.py"
+      ],
+      "holder": "claude:e6ad/td1025",
+      "input_fp": "v1:sha256:ae31254331bd0437c791dc25f6dc8682d9e0bc88945567d3b6d50728408660f8",
+      "ok": true,
+      "output": {
+        "commands": [
+          "python -m unittest discover -s .agents -t .agents -p test_engine_branching.py",
+          "python -m unittest discover -s .agents -t .agents -p test_design_docs.py"
+        ],
+        "tests": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "04c56922675f8fef9f9a15050c0417a99f0c6213",
+          "commit": "e4e9334e6e48682763b4df19d7966c3af5ce4347",
+          "tree": "7cefe13bfd92e692a8a29f16a2e4465c68249b7d"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
