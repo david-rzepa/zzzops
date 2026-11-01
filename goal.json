@@ -1,7 +1,9 @@
 {
   "budget": null,
   "closed": null,
-  "depends_on": [],
+  "depends_on": [
+    1017
+  ],
   "graph": "default",
   "id": 1007,
   "links": {
@@ -12,7 +14,7 @@
   "release": 2,
   "schema": 1,
   "skip": {},
-  "spec": "Add next --stage discovery (and an execute-skill mode) that returns only discovery-stage actions and human items (design, review_design, approve_design and any custom discovery nodes), across all goals or a --goal subset. The execute skill in this mode loops until no discovery work remains, then summarises goals by state (needs answer, needs approval, ready for delivery) and stops without starting delivery nodes. Selection is by the node's stage field, not node names. Changed vs old wording: no legacy-evidence reuse or separate workflow; legacy goals are recreated via MIGRATING.md.\n\nMigrated from GitHub issue #551 after the engine reset (#740).",
+  "spec": "Add next --stage discovery (and an execute-skill mode) that returns only discovery-stage actions and human items (design, review_design, approve_design and any custom discovery nodes), across all goals or a --goal subset. The execute skill in this mode loops until no discovery work remains, then summarises goals by state (needs answer, needs approval, ready for delivery) and stops without starting delivery nodes. Selection is by the node's stage field, not node names. Changed vs old wording: no legacy-evidence reuse or separate workflow; legacy goals are recreated via MIGRATING.md.\n\nMigrated from GitHub issue #551 after the engine reset (#740).\n- This PR edits docs/design/SPEC.md and DESIGN.md for every contract change it makes and adds a HISTORY §4 row.",
   "state": "open",
   "title": "Add a discovery-only filter to next and the execute skill"
 }
