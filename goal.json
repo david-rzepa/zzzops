@@ -35,6 +35,60 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:1ec3aeb26eb1e904efaff5b00f217a6b306d07e189328fd8cbf58114dd29f4d0",
+          "text": "F1: renew's inputs_changed check (step 4) requires the node to be running in s.portfolio(), but renew succeeds on a valid, expired lease (valid_lease checks only validity and timeout != 0). The snapshot lease's last_active is old, so frontier.py:194 classifies the node as reclaimable and the check is skipped. A worker that renews after a pause past expiry (the case most likely to have stale inputs) gets no warning and submits stale work. Fix: evaluate with the renewed lease, s.portfolio(leases={**s.state.leases, (g, X): dataclasses.replace(L, last_active=s.now)}), and add a test: expire the lease, edit spec, renew, assert inputs_changed.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:1ec3aeb26eb1e904efaff5b00f217a6b306d07e189328fd8cbf58114dd29f4d0",
+          "text": "F2: section 6 does not fix the CLI_USAGE abandon row (line 13: 'Give up a phase; the next `start` reclaims it'). A plain start after abandon is refused ('the lease expired; pass --reclaim', verbs.py:158-160), and the root agent was misled by this row. The design makes abandon-then-restart the recommended flow, so add to section 6: the abandon row says the next start then needs --reclaim. The execute skill bullet should also name 'start ... --reclaim' or the printed restart command.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T04:06:43Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:8431de9a41fea3d5da1e4618a142e9778198d7f8",
+          "spec": "v1:sha256:375b616c1db26ae1bd46c8f477173f1b1a7049e796a2b199aa8d24a5aefee7b6"
+        },
+        "policy": {},
+        "subject": "v1:sha256:1ec3aeb26eb1e904efaff5b00f217a6b306d07e189328fd8cbf58114dd29f4d0"
+      },
+      "holder": "claude:e6ad/review_design-1014-1",
+      "input_fp": "v1:sha256:f071d47b0159f1f301e8575a544b365daabf0928d43add842987dd3d62b9b5b1",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "12fe2f846d748865da7c34a5ac4ed0499fd105d1",
+          "commit": "65ad88a5ea1298d3cdc5bd9ac433e5685e15c23b",
+          "path": ".zzzops/reviews/1014/review_design.md"
+        },
+        "summary": "Approach is sound and the code claims check out at 54d7e83, including the --reclaim restart. Two findings to fix: (F1) renew after the lease expired puts the node in reclaimable, not running, so inputs_changed is silently skipped; evaluate with the renewed lease and add a test. (F2) the doc changes leave the CLI_USAGE abandon row saying the next start reclaims it; it must say start then needs --reclaim."
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
