@@ -1,0 +1,20 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [
+    1016
+  ],
+  "graph": "default",
+  "id": 1023,
+  "links": {
+    "issue": null
+  },
+  "priority": "P3",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Found by the Missing lens in the review-lens experiment (2026-11-01). G1016 makes submit and edit refuse checkpoint overrides that are not full 40-hex shas, but two places still show the old `{\"commit\": \"<sha>\"}` form:\n1. records.py:244, the checkpoint_required refusal hint.\n2. MIGRATING.md:26, the record-completion step for `edit`.\nChange both to `\"<full 40-hex sha>\"`, matching the card, CLI_USAGE and the prompts.\n\nAcceptance: a test asserts the checkpoint_required hint says `full 40-hex sha`; the docs test checks MIGRATING.md; no other `\"commit\": \"<sha>\"` remains in the engine, references, skills or templates (grep in a test).",
+  "state": "open",
+  "title": "Say full 40-hex sha everywhere a checkpoint override is shown"
+}
