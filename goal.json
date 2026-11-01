@@ -41,15 +41,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:1ec3aeb26eb1e904efaff5b00f217a6b306d07e189328fd8cbf58114dd29f4d0",
@@ -61,7 +61,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:1ec3aeb26eb1e904efaff5b00f217a6b306d07e189328fd8cbf58114dd29f4d0",
@@ -69,29 +69,29 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T04:06:43Z",
+      "finished_at": "2026-11-01T04:10:10Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:8431de9a41fea3d5da1e4618a142e9778198d7f8",
+          "doc": "v1:blob:6133138ad0d302b59d4184b15a459e555b1bdf61",
           "spec": "v1:sha256:375b616c1db26ae1bd46c8f477173f1b1a7049e796a2b199aa8d24a5aefee7b6"
         },
         "policy": {},
-        "subject": "v1:sha256:1ec3aeb26eb1e904efaff5b00f217a6b306d07e189328fd8cbf58114dd29f4d0"
+        "subject": "v1:sha256:aca1a77d5ce262b6d750f6c0e6df11acfa8283c2fa8782c0f502dd584afc12e0"
       },
-      "holder": "claude:e6ad/review_design-1014-1",
-      "input_fp": "v1:sha256:f071d47b0159f1f301e8575a544b365daabf0928d43add842987dd3d62b9b5b1",
-      "ok": false,
+      "holder": "claude:e6ad/review_design-1014-2",
+      "input_fp": "v1:sha256:da4e360770b7a2c6a4a40149e4cd44f6363c00725bbf918d145ec3fc6969ec22",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "12fe2f846d748865da7c34a5ac4ed0499fd105d1",
-          "commit": "65ad88a5ea1298d3cdc5bd9ac433e5685e15c23b",
+          "blob": "d67cea65d7b3280038ca6c5eb0e9c58309a47f49",
+          "commit": "fc2816c2aa115389528189bef7d1f240c0dda743",
           "path": ".zzzops/reviews/1014/review_design.md"
         },
-        "summary": "Approach is sound and the code claims check out at 54d7e83, including the --reclaim restart. Two findings to fix: (F1) renew after the lease expired puts the node in reclaimable, not running, so inputs_changed is silently skipped; evaluate with the renewed lease and add a test. (F2) the doc changes leave the CLI_USAGE abandon row saying the next start reclaims it; it must say start then needs --reclaim."
+        "summary": "Approved. Both prior findings are resolved: renew now evaluates the portfolio with the renewed lease (last_active=s.now), so an expired-then-renewed lease is classified running and inputs_changed is checked (test 2b covers it); and section 6 corrects the CLI_USAGE abandon row and the execute-skill bullet to use start --reclaim. Code claims checked at 54d7e83. No new material findings."
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     }
   },
