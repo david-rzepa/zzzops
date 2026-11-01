@@ -56,6 +56,36 @@ MERGED_AMENDMENTS = {
 }
 UNGOALED_AMENDMENT_PRS = ("#742",)
 
+# One sentinel per applied amendment: contract terms the amendment introduced
+# and that the approved revision 6.3 lacks, so the HISTORY row alone cannot
+# pass. Keyed by goal (or PR); a later goal that legitimately renames a term
+# updates its entry here. Each term must appear in the named document.
+AMENDMENT_SENTINELS = {
+    "#742": [("SPEC.md", "--policy-ref")],
+    "G1001": [("SPEC.md", "request_key"), ("SPEC.md", "Request-Key:")],
+    "G1014": [("SPEC.md", "inputs_changed")],
+    "G1015": [("SPEC.md", "legacy_policy"), ("SPEC.md", "settings.legacy")],
+    "G1016": [("SPEC.md", "no_longer_live"), ("SPEC.md", "respond_to")],
+    # G1018's card shrink steps (SPEC §4.20); rev 6.3 SPEC never says "shrink".
+    "G1018": [("SPEC.md", "shrink")],
+    # G1021's 15-minute no-checks human question (SPEC §5.4).
+    "G1021": [("SPEC.md", "no checks appeared")],
+    "G1000": [("SPEC.md", "filter_design"), ("DESIGN.md", "filter_design")],
+    "G1020": [("SPEC.md", "approved with")],
+    # G1023's wording, folded under G1016's row (SPEC §4.20 hint, §3.10 example).
+    "G1023": [("SPEC.md", "<full 40-hex sha>")],
+}
+
+# Case-3 goals whose contract sections are known (design revision 3, plus the
+# root's note for G1025): each has a pending row with this marker path until
+# it lands, and a HISTORY §4 row after. G1026-G1028 also depend on G1017 but
+# their sections are not known yet, so they need no row.
+REQUIRED_PENDING = {
+    1022: "plugins/zzzops/zzzops/templates/default/workflow.json",
+    1024: "plugins/zzzops/zzzops/engine",
+    1025: "plugins/zzzops/zzzops/engine",
+}
+
 
 # ---------------------------------------------------------------- helpers
 
@@ -428,6 +458,9 @@ class DesignDocsTests(unittest.TestCase):
         self.assertEqual([], landed, "\n".join(landed))
 
     def test_pending_rows_belong_to_open_goals_that_depend_on_g1017(self) -> None:
+        # This reads live goal state from local goal refs, so its result on a fixed
+        # commit can change when a goal ref moves (for example, a stale PR re-run
+        # after a pending goal closed while its tree still holds that row).
         rows = parse_pending_table(read_doc("README.md"))
         unavailable = []
         for row in rows:
@@ -444,6 +477,27 @@ class DesignDocsTests(unittest.TestCase):
                                  f"G{row.goal} is {goal.get('state')!r}; a closed goal cannot be pending")
         if unavailable:
             self.skipTest("goal state not available locally (no goal refs fetched) for " + ", ".join(unavailable))
+
+    def test_known_case_3_goals_are_pending_or_logged(self) -> None:
+        rows = {row.goal: row for row in parse_pending_table(read_doc("README.md"))}
+        log = section(read_doc("HISTORY.md"), r"amendments after approval")
+        logged = [line for line in log.splitlines() if line.strip().startswith("|")]
+        for goal, marker_path in REQUIRED_PENDING.items():
+            with self.subTest(goal=goal):
+                in_history = any(re.search(rf"\bG{goal}\b", line) for line in logged)
+                if goal in rows:
+                    self.assertFalse(in_history, f"G{goal} has both a pending row and a HISTORY §4 row")
+                    self.assertEqual(marker_path, rows[goal].path, f"G{goal}'s marker path")
+                else:
+                    self.assertTrue(in_history, f"G{goal} needs a pending row (or, once landed, a HISTORY §4 row)")
+
+    def test_applied_amendments_are_in_the_documents(self) -> None:
+        missing = []
+        for owner, terms in AMENDMENT_SENTINELS.items():
+            for name, term in terms:
+                if term not in read_doc(name):
+                    missing.append(f"{owner}: {name} lacks {term!r}")
+        self.assertEqual([], missing)
 
     def test_no_external_folder_or_local_paths(self) -> None:
         offenders = []
@@ -477,6 +531,7 @@ class DesignDocsTests(unittest.TestCase):
         self.assertEqual([], offenders)
 
     def test_source_folder_paths_are_rewritten(self) -> None:
+        # HISTORY.md is scanned too: it names the reports in prose ("the R0-R9 reviews").
         pattern = re.compile(r"(?<![\w./-])(?:reviews/|review\d/|passes/|audit/)|REV[56]_CHANGES")
         offenders = []
         for name in ("DESIGN.md", "SPEC.md", "IMPLEMENTATION_PLAN.md", "HISTORY.md"):
