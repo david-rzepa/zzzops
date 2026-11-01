@@ -135,15 +135,15 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_tests:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:b835ecb553bf590c4fdd16ea2802bb74459267235ebe53fb1d1fd2e6427e151f",
@@ -155,43 +155,67 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:b835ecb553bf590c4fdd16ea2802bb74459267235ebe53fb1d1fd2e6427e151f",
           "text": "CapabilityTests.test_reclaimed_reopened_correction_keeps_its_capability is vacuous. It uses design, which has no inputs.base in the default graph, and only calls push_dev without re-running base, so the reclaimed card has no lease-side staleness and 'architectural' holds with or without the F1 fix (it passes at 802c016). Rewrite on a node with inputs.base: through_tests, a review_tests changes_requested finding, start test_design (reason reopened), restack_base, abandon, start --reclaim; assert stale_because == ['inputs.base'] and run.capability == 'reasoning' (not routine).",
           "upheld": false
+        },
+        {
+          "id": "review_tests:2:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:eb0632d034ed8ede0bed3fef27234d6c36d1228367a79093427636a49eb1b470",
+          "text": "The submitted commands were narrowed. Attempt 1 submitted [\"cd .agents && python3 -m unittest test_engine_card_ux test_engine_lifecycle test_engine_schemas test_engine_journeys test_engine_docs\", \"python3 .agents/prompt_stats.py --check\"]; records.test_design.output.commands now has only card_ux and lifecycle. run_tests would skip test_engine_schemas (the design changes schemas.py's checkpoint override check), test_engine_journeys (the design says they must pass unchanged), test_engine_docs and the prompt budget check (the design edits the template prompts). Restore the full attempt-1 list.",
+          "upheld": false
+        },
+        {
+          "id": "review_tests:2:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 3,
+          "target_fp": "v1:sha256:cc689178c4dd4fc6dc080732ee1287f852e488e8c87b9b6258e19181dfa4f32a",
+          "text": "Section 2's capability rule does not achieve its stated intent. The design says a reclaimed reopened correction has 'record current, so record_stale is empty' and keeps its own capability, under the rule record_stale == ['inputs.base'] gives routine. On a node with inputs.base (test_design, implement: the case the design calls common), base moving during the reopened attempt makes the record stale too. Live corrections are not part of fp_parts (frontier.py:207-239: reopened requires input_fp == f), so the design's own rec_sb code gives record_stale == ['inputs.base'], and the stated rule yields routine. The verification bullet (line 158) uses design, which has no inputs.base, so it hides this. The rewritten test asserts 'reasoning' and asks implement for an unstated 'no live corrections' condition. State the rule that achieves the intent, e.g. routine only when record_stale == ['inputs.base'] and the node has no live corrections. Also decide the no-lease case: a plain start of a reopened node after base moved is ready/stale with ['inputs.base'], since the frontier checks staleness before corrections, and today it gets routine while carrying corrections. Then align the verification bullet with the test (test_design).",
+          "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T04:50:09Z",
+      "finished_at": "2026-11-01T04:55:58Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:9008e0101ebef0dff6bcfb3075aae0f32f1a20d1",
-          "tests": "v1:sha256:1f428adb15d3a03ec6fdfd1788e08e303e11654139e18e1440bc907f90755e00"
+          "tests": "v1:sha256:3de7bbd8d6a3136481be6a0db41a5d362944a4c089702bfda53906f059a3b5ee"
         },
         "policy": {},
-        "subject": "v1:sha256:b835ecb553bf590c4fdd16ea2802bb74459267235ebe53fb1d1fd2e6427e151f"
+        "subject": "v1:sha256:746ccba7f757e054c8b810cac070348505454b2f9b3010baf734a2a9d98fc18b"
       },
-      "holder": "claude:e6ad/review_tests-1016-1",
-      "input_fp": "v1:sha256:3592cc26732100080b0639b5389c2f5abffb3fa2c8ff26c8f14b3eb77eed145f",
+      "holder": "claude:e6ad/review_tests-1016-2",
+      "input_fp": "v1:sha256:f87f813871748b269e906cf1a518e0598e5d54b31d227f4e2213eab2e65dacf9",
       "ok": false,
       "output": {
         "decision": "changes_requested",
         "report": {
-          "blob": "e24d066e3ac452546d3abd10bbb8b80b409233cd",
-          "commit": "77e7f8ab322f0ffc1bfa3fbead199814868b02e4",
+          "blob": "55390e8b82c7a1bd27077d82a217c72ca75ab34d",
+          "commit": "2ac806f706c2f58b1eaa0878d11b6a50066f79f2",
           "path": ".zzzops/reviews/1016/review_tests.md"
         },
-        "summary": "The tests cover the design well and fail before implementation for the right reasons (26 of 29). The F1 adaptation from implement to test_design keeps the design's intent. Two material issues: (1) test_prompts_name_full_shas also asserts this repo's .zzzops/prompts, which forces a policy-file edit that integrate refuses; assert only the template prompts. (2) test_reclaimed_reopened_correction_keeps_its_capability runs on design, which has no inputs.base, and never re-runs base, so it passes both before and after implementation; redo it on a reopened test_design with restack_base, and assert stale_because == [inputs.base] and capability == reasoning."
+        "summary": "Both prior findings resolved (template prompts only; reopened-correction reclaim test now on test_design with inputs.base). Two new material findings: test_design narrowed its submitted commands, dropping schemas/journeys/docs tests and the prompt budget check; and design §2's routine rule (record_stale == ['inputs.base']) contradicts its own stated intent for a reopened correction once base moves, because corrections are not part of fp_parts, so the record is stale on inputs.base too. The test requires an unstated 'no live corrections' condition."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "cd2d9ad289da99ee0b739d4d78e6a8eee95b105d",
-          "commit": "802c01608eff84423c0c885ec904b652b9b594f8",
-          "tree": "fdd05d60402a5464346adb752f4a65a135d2c0fa"
+          "change": "71d097026cbf204379ee405e00529c06f1df5006",
+          "commit": "6234405cb1a17a14197472aea43c1735f3908dc0",
+          "tree": "22950c7190c76579948fe13b52b47b4c4454a08d"
         }
       },
       "status": "done"
