@@ -134,6 +134,12 @@ class JourneyTests(unittest.TestCase):
         self.pilot.drive([a])
         gh_calls = [c for c in self.gh.calls() if c[:1] == ["pr"]]
         self.assertLessEqual(len(gh_calls), 12, gh_calls)
+        # item 2: costs cannot grow with archived comments, because nothing reads issues or comments
+        for call in self.gh.calls():
+            self.assertFalse(call[:2] in (["issue", "view"], ["issue", "list"]) or any("comments" in a for a in call), call)
+            self.assertIn(call[0], ("pr", "run", "issue", "api", "auth"), call)
+            if call[0] == "issue":
+                self.assertEqual("close", call[1])
 
 
 class RenamedJourneyTests(JourneyTests):

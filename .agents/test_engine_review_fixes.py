@@ -199,3 +199,143 @@ class PackagingReviewFixTests(unittest.TestCase):
         with ZipFile(io.BytesIO(data)) as z:
             modes = {i.filename: (i.external_attr >> 16) & 0o777 for i in z.infolist()}
         self.assertEqual({"bin/zzzops": 0o755, "README.md": 0o644}, modes)
+
+
+from test_engine_base import BaseJourney
+from test_engine_github import GitHubJourney
+
+
+class MergedOtherCodeTests(GitHubJourney):
+    def test_a_pr_merged_with_other_code_is_a_human_item(self):
+        g = self.goal()
+        self.deliver(g)
+        self.op(g, "integrate")
+        self.approve(g, "approve_merge")
+        s = self.w.seed                                          # someone pushes to the PR head, then merges by hand
+        s.git("fetch", "-q", "origin", f"refs/heads/zzzops/pr/g{g}")
+        s.git("checkout", "-q", "-B", "tmp-pr", "FETCH_HEAD")
+        s.commit({"src/extra.py": "unreviewed = True\n"}, "feat: unreviewed")
+        s.git("push", "-q", "origin", f"HEAD:refs/heads/zzzops/pr/g{g}")
+        s.git("checkout", "-q", "dev")
+        self.gh.merge_by_hand(1)
+        out = self.op(g, "merge")
+        self.assertEqual("human", out["ran"]["blocked"]["waiting_for"])
+        self.assertIn("other than the reviewed checkpoint", out["ran"]["blocked"]["question"])
+
+
+class InProcess:
+    """Run engine code in this process with a World clone's CLI environment."""
+
+    def __init__(self, w, clone):
+        self.w, self.clone = w, clone
+
+    def __enter__(self):
+        import os
+        self.env = fx.env_of(self.w.cli_env())
+        self.env.__enter__()
+        self.cwd = os.getcwd()
+        os.chdir(self.w.clones[self.clone].path)
+        return self
+
+    def __exit__(self, *exc):
+        import os
+        os.chdir(self.cwd)
+        self.env.__exit__(*exc)
+
+
+class RestackRaceTests(BaseJourney):
+    def race(self, g, edit_during_run):
+        """Run `start base` in-process; while git.base runs, another clone changes the goal document."""
+        import engine.ops.base as base_op
+        from engine import verbs
+        from engine.session import Session
+        original = base_op.run
+        calls = []
+
+        def wrapped(ctx):
+            result = original(ctx)
+            calls.append(type(result).__name__)
+            if len(calls) == 1 and edit_during_run:
+                tip = self.w.ok("b", "show", str(g), "--json")["goal_commit"]
+                self.w.ok("b", "edit", str(g), "--set", 'priority="P1"', "--base", tip)
+            return result
+
+        base_op.run = wrapped
+        try:
+            with InProcess(self.w, "a"):
+                out = verbs.start(Session(), g, "base", "claude:aaaa/op")
+        finally:
+            base_op.run = original
+        return out, calls
+
+    def test_a_conflict_finishes_with_its_op_state_when_the_goal_changes_meanwhile(self):
+        g = self.goal()
+        wtd = self.deliver(g, code={"src/app.py": "def app():\n    return 2\n"})
+        self.w.push_dev({"src/app.py": "def app():\n    return 3\n"})
+        self.w.ok("a", "reopen", str(g), "base", "--note", "dev moved")
+        out, calls = self.race(g, edit_during_run=True)
+        self.assertEqual(["Blocked"], calls)                       # a Blocked result is never re-run
+        st = self.record(g, "base")["blocked"]
+        self.assertEqual({"work", "onto", "old"}, set(st["op_state"]))
+        self.resolve_conflict(wtd)
+        out = self.op(g, "base")
+        self.assertEqual("done", out["ran"]["outcome"], out["ran"])
+
+    def resolve_conflict(self, wtd):
+        wtd.write({"src/app.py": "def app():\n    return 23\n"})
+        wtd.git("add", "-A")
+        wtd.git("-c", "core.editor=true", "rebase", "--continue")
+
+    def test_a_clean_restack_is_rerun_when_the_goal_changes_meanwhile(self):
+        g = self.goal()
+        self.deliver(g)
+        self.w.push_dev({"other.txt": "o\n"})
+        self.w.ok("a", "reopen", str(g), "base", "--note", "dev moved")
+        out, calls = self.race(g, edit_during_run=True)
+        self.assertEqual(["Done", "Done"], calls)
+        self.assertEqual("done", out["ran"]["outcome"])
+        self.assertEqual(["test_design", "implement"], out["carried"])
+        self.assertEqual("P1", self.show(g)["goal"]["priority"])   # the concurrent edit survived
+
+
+class NewerEngineReadTests(unittest.TestCase):
+    def test_an_engine_waiting_for_the_floor_still_reads(self):
+        tmp = _tempfile.mkdtemp()
+        self.addCleanup(_shutil.rmtree, tmp, True)
+        w = fx.World(tmp)
+        w.bootstrap()
+        g = w.new(title="t")["created"]["id"]
+        import engine.store as store
+        from engine.session import Session
+        old = store.REQUIRES_MIN
+        store.REQUIRES_MIN = "9.0.0"
+        try:
+            with InProcess(w, "a"):
+                s = Session()
+                s.open(readonly=True)
+                out = s.render_next(all_=True)
+                with self.assertRaises(Refused) as e:
+                    s.require_writable([g])
+        finally:
+            store.REQUIRES_MIN = old
+        self.assertEqual("engine_too_new", out["blockers"][0]["kind"])
+        self.assertEqual([g], [x["id"] for x in out["goals"]])
+        self.assertEqual("engine_too_new", e.exception.code)
+
+
+class HousekeepingTests(BaseJourney):
+    def test_a_closed_goals_worktree_is_removed_after_a_later_write(self):
+        import os
+        g = self.goal()
+        self.discovery(g)
+        self.op(g, "base")                                         # creates the local worktree
+        tip = self.show(g)["goal_commit"]
+        f = self.w.file({"set": {"state": "closed", "closed.reason": "cancelled", "closed.note": "not needed"}})
+        self.w.ok("b", "edit", str(g), "--file", f, "--base", tip)  # closed elsewhere
+        path = os.path.join(self.w.clones["a"].path, ".zzzops", "worktrees", f"g{g}")
+        self.assertTrue(os.path.isdir(path))
+        self.w.new("a", title="another")                            # new does not write through write_goals
+        other = self.goal()
+        c = self.A.start(other, "design")
+        self.A.submit(other, "design", c, {"summary": "D"}, artifact="# D\n")
+        self.assertFalse(os.path.isdir(path))

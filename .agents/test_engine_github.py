@@ -348,3 +348,48 @@ class RequiredChecksOnStacksTests(GitHubJourney):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CostBudgetTests(GitHubJourney):
+    """DESIGN §3.15 per-verb counts (validation item 2), measured from ZZZOPS_TRACE."""
+    settings = {"verification.required_ci": ["ci"]}
+
+    def counts(self):
+        lines = self.w.trace_lines()
+        git = [l for l in lines if l["cmd"][0] == "git"]
+        gh = [l for l in lines if l["cmd"][0] == "gh"]
+        return len(git), len(gh), [l["cmd"][1] for l in git]
+
+    def measure(self, fn):
+        self.w.reset_trace()
+        out = fn()
+        return out, self.counts()
+
+    def test_per_verb_round_trips(self):
+        g = self.goal()
+        _, (git, gh, kinds) = self.measure(lambda: self.w.ok("a", "next"))
+        self.assertEqual((1, 0, ["fetch"]), (git, gh, kinds))
+        card, (git, gh, kinds) = self.measure(lambda: self.A.start(g, "design"))
+        self.assertEqual((2, 0, ["fetch", "push"]), (git, gh, kinds))
+        _, (git, gh, kinds) = self.measure(lambda: self.A.submit(g, "design", card, {"summary": "D"}, artifact="# D\n"))
+        self.assertEqual((2, 0, ["fetch", "push"]), (git, gh, kinds))
+        self.review(self.B, g, "review_design")
+        self.approve(g, "approve_design")
+        _, (git, gh, kinds) = self.measure(lambda: self.op(g, "base"))
+        self.assertEqual((3, 0, ["fetch", "push", "push"]), (git, gh, kinds))
+        wtd = self.A.worktree(g)
+        c = self.A.start(g, "test_design")
+        wtd.commit({f"tests/t{g}.txt": "t\n"}, "test: t")
+        self.A.submit(g, "test_design", c, {"commands": ["true"]})
+        self.review(self.B, g, "review_tests")
+        c = self.A.start(g, "implement")
+        wtd.commit({f"src/m{g}.py": "x\n"}, "feat: m")
+        self.A.submit(g, "implement", c, {"summary": "Built."})
+        self.op(g, "run_tests")
+        self.review(self.B, g, "review_impl")
+        self.op(g, "integrate")                                 # first run: creates the PR; checks pending
+        from engine.canon import parse_iso
+        due = parse_iso(self.show(g)["goal"]["records"]["integrate"]["blocked"]["retry_after"])
+        _, (git, gh, kinds) = self.measure(lambda: self.op_at(g, "integrate", due))      # a later poll
+        self.assertEqual(["fetch", "push", "push"], kinds)       # the unchanged PR push is dropped
+        self.assertLessEqual(gh, 3)

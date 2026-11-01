@@ -124,7 +124,7 @@ def _run(ctx):
     snap.pr[g] = H
     # 4. the PR
     prs = gh.json("pr", "list", "--head", f"zzzops/pr/g{g}", "--state", "all", "--json",
-                  "number,state,url,headRefOid,baseRefName") or []
+                  "number,state,url,headRefOid,baseRefName,body") or []
     pr = prs[0] if prs else None
 
     def pr_out(base):
@@ -154,8 +154,7 @@ def _run(ctx):
     else:
         if pr["baseRefName"] != target:
             gh.run("pr", "edit", str(pr["number"]), "--base", target)
-        old = gh.json("pr", "view", str(pr["number"]), "--json", "body") or {}
-        if old.get("body") != body:
+        if pr.get("body") != body:
             gh.run("pr", "edit", str(pr["number"]), "--body-file", "-", input=body)
     if target == f"zzzops/stack/g{g}":
         stack_pr(ctx, g, pr["number"], stack, B, I)
