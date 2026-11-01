@@ -114,6 +114,13 @@ class ClaudePluginAcceptanceTests(unittest.TestCase):
                 with self.assertRaises(self.harness.AcceptanceError):
                     require(malformed)
 
+    def test_main_requires_no_package_check_entry_from_both_runtimes(self) -> None:
+        """G1033: acceptance runs the full validate from the generated marketplace and from the installed cache."""
+        import inspect
+        source = inspect.getsource(self.harness.main)
+        self.assertGreaterEqual(source.count("require_no_package_check("), 2,
+                                "main() must check the generated and the installed runtime's full validate")
+
 
 if __name__ == "__main__":
     unittest.main()
