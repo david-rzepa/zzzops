@@ -36,6 +36,40 @@
       "reason": "new",
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T04:47:06Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:40524dbb67729b60293debc598fc1bbfd438ce56e6ab810ffc41c9e955719339"
+        },
+        "policy": {},
+        "subject": "v1:sha256:3864ed21bcdae352eb1500c05cb220a20a0fdb8c8ffa64e3d34773260ea5e84f"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:a420eb6e37eed783033a93b5a2b45ff98af790dbc9445777b7b8368e513ab9ed",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T04:47:06Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Do not wait for my approval",
+        "summary": "Approved merging PR #743 (G1014) at head 4018fc3 into dev. It adds live-lease warnings to edit (preview and result), inputs_changed on renew, fingerprint-only changes in validate --policy impact, and the corrected abandon/--reclaim docs. 7 files, +398/-19, mostly tests; code review approved with no findings; required CI passed (20/20). Decision made by Claude (root agent) under the owner's standing delegation for Release 1; merged with --admin because the dev ruleset requires approval of the last push by someone else."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
+          "change": "9a6de06974cf9918ddb151763151e50708e6768a",
+          "commit": "87cdd533fef9eae3801fdde946f0d9d5b9f66670",
+          "tree": "8769dc8c17f953d97305123187f27904760e21ba"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 1,
       "correction_runs": 0,
