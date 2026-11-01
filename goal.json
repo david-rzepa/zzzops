@@ -11,6 +11,39 @@
   },
   "priority": "P2",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T19:06:35Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:f4c441999a3da82b48323c1b35d7f55058578cc7",
+          "summary": "v1:sha256:19c5c66989147a0dd9bd49385cd51725769c0c2d1de59c4d1df2485ef18850d2"
+        },
+        "policy": {},
+        "subject": "v1:sha256:add6413b36ea690128d5a986d83e0a68cc51daa8a2baec5bb56b9b16610f29dd"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:7a39bd545234dae1fe398973e137a0bb22e1d2c0a02ecef9bad507c84c923490",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T19:06:35Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Yeah both, and I would say adding goals should even flag when goal intent differs from project intent - the dev coul always ammend project intent",
+        "summary": "Approved G1029 design revision 2 (skill and prompts only, no engine change): before `new`, the add-goal skill compares the goal with settings.intent and, on a conflict, quotes the intent sentence and offers change the goal, amend the intent (a reviewed policy branch, the owner's words), or proceed. Only the owner can choose amend or proceed, in their own words; the departure is then recorded as a `Project intent:` paragraph quoting the owner with a date, which the Intent lens honours and approve_design shows verbatim. Without the owner, the goal is created without the paragraph and the Intent lens raises the departure as an owner question. Placeholder or absent intent skips the check. Review approved after one round. Review note for implement: D5 should say approve_design reaches the owner only when they answer or read it under delegation; the real guard is the owner's own words."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "f4c441999a3da82b48323c1b35d7f55058578cc7",
+          "commit": "de0a93e6b0d434e027def936e7ef655c30d55c6d"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 2,
       "correction_runs": 1,
