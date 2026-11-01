@@ -195,6 +195,81 @@
       },
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_impl:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "implement",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:8384f7b0f23bdc5e87fc4d0915187dd245ccf1adbe56a6bafedf5274dbbee453",
+          "text": "F1: SKILL.md step 2's 403 fallback is spliced into the middle of the field list, between required_ci and `integration_branch` = `<I>`; `goals.first_id`; `routing.tiers`, so those fields (required in every repository) read as part of the 403 branch. It also narrows the design: approach 0 says 'on 403 (or any failed read) do not retry', and the Risks section says to treat any failed rules read as unreadable and tell the owner what was seen; the skill says only 'If that read returns 403'. Fix: restore the field list unbroken and put the fallback after it as its own sentence or sub-bullet: 'If the rules/branches read fails (HTTP 403 on a free-plan private repository, or any other error), do not retry: tell the owner what was seen, then ...'. Keep test_bootstrap_rules_unreadable's step-2 assertions passing.",
+          "upheld": false
+        },
+        {
+          "id": "review_impl:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "implement",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:8384f7b0f23bdc5e87fc4d0915187dd245ccf1adbe56a6bafedf5274dbbee453",
+          "text": "F2 (minor): the new HISTORY §4 row ('G1032 | this PR | none (SPEC bootstrap steps 2 and 7 unchanged) | Operational guidance only') contradicts §4's definition ('One row per change to the contract') and docs/design/README.md:33, which already says G1032 needs no row (skill, prompt or documentation changes only). Fix: delete the row; or, if SPEC §8.3's checklist is to mention the fallback, edit SPEC §8.3 steps 2/7 and keep a real row. Deleting matches the approved design ('no SPEC edit is needed').",
+          "upheld": false
+        },
+        {
+          "id": "review_impl:1:3",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "implement",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:8384f7b0f23bdc5e87fc4d0915187dd245ccf1adbe56a6bafedf5274dbbee453",
+          "text": "F3 (minor): outside the diff, plugins/zzzops/zzzops/references/SETUP.md:29 still says 'Recommended: a ruleset on zzzops/goal/** blocking deletion and force-push' with no caveat, although such a ruleset cannot be set on a free-plan private repository. Fix: add '(unavailable on a free-plan private repository: see the bootstrap skill's step 2 fallback)', as BRANCH_PROTECTION.md now does. The SPEC §8.3 and DESIGN bootstrap summaries can stay.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T21:39:33Z",
+      "fp_parts": {
+        "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
+        "inputs": {
+          "code": "v1:sha256:e9bf0ec67094d0c27140880c6213fda2b87a0d6aab709cc4e640ea5b3640eed3",
+          "doc": "v1:blob:3c035f648197f2c9da42ad22607e39d4fc319f2c",
+          "tests": "v1:sha256:ecff84540aa2a8ccf588e93b82ab783ccc9ae0cd17db4b8e61eb71673b90f9d5"
+        },
+        "policy": {},
+        "subject": "v1:sha256:8384f7b0f23bdc5e87fc4d0915187dd245ccf1adbe56a6bafedf5274dbbee453"
+      },
+      "holder": "claude:e6ad/rd1025",
+      "input_fp": "v1:sha256:26b2dd01f7bfee692d4a294ee16e3007e009bce79600ef10c5b10bd80c917b60",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "dd900d981664191469aaf726e041b4910d1b5ae6",
+          "commit": "622768fa2f1e466dba38c3a9674715a28900e066",
+          "path": ".zzzops/reviews/1032/review_impl.md"
+        },
+        "summary": "Changes requested (three prose findings). The engine side is correct: no engine module reads rules, rulesets or protection, and the tests use a 403-answering fake gh and assert that integrate and merge finish without such calls and that a failing check still blocks. The step-2 fallback follows the approved design, step 7 points back, and the docs link to it. F1: the fallback is spliced into step 2's field list, so later required fields read as 403-only, and it narrows the design's 'any failed read'. F2: the HISTORY row contradicts §4's definition and README's 'no row'. F3: SETUP.md:29 still recommends a goal ruleset without the free-plan caveat. G1031 and G1032 do not contradict each other on step 7; the second to merge gets a textual conflict on the same line. Root note: G1031 should also update docs/INITIALIZATION.md:11."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "2f489ebf11198bd0f8f1e73d8a0ba763f63dd412",
+          "commit": "21421beaf51a270ec70ce12feb1d6a3ebd202cc4",
+          "tree": "ced5a84ee1f309c0f38deccf25285c1b29434a65"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 1,
       "correction_runs": 0,
