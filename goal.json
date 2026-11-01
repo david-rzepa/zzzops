@@ -113,6 +113,35 @@
       "reason": "reopened",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T19:13:27Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:874839045bdffe9724aa3cbcb6aad4480d2f18a68f8a32ea36172b975f548653",
+          "doc": "v1:blob:42144d61b58520a0b331e1b3995235d9ec279a05",
+          "tests": "v1:sha256:609d7d743aed8a82f5e086d799b547c0b9d54782a06d1b749db8aa086d6ae22e"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1017",
+      "input_fp": "v1:sha256:791b2b7cb3c6d04d11dac89700bf757d9cb327f96a8db38de8ffec287bb5567f",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "8d8437af244f85c4dd6cb20c1ed502140cb9ff77",
+          "change": "1e039d14aaeb1aba36d99de4ed59978c35d04641",
+          "commit": "d178bc8b725669cfe6e8d9e593c3b15fd34e04d3",
+          "tree": "3a1fb0a66d99563460f06803c59ec5bf88d34d8c"
+        },
+        "summary": "docs/design/ now holds the engine contract: rev 6.3 SPEC.md and DESIGN.md and the completed IMPLEMENTATION_PLAN.md, scrubbed of local paths, the owner's name and session labels, with section numbers kept so every existing citation resolves. HISTORY.md adds the revisions, review sources, amendment-id index and the post-approval log, and the README says SPEC is the contract and DESIGN the rationale and holds the guarded pending table (G1022, G1024, G1025) and the repair line. The amendments of #742, G1014, G1018, G1001, G1015, G1016, G1021, G1000, G1023 and G1020 are applied. Owner decision (2026-11-01, recorded in HISTORY §4): the default graph, prompts and policy values are configuration, so SPEC §7 and §8.1-8.2 keep their numbers but state only the engine's rules, point to templates/default/, and move the default graph's bindings and rationale to DESIGN §4.1; this departs from the approved design's full copy. Only two docstrings change in shipped files; all 35 design-docs tests and the full suite pass."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 3,
       "correction_runs": 2,
