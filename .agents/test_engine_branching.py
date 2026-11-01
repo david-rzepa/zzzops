@@ -583,11 +583,11 @@ class CutItemTests(Branching):
 
     def test_superseded_goal_neither_blocks_the_cut_nor_completes_the_release_alone(self):
         sup = self.goal(release=1)
-        a = self.goal(release=1)
         self.close_as(sup, "superseded")
-        out = self.nxt()
+        out = self.nxt()                                                  # sup is the only release 1 goal here
         self.assertEqual([], find_kind(out, "release_cut"))                # alone it does not complete release 1
         self.assertEqual(1, out["releases"]["effective"])
+        a = self.goal(release=1)
         self.done(a)
         items = find_kind(self.nxt(), "release_cut")                      # and it does not block the cut
         self.assertEqual(1, len(items))
