@@ -1,0 +1,18 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [],
+  "graph": "default",
+  "id": 1024,
+  "links": {
+    "issue": null
+  },
+  "priority": "P1",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Found while dogfooding Release 1 (2026-11-01). Bootstrap copies the shipped templates (templates/default: POLICY.json, workflow.json, prompts/) into .zzzops/, and from then on nothing links the copy to its source. When a release changes the defaults, a repository is never told. This already happened here: G1016 changed the shipped test_design.md and implement.md wording, and this repo's .zzzops/prompts still has the old text. G1023's designer then tried to fix it in a goal diff, which integrate refuses (policy-paths). G1000 and G1022 will change the default graph itself, and every bootstrapped repository needs to hear about that.\nThe pre-reset engine had this: policy sections carried default provenance (accepted, changed, rejected) and a plugin upgrade produced a policy review. The reset dropped it.\n\nAdd it back in the reset's style, with no fallback at run time (policy stays fully explicit in the repository):\n1. Bootstrap records which shipped default each policy file came from: an engine or template version plus a per-file digest of the template copy, in POLICY.json settings (or a small .zzzops/TEMPLATE.json, decided in the design).\n2. `next` and `validate --policy` compare the repository's record with the shipped templates of the running engine. When a shipped default changed since bootstrap, they show a non-blocking `policy_update` item. It lists the files that changed upstream, whether the repository also changed each file locally (from the digest), and a diff command from the old default to the new one.\n3. The item's next step is a reviewed policy change: open a `zzzops/policy/*` branch that applies the upstream changes and keeps local edits, and run `validate --policy-ref` for its impact. Add this to the bootstrap or execute skill. Declining records the decision, so the item does not recur until the defaults change again.\n4. A repository with no record (bootstrapped before this goal) gets a one-time item saying the record is missing, with a command to create it from the current files.\n5. Never change policy automatically, and never block goal work on this item.\n\nAcceptance:\n- Engine tests: an unchanged repo shows no item; a changed shipped prompt shows the item with the file and a working diff command; a locally edited file is marked as such; declining suppresses the item until the next change; a missing record gives the one-time item.\n- The skill documents the policy-branch update and the decline.\n- This repository's record is created through its next policy branch.",
+  "state": "open",
+  "title": "Tell repositories when the shipped default policy changed, and offer a reviewed update"
+}
