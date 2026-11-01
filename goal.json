@@ -13,10 +13,10 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-01T18:39:13Z",
+      "finished_at": "2026-11-01T18:44:13Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -30,13 +30,16 @@
       "ok": true,
       "output": {
         "doc": {
-          "blob": "85881a297ecf2d3452f4e66ed5b5205a0919e981",
-          "commit": "eb45ace1421963948b37a50e7a4a7f6be5fc8215",
+          "blob": "74488c5f2af52070620cd0061cd2ba2f38e24f71",
+          "commit": "2c5801218391f730da0cf188ba8325f44112e9c7",
           "path": ".zzzops/reviews/1026/design.md"
         },
-        "summary": "Revision 2 is built on G1022's graph (depends_on [1017, 1022]). A new POLICY instruction, owner_questions, states the owner's undo-reach test once and is listed on design, review_design, adversary_design and review_impl. Reviewers raise material 'owner question:' findings that target the design. design.md answers them with --blocked, then records the owner's words verbatim and answers 'fixed: owner chose ...'. The execute skill batches these questions across goals and keeps them with the owner even when approvals are delegated. The engine change is about 45 lines. A non-material owner question is refused at submit. A new record key, answers, carries the owner's words through later revisions, so approve_design, approve_merge (owner_decisions) and the PR body (## Owner decisions) show them. The card's answer now also appears on stale cards. The key ships capability owner_answers under G1027's scheme, with both merge orders covered."
+        "responses": {
+          "review_design:1:1": "fixed: D4 now builds human_decisions from goal history (the answer commits' goal.json) for approve items, the PR body and the node's card. The answers record key, schema, carry-forward, owner_answers capability, G1027 ordering and do-not-answer rule are removed. D5's card answer change is kept. The review's notes are taken: the list is renamed human decisions and labelled by node kind, the prefix is reserved with a case-sensitive check, and the skill names the decided_by convention."
+        },
+        "summary": "Revision 3 answers review_design:1:1. The `answers` record key, its capability and its ordering are dropped. Human decisions are read from goal history (`git log --grep='^zzzops: answer G<g> '`, keeping commits whose record is blocked and answered). They are shown as `human_decisions` on approve items and on the node's own card, and as `## Human decisions` in the PR body, labelled by node kind. The rest is unchanged. A POLICY instruction, owner_questions, holds the undo-reach test, cited by design.md and the reviewers. Material, reserved `owner question:` findings target the design, which blocks for the owner. A non-material one is refused at submit. The card shows `answer` on any card whose record is blocked and answered. The execute skill batches owner questions and names the decided_by convention. No stored format changes."
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
