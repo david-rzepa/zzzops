@@ -2,7 +2,8 @@
   "budget": null,
   "closed": null,
   "depends_on": [
-    1009
+    1009,
+    1017
   ],
   "graph": "default",
   "id": 1010,
@@ -14,7 +15,7 @@
   "release": 2,
   "schema": 1,
   "skip": {},
-  "spec": "Let next/execute defer new agent starts when observed account usage is ahead of a sustainable pace for the current reset window, and admit more when behind, within max_workers. Read allowance snapshots (used percent, window duration, resets_at) through a bounded provider adapter (Codex app-server rateLimits; Claude Code equivalent if available) and expose used vs target fraction in next output, with a wake_at for the recheck instead of polling. Pacing applies only at start boundaries; running leases are never interrupted, and human items/discovery interviews are not throttled. Calendar/reserve/tolerance live in POLICY.json settings. Changed vs old wording: no capacity ledger or reservation leases; it is a frontier/scheduling input alongside max_workers.\n\nMigrated from GitHub issue #549 after the engine reset (#740).",
+  "spec": "Let next/execute defer new agent starts when observed account usage is ahead of a sustainable pace for the current reset window, and admit more when behind, within max_workers. Read allowance snapshots (used percent, window duration, resets_at) through a bounded provider adapter (Codex app-server rateLimits; Claude Code equivalent if available) and expose used vs target fraction in next output, with a wake_at for the recheck instead of polling. Pacing applies only at start boundaries; running leases are never interrupted, and human items/discovery interviews are not throttled. Calendar/reserve/tolerance live in POLICY.json settings. Changed vs old wording: no capacity ledger or reservation leases; it is a frontier/scheduling input alongside max_workers.\n\nMigrated from GitHub issue #549 after the engine reset (#740).\n- This PR edits docs/design/SPEC.md and DESIGN.md for every contract change it makes and adds a HISTORY §4 row.",
   "state": "open",
   "title": "Pace autonomous dispatch against subscription allowance windows"
 }
