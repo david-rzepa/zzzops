@@ -2,7 +2,8 @@
   "budget": null,
   "closed": null,
   "depends_on": [
-    1000
+    1000,
+    1017
   ],
   "graph": "default",
   "id": 1005,
@@ -14,7 +15,7 @@
   "release": 2,
   "schema": 1,
   "skip": {},
-  "spec": "Add a reproducible fixture that runs a synthetic goal through the shipped default graph (and the lens-review graph from #499) and records CLI invocations, git fetch/push count, GitHub API calls, wall time and task-card/prompt bytes per node, via prompt_stats.py where it applies. Report the cost of a correction cycle (one finding reopening a node) and of a clean restack carry-forward against a no-correction baseline. Acceptance: the fixture runs in CI with noise-tolerant bounds on redundant invocations and repeated payload bytes, not wall-clock thresholds, and a short report can be quoted in the whitepaper. Dropped versus the old wording: the old-engine children (#481/#492/#494/#484), heartbeat and self-upgrade journeys, and lease/provider-idempotency re-proofs that the engine's unit tests already cover.\n\nMigrated from GitHub issue #510 after the engine reset (#740).",
+  "spec": "Add a reproducible fixture that runs a synthetic goal through the shipped default graph (and the lens-review graph from #499) and records CLI invocations, git fetch/push count, GitHub API calls, wall time and task-card/prompt bytes per node, via prompt_stats.py where it applies. Report the cost of a correction cycle (one finding reopening a node) and of a clean restack carry-forward against a no-correction baseline. Acceptance: the fixture runs in CI with noise-tolerant bounds on redundant invocations and repeated payload bytes, not wall-clock thresholds, and a short report can be quoted in the whitepaper. Dropped versus the old wording: the old-engine children (#481/#492/#494/#484), heartbeat and self-upgrade journeys, and lease/provider-idempotency re-proofs that the engine's unit tests already cover.\n\nMigrated from GitHub issue #510 after the engine reset (#740).\n- This PR edits docs/design/SPEC.md and DESIGN.md for every contract change it makes and adds a HISTORY §4 row.",
   "state": "open",
   "title": "Measure coordination overhead of the Git-native engine per goal"
 }
