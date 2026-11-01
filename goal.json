@@ -16,6 +16,39 @@
   },
   "priority": "P1",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T18:28:43Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:42144d61b58520a0b331e1b3995235d9ec279a05",
+          "summary": "v1:sha256:0d7a8c71cb5ff7316d1affda2688799f3fb146bded61742e2303256d83259179"
+        },
+        "policy": {},
+        "subject": "v1:sha256:a7dba6a93f66bd84fa2d624494e64582b0ce7a2cf525fca854c9ff94bcaecf4e"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:d76c88957f1725d940251242199d7633968a0f1b233b842e92011e8a8dc03b4c",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T18:28:43Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approved G1017 design revision 3: the scrubbed rev 6.3 DESIGN.md, SPEC.md and IMPLEMENTATION_PLAN.md move to docs/design/ with numbering kept, plus HISTORY.md and a README with the pending table. Rule: every goal that changes the contract is ordered against G1017 by a dependency (merged or in base: G1017 applies it; before implement: the goal depends on 1017 and edits docs/design in its own PR); a CI guard (test_no_landed_goal_is_pending) fails a tree where a landed goal still has a pending row; README repair line for a red dev. Goals are classified by what they change, not by keyword. Approved after G1020 (#750) merged, so no extra dependency is needed. Review approved after three rounds."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "42144d61b58520a0b331e1b3995235d9ec279a05",
+          "commit": "c9b0777618076e0b3f3abef14ba7d87101f9f3c0"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 3,
       "correction_runs": 2,
