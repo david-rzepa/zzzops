@@ -106,6 +106,48 @@
       "reason": "reopened",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "implement:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 3,
+          "target_fp": "v1:sha256:b5c5b3f42f43d41c69c24344142eca8b21d1385cefbd7d1237f5b245b03f7868",
+          "text": "Two frozen tests contradict each other. test_engine_schemas.py:279 (CanonTests.test_errors_have_exit_codes) still asserts 28 exit-1 error codes, a count that includes engine_too_new. test_engine_capabilities.py::NoStaleReferenceTests.test_errors_no_longer_know_engine_too_new asserts that engine_too_new is not in EXIT, and design §3.2 removes it. With engine_too_new removed there are 27, so test_errors_have_exit_codes fails. It is the only failure in the full suite (698 tests). Fix: change the count in test_engine_schemas.py:279 to 27. Implement did not edit either frozen test and did not add a placeholder code to satisfy the count.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T22:16:31Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:8a2e8ac0217a3e46b72c1e3ce2d2c6f98e60949f5743134ece85574f6cb677e3",
+          "doc": "v1:blob:0c556c21045dcada61dcaab09a6d222e0cdd7d4f",
+          "tests": "v1:sha256:6f8dcfbc9343cd74fcf7061d7ca9bf16ff79e98a45cfdab478674110c94775f3"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1027",
+      "input_fp": "v1:sha256:c0967dcfaec4175a485ac9943b4c2ddb89924222e23080f2d5c1318c9240941f",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "f83028701980bfd338f070d0eb3063f314aca477",
+          "commit": "1e548e2d59b8aba02bba9f5a8ce3571b15c29350",
+          "tree": "ff92e20b619c6d8c97d0399502e3bbf919a82fec"
+        },
+        "summary": "The engine now declares capabilities as one file each under engine/capabilities/ (lens_findings, from G1000). POLICY's settings.engine.requires refuses writes with engine_too_old, listing the missing names in `missing`; reads still work. engine.min still works but is deprecated: a fixed map translates it (1.0.0 needs nothing, 1.1.0 needs lens_findings, anything higher is refused), and validate warns. The engine_too_new ceiling, REQUIRES_MIN and ENGINE_VERSION are removed. The Engine: trailer, --version and validate's new `engine` key carry a build id (plugin version and package revision), and the legacy cache key uses a digest of legacy.py and cleanup_legacy.py. The default template requires lens_findings. CLI_USAGE, MIGRATING, REPAIR, SPEC and DESIGN are amended, with a HISTORY §4 row, and the G1027 pending row is deleted. 697 of 698 tests pass. The one failure is a contradiction between two frozen tests (finding on test_design). G1022, G1025 and G1028 have not merged, so LEGACY_VERSIONS needed no additions."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 2,
       "correction_runs": 1,
