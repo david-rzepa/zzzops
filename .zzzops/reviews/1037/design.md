@@ -1,6 +1,6 @@
 # G1037 design: dogfood Release 1 on a private web app, from migration to a finished release
 
-Attempt 3. Written against read_dev 8d8437a. It replaces G1003 and G1035. It simplifies the redaction rule per OD8 and answers review_design:1:1 (§11).
+Attempt 4: spec aligned with OD8 (no change to the plan). Attempt 3 simplified the redaction rule per OD8 and answered review_design:1:1 (§11). Written against read_dev 8d8437a. It replaces G1003 and G1035.
 
 The app's identity and every fact specific to it are kept out of this repository (OD7). **The detailed plan is in the root's private journal**: per-phase steps, evidence about the app, triage proposals, and the release mechanics against the app's own deploy flow. This document is the generic plan the reviewers judge, and it is what the whitepaper can cite.
 
@@ -37,7 +37,7 @@ Identifying words are replaced by `[redacted]`. Everything else is verbatim.
 | `approve_design` | The owner approves. This is the authority to write to the app's repository within the plan, and nothing more: it grants no deploy authority (OD6). | owner |
 | `base` | Unchanged. It runs once every dependency has merged, so the build under test is the complete Release 1 engine. | op |
 | `test_design` | Commits the acceptance checks (§5) into the report skeleton before the run starts. | worker |
-| `review_tests` | Do the checks cover the spec and OD1 to OD7? Can each one be falsified? | worker |
+| `review_tests` | Do the checks cover the spec and OD1 to OD8? Can each one be falsified? | worker |
 | `implement` | Executes the run (§4) and commits the anonymised report and data at milestones. **The root holds this lease** and renews it while it drives the app. A lapse is reclaimed with `start --reclaim`. | root |
 | `run_tests` | Unchanged: the suite runs on the report commit. | op |
 | `review_impl` | Re-runs the checks' read-only commands, recomputes the tables from the data file, runs the A15 name check, and confirms that every listed defect goal exists. | worker |
