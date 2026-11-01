@@ -49,24 +49,21 @@ REQUIRED_OBLIGATIONS = {
     "installation_cleanup",
     "marketplace_package",
     "package_cli",
-    "heartbeat_process",
     "git_crlf_drift",
     "path_confinement",
-    "public_delivery",
+    "goal_journey",
 }
 
 REQUIRED_NATIVE_IDS = {
-    "test_installation_validation.InstallationValidationTests.test_cli_clean_first_use_and_idempotent_status",
     "test_legacy_cleanup.LegacyCleanupTests.test_default_cli_is_dry_run_and_interrupted_cleanup_converges",
     "test_marketplace_bundle.MarketplaceBundleTests.test_fixed_version_build_is_deterministic_and_complete",
     "test_agent_plugin.AgentPluginTests.test_marketplace_points_to_the_self_contained_package",
-    "test_zzzops.InitializationTests.test_cli_without_command_shows_help_without_writing_local_state",
-    "test_workflow_heartbeat.HeartbeatProcessTests.test_one_coordinator_renews_multiple_leases_and_stops_tracking_workers",
-    "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_mixed_clean_checkout_rejects_raw_consumed_drift_and_restores_exact_acquisition",
-    "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_crlf_design_correction_retains_frozen_raw_checkout_overrides",
-    "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_clean_crlf_checkout_pins_raw_consumed_bytes_and_allows_owned_red_edit",
-    "test_evidence_dag_journeys.WorkspaceAuthorityPublicTests.test_acquired_owned_path_cannot_be_replaced_by_escaping_symlink",
-    "test_workflow_publication_contract.GenericDeliveryPublicTests.test_reviewed_red_green_proofs_commit_and_exact_publication_form_one_delivery_graph",
+    "test_engine_docs.CliWithoutRepositoryTests.test_help_and_policy_validation_need_no_repository",
+    "test_engine_identity.IdentityTests.test_crlf_checkout_gives_the_same_identities",
+    "test_engine_identity.IdentityTests.test_identity_under_hostile_global_configuration",
+    "test_engine_identity.IdentityTests.test_text_input_reaches_git_unchanged",
+    "test_engine_identity.IdentityTests.test_i1_i2_and_artifact_commits",
+    "test_engine_lifecycle.SubmitTests.test_new_creates_no_branch_and_first_artifact_does",
 }
 
 
@@ -485,7 +482,7 @@ class NativeWorkerContractTests(unittest.TestCase):
         report = self.invoke(launch)
         self.assertEqual(self.selected, sorted(report["executed_ids"]))
         self.assertEqual(self.selected, sorted(report["completed_ids"]))
-        self.assertEqual(11, report["tests_run"])
+        self.assertEqual(len(self.selected), report["tests_run"])
         self.assertEqual(2, report["workers"])
         self.assertEqual(2, len(report["worker_reports"]))
 
@@ -792,8 +789,6 @@ class ExistingCoverageControls(unittest.TestCase):
         self.assertEqual(
             [
                 (sys.executable, "-m", "unittest", "discover", "-s", ".agents", "-p", "test_*.py"),
-                (sys.executable, "-m", "unittest", "discover", "-s", "plugins/zzzops/skills/migrate-to-zzzops/scripts", "-p", "test_*.py"),
-                (sys.executable, ".agents/manual_acceptance.py", "coverage"),
                 ("npm", "run", "test:plugin"),
                 ("npm", "run", "test:release"),
                 (sys.executable, ".agents/prompt_stats.py", "--check"),

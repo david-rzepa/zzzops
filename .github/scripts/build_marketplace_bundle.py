@@ -195,7 +195,7 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
     renderer = package["render_skill_metadata"]
     result: dict[str, bytes] = {}
     allowed_top_level = {
-        ".claude-plugin", ".codex-plugin", "assets", "concepts", "plugin.json", "rules", "scripts", "skills", "zzzops",
+        ".claude-plugin", ".codex-plugin", "assets", "bin", "concepts", "plugin.json", "rules", "scripts", "skills", "zzzops",
     }
     for path in sorted(plugin.rglob("*"), key=lambda item: item.relative_to(plugin).as_posix()):
         relative = path.relative_to(plugin).as_posix()
@@ -222,7 +222,7 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
     required = {
         "plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "assets/logo.png", "assets/logo-dark.png",
         "assets/composer-icon.png", "assets/composer-icon-dark.png", "concepts/bounded-commitment.md",
-        "scripts/cleanup_legacy.py", "zzzops/concepts.py",
+        "scripts/cleanup_legacy.py", "zzzops/concepts.py", "zzzops/zzzops.py", "zzzops/engine/cli.py", "bin/zzzops",
     }
     missing = sorted(required - set(result))
     if missing:
@@ -233,12 +233,8 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
         PurePosixPath(path).parts[1] for path in result
         if len(PurePosixPath(path).parts) >= 3 and PurePosixPath(path).parts[0] == "skills"
     }
-    if shipped_skills != {
-        "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
-        "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
-        "validate-zzzops-installation",
-    }:
-        raise BundleError("plugin archive must contain exactly the eight product skills")
+    if shipped_skills != {"add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops"}:
+        raise BundleError("plugin archive must contain exactly the three product skills")
     missing_metadata = sorted(
         f"skills/{skill}/{relative}"
         for skill in shipped_skills
@@ -308,7 +304,7 @@ def zip_bytes(files: dict[str, bytes]) -> bytes:
             info = ZipInfo(relative, ZIP_TIMESTAMP)
             info.compress_type = ZIP_DEFLATED
             info.create_system = 3
-            info.external_attr = 0o100644 << 16
+            info.external_attr = (0o100755 if relative.startswith("bin/") else 0o100644) << 16
             archive.writestr(info, data, compress_type=ZIP_DEFLATED, compresslevel=9)
     temporary.seek(0)
     return temporary.read()

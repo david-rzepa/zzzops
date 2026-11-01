@@ -21,11 +21,6 @@ SKILL_UI = {
     "add-zzzops-goal": ("Add Goal", "Capture one durable project goal safely"),
     "bootstrap-zzzops-repository": ("Bootstrap Repository", "Create or strengthen an agent-ready repository"),
     "execute-zzzops": ("Execute", "Run the primary autonomous ZzzOps goal loop"),
-    "migrate-to-zzzops": ("Migrate TODOs", "Discover and migrate repository TODOs safely"),
-    "review-zzzops-policy": ("Review Policy", "Initialize or review project operating policy"),
-    "send-zzzops-feedback": ("Send Feedback", "Preview and send privacy-safe ZzzOps feedback"),
-    "suggest-zzzops-work": ("Suggest Work", "Audit project gaps and suggest durable work"),
-    "validate-zzzops-installation": ("Validate Installation", "Validate one repository after install or upgrade"),
 }
 SHIPPED_SKILLS = set(SKILL_UI)
 
@@ -66,10 +61,9 @@ class MarketplaceBundleTests(unittest.TestCase):
                 self.assertIn(".codex-plugin/plugin.json", names)
                 self.assertIn("scripts/cleanup_legacy.py", names)
                 self.assertNotIn("skills/run-zzzops-acceptance/SKILL.md", names)
-                self.assertIn("zzzops/references/bootstrap/ANALYZE.md", names)
-                self.assertIn("zzzops/references/bootstrap/PLAN.md", names)
-                self.assertIn("zzzops/references/bootstrap/GREENFIELD.md", names)
-                self.assertIn("zzzops/references/bootstrap/BROWNFIELD.md", names)
+                for shipped in ("zzzops/references/SETUP.md", "zzzops/references/REPAIR.md", "zzzops/engine/cli.py",
+                                "zzzops/templates/default/workflow.json", "bin/zzzops"):
+                    self.assertIn(shipped, names)
                 self.assertFalse(any("__pycache__" in name or name.endswith((".pyc", ".pyo")) for name in names))
                 self.assertEqual("2.0.0", json.loads(archive.read("plugin.json"))["version"])
                 self.assertEqual("2.0.0", json.loads(archive.read(".codex-plugin/plugin.json"))["version"])
@@ -96,31 +90,16 @@ class MarketplaceBundleTests(unittest.TestCase):
             self.assertGreaterEqual(len(tests["negative"]), 3)
             self.assertIn("human review gates", attestations)
 
-    def test_goal_499_graph_and_operator_guidance_ship_in_the_bundle(self) -> None:
-        """The new default must not rely on checkout-only prompts or docs."""
+    def test_default_workflow_and_templates_ship_in_the_bundle(self) -> None:
+        """The default graph and its prompts must not rely on checkout-only files."""
         files = self.builder.plugin_files(ROOT, "2.0.0")
-        plan = json.loads(files["zzzops/templates/project-goals/INIT_PLAN.json"])
-        graph = next(
-            section for section in plan["policy"]["sections"]
-            if section["id"] == "workflow_adherence"
-        )["configuration"]["phase_dag"]
-        graph_text = json.dumps(graph).casefold()
-        for phrase in (
-            "requirements", "spec_investigation", "maintainability_entropy",
-            "child_delivery", "integration_feedback_review", "authorize_merge",
-        ):
-            self.assertIn(phrase, graph_text)
-
-        operator_docs = "\n".join(
-            (ROOT / path).read_text(encoding="utf-8") for path in (
-                "docs/CONCEPTS.md", "docs/CONTEXT_ENGINEERING.md", "docs/EXECUTION.md"
-            )
-        ).casefold()
-        for phrase in (
-            "stable question", "atomic", "composition", "migration verification",
-            "feedback", "closed goals",
-        ):
-            self.assertIn(phrase, operator_docs)
+        workflow = json.loads(files["zzzops/templates/default/workflow.json"])
+        nodes = workflow["graphs"]["default"]["nodes"]
+        self.assertEqual(12, len(nodes))
+        for node in nodes.values():
+            if node["kind"] != "op":
+                self.assertIn(f"zzzops/templates/default/prompts/{node['prompt']}", files)
+        json.loads(files["zzzops/templates/default/POLICY.json"])
 
     def test_invalid_version_or_incomplete_sources_fail_before_output(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -182,8 +161,8 @@ class MarketplaceBundleTests(unittest.TestCase):
         files = self.builder.claude_marketplace_files(ROOT, "2.0.0")
         self.assertIn("zzzops/concepts/bounded-commitment.md", files)
         self.assertIn("zzzops/zzzops/concepts.py", files)
-        instruction = files["zzzops/zzzops/references/next_steps/execute.md"].decode("utf-8")
-        self.assertIn("[[bounded commitment]](../../../concepts/bounded-commitment.md)", instruction)
+        instruction = files["zzzops/skills/execute-zzzops/SKILL.md"].decode("utf-8")
+        self.assertIn("[[bounded commitment]](../../concepts/bounded-commitment.md)", instruction)
         manifest = json.loads(files["zzzops/.claude-plugin/plugin.json"])
         marketplace = json.loads(files[".claude-plugin/marketplace.json"])
 
@@ -248,7 +227,7 @@ class MarketplaceBundleTests(unittest.TestCase):
 
         expected_keywords = [
             "agentic-engineering", "coding-agents", "autonomous-development", "repository-bootstrap",
-            "goal-management", "github-issues", "codex", "claude-code",
+            "goal-management", "git-native", "codex", "claude-code",
         ]
         self.assertEqual("Agentic engineering with durable goals for autonomous coding agents", canonical["description"])
         self.assertEqual(expected_keywords, canonical["keywords"])

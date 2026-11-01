@@ -64,10 +64,7 @@ class ConceptTests(unittest.TestCase):
         vague = {row["term"]: row for row in report["vague_language_audit"]}
         self.assertEqual("bounded commitment", vague["reversible"]["replacement"])
         self.assertEqual("pending-user-owned-overlap", vague["reversible"]["disposition"])
-        self.assertEqual(
-            ["docs/ACCEPTANCE_TEST_PLAN.md"],
-            [item["path"] for item in vague["reversible"]["documents"]],
-        )
+        self.assertEqual([], [item["path"] for item in vague["reversible"]["documents"]])
         self.assertEqual(0, vague["revertible"]["occurrences"])
         self.assertEqual("retain-contextually", vague["simple"]["disposition"])
 
@@ -78,14 +75,11 @@ class ConceptTests(unittest.TestCase):
             {"bounded-commitment", "effective-engineering-rigor", "exact-head", "safe-useful-work"},
             set(catalog.by_id),
         )
-        links = concepts.validate_document(
-            plugin / "zzzops" / "references" / "next_steps" / "execute.md", catalog, (plugin / "concepts",),
-        )
-        self.assertEqual(["bounded commitment", "safe useful work"], [link.display for link in links])
-        resolved = concepts.resolve_document_concepts(
-            plugin / "zzzops" / "references" / "next_steps" / "execute.md", (plugin / "concepts",),
-        )
-        self.assertEqual(["bounded-commitment", "safe-useful-work"], [item.identifier for item in resolved])
+        execute = plugin / "skills" / "execute-zzzops" / "SKILL.md"
+        links = concepts.validate_document(execute, catalog, (plugin / "concepts",))
+        self.assertEqual(["safe useful work", "bounded commitment", "exact head"], [link.display for link in links])
+        resolved = concepts.resolve_document_concepts(execute, (plugin / "concepts",))
+        self.assertEqual(["safe-useful-work", "bounded-commitment", "exact-head"], [item.identifier for item in resolved])
         bounded = catalog.by_id["bounded-commitment"].path.read_text(encoding="utf-8")
         self.assertIn("human explicitly reviews the exact design decision", bounded)
         self.assertIn("never infer design approval from policy approval", bounded)

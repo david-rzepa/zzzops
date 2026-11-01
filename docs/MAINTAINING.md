@@ -1,30 +1,24 @@
 # Maintaining ZzzOps
 
-This guide holds repository-development details intentionally kept out of the new-user [README](../README.md). User-facing workflows live in [Advanced ZzzOps workflows](ADVANCED.md).
+This guide holds repository-development details intentionally kept out of the new-user [README](../README.md). User-facing behaviour is described in [How execution works](EXECUTION.md).
 
 ## Repository architecture
 
 The distributable Agent Plugin lives in `plugins/zzzops`; `.agents/plugins/marketplace.json` publishes it to Codex. Codex and Claude Code distributions are generated from shared canonical sources rather than maintained as divergent implementations.
 
-`plugins/zzzops/zzzops/zzzops.py` is the stable installed executable and CLI composition layer. Its focused implementation modules remain acyclic:
+`plugins/zzzops/zzzops/zzzops.py` is the stable installed executable; it only calls `engine.cli.main`. The engine is the package `plugins/zzzops/zzzops/engine/` (standard library only, Python 3.10+), designed in the reset's DESIGN.md and SPEC.md:
 
 | Module | Owns |
 | --- | --- |
-| `policy.py` | Reviewed project state, policy validation, initialization, and resource policy. |
-| `reservation.py` | GitHub-backed goal and resource reservation coordination. |
-| `feedback.py` | Privacy-safe execution reports, provenance, payload preparation, and submission. |
-| `coaching.py` | Bounded, privacy-safe attribution of completed software-agent work. |
-| `goals.py` | Managed-goal parsing, validation, rendering, GitHub record projection, and guarded transitions. |
-| `portfolio.py` | Goal graph audits, actionability, and canonical portfolio snapshots. |
-| `package.py` | Agent Plugin package validation and deterministic package provenance. |
-| `installation.py` | Per-repository package validation state and composition of the cleanup audit. |
-| `entropy.py` | Atomic, compact Git-local entropy observations and suggestion-category filtering. |
-| `diagnostics.py` | Opt-in, privacy-safe timing aggregation and bounded Git-local diagnostic retention. |
-| `zzzops.py` | CLI parsing and dispatch, provider probes and adapters, package validation, and stable re-exports. |
+| `canon.py`, `errors.py`, `schemas.py` | Canonical JSON and time, the error envelope and exit codes, validation of every file format and the parsed graph. |
+| `fingerprint.py`, `frontier.py`, `records.py`, `render.py`, `card.py` | The pure core: fingerprints, the two-pass frontier and portfolio, record and finding construction, `next` and task-card rendering. No I/O in `frontier.py`. |
+| `gitrun.py`, `identity.py` | The one Git runner and environment checks; `code_tree`, `change`, patch ids, artifact commits and the I1/I2 checks. |
+| `store.py`, `session.py`, `leases.py`, `worktree.py` | Fetch and snapshot, reading goals and policy, per-goal compare-and-swap writes and the generic close; leases; the goal worktree and sync rule. |
+| `verbs.py`, `carry.py`, `cli.py` | The lifecycle verbs, carry-forward across a clean replay, the CLI. |
+| `ops/` | `git.base`, `checks.run`, `git.integrate`, `github.merge`, and the op runner; `gh.py` wraps `gh`. |
+| `package.py`, `concepts.py` | Agent Plugin package validation and provenance; the concept catalog. |
 
-The package checkpoint validates the installed manifest, required surfaces, and deterministic SHA-256 provenance before provider access. Keep cross-module dependencies one-way: focused modules may use explicitly configured entry-point callbacks, while callers continue to invoke the stable `zzzops.py` command or re-exported API.
-
-Timing diagnostics are inert unless an explicit caller creates a session and records its snapshot. The diagnostic schema accepts only fixed phase and provenance enums plus bounded integers—never repository identity, paths, prompts, user content, or raw output. Records live under `zzzops/timing-diagnostics` in Git's ignored common directory, are content-addressed, retain at most 32 aggregates, and can be removed with the stable `purge_diagnostics` API. This local store has no transmission path; confirmed feedback sharing is a separate workflow.
+Engine tests are `.agents/test_engine_*.py`; they run against a bare remote with two clones and a fake GitHub (`.agents/engine_fixtures.py`, `.agents/engine_fake_gh.py`).
 
 ## Development and review
 
@@ -55,7 +49,7 @@ Every release prepares one validated versioned marketplace asset before GitHub p
 
 Canonical Agent Plugin and Codex metadata stays at `0.0.0-dev`. Release preparation renders the semantic release version and official channel into the temporary OpenAI bundle; CI never commits generated release metadata back to `dev`. Claude metadata omits an explicit plugin version so Claude derives its cache identity from the Git source commit. The release-only `latest` branch controls update cadence, and installed-cache acceptance proves a real two-commit update without publishing a duplicate archive or writing release metadata back to the repository.
 
-A build or validation failure stops publication. Successful artifacts attach to the matching GitHub Release. OpenAI portal upload, attestation, review submission, approval, and final directory publication remain explicit human actions; see the [marketplace sources](../marketplace/README.md). Claude submission guidance lives in [Claude Code marketplace notes](CLAUDE_MARKETPLACE.md), and the shared language and intent map live in [product discovery positioning](DISCOVERY.md).
+A build or validation failure stops publication. Successful artifacts attach to the matching GitHub Release. OpenAI portal upload, attestation, review submission, approval, and final directory publication remain explicit human actions; see the [marketplace sources](../marketplace/README.md). Claude submission guidance lives in [Claude Code marketplace notes](CLAUDE_MARKETPLACE.md).
 
 Semantic commits since the latest reachable `vMAJOR.MINOR.PATCH` tag are the release-history source. A breaking marker produces a major release, `feat` produces minor, and `fix`, `perf`, or `revert` produces patch. Documentation, style, chores, refactors, tests, builds, and CI do not release and are omitted from notes. The highest change wins.
 
@@ -79,16 +73,14 @@ If CI is unavailable or a failure needs local reproduction:
 
 ```powershell
 <python> -m unittest discover -s .agents -p 'test_*.py'
-<python> -m unittest discover -s plugins/zzzops/skills/migrate-to-zzzops/scripts -p 'test_*.py'
 npm ci
 npm run test:plugin
 npm run test:release
-<python> .agents/manual_acceptance.py coverage
 <python> .agents/prompt_stats.py --check
 <python> -m compileall -q .agents plugins/zzzops .github/scripts
 ```
 
-Acceptance infrastructure and manual evidence are documented in the [acceptance test plan](ACCEPTANCE_TEST_PLAN.md).
+The real-GitHub smoke test is manual: `ZZZOPS_GH_SMOKE_REPO=<owner>/<scratch repo> <python> .agents/engine_gh_smoke.py` (a scratch repository with a ZzzOps policy on its integration branch).
 
 Codex cachebuster acceptance uses the actual upstream helper separately from self-contained unit discovery. Obtain a trusted `update_plugin_cachebuster.py` from Codex's plugin-creator skill, then run:
 
@@ -96,14 +88,15 @@ Codex cachebuster acceptance uses the actual upstream helper separately from sel
 <python> .agents/plugin_cachebuster_acceptance.py --helper /path/to/plugin-creator/scripts/update_plugin_cachebuster.py
 ```
 
-The helper path is required; missing or unreadable helpers fail. The runner prints the helper SHA-256 and executes one acceptance test covering default and custom cachebusters, package contents, and public installation validation using a disposable package copy.
+The helper path is required; missing or unreadable helpers fail. The runner prints the helper SHA-256 and executes one acceptance test covering default and custom cachebusters, package contents, and the packaged CLI using a disposable package copy.
 
 ## Repository file reference
 
 - `plugins/zzzops/plugin.json` — distributable Agent Plugins v1 manifest.
 - `plugins/zzzops/skills/` — canonical skill instructions.
-- `plugins/zzzops/rules/` — shared workflow rules.
-- `plugins/zzzops/zzzops/` — deterministic control modules and CLI entry point.
+- `plugins/zzzops/rules/` — the shared communication guide.
+- `plugins/zzzops/zzzops/` — the engine, the CLI entry point, references and templates.
+- `plugins/zzzops/bin/zzzops` — the launcher.
 - `plugins/zzzops/scripts/cleanup_legacy.py` — dry-run-first cleanup for proven retired installations.
 - `.agents/plugins/marketplace.json` — Codex marketplace entry.
 - `.claude-plugin/` — tracked Claude marketplace metadata pointing at the canonical plugin source.
@@ -125,4 +118,3 @@ After prompt Markdown changes, inspect the relevant profiles and enforce committ
 <python> .agents/prompt_stats.py --check
 ```
 
-The [context-engineering audit](CONTEXT_ENGINEERING.md) records the repository's application of modern guidance without changing installed runtime behavior.

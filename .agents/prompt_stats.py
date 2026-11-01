@@ -15,25 +15,13 @@ HARNESS_PROMPTS = {
 
 COMMUNICATION_PROMPT = "plugins/zzzops/rules/COMMUNICATION.md"
 CLI_USAGE_PROMPT = "plugins/zzzops/zzzops/references/CLI_USAGE.md"
-POLICY_PREFLIGHT_PROMPT = "plugins/zzzops/zzzops/references/POLICY_PREFLIGHT.md"
-FEEDBACK_OPERATIONS_PROMPT = "plugins/zzzops/zzzops/references/FEEDBACK_OPERATIONS.md"
-DELEGATION_PROMPT = "plugins/zzzops/rules/DELEGATION.md"
-PROACTIVE_DELEGATION_SIGNAL = "Do not decide whether to delegate from this rule"
-PROACTIVE_DELEGATION_WORKFLOWS = {
-    "bootstrap-greenfield", "bootstrap-brownfield", "capture", "execution",
-    "suggestion", "installation-validation",
-}
-COLD_ONLY_PROMPTS = {
-    "plugins/zzzops/skills/review-zzzops-policy/SKILL.md",
-    "plugins/zzzops/zzzops/references/next_steps/policy-review.md",
-    "plugins/zzzops/zzzops/references/next_steps/suggest-work.md",
-}
+SETUP_PROMPT = "plugins/zzzops/zzzops/references/SETUP.md"
+REPAIR_PROMPT = "plugins/zzzops/zzzops/references/REPAIR.md"
+MIGRATING_PROMPT = "plugins/zzzops/zzzops/references/MIGRATING.md"
+COLD_ONLY_PROMPTS = {REPAIR_PROMPT, MIGRATING_PROMPT}
 
-# These limits protect context paid on every Codex turn and the two frequent ZzzOps paths. At the
-# goal #297 baseline, always-loaded/codex was 625 tokens with AGENTS.md present. The
-# repository may omit that optional file; its ceiling still guards future additions.
-# Goal #302 reduced capture/execution to 3,324/8,452 tokens. Retain modest
-# 3,600/8,800 ceilings. Cold mutually exclusive workflows remain advisory.
+# These limits protect context paid on every Codex turn and the two frequent ZzzOps paths (capture and execution).
+# Task cards and `next` carry the per-phase context at run time (at most 4 KB and 8 KB), so the static skills stay small.
 ENFORCED_PROMPT_BUDGETS = {
     "always-loaded/codex": 700,
     "capture/codex": 3_700,
@@ -41,138 +29,30 @@ ENFORCED_PROMPT_BUDGETS = {
 }
 
 WORKFLOW_PROMPTS = {
-    "bootstrap-greenfield": (
-        "plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md",
-        "plugins/zzzops/zzzops/references/next_steps/bootstrap.md",
-        "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
-        "plugins/zzzops/zzzops/references/bootstrap/PLAN.md",
-        "plugins/zzzops/zzzops/references/bootstrap/GREENFIELD.md",
-        COMMUNICATION_PROMPT, DELEGATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
-        "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "bootstrap-brownfield": (
-        "plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md",
-        "plugins/zzzops/zzzops/references/next_steps/bootstrap.md",
-        "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
-        "plugins/zzzops/zzzops/references/bootstrap/PLAN.md",
-        "plugins/zzzops/zzzops/references/bootstrap/BROWNFIELD.md",
-        COMMUNICATION_PROMPT, DELEGATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
-        "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "capture": (
-        "plugins/zzzops/skills/add-zzzops-goal/SKILL.md",
-        "plugins/zzzops/zzzops/references/next_steps/add-goal.md",
-        COMMUNICATION_PROMPT, DELEGATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
-        "plugins/zzzops/rules/CONTINUATION.md", "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "execution": (
-        "plugins/zzzops/skills/execute-zzzops/SKILL.md",
-        "plugins/zzzops/zzzops/references/next_steps/execute.md",
-        "plugins/zzzops/skills/execute-zzzops/references/EXECUTE.md",
-        "plugins/zzzops/skills/execute-zzzops/references/BRANCH_REVIEW.md",
-        COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
-        "plugins/zzzops/rules/GOAL_SYSTEM.md", "plugins/zzzops/rules/CONTINUATION.md",
-        "plugins/zzzops/rules/EXECUTION_STRATEGY.md", DELEGATION_PROMPT, "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "policy-review": (
-        POLICY_PREFLIGHT_PROMPT,
-        "plugins/zzzops/skills/review-zzzops-policy/SKILL.md",
-        "plugins/zzzops/zzzops/references/next_steps/policy-review.md",
-        COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "migration": (
-        "plugins/zzzops/skills/migrate-to-zzzops/SKILL.md",
-        "plugins/zzzops/zzzops/references/next_steps/migrate.md",
-        COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
-        "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "suggestion": (
-        "plugins/zzzops/skills/suggest-zzzops-work/SKILL.md",
-        "plugins/zzzops/zzzops/references/next_steps/suggest-work.md",
-        COMMUNICATION_PROMPT, DELEGATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
-        "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "installation-validation": (
-        "plugins/zzzops/skills/validate-zzzops-installation/SKILL.md",
-        "plugins/zzzops/zzzops/references/next_steps/installation-validation.md",
-        COMMUNICATION_PROMPT, DELEGATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "acceptance": (
-        ".agents/skills/run-zzzops-acceptance/SKILL.md",
-        "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "feedback": (
-        FEEDBACK_OPERATIONS_PROMPT,
-        "plugins/zzzops/skills/send-zzzops-feedback/SKILL.md",
-        "plugins/zzzops/zzzops/references/next_steps/send-feedback.md",
-        COMMUNICATION_PROMPT, "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
-    ),
+    "bootstrap": ("plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md", COMMUNICATION_PROMPT),
+    "capture": ("plugins/zzzops/skills/add-zzzops-goal/SKILL.md", COMMUNICATION_PROMPT),
+    "execution": ("plugins/zzzops/skills/execute-zzzops/SKILL.md", COMMUNICATION_PROMPT),
 }
 
-# Entry is the skill initially loaded by the harness. Hot is the first instruction
-# returned by the public checkpoint. Cold documents are loaded only by a selected
-# phase or branch of that instruction and never belong to the initial prompt.
-ENTRY_PROMPTS = {
-    "bootstrap-greenfield": ("plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md",),
-    "bootstrap-brownfield": ("plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md",),
-    "capture": ("plugins/zzzops/skills/add-zzzops-goal/SKILL.md",),
-    "execution": ("plugins/zzzops/skills/execute-zzzops/SKILL.md",),
-    "policy-review": ("plugins/zzzops/skills/review-zzzops-policy/SKILL.md",),
-    "migration": ("plugins/zzzops/skills/migrate-to-zzzops/SKILL.md",),
-    "suggestion": ("plugins/zzzops/skills/suggest-zzzops-work/SKILL.md",),
-    "installation-validation": ("plugins/zzzops/skills/validate-zzzops-installation/SKILL.md",),
-    "acceptance": (".agents/skills/run-zzzops-acceptance/SKILL.md",),
-    "feedback": ("plugins/zzzops/skills/send-zzzops-feedback/SKILL.md",),
-}
+# Entry is the skill initially loaded by the harness; hot adds what it always reads; cold documents are read only
+# when a situation calls for them (setup problems, repairs, migration).
+ENTRY_PROMPTS = {workflow: paths[:1] for workflow, paths in WORKFLOW_PROMPTS.items()}
 
 COLD_WORKFLOW_PROMPTS = {
-    "bootstrap-greenfield": (
-        "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
-        "plugins/zzzops/zzzops/references/bootstrap/PLAN.md",
-        "plugins/zzzops/zzzops/references/bootstrap/GREENFIELD.md",
-    ),
-    "bootstrap-brownfield": (
-        "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
-        "plugins/zzzops/zzzops/references/bootstrap/PLAN.md",
-        "plugins/zzzops/zzzops/references/bootstrap/BROWNFIELD.md",
-    ),
-    "execution": ("plugins/zzzops/skills/execute-zzzops/references/SELF_REVIEW.md",) + tuple(
-        f"plugins/zzzops/skills/execute-zzzops/references/phases/{path.name}"
-        for path in sorted((Path(__file__).parents[1] / "plugins/zzzops/skills/execute-zzzops/references/phases").glob("*.md"))
-    ),
-    "suggestion": (
-        "plugins/zzzops/skills/suggest-zzzops-work/references/AGENT_OBSERVABILITY.md",
-        "plugins/zzzops/skills/suggest-zzzops-work/references/VERIFICATION_EFFICIENCY.md",
-    ),
+    "bootstrap": (SETUP_PROMPT,),
+    "capture": (),
+    "execution": (SETUP_PROMPT, REPAIR_PROMPT),
 }
 
-# Shared rules route these actions conditionally; selected policy/feedback workflows
-# already count their own required reference as hot. Keep every reachable cold path.
-for workflow, hot_paths in WORKFLOW_PROMPTS.items():
-    conditional = []
-    if "plugins/zzzops/rules/INITIALIZATION.md" in hot_paths and POLICY_PREFLIGHT_PROMPT not in hot_paths:
-        conditional.append(POLICY_PREFLIGHT_PROMPT)
-    if "plugins/zzzops/rules/FEEDBACK.md" in hot_paths and FEEDBACK_OPERATIONS_PROMPT not in hot_paths:
-        conditional.append(FEEDBACK_OPERATIONS_PROMPT)
-    COLD_WORKFLOW_PROMPTS[workflow] = (*COLD_WORKFLOW_PROMPTS.get(workflow, ()), *conditional)
-
 WORKFLOW_SIGNALS = {
-    "bootstrap-greenfield": ("never silently de-escalate", "adaptive product interview", "exactly one canonical top-level product-outcome goal", "canonical verification", "Continue from harness outcomes into product milestones", "ordered PR review queue", PROACTIVE_DELEGATION_SIGNAL),
-    "bootstrap-brownfield": ("evidence-led product/harness audit", "top-level product-outcome goal", "Preserve existing repository instructions", "$migrate-to-zzzops", "canonical verification", "until exhaustion", PROACTIVE_DELEGATION_SIGNAL),
-    "capture": ("duplicate/relationship matches", "interview at", "owns requirements/acceptance", "active same-task execute intent", "effective engineering rigor", "vibe → light", "never silently de-escalate", "Git-free creation", PROACTIVE_DELEGATION_SIGNAL),
-    "execution": ("complete:true", "smallest falsifiable chunk", "difficulty is cost, not value", "human_at_exhaustion", "human_after_checks", "PR review queue", "Execution assumes the user is absent", "Before substantive work on a newly selected goal", "safe useful work", "effective engineering rigor", "created-but-unrun machinery is not proof", "current public workflow checkpoint", "mandatory implementation review", PROACTIVE_DELEGATION_SIGNAL),
-    "policy-review": ("Only this workflow changes or confirms the reviewed configuration and agent policy", "explicit approval of the current digest", "The policy is already approved", "privacy-safe execution reports"),
-    "migration": ("explicit completeness review", "preserve every source location", "apply only after explicit approval"),
-    "suggestion": ("no-write default", "zzzops-refill", "never copy source labels", "goal-effective engineering rigor", "incomplete canonical verification", "proposed goal—not a silent change", PROACTIVE_DELEGATION_SIGNAL),
-    "installation-validation": ("returned installation status", "returned installation audit", "exact audit signature", "explicit removal confirmation", "resume that original workflow exactly once", PROACTIVE_DELEGATION_SIGNAL),
-    "acceptance": ("exactly one active item", "Never infer an ID", "blockers unchecked"),
-    "feedback": ("exact target, title, labels, and body", "public", "nothing was deleted"),
+    "bootstrap": ("validate --policy", "zzzops/policy/bootstrap", "Automatically delete head branches", "zzzops.committer"),
+    "capture": ("new --file", "Never offer to skip the merge approval", "approve_design", "Dispatch it to a worker"),
+    "execution": ("wake_at", "next --goal", "independence", "maximum timeout", "responses", "Never busy-poll"),
 }
 
 GLOBAL_SIGNALS = (
-    "user/safety > project rules",
-    "Human-facing goal links",
-    "Reports accept no free text",
+    "Lead with the outcome",
+    "Data boundary",
 )
 
 def canonical_size(data: bytes) -> int:
@@ -187,13 +67,10 @@ def prompt_files(root: Path) -> list[Path]:
     files.extend(product_skills)
     for skill in product_skills:
         files.extend((skill.parent / "references").glob("*.md"))
-    files.extend((root / "plugins" / "zzzops" / "zzzops" / "references" / "next_steps").glob("*.md"))
-    files.extend(root / path for path in (CLI_USAGE_PROMPT, POLICY_PREFLIGHT_PROMPT, FEEDBACK_OPERATIONS_PROMPT))
-    files.extend((root / "plugins" / "zzzops" / "zzzops" / "references" / "bootstrap").glob("*.md"))
-    files.extend((root / "plugins" / "zzzops" / "zzzops" / "templates" / "project-goals").glob("*.md"))
+    files.extend((root / "plugins" / "zzzops" / "zzzops" / "references").glob("*.md"))
+    files.extend((root / "plugins" / "zzzops" / "zzzops" / "templates" / "default" / "prompts").glob("*.md"))
     files.extend((root / "plugins" / "zzzops" / "concepts").glob("*.md"))
     files.extend((root / ".agents" / "skills").glob("*/SKILL.md"))
-    files.extend((root / ".agents" / "skills").glob("*/references/*.md"))
     return sorted({path for path in files if path.is_file()}, key=lambda path: path.relative_to(root).as_posix())
 
 
@@ -256,8 +133,9 @@ def policy_context_profiles(root: Path) -> dict[str, tuple[int, int]]:
         if (root / path).is_file()
     )
     cold_review = (
-        *WORKFLOW_PROMPTS["policy-review"],
-        "plugins/zzzops/zzzops/templates/project-goals/INIT_PLAN.json",
+        *WORKFLOW_PROMPTS["bootstrap"],
+        "plugins/zzzops/zzzops/templates/default/POLICY.json",
+        "plugins/zzzops/zzzops/templates/default/workflow.json",
     )
     return {
         "static-hot-prompts": prompt_profile(root, static_hot)[:2],
