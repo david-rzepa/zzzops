@@ -1,36 +1,23 @@
-# G1016 review_design (attempt 2)
+# G1016 design review, attempt 3
 
-Reviewed `.zzzops/reviews/1016/design.md` (attempt 2, blob 41058bb) against the spec and integration commit 54d7e83 (`card.py`, `verbs.py` claim/done_record, `frontier.py`, `records.py`, `schemas.py`, `gitrun.py`, `render.py`).
+**Verdict: approved.** F2 (review_design:2:1) is resolved. No new material findings.
 
-**Verdict: changes requested.** F1 is resolved. One new material finding (F2) is in the checkpoint wording that this design now owns.
+## F2: checkpoint overrides must be a full 40-hex sha (resolved)
 
-## Prior finding
+I checked §4a against read_dev 54d7e83:
 
-### F1 (review_design:1:1): resolved
+- `schemas.py:933`. The override check is `isinstance(v, dict) and set(v) == {"commit"} and isinstance(v["commit"], str)`, with no sha check. `SHA` (schemas.py:13) is `^[0-9a-f]{40}$`, so it can be reused as the design says. Adding `SHA.match` here closes the hole before `done_record` runs.
+- `verbs.py:459-464` (`done_record`). `rev_parse(c)` is followed by the "does not exist" refusal, then the ancestry check against the worktree HEAD. `gitrun.run` uses `-C cwd or self.primary` (gitrun.py:79), and `rev_parse` uses `--verify --quiet <rev>^{object}` (gitrun.py:131-133). With a full sha, the result does not depend on cwd. The kept existence and ancestry checks still catch a full sha that is not a local object, and a full sha outside the work branch.
+- `verbs.py:917` (`fill_current_records`). Only `edit` calls it (verbs.py:826). Today it passes `rev_parse`'s result unchecked, so a missing commit is stored as `None` and handed to `ident.code_tree(None)`. The design adds a full-sha check and a "does not exist" refusal there. That is correct, and the extra existence check fixes a real latent bug. Not adding an ancestry check is justified: edit has no lease and no work branch.
+- Docs. `test_design.md:8` and `implement.md:8` ("else HEAD") are the right lines to change. `card.py:159-160` (`or {"commit": sha}`) and the CLI_USAGE Outputs paragraph (line 29, `{"commit": "<sha>"}`, "else `HEAD`") are covered by §4's new checkpoint text and the "same wording" rule.
+- Tests cover HEAD, a branch name, a goal ref, a short sha, uppercase hex, the accepted full sha, an end-to-end refusal and success, the kept existence and ancestry refusals, and edit-completion. That is enough.
 
-§2 now keeps two sets. `stale_because` (the union) is shown. `record_stale` (staleness against the done record only) drives both `card.build` rules. Checked against the engine:
+Rejecting worktree-cwd resolution in favour of "omit for the default, full sha for an override" is the simpler contract. I agree with it.
 
-- The two rules that read `stale_because` in `card.build` are card.py:79 (`== ["inputs.base"]` gives `routine`) and card.py:191 (`== ["def"]` gives `previous.output`). Both move to `record_stale`.
-- `rec_sb` is computed only when `r and r["input_fp"] != fp`. A no-record `new` attempt and a `reopened` run (record current) therefore get an empty `record_stale`, and keep the node's own capability. The ready-stale path sets `record_stale = stale_because`, which is the same set frontier.py:219 computes against `r["fp_parts"]`, so today's rebase downgrade is kept.
-- `render.capability` (render.py:86) reads frontier states. A `reclaimable` state has no `stale_because` there, so status output already shows the node's own capability, which matches the new card.
-- The tests cover the F1 case (a reclaimed `new` implement and a reopened design after base moved) plus the control.
+## Other sections
 
-Minor point, not blocking: the design writes `"def" in record_stale` where the code says `== ["def"]`. That widens `previous.output` to cases where `def` and other keys moved together. Pick one on purpose and say so in §2. Either is defensible.
+§2's decision to keep `previous.output` on `record_stale == ["def"]` is sound. The "If it still holds, resubmit it" hint (card.py:193) is safe only when `def` alone moved. The F1 fix (keying the routine downgrade on `record_stale`) is unchanged from attempt 2 and still holds.
 
-## New finding
+## Minor (non-blocking)
 
-### F2. A checkpoint override can name a ref, which resolves in the wrong repository and silently records the wrong commit (target: design)
-
-At 54d7e83 the override's only check is the shape: `schemas.py:933` accepts `{"commit": <any str>}`. `done_record` (verbs.py:459) then runs `s.git.rev_parse(c)`. `GitRun.run` uses `cwd or self.primary` (gitrun.py:79), so the name is resolved in the **main repository**, not the goal worktree. The only check after that is `c == head or is_ancestor(c, head)`.
-
-So `{"commit": "HEAD"}` resolves to whatever the main checkout has checked out, usually an integration commit. That commit is normally an **ancestor** of the goal's work branch, so the check passes. The record then stores the base, or an older commit, as the phase's checkpoint, and nothing refuses it. Other ref names (`main`, `dev`, a branch only in the worktree) behave the same way, or resolve to unrelated commits.
-
-The design's new wording says "the literal "HEAD" is refused". That is not true at read_dev. The engine refuses `HEAD` only when the main checkout's HEAD happens not to be an ancestor. As written, the card would promise a safety check that does not exist.
-
-**Consequence:** a worker who follows the old habit (or any ref name) records a wrong checkpoint silently. Downstream review and integration then work from the wrong code.
-
-**Fix:** make `submit` accept only a full 40-hex commit sha for a checkpoint override. In `validate_submit_output` (schemas.py:933), reuse `SHA`, with the message `a checkpoint override is {"commit": "<40-hex sha>"}; omit the key to use the default`. Keep the existing `rev_parse`/ancestry checks for existence and membership. Change the card text to "give {"commit": "<full 40-hex sha>"}; ref names such as HEAD are refused". Add a test: an override of `"HEAD"`, of a branch name and of a short sha each get `validation`, and a full sha is accepted. Optionally, also apply the full-sha rule to the reconstruction path at verbs.py:917, which runs `rev_parse(cp["commit"])` on a `{"commit"}`-only record in the same way.
-
-## Everything else
-
-Sections 1 and 3 to 6 are unchanged from attempt 1 apart from the N1, N2 and N4 wording. They still hold against read_dev, as verified in attempt 1: the reclaimable state shape, lease `Fp-Parts`, local-only artifact and goal pointers, `check_responses`' single caller, the renew key, and `NETWORK` for the trace line. For N4, the crash-loop state (frontier.py:211) carries `lease`, so `st0["lease"]` exists and the new `claim()` code covers it.
+- When editing CLI_USAGE line 29, also replace "else `HEAD`" with "else your work branch's HEAD". Otherwise the docs keep the trap §4a removes. The "same wording as the card" rule already implies this.
