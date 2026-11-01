@@ -33,7 +33,20 @@
     "design": {
       "attempt": 2,
       "correction_runs": 1,
-      "findings": [],
+      "findings": [
+        {
+          "id": "design:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:c6e31258b328306d5bf228e48fd79b58157753d12e7e530777ed7495bf0e4922",
+          "text": "owner direction OD8 (relayed by coordinator): simplify redaction to a naming convention",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-01T19:58:13Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
