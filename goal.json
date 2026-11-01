@@ -9,6 +9,33 @@
   },
   "priority": "P1",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T04:42:14Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:8ec7fbf673f2260d90895827429fa7455e445a73",
+          "summary": "v1:sha256:81096744624a21b4deacf9e648179b1cf0af8e1cc22d0c9689065744614c6d3d"
+        },
+        "policy": {},
+        "subject": "v1:sha256:c4290c4efdd67bf87f4d7d41875adaa93a857dba45151634ea40de63fe408c83"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:7e26a6d4dad8ee2ef79ac8e083da4657395580b928dffce62f48394c9825dd5c",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T04:42:14Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Do not wait for my approval",
+        "summary": "Approved the G1018 design (attempt 2). A checkpoint input selected by change or tree renders the producer's full checkpoint view (commit, base, change, diff, plus tree only when tree is the selected field), guarded so it never shows a mismatched commit, and with no fingerprint change. The approve items name commit and base. shrink is reworked: views are never blobbed, argv duplication is dropped, previews are clipped, blobbed dicts get key summaries, and shrink never grows a card. 4 KB is an explicit target with structural guarantees G1-G3 tested. Bounding `previous` is deferred to G1019. The reviewer's four implementation notes go to implement. Decision made by Claude (root agent) under the owner's standing delegation for Release 1."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "design": {
       "attempt": 2,
       "correction_runs": 1,
