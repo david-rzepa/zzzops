@@ -35,6 +35,48 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:1aaf15b7a99e2c6f760d6a1d35a63315aca3d5544ddec84dd009c30e5e86b2fa",
+          "text": "The pending-amendment mechanism has an unowned window. The design checks G1000, G1001, G1014, G1015 and G1016 only once, at G1017's implement time. Any of them that merges after that but before G1017 merges is listed as pending, and its own PR (built on a base without docs/design/) will never edit docs/design/. G1001, G1014 and G1015 are already past base and in test_design while G1017 is at review_design, so they are headed into this window. Consequence: SPEC §3.16, §4.1, §4.17 and §4.19 and DESIGN §10 silently disagree with the engine on dev, and workers reading read_dev act on stale contract text, which is the drift this goal exists to remove. Fix: (1) re-run the five-goal check against the dev tip at G1017's integrate step (or whenever base moves) and apply every goal that has merged by then, from its merged diff and approved design; (2) allow no pending row for a goal that has merged by the time G1017 merges; (3) give each remaining pending row an owner, either a follow-up 'apply pending contract amendments' goal that depends on those goals, or a `zzzops edit` adding the docs/design update to the goal's spec while it is still before implement.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T04:27:43Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:9e3d642213de86aaa10bd1d22aeb8417cb583121",
+          "spec": "v1:sha256:d510d0f4ee516876f569e5777e626c26cd577acb0bb898776228b91f270a0576"
+        },
+        "policy": {},
+        "subject": "v1:sha256:1aaf15b7a99e2c6f760d6a1d35a63315aca3d5544ddec84dd009c30e5e86b2fa"
+      },
+      "holder": "claude:e6ad/review_design-1017-1",
+      "input_fp": "v1:sha256:6a4adfba3a7a60ad343a0b648e720083d02b44c99516984ecdb8dd1fc8c8a8d5",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "c1c83c1c7bc70a71225ef997c73cb32477a19966",
+          "commit": "727961a6a123c161bb18e60fec517acc1c78721f",
+          "path": ".zzzops/reviews/1017/review_design.md"
+        },
+        "summary": "Sound design: the scrub is complete (the gate regex also catches SPEC:532's name, which the inventory missed), citations stay resolvable with numbering preserved, and nothing new ships (both marketplaces source ./plugins/zzzops). One material finding: the pending-amendment rule checks the five goals only once, at implement time. A goal that merges between G1017's implement and its merge, or whose own implement has already passed, has no owner to edit docs/design, so the contract drifts. G1001, G1014 and G1015 are already in test_design on bases without docs/design, so they are headed into that window. Fix: re-check and apply merged goals at integrate, allow no pending row for a merged goal, and give each remaining row an owner (a follow-up goal, or a spec edit before implement)."
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
