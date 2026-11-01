@@ -38,6 +38,54 @@
       },
       "reason": "stale",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:af8f6994c739eaeb9994bc78579e22d33e93628fd70b02908b031643b7ec953e",
+          "text": "F1: an older plugin treats a newer recorded base as 'upstream changed', and its reviewed record downgrades the base. §3.3's last row lists a base that is null or not in the running engine's history store as upstream changed / local unknown, with a manual compare against the running template; record.reviewed resets every base to the running S. Plugin version skew is normal here (two marketplace caches, 6747a5e and c3791a0, plus the Codex engine on 15b59a5). An older plugin seeing B = S_new would offer its older template as 'the new default'. Writing its reviewed record sets B back to S_old, and the newer plugin then lists the file again: a ping-pong. Fix: a non-null base absent from the running store is reported as upstream: unknown_base ('recorded by a newer or unreleased plugin: upgrade to compare'), with no diff to the running template and no apply. record.reviewed keeps such bases unchanged, or is omitted when every listed file is in that state. null keeps the manual compare. Test: a record written with a larger store gives no downgrade direction, and its reviewed record leaves that base as it was.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T18:41:40Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:1173b49844869e460b025ea30851b774f6c2be91",
+          "spec": "v1:sha256:5391c2d2289d1f818238efa5e7e169590aeef7c208341471c4f6ae9097278744"
+        },
+        "policy": {},
+        "subject": "v1:sha256:af8f6994c739eaeb9994bc78579e22d33e93628fd70b02908b031643b7ec953e"
+      },
+      "holder": "claude:e6ad/rd1025",
+      "input_fp": "v1:sha256:8e072fdc5f6bb1c9df50f9bfc1af20061c4e0556c7e55390f059af36984faf1c",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "666d625690fb90b4fe13efe2cf574fa8e8d86ccc",
+          "commit": "e2a4ea5a60e0d24020bf4560554449f0e21bfadc",
+          "path": ".zzzops/reviews/1024/review_design.md"
+        },
+        "summary": "Changes requested (one finding). The design meets the spec in the reset's style: an explicit policy, a capability-free .zzzops/TEMPLATE.json record, a content-addressed history store (verified: 28 blobs at 8d8437a; this repository's drift matches), a non-blocking policy_update item in next (compact, within the 8,192 cap) and validate (full), and reviewed policy-branch updates and declines run by the skill. F1: under plugin version skew, a base unknown to the running engine is shown as an upstream change, and the reviewed record would downgrade it. Notes: the TEMPLATE.json guard gap is acceptable (add an execute-skill line), per-file applies must follow the workflow.json decision, and G1025's template additions need history entries. No owner question."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "1173b49844869e460b025ea30851b774f6c2be91",
+          "commit": "06e536be9ae6e5323dce2b7cdbd5346d1cfb7253"
+        }
+      },
+      "status": "done"
     }
   },
   "release": 1,
