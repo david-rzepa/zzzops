@@ -39,6 +39,66 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:95a3960d3b576475fee69cd5b23bdb717b6bda3ab79c27bb877181d0acb178ca",
+          "text": "Several DESIGN decision ids point at the wrong decisions. In DESIGN §9, D1 is per-goal state branches, D2 the spec location, D3 approve_merge, D4 design approval, D6 implementation strategy, D12 the default graph and D14 code identity. The design's §3 item 7 cites D2 for 'per-goal branches, Git as the only store' (should be D1), D3 for the default graph (should be D12 plus §4.1 as amended), D4 for identities and fingerprints (should be D14 plus §3.4/§3.5), and D6 for releases (should be the release gate, W10 in §2.5 and SPEC release_gate, plus G1025's HISTORY §4 row). Limitation 3 also lists 'the release ceremony (R9)' as lost while §7.8 describes G1025's release lines with approve_finish. Fix: correct the ids and cite sections (or '§9 Dn') in the ledger. Reword R9 as 'the propose/freeze ceremony was removed; G1025 restores release lines without it', checked against G1025's merged contract.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:95a3960d3b576475fee69cd5b23bdb717b6bda3ab79c27bb877181d0acb178ca",
+          "text": "The binding check covers only the engine and templates, so it does not back the paper's claims. §5.1's `git diff --quiet <checked> <tag> -- plugins/zzzops/zzzops ':!**/plugin.json'` misses skills/ and references/, where behaviour the paper describes lives: owner-question batching in the execute skill (G1026), the intent check at capture (G1029) and the policy-update flow (G1024). Its exclusion is a no-op, because plugin.json sits outside that path. G1027's build id hashes the whole PLUGIN_ROOT and release rendering rewrites the manifests and skill metadata, so the header's build id can only be the checked dev build. Fix: diff plugins/zzzops as a whole, excluding only the version-bearing manifests (plugin.json, .codex-plugin/plugin.json, .claude-plugin/plugin.json) and normalising any provenance lines that release rendering rewrites. State in the header that the build id is the checked dev build's, and that the tag statement covers the source.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T20:13:14Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:96ea4d28a7dd4e0fcd67c9ae0f96495694b9a7e7",
+          "spec": "v1:sha256:7cacab7d2739a88c2f7c7d9773f294a4064599407fcc553561919fe77916b36c"
+        },
+        "policy": {},
+        "subject": "v1:sha256:95a3960d3b576475fee69cd5b23bdb717b6bda3ab79c27bb877181d0acb178ca"
+      },
+      "holder": "claude:e6ad/rd1017",
+      "input_fp": "v1:sha256:36fe67ca9de797abba23cf05736dc200d4ea275907edf0c143b979d8fa6687ee",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "d1f3c05ceba9198e77d39607ea316ab42afada3a",
+          "commit": "9efbcbd81ab0fc76dcaf202e59dfcfc88ebcf5ef",
+          "path": ".zzzops/reviews/1036/review_design.md"
+        },
+        "summary": "The design honours WD1-WD8 (practitioner-first halves, claim first, repo page plus a blog draft the owner publishes, related work of at most about 400 words, the coined term contrasted with concept loading and retrieval, the owner's byline, ratios only). Its claims are bound to a ledger, a CLI-generated trace and a ratio rule. The G1037 report dependency is explicit, and the private app is never named. The section citations check out (DESIGN §2.6 F2, SPEC §3.14, §3.15, §4.9, §4.20, D5, D13, R1-R15). Two findings. F1: four DESIGN decision ids are wrong (D2, D3, D4 and D6 should be D1, D12 with §4.1, D14 with §3.4/§3.5, and the release gate plus G1025), and limitation R9 contradicts the G1025 release lines. F2: the binding diff covers only plugins/zzzops/zzzops, so skill and reference changes pass unseen, and its plugin.json exclusion is a no-op."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "96ea4d28a7dd4e0fcd67c9ae0f96495694b9a7e7",
+          "commit": "1e320a5d20f6712dfb2876dfb97966048a94f6d7"
+        }
+      },
+      "status": "done"
     }
   },
   "release": 1,
