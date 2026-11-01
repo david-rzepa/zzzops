@@ -1,0 +1,20 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [
+    1017
+  ],
+  "graph": "default",
+  "id": 1029,
+  "links": {
+    "issue": null
+  },
+  "priority": "P2",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "The owner (2026-11-01), on this repository's intent: drift is guarded \"both\" from the goal's request and from the project's intent, \"and I would say adding goals should even flag when goal intent differs from project intent - the dev could always amend project intent\". Today the Intent check runs only in design review, after a design has been written.\n\n1. When a goal is added (the add-goal skill, and `zzzops new`'s output), compare the goal's spec with settings.intent (purpose, serves, not, principles). If the goal pulls against it (serves someone else, does something in `not`, or breaks a principle), say so before the goal is created, naming the intent sentence it conflicts with.\n2. Offer the owner two ways on: change the goal, or amend the project intent (a reviewed zzzops/policy/* branch, as any policy change; the skill drafts the amended text). Proceeding with the conflict recorded is a third option, and the conflict is then shown to the design's Intent lens.\n3. Decide in the design how much belongs in the engine (e.g. `new` printing settings.intent, or a recorded `intent_note` on the goal) and how much in the skill (the comparison is judgement, so an agent does it). Keep the engine change minimal.\n4. A placeholder (`TODO:`) intent skips the check and says the intent is not captured yet.\n\nAcceptance:\n- The add-goal skill documents the check, the three options and the policy-branch amend path.\n- If the engine records anything, a test shows it round-trips and reaches the Intent lens's card.\n- This PR edits docs/design for any contract change and adds a HISTORY §4 row (G1017's rule).",
+  "state": "open",
+  "title": "Flag at capture when a goal departs from the project's intent, and offer to amend the intent"
+}
