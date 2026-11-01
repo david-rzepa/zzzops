@@ -251,7 +251,7 @@ def suggested_checkpoint(graph: Graph, doc: dict, X: str, k: str, r0: dict | Non
     maps = ((br or {}).get("output") or {}) if br and br["status"] == "done" else {}
     moved = r0["output"][k].get("base") != base_value
     nocommit = bool(lease_work) and not git.committed_since(lease_work, head)
-    hint = ("this phase added no commit; name the checkpoint: {\"%s\": {\"commit\": \"<sha>\"}}, your rebased "
+    hint = ("this phase added no commit; name the checkpoint: {\"%s\": {\"commit\": \"<full 40-hex sha>\"}}, your rebased "
             "checkpoint commit, or the base commit when the rebase dropped your commits as already applied" % k)
     if nocommit:
         if moved:

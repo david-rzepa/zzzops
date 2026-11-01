@@ -76,6 +76,8 @@ class SuggestedCheckpointTests(unittest.TestCase):
             self.call(d, "test_design", "tests", "i1'", "i1'", git)
         self.assertEqual("checkpoint_required", e.exception.code)
         self.assertIn("base commit", e.exception.hint)
+        self.assertIn("full 40-hex sha", e.exception.hint)
+        self.assertNotIn('<sha>', e.exception.hint)
 
     def test_committed_phase_not_stale_on_base_defaults_to_head(self):
         d = self.doc({"replay_map": {"t1": "t1'"}})
