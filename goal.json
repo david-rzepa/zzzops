@@ -176,6 +176,44 @@
       "reason": "stale",
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T04:40:34Z",
+      "fp_parts": {
+        "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
+        "inputs": {
+          "code": "v1:sha256:40524dbb67729b60293debc598fc1bbfd438ce56e6ab810ffc41c9e955719339",
+          "doc": "v1:blob:6133138ad0d302b59d4184b15a459e555b1bdf61",
+          "tests": "v1:sha256:41d4a5e0bb736b2a3eccf1c7aab3e0d9570061dcd6574b1d23b392aa7a3ae04e"
+        },
+        "policy": {},
+        "subject": "v1:sha256:3864ed21bcdae352eb1500c05cb220a20a0fdb8c8ffa64e3d34773260ea5e84f"
+      },
+      "holder": "claude:e6ad/review_impl-1014-1",
+      "input_fp": "v1:sha256:3e899790918c5e44fd26ce06ef67828db07c27b3d168db2611de1d8cb84693e4",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "c4b6610ba9c67d967f5716f933df5bbabc857b88",
+          "commit": "2073a6330e85f304b544d309c3010b77a12932f4",
+          "path": ".zzzops/reviews/1014/review_impl.md"
+        },
+        "summary": "The implementation matches the attempt-2 design: running-state parts, live_input_changes, live_lease_entry/lease_commands, impact_scope, edit preview and applied fields, renew evaluated with the renewed lease, the policy_impact union, and the docs. Tests are unchanged since the frozen commit. The renew try/except covers only the post-push evaluation and cannot hide a pre-push failure. No material findings."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
+          "change": "9a6de06974cf9918ddb151763151e50708e6768a",
+          "commit": "87cdd533fef9eae3801fdde946f0d9d5b9f66670",
+          "tree": "8769dc8c17f953d97305123187f27904760e21ba"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 2,
       "correction_runs": 1,
