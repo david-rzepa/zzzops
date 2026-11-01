@@ -426,6 +426,8 @@ def main(argv):
         die("To get started with GitHub CLI, please run: gh auth login", 4)
     if argv[:2] == ["api", "graphql"]:
         return graphql(st, argv[2:])
+    if argv[:1] == ["api"] and faults.get("rules_403") and re.search(r"/(rules|rulesets|protection)(/|$|\?)", argv[1]):
+        die("gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)", 1)
     if argv[:1] == ["api"]:
         print("[]")
         return 0
