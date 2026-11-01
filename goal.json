@@ -35,6 +35,35 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T07:10:15Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:64ae69193ad33c5260fa233cf68c4815659a6c02",
+          "spec": "v1:sha256:59b21707a9ad7d1333482f37241425b94daa5e4157032ea162e0e06ae852effa"
+        },
+        "policy": {},
+        "subject": "v1:sha256:75d297c4f9d4d7de984d7707890d1996fcac3f13685c7f2927f761b228ae86aa"
+      },
+      "holder": "claude:e6ad/review_design-1021-1",
+      "input_fp": "v1:sha256:2efa30010f949e9e44daae9c51343ed83b10dbf27f023109833dcd2cde1eeccb",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "c7f52327ecc762d5a3620495fdb9d79b3938f852",
+          "commit": "9a0bd8bd63031d9465641a0e3e18263dba8df26b",
+          "path": ".zzzops/reviews/1021/review_design.md"
+        },
+        "summary": "Approved. The corrected premise checks out at read_dev: integrate.py 171-175 and test_conflicting_pr_into_dev_is_a_base_finding already handle CONFLICTING/DIRTY, and the G1016/G1000 records show a single UNKNOWN-era 'checks pending' poll. Limiting the local merge-tree pre-check to target == I gives GitHub's exact merge semantics and needs no new Git version (MIN_GIT 2.41). It is cheap, and its disagreements with GitHub cannot loop. The waits are bounded by ctx.wait and ci_timeout. The 15-minute empty-rollup question is well gated. Keeping the integration tip out of base's fingerprint avoids staleness cascades across every in-flight goal. Two non-blocking notes are in the report: keep the head-not-seen wait before the GitHub conflict branch, and use --no-messages when listing files."
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
