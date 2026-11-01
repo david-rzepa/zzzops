@@ -67,7 +67,8 @@ class PolicyRefTests(unittest.TestCase):
         rc, out = self.w.run("b", "validate", "--policy-ref", "bad")
         self.assertEqual(1, rc)
         self.assertTrue(out["policy"])
-        self.assertTrue(self.w.ok("b", "validate")["ok"])
+        _, plain = self.w.run("b", "validate")                 # environment checks (gh) may fail on CI runners
+        self.assertEqual([], plain["policy"])
 
     def test_validate_reports_impact_on_current_goals(self):
         self.policy_branch(self.renamed())
