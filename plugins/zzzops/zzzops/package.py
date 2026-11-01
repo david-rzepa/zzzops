@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -145,6 +146,97 @@ def _replace_yaml_text(data: bytes, field: str, prefix: str, prior: re.Pattern[s
     return ("\n".join(lines) + ("\n" if trailing else "")).encode("utf-8")
 
 
+DEVELOPMENT_VERSION = "0.0.0-dev"
+NEUTRAL_REINSTALL_HINT = "reinstall ZzzOps from the Claude Code or Codex marketplace it was installed from."
+CODEX_REINSTALL_HINT = "reinstall ZzzOps from its Codex marketplace."
+
+
+def channel_for_version(version: str) -> str:
+    """The provenance channel a build of `version` claims; the bundle builder and package_status share it."""
+    return "development" if version == DEVELOPMENT_VERSION else "official"
+
+
+def _is_codex_cachebuster(version: Any, codex_version: Any) -> bool:
+    # Codex's update_plugin_cachebuster.py preserves the version before '+'
+    # and emits a lowercase alphanumeric token with single internal hyphens.
+    # Compare only that exact helper shape; arbitrary build metadata is not
+    # a cachebuster. The full manifest remains part of package_provenance.
+    return (
+        isinstance(version, str)
+        and isinstance(codex_version, str)
+        and "+" not in version
+        and re.fullmatch(re.escape(version) + r"\+codex\.[a-z0-9]+(?:-[a-z0-9]+)*", codex_version) is not None
+    )
+
+
+def _harness_bases(variable: str, directory: str) -> list[Path]:
+    bases = []
+    configured = os.environ.get(variable)
+    if configured:
+        bases.append(Path(configured))
+    try:
+        bases.append(Path.home() / directory)
+    except (RuntimeError, KeyError, OSError):                   # no resolvable home directory
+        pass
+    resolved = []
+    for base in bases:
+        try:
+            resolved.append(base.resolve())
+        except OSError:
+            continue
+    return resolved
+
+
+def _cache_marketplace(base: Path) -> str | None:
+    """The marketplace name of an install under `<base>/plugins/`.
+
+    Claude installs a plugin at `<config>/plugins/cache/<marketplace>/<plugin>/<version>/`, naming the
+    `<marketplace>` directory after the `name` in that marketplace's marketplace.json, so the segment after
+    `plugins/cache/` is the name `claude plugin update zzzops@<marketplace>` needs. If Claude changes that
+    layout, the hint falls back to the `zzzops` marketplace name rather than guessing another segment.
+    """
+    parts = PLUGIN_ROOT.relative_to(base / "plugins").parts
+    return parts[1] if len(parts) >= 3 and parts[0] == "cache" else None
+
+
+def install_harness() -> tuple[str | None, str | None]:
+    """Which harness installed this package, and its marketplace name when known; (None, None) if unknown.
+
+    The result only shapes the reinstall hint: a wrong guess gives wrong advice, never a wrong verdict.
+    """
+    try:
+        manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8-sig"))
+        codex_manifest = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8-sig"))
+        if _is_codex_cachebuster(manifest.get("version"), codex_manifest.get("version")):
+            return "codex", None
+    except (OSError, UnicodeError, json.JSONDecodeError, AttributeError):
+        pass
+    for harness, variable, directory in (("claude", "CLAUDE_CONFIG_DIR", ".claude"), ("codex", "CODEX_HOME", ".codex")):
+        for base in _harness_bases(variable, directory):
+            if PLUGIN_ROOT.is_relative_to(base / "plugins"):
+                return harness, _cache_marketplace(base)
+    parent = PLUGIN_ROOT.parent
+    catalog = parent / ".claude-plugin" / "marketplace.json"
+    if catalog.is_file() and not (parent / ".agents" / "plugins" / "marketplace.json").is_file():
+        # a generated Claude marketplace (build_claude_plugin.py) run in place or added as a directory marketplace
+        try:
+            name = json.loads(catalog.read_text(encoding="utf-8-sig")).get("name")
+        except (OSError, UnicodeError, json.JSONDecodeError, AttributeError):
+            name = None
+        return "claude", name if isinstance(name, str) and NAME_PATTERN.fullmatch(name) else None
+    return None, None
+
+
+def reinstall_hint(harness: str | None, marketplace: str | None = None) -> str:
+    if harness == "claude":
+        name = marketplace or PLUGIN_NAME
+        return (f"update or reinstall ZzzOps in Claude Code: claude plugin marketplace update {name}, "
+                f"then claude plugin update {PLUGIN_NAME}@{name}.")
+    if harness == "codex":
+        return CODEX_REINSTALL_HINT
+    return NEUTRAL_REINSTALL_HINT
+
+
 def render_skill_metadata(relative: str, data: bytes, version: str, channel: str) -> bytes:
     """Project build provenance into discovery metadata without changing source prompts."""
     if not isinstance(version, str) or not version or any(character.isspace() for character in version):
@@ -212,18 +304,7 @@ def package_status() -> dict[str, Any]:
         manifest = read_plugin_manifest()
         codex_manifest = json.loads((PLUGIN_ROOT / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8-sig"))
         codex_version = codex_manifest.get("version") if isinstance(codex_manifest, dict) else None
-        # Codex's update_plugin_cachebuster.py preserves the version before '+'
-        # and emits a lowercase alphanumeric token with single internal hyphens.
-        # Compare only that exact helper shape; arbitrary build metadata is not
-        # a cachebuster. The full manifest remains part of package_provenance.
-        cachebuster = (
-            isinstance(codex_version, str)
-            and re.fullmatch(
-                re.escape(manifest["version"]) + r"\+codex\.[a-z0-9]+(?:-[a-z0-9]+)*",
-                codex_version,
-            ) is not None
-            and "+" not in manifest["version"]
-        )
+        cachebuster = _is_codex_cachebuster(manifest["version"], codex_version)
         if (not isinstance(codex_manifest, dict)
                 or codex_manifest.get("name") != manifest["name"]
                 or (codex_version != manifest["version"] and not cachebuster)):
@@ -239,7 +320,7 @@ def package_status() -> dict[str, Any]:
         )
         if missing:
             raise PluginPackageError("missing package files: " + ", ".join(missing))
-        channel = "development" if manifest["version"] == "0.0.0-dev" else "official"
+        channel = channel_for_version(manifest["version"])
         for name in sorted(SHIPPED_SKILLS):
             skill_relative = f"skills/{name}/SKILL.md"
             skill_text = (PLUGIN_ROOT / skill_relative).read_text(encoding="utf-8-sig")
@@ -255,12 +336,13 @@ def package_status() -> dict[str, Any]:
         _concepts.validate_skill_documents(PLUGIN_ROOT, concepts)
         provenance = package_provenance()
     except (OSError, UnicodeError, json.JSONDecodeError, PluginPackageError, _concepts.ConceptError) as exc:
+        harness, marketplace = install_harness()
         return {
-            "available": True, "ok": False, "paths": [], "processes": 0,
-            "detail": f"{exc}; reinstall ZzzOps from its Codex marketplace.",
+            "available": True, "ok": False, "paths": [], "processes": 0, "harness": harness,
+            "detail": f"{exc}; {reinstall_hint(harness, marketplace)}",
         }
     return {
         "available": True, "ok": True, "paths": [], "processes": 0,
         "detail": "ok", "version": provenance["version"], "revision": provenance["revision"],
-        "codex_version": codex_version,
+        "codex_version": codex_version, "harness": install_harness()[0],
     }
