@@ -12,6 +12,39 @@
   },
   "priority": "P1",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T18:45:38Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:74488c5f2af52070620cd0061cd2ba2f38e24f71",
+          "summary": "v1:sha256:aeef7d46242e7360a4a2a42c48e3d61c2ca5c5396379c8195e364a136a540326"
+        },
+        "policy": {},
+        "subject": "v1:sha256:23f08e05338dc2eb0d741908f6b2e47764c1ffb882202c7a4e944e7367b94a89"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:c877171ee69b637ca8f12324e9b718c207843b6be5b747ab625414ce08282c26",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T18:45:38Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Ok so then we need something in the DAG to cause interviews. My original idea was that during design review, gaps that the human needs to answer should be flagged in the review, and that would stale the design, and require interview to fix it. Could that work simply?",
+        "summary": "Approved G1026 design revision 3: the owner's undo-reach test is one POLICY instruction (`owner_questions`) on design, review_design, adversary_design and review_impl; reviewers raise material `owner question:` findings that always target the design (a non-material one is refused); design.md blocks with every owner question of the round and records the owner's words verbatim under Owner decisions; the card shows `answer` on any blocked-and-answered record. human_decisions are read from the goal's `zzzops: answer G<g> <node>` commits, so no record key or capability is added; approve items and the PR body show them, labelled by node kind. The execute skill batches owner questions across goals and never answers them as the delegate. Depends on 1017 and 1022. Review approved after one round."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "74488c5f2af52070620cd0061cd2ba2f38e24f71",
+          "commit": "2c5801218391f730da0cf188ba8325f44112e9c7"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 3,
       "correction_runs": 2,
