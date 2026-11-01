@@ -133,6 +133,41 @@
       },
       "reason": "stale",
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T04:47:06Z",
+      "fp_parts": {
+        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "inputs": {
+          "base": "v1:sha256:f0f86e3e5d7131680049bfd289e2d0b91b2df6ab0e5273c2ec770b60152ca61d",
+          "doc": "v1:blob:9008e0101ebef0dff6bcfb3075aae0f32f1a20d1"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        ".agents/test_engine_card_ux.py",
+        ".agents/test_engine_lifecycle.py"
+      ],
+      "holder": "claude:e6ad/test_design-1016-1",
+      "input_fp": "v1:sha256:2a19f4707eb16d7045e82aead1c72e30bce2a066a3f06e410437a9bc4723d309",
+      "ok": true,
+      "output": {
+        "commands": [
+          "cd .agents && python3 -m unittest test_engine_card_ux test_engine_lifecycle test_engine_schemas test_engine_journeys test_engine_docs",
+          "python3 .agents/prompt_stats.py --check"
+        ],
+        "tests": {
+          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
+          "change": "cd2d9ad289da99ee0b739d4d78e6a8eee95b105d",
+          "commit": "802c01608eff84423c0c885ec904b652b9b594f8",
+          "tree": "fdd05d60402a5464346adb752f4a65a135d2c0fa"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
