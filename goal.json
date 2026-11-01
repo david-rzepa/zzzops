@@ -166,6 +166,68 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_tests:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:87bd55a437a13033ec9a47fb0c9a641f565e3ed399fa0b5007b9122e138792c9",
+          "text": "Test 10 fails later goals' deliberate both-order fallbacks. NoStaleReferenceTests.test_old_names_are_gone greps ENGINE_VERSION|… over all of .agents/, excluding only test_engine_capabilities.py. The frozen test files of three in-flight goals name ENGINE_VERSION on purpose, each through getattr or a lazy import, so they work in both merge orders: G1022 .agents/test_engine_review_lenses.py:238-246, G1025 .agents/test_engine_branching.py:72-82 and 358-359, G1028 .agents/test_engine_findings_rounds.py:48-61 and 517. If G1027 merges first, each of those PRs fails G1027's test on its merge ref and must reopen test_design. If they merge first, G1027 must edit their tests. Fix: narrow the .agents scope to non-test modules (.agents/*.py minus .agents/test_*.py), keeping plugins/ and docs/design/. A test that imports a removed name unguarded fails on its own.",
+          "upheld": false
+        },
+        {
+          "id": "review_tests:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:87bd55a437a13033ec9a47fb0c9a641f565e3ed399fa0b5007b9122e138792c9",
+          "text": "Drop the full-suite command. The recorded commands end with `python3 -m unittest discover -s .agents`, the whole suite (about 17 minutes). run_tests runs every command on every attempt, and the full suite is dev-required-tests' job on the PR. Replace it with the extra modules that exercise surfaces this goal changes: test_design_docs (the docs/design edits, the HISTORY §4 row and the pending row), test_engine_sync_edit (it asserts the Engine: trailer) and test_engine_lenses (hand-written trailers; the shipped graph needs lens_findings). Optionally merge the six module commands into one unittest invocation.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T21:47:34Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:0c556c21045dcada61dcaab09a6d222e0cdd7d4f",
+          "tests": "v1:sha256:aa3c7a0928d63995c913fc8280253d8421608dd67d52692aaf0148a434788789"
+        },
+        "policy": {},
+        "subject": "v1:sha256:87bd55a437a13033ec9a47fb0c9a641f565e3ed399fa0b5007b9122e138792c9"
+      },
+      "holder": "claude:e6ad/rd1017",
+      "input_fp": "v1:sha256:feb2c03ea4848dab5d062564291b3a0ff522655fd290d4ac6c86eba1bfa06385",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "fa09b253c0c9f10261b8db557c9cdf31000515a8",
+          "commit": "25f9eb20a4a8132c26c5f843e395e642468f66b2",
+          "path": ".zzzops/reviews/1027/review_tests.md"
+        },
+        "summary": "The tests cover design revision 2. Before the implementation, test_engine_capabilities has 26 tests (14 failures, 10 errors, 2 schema guards passing), and the five edited modules have 13 of 166 failing, all because a feature is missing. The edits to existing tests change only what the design changes. The copied-plugin approach is sound: zzzops.py puts the copy first on sys.path, cli_env sets no PYTHONPATH, and engine_attr uses a fresh interpreter. Two findings. F1: test 10 greps ENGINE_VERSION over all of .agents/, so the frozen both-order fallbacks in G1022 (test_engine_review_lenses), G1025 (test_engine_branching) and G1028 (test_engine_findings_rounds) would fail their PRs if they merge after G1027. Narrow it to non-test .agents modules. F2: drop the ~17-minute full-suite command and add test_design_docs, test_engine_sync_edit and test_engine_lenses instead."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "5bff5d01904223d4709327c2f618b5a3805e0a5f",
+          "commit": "1782abd642bd62172545d20379741a255570db46",
+          "tree": "95fd44acdd0e53fcca6ec81221dc424211dd52f5"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
