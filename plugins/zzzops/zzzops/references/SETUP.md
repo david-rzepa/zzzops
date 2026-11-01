@@ -26,7 +26,7 @@ With Claude Code's sandbox on, add `github.com` and `api.github.com` to `sandbox
 In the primary worktree, or add it as a writable root (`--add-dir`): ZzzOps writes under `<primary>/.zzzops/worktrees/` and the Git common directory.
 
 ## Repository and host
-- `zzzops/**` must allow create, update, force-update and delete by the agents' credentials, with no required PRs, checks, signatures or message patterns. Recommended: a ruleset on `zzzops/goal/**` blocking deletion and force-push. A refusal shows as `push_refused`.
+- `zzzops/**` must allow create, update, force-update and delete by the agents' credentials, with no required PRs, checks, signatures or message patterns. Recommended: a ruleset on `zzzops/goal/**` blocking deletion and force-push (not available on a private repository on GitHub's free plan, where the rules reads return 403: see step 2 of the bootstrap skill). A refusal shows as `push_refused`.
 - GitHub: "Automatically delete head branches" on; `settings.merge.method` allowed.
 - Goal worktrees are hidden only by `.git/info/exclude`: add `.zzzops/worktrees/` to the repository's tool ignore files (ESLint, Prettier, test discovery).
 - Set `git config zzzops.committer "Name <email>"` identically on every machine, so PR rebuilds are identical.
