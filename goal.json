@@ -11,7 +11,35 @@
     "issue": null
   },
   "priority": "P2",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T19:29:14Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:fa35832f800bea4bf5a6eb39ef68af2ac3e2b03be2d86da1f1364620f7d324e1",
+          "spec": "v1:sha256:806bffa4eaadb6405ea331038570632dfc880e8719db892344e20d845c4ce9d3"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1031",
+      "input_fp": "v1:sha256:fc0df76505798b75523d6018a8253fc08bc6630a1fbda81e8d5185f2d616661a",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "986411028655122974717619f320f8d976021a78",
+          "commit": "400510c63e84c360e6cd6bfce9b83acc714d725c",
+          "path": ".zzzops/reviews/1031/design.md"
+        },
+        "summary": "Bootstrap SKILL step 7, SETUP, REPAIR and MIGRATING now say: GitHub's 'Automatically delete head branches' on without settings.branching, off with it (GitHub's deletion races the engine's G1025 retargeting of stacked and release PRs). validate gains a non-gating warning kind auto_delete_head_branches, from one best-effort gh api read (new gh.head_branch_auto_delete returning True/False/None), only when branching is configured and gh is usable. An unreadable setting (read-only token omits the field) stays silent, which SETUP documents. Builds after G1025; tested with the fake gh in five cases; no owner choices."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
