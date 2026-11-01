@@ -133,7 +133,8 @@ class ReclaimStalenessTests(CardJourney):
 
 
 class CapabilityTests(CardJourney):
-    """F1: lease-side staleness never changes capability; only record staleness on `inputs.base` gives `routine`."""
+    """F1 and review_tests:2:2: lease-side staleness never changes capability; `routine` needs record staleness
+    exactly ["inputs.base"] and no live corrections (design section 2, attempt 4)."""
 
     def test_reclaimed_first_attempt_after_base_moved_keeps_its_capability(self):
         g = self.goal()
@@ -147,14 +148,20 @@ class CapabilityTests(CardJourney):
         self.assertEqual("reasoning", c["run"]["capability"])          # test_design's own, not routine
         self.assertNotIn("inputs.base", c.get("changed") or {})        # plain node outputs get no pointer
 
-    def test_reclaimed_reopened_correction_keeps_its_capability(self):
-        """Second F1 case: the record is current (a reopened correction), base moves during the attempt, then reclaim."""
-        g = self.goal()
+    def _reopen_test_design(self, g):
+        """Submit test_design, then have review_tests request a change on it (a live correction)."""
         self.through_design(g)
         c = self.A.start(g, self.n("test_design"))
         self.A.worktree(g).commit({"tests/test_cut.py": "def test_cut():\n    assert cut() == 1\n"}, "test: cut")
         self.A.submit(g, self.n("test_design"), c, {"commands": ["python -m pytest tests"]})
         self.review(self.B, g, "review_tests", "changes_requested", [{"target": self.n("test_design"), "text": "more"}])
+
+    def test_reclaimed_reopened_correction_keeps_its_capability(self):
+        """review_tests:2:2 (reclaim path): base moves during a reopened correction run, then abandon and reclaim.
+        The record was produced on the old base, so record_stale is also ["inputs.base"]; the live correction
+        is what keeps the node's own capability."""
+        g = self.goal()
+        self._reopen_test_design(g)
         c = self.start_at(self.A, 1, g, "test_design")
         self.assertEqual("reopened", c["reason"])
         self.assertNotIn("stale_because", c)
@@ -163,14 +170,29 @@ class CapabilityTests(CardJourney):
         c = self.start_at(self.A, 6, g, "test_design", "--reclaim")
         self.assertEqual("reclaim", c["reason"])
         self.assertEqual(["inputs.base"], c["stale_because"])
-        self.assertEqual("reasoning", c["run"]["capability"])          # lease-side only: not routine
+        self.assertTrue(c["corrections"])
+        self.assertEqual("reasoning", c["run"]["capability"])          # live correction: own capability, not routine
+
+    def test_plain_start_of_reopened_node_after_base_moved_keeps_its_capability(self):
+        """review_tests:2:2 (no-lease path, deliberate change): a reopened test_design whose base has since moved
+        starts as ready-stale on ["inputs.base"] with its corrections; it keeps its own capability."""
+        g = self.goal()
+        self._reopen_test_design(g)
+        self.restack_base(g, 1)
+        c = self.start_at(self.A, 4, g, "test_design")
+        self.assertEqual("stale", c["reason"])
+        self.assertEqual(["inputs.base"], c["stale_because"])
+        self.assertTrue(c["corrections"])
+        self.assertEqual("reasoning", c["run"]["capability"])          # open finding is real work, not a rebase
 
     def test_record_stale_only_on_base_is_routine_on_start_and_after_reclaim(self):
+        """Control: no corrections and a record stale only on base is a rebase, so `routine`."""
         g = self.goal()
         self.through_tests(g)
         self.restack_base(g, 1)
         c = self.start_at(self.A, 4, g, "test_design")
         self.assertEqual(["inputs.base"], c["stale_because"])
+        self.assertFalse(c.get("corrections"))
         self.assertEqual("routine", c["run"]["capability"])
         self.abandon_at(self.A, 5, g, "test_design", c["lease"]["attempt"])
         c = self.start_at(self.A, 6, g, "test_design", "--reclaim")
