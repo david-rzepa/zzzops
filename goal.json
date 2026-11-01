@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-01T20:38:29Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [
     1000,
     1001,
@@ -233,6 +238,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T20:38:29Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:669ec8eaec633dc53b82152716a113f27c2b2a13aa8d6b38d35c936a22ee4562"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:e5d239dd1f94d4cbfe231e7d33226f5a86018d0826f5afa714b28642c5fd579c",
+      "ok": true,
+      "output": {
+        "merge_commit": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+        "merged_at": "2026-11-01T20:38:28Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -505,6 +532,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Dogfooding Release 1 found that DESIGN.md and SPEC.md, the contract that prompts, reviews and goals cite (for example the DESIGN §10 bounded-cost rules and the §5 removal list R1–R15), exist only at /home/dave/Work/dev/zzzops-design-reset/, outside the repository. Workers given only a task card cannot read them through read_dev, and design changes to the contract (G1000, G1015) cannot be reviewed in their PRs.\n\nOutcome:\n- The approved revision 6.3 DESIGN.md and SPEC.md move into the repository under docs/design/ (or a path the design chooses), with their review history summarised rather than copied. The passes/ and reviews/ folders stay outside unless the design argues otherwise.\n- Every in-repo reference (prompts, skills, references, the implementation plan) points at the in-repo path.\n- The documents are updated to the current engine at dev: the --policy-ref flag, and whatever G1001, G1014, G1015, G1016 and G1000 have landed by then, or a short 'pending amendments' list naming those goals.\n- A short README section explains which document is normative for what: SPEC is the contract, DESIGN is the rationale.\n- Remove anything private: absolute local paths and session names.\n\nAcceptance:\n- The documents render on GitHub, and no reference to the external folder remains in shipped files or prompts.\n- A card's read_dev can show them.\n- The whitepaper goal (G1002) can cite them.\n- prompt_stats budgets are unaffected, because these are repository docs and are not shipped in the plugin unless the design decides otherwise.",
-  "state": "open",
+  "state": "closed",
   "title": "Bring the engine design and spec into the repository as reviewable docs"
 }
