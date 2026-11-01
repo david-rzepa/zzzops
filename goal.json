@@ -100,6 +100,35 @@
       "reason": "new",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T21:23:47Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:8a2e8ac0217a3e46b72c1e3ce2d2c6f98e60949f5743134ece85574f6cb677e3",
+          "doc": "v1:blob:41fa9a84fd500cf41af800b3fa7393c26f40724c",
+          "tests": "v1:sha256:286ab6df7cd908394c3aa092cdb735205a3ec888a80c3f787dcccb51748f4232"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/td1034",
+      "input_fp": "v1:sha256:e005817e45d48b3b70313965d5ace0421cc01fba4eba7cb11e4fe25f3383c66f",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "c2b850b4fa16c0bcfd7672671c6566731e4f432b",
+          "commit": "48e1be1df14c6ba3632fc6bf9a1e909c89922347",
+          "tree": "4da6d9b8f5b6fb46f8329cd85cdabeea3691ed8d"
+        },
+        "summary": "Migrate skill steps 3-5 now read the milestone, propose and owner-confirm a release/priority/dependencies per MIGRATE goal and MERGE group (earliest member release, union of deps), check release order and cycles before any write, and pass fields explicitly creating dependencies first. MIGRATING.md, EXAMPLE.md, DESIGN section 7 and HISTORY section 4 updated. No engine change; legacy/store/docs/plugin tests pass (155)."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 1,
       "correction_runs": 0,
