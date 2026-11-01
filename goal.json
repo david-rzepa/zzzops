@@ -165,6 +165,51 @@
         }
       },
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T21:42:43Z",
+      "fp_parts": {
+        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "inputs": {
+          "base": "v1:sha256:8a2e8ac0217a3e46b72c1e3ce2d2c6f98e60949f5743134ece85574f6cb677e3",
+          "doc": "v1:blob:0c556c21045dcada61dcaab09a6d222e0cdd7d4f"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        ".agents/engine_fixtures.py",
+        ".agents/test_engine_capabilities.py",
+        ".agents/test_engine_identity.py",
+        ".agents/test_engine_legacy.py",
+        ".agents/test_engine_review_fixes.py",
+        ".agents/test_engine_schemas.py",
+        ".agents/test_engine_store.py"
+      ],
+      "holder": "claude:e6ad/td1027",
+      "input_fp": "v1:sha256:df1a6b1a7b16d20e1f9f6a0e32e8938b02c4ea3251799f832456878c15241454",
+      "ok": true,
+      "output": {
+        "commands": [
+          "python3 -m unittest discover -s .agents -p 'test_engine_capabilities.py'",
+          "python3 -m unittest discover -s .agents -p 'test_engine_store.py'",
+          "python3 -m unittest discover -s .agents -p 'test_engine_review_fixes.py'",
+          "python3 -m unittest discover -s .agents -p 'test_engine_schemas.py'",
+          "python3 -m unittest discover -s .agents -p 'test_engine_legacy.py'",
+          "python3 -m unittest discover -s .agents -p 'test_engine_identity.py'",
+          "python3 -m unittest discover -s .agents"
+        ],
+        "tests": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "5bff5d01904223d4709327c2f618b5a3805e0a5f",
+          "commit": "1782abd642bd62172545d20379741a255570db46",
+          "tree": "95fd44acdd0e53fcca6ec81221dc424211dd52f5"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
