@@ -1,0 +1,18 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [],
+  "graph": "default",
+  "id": 1013,
+  "links": {
+    "issue": null
+  },
+  "priority": "P3",
+  "records": {},
+  "release": 2,
+  "schema": 1,
+  "skip": {},
+  "spec": "Backlog research. Evaluate whether a small, fast classifier can propose which optional review lenses (see the lens-based default graph) apply to a goal at capture, from its title, spec and the repository's risk history, so add-goal suggests skips with reasons instead of the agent guessing. Compare against the coordinating agent's own judgement on a labelled set of past goals: agreement, false skips of a needed lens, cost and latency. Deliverable: a short report and a recommendation; no engine change unless the recommendation is adopted as a new goal. The old routing experiment this came from is closed.\n\nMigrated from GitHub issue #502 after the engine reset (#740).",
+  "state": "open",
+  "title": "Research a fast classifier for choosing review lenses at capture"
+}
