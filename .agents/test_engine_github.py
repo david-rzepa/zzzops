@@ -148,6 +148,54 @@ class IntegrateTests(GitHubJourney):
         self.assertEqual(("blocked", "human"), (out["ran"]["outcome"], out["ran"]["blocked"]["waiting_for"]))
 
 
+class RulesUnreadableTests(GitHubJourney):
+    """G1032: a repository whose rulesets and branch protection answer 403 (free-plan private repo). The engine gates
+    on required checks and `--match-head-commit` alone, so it must never read a rules, rulesets or protection path."""
+
+    settings = {"verification.required_ci": ["ci"], "merge.method": "squash"}
+
+    @staticmethod
+    def rules_calls(calls):
+        import re
+        return [c for c in calls if c[:1] == ["api"] and any(re.search(r"/(rules|rulesets|protection)(/|$|\?)", a) for a in c[1:])]
+
+    def test_fake_gh_answers_403_on_rules_paths(self):
+        import subprocess
+        self.gh.update(lambda st: st.setdefault("faults", {}).update(rules_403=True))
+        env = dict(os.environ, **self.w.extra_env)
+        for path in ("rules/branches/dev", "rulesets", "branches/dev/protection"):
+            p = subprocess.run(["gh", "api", f"repos/test/repo/{path}"], capture_output=True, text=True, env=env)
+            self.assertNotEqual(0, p.returncode, path)
+            self.assertIn("403", p.stderr, path)
+        p = subprocess.run(["gh", "api", "repos/test/repo"], capture_output=True, text=True, env=env)
+        self.assertEqual(0, p.returncode)
+
+    def test_integrate_and_merge_complete_without_reading_rules(self):
+        self.gh.update(lambda st: st.setdefault("faults", {}).update(rules_403=True))
+        g = self.goal()
+        self.deliver(g)
+        out = self.op(g, "integrate")                                           # no checks yet: still gated
+        self.assertEqual("blocked", out["ran"]["outcome"])
+        self.gh.set_checks(self.pr_head(g), ci=["pass"])
+        out = self.op(g, "integrate")
+        self.assertTrue(out["ran"]["ok"])
+        self.approve(g, "approve_merge")
+        out = self.op(g, "merge")
+        self.assertEqual("done", out["closed"]["reason"])
+        self.assertEqual(["squash"], self.gh.load()["merge_methods_used"])
+        self.assertEqual([], self.rules_calls(self.gh.calls()), "the engine read a rules, rulesets or protection path")
+
+    def test_failing_required_check_still_blocks_when_rules_are_unreadable(self):
+        self.gh.update(lambda st: st.setdefault("faults", {}).update(rules_403=True))
+        g = self.goal()
+        self.deliver(g)
+        self.op(g, "integrate")
+        self.gh.set_checks(self.pr_head(g), ci=["fail"])
+        out = self.op(g, "integrate")
+        self.assertIn("re-ran once", out["ran"]["blocked"]["reason"])
+        self.assertEqual([], self.rules_calls(self.gh.calls()))
+
+
 class MergeTests(GitHubJourney):
     settings = {"merge.method": "squash"}
 
