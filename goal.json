@@ -12,10 +12,10 @@
   "priority": "P2",
   "records": {
     "design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T19:28:46Z",
+      "finished_at": "2026-11-01T19:30:24Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -29,13 +29,17 @@
       "ok": true,
       "output": {
         "doc": {
-          "blob": "ab9cef22ec163432bbc16852f77271fed4bfee57",
-          "commit": "f09143a3fe3081ecd1a262ad8570f4fe3eedf133",
+          "blob": "3c035f648197f2c9da42ad22607e39d4fc319f2c",
+          "commit": "099bd1fbabd4fd19005b285c1a6289073b8759bc",
           "path": ".zzzops/reviews/1032/design.md"
         },
-        "summary": "The engine never reads rulesets or branch protection: integrate gates on required_ci from the PR's statusCheckRollup and merge uses gh pr merge with --match-head-commit, and validate checks only gh. So this is a skill and docs fix: step 7 gets a 403 fallback (explain, read merge settings from the repo endpoint, ask the owner for check names or propose them from recent PR check runs, record in required_ci, state that the engine's check gate is the only guard). No engine change; one guard test that integrate does not touch rules endpoints."
+        "responses": {
+          "review_design:1:1": "fixed: the fallback now starts at step 2 (required_ci is set from the owner or recent PR check runs before step 3 validates and step 4 lands); step 7 skips the rules probes; docs/BRANCH_PROTECTION.md line 12 is named.",
+          "review_design:1:2": "fixed: risk text now says a misspelled name ends in 'required checks pending too long' after ci_timeout_minutes ('no checks appeared' fires only on an empty rollup); a declined gate is recorded in the bootstrap commit/PR message since POLICY has no field, and the guard test now fails on any rules/rulesets/protection api call."
+        },
+        "summary": "The engine never reads rulesets or protection, so this stays a skill and docs fix. The 403 fallback now sits in bootstrap step 2, where required_ci is first read, so it is set before validation and landing; step 7 and docs/BRANCH_PROTECTION.md line 12 point to it. Risk text corrected, a declined CI gate is recorded in the bootstrap commit or PR message, and the guard test fails on any rules, rulesets or protection api call."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
