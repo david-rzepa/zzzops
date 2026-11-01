@@ -182,6 +182,16 @@ class AgentPluginTests(unittest.TestCase):
             self.assertIn(restricted, guide)
         self.assertIn("data boundary", add_goal)
 
+    def test_project_intent_label_agrees_across_capture_lens_and_approval(self) -> None:
+        prompts = PLUGIN / "zzzops" / "templates" / "default" / "prompts"
+        skill = (PLUGIN / "skills" / "add-zzzops-goal" / "SKILL.md").read_text(encoding="utf-8")
+        lens = (prompts / "lens_intent.md").read_text(encoding="utf-8")
+        approval = (prompts / "approve_design.md").read_text(encoding="utf-8")
+        for name, text in (("SKILL.md", skill), ("lens_intent.md", lens), ("approve_design.md", approval)):
+            self.assertIn("Project intent:", text, name)
+        self.assertIn("Never offer to skip `approve_design` for a goal whose spec has a `Project intent:` paragraph", skill)
+        self.assertIn("accepts nothing", lens)
+
 
 if __name__ == "__main__":
     unittest.main()
