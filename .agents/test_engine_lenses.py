@@ -1,7 +1,8 @@
-"""G1000: parallel review lenses in the shipped default graph (design rev 4, §3-§9 and §13).
+"""G1000: parallel review lenses in the 26-node graph (design rev 4, §3-§9 and §13).
 
-These tests run on the SHIPPED template (`fx.SHIPPED`); the other engine tests run on the frozen 12-node graph
-(`.agents/fixtures/graph12`). They are written before the implementation and define these contracts:
+These tests run on the frozen 26-node template (`fx.GRAPH26`, `.agents/fixtures/graph26`: G1020's shipped template,
+frozen by G1022 when the shipped graph became 15 nodes); the other engine tests run on the frozen 12-node graph
+(`.agents/fixtures/graph12`). The shipped graph's own tests are in `test_engine_review_lenses.py`. They are written before the implementation and define these contracts:
 
 - A lens is a review node with `review: {"subject": S, "filter": F}`. Every new finding of a lens carries
   `impact` (non-empty text) and `material` (boolean).
@@ -40,11 +41,12 @@ HEX40 = "1234567890abcdef1234567890abcdef12345678"
 
 
 def shipped(name: str) -> dict:
-    return json.loads((fx.SHIPPED / name).read_text(encoding="utf-8"))
+    """A file of the frozen 26-node template (the template these tests were written against)."""
+    return json.loads((fx.GRAPH26 / name).read_text(encoding="utf-8"))
 
 
 def shipped_prompt_exists(name: str) -> bool:
-    return (fx.SHIPPED / "prompts" / name).is_file()
+    return (fx.GRAPH26 / "prompts" / name).is_file()
 
 
 def verdict(v: str, reason: str = "judged by the filter") -> dict:
@@ -102,7 +104,7 @@ class ShippedTemplateTests(unittest.TestCase):
     def copy_template(self):
         d = os.path.join(tempfile.mkdtemp(), "tpl")
         self.addCleanup(shutil.rmtree, os.path.dirname(d), True)
-        shutil.copytree(fx.SHIPPED, d)
+        shutil.copytree(fx.GRAPH26, d)
         return d
 
     def test_design_intent_node_receives_the_goal_spec(self):
@@ -116,7 +118,7 @@ class ShippedTemplateTests(unittest.TestCase):
             self.assertIn({"from": "goal.spec"}, [{"from": s.get("from")} for s in node["inputs"].values()], name)
 
     def test_validate_policy_passes_with_exactly_one_placeholder_warning(self):
-        rc, out = self.validate_dir(fx.SHIPPED)
+        rc, out = self.validate_dir(fx.GRAPH26)
         self.assertEqual(0, rc, out)
         self.assertTrue(out["ok"], out)
         self.assertEqual(["intent_placeholder"], [w["kind"] for w in out["warnings"]], out)
@@ -207,7 +209,7 @@ class ShippedTemplateTests(unittest.TestCase):
 
     def test_human_prompts_start_with_the_question(self):
         for name in ("approve_design.md", "approve_merge.md"):
-            first = (fx.SHIPPED / "prompts" / name).read_text().splitlines()[0]
+            first = (fx.GRAPH26 / "prompts" / name).read_text().splitlines()[0]
             self.assertTrue(first.startswith("# ") and first.endswith("?"), first)
 
     def test_engine_source_names_no_shipped_node(self):
@@ -223,7 +225,8 @@ class ShippedTemplateTests(unittest.TestCase):
 
     def test_frozen_fixture_is_the_12_node_graph(self):
         self.assertEqual(fx.DEFAULT_NODES, list(fx.load_template("workflow.json")["graphs"]["default"]["nodes"]))
-        self.assertNotEqual(fx.TEMPLATES.resolve(), fx.SHIPPED.resolve())
+        self.assertNotEqual(fx.TEMPLATES.resolve(), fx.GRAPH26.resolve())
+        self.assertNotEqual(fx.SHIPPED.resolve(), fx.GRAPH26.resolve())
 
 
 # --------------------------------------------------------------------------------------------- schema rules
@@ -444,7 +447,7 @@ class LensWorld(unittest.TestCase):
         policy["settings"]["intent"] = copy.deepcopy(INTENT)
         self.w.bootstrap(policy=policy, workflow=wf, prompts=False)
         self.w.push_dev({f".zzzops/prompts/{p.name}": p.read_text(encoding="utf-8")
-                         for p in sorted((fx.SHIPPED / "prompts").iterdir())}, "chore(zzzops): prompts")
+                         for p in sorted((fx.GRAPH26 / "prompts").iterdir())}, "chore(zzzops): prompts")
         self.p = Pilot(self.w, self.m)
 
     def n(self, x):

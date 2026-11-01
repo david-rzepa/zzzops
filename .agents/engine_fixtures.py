@@ -13,6 +13,9 @@ PLUGIN_CODE = ROOT / "plugins" / "zzzops" / "zzzops"
 # SHIPPED is the shipped template, used only by the template and lens tests.
 TEMPLATES = ROOT / ".agents" / "fixtures" / "graph12"
 SHIPPED = PLUGIN_CODE / "templates" / "default"
+# G1020's 26-node template (one node per lens), frozen when G1022 made the shipped graph 15 nodes: the G1000/G1020
+# lens tests run on it.
+GRAPH26 = ROOT / ".agents" / "fixtures" / "graph26"
 if str(PLUGIN_CODE) not in sys.path:
     sys.path.insert(0, str(PLUGIN_CODE))
 
