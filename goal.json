@@ -287,14 +287,14 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T21:26:48Z",
+      "finished_at": "2026-11-01T21:41:19Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:10bfd041219fa4f6232b52703d9efaf6f8866524e614a6e5f3069867768dcad1",
+          "code": "v1:sha256:fede1ed665f9e0865e03253929f413a64f1e3fce553fdbf68b81bc3175c32517",
           "commands": "v1:sha256:4957ea8ba1368ceef1949a5970d8662c3e6840ef22f2010be801470c40924eb6"
         },
         "policy": {
@@ -304,7 +304,7 @@
         }
       },
       "holder": "claude:e6ad/op",
-      "input_fp": "v1:sha256:85bf8427f154244b77376087cf0606e1cca743d7403af082b1ff07d961d42405",
+      "input_fp": "v1:sha256:8680a394f31a7ecd0af58183b65dc910e5f7f5a6527357393fd3cb7274f01a53",
       "ok": true,
       "output": {
         "result": {
@@ -313,20 +313,20 @@
               "cmd": "cd .agents && python3 -m unittest -v test_prompt_stats test_agent_plugin test_engine_lenses.ShippedTemplateTests",
               "exit": 0,
               "seconds": 0,
-              "tail": "ses.ShippedTemplateTests.test_shipped_placeholder_intent) ... ok\ntest_shipped_templates_validate (test_engine_lenses.ShippedTemplateTests.test_shipped_templates_validate) ... ok\ntest_the_26_node_graph (test_engine_lenses.ShippedTemplateTests.test_the_26_node_graph) ... ok\ntest_validate_policy_passes_with_exactly_one_placeholder_warning (test_engine_lenses.ShippedTemplateTests.test_validate_policy_passes_with_exactly_one_placeholder_warning) ... ok\ntest_validate_policy_without_intent_fails (test_engine_lenses.ShippedTemplateTests.test_validate_policy_without_intent_fails) ... /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1029/.agents/test_engine_lenses.py:126: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpekgoj0q8/tpl/POLICY.json' mode='r' encoding='UTF-8'>\n  p = json.loads(open(os.path.join(d, \"POLICY.json\")).read())\nResourceWarning: Enable tracemalloc to get the object allocation traceback\nok\n\n----------------------------------------------------------------------\nRan 33 tests in 0.293s\n\nOK\n"
+              "tail": "ses.ShippedTemplateTests.test_shipped_placeholder_intent) ... ok\ntest_shipped_templates_validate (test_engine_lenses.ShippedTemplateTests.test_shipped_templates_validate) ... ok\ntest_the_26_node_graph (test_engine_lenses.ShippedTemplateTests.test_the_26_node_graph) ... ok\ntest_validate_policy_passes_with_exactly_one_placeholder_warning (test_engine_lenses.ShippedTemplateTests.test_validate_policy_passes_with_exactly_one_placeholder_warning) ... ok\ntest_validate_policy_without_intent_fails (test_engine_lenses.ShippedTemplateTests.test_validate_policy_without_intent_fails) ... /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1029/.agents/test_engine_lenses.py:126: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpiuw3n5vs/tpl/POLICY.json' mode='r' encoding='UTF-8'>\n  p = json.loads(open(os.path.join(d, \"POLICY.json\")).read())\nResourceWarning: Enable tracemalloc to get the object allocation traceback\nok\n\n----------------------------------------------------------------------\nRan 33 tests in 0.248s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents",
               "exit": 0,
-              "seconds": 762,
-              "tail": "nable tracemalloc to get the object allocation traceback\n............../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 3659524 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 3659674 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 3659846 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 3660703 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n....................../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 3658825 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/usr/lib/python3.14/contextlib.py:597: ResourceWarning: unclosed file <_io.FileIO name=18 mode='wb' closefd=True>\n  is_sync, cb = self._exit_callbacks.pop()\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/usr/lib/python3.14/contextlib.py:597: ResourceWarning: unclosed file <_io.FileIO name=19 mode='rb' closefd=True>\n  is_sync, cb = self._exit_callbacks.pop()\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n........................................................\n----------------------------------------------------------------------\nRan 675 tests in 762.186s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmpsr14luyi\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n"
+              "seconds": 719,
+              "tail": "cemalloc to get the object allocation traceback\n/usr/lib/python3.14/contextlib.py:597: ResourceWarning: unclosed file <_io.FileIO name=19 mode='rb' closefd=True>\n  is_sync, cb = self._exit_callbacks.pop()\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.....................................................................\n----------------------------------------------------------------------\nRan 675 tests in 719.665s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmp76hg_u8b\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=26>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=27>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=24>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=25>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=22>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=23>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=20>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=21>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=14>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=15>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=12>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=13>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
             }
           ],
           "passed": true,
-          "tree": "72807734f4a0a6beb0ade3003798ee9ddfa6defb"
+          "tree": "ac4db69dd4b9eb4f80c248e56e181ca3f63b6473"
         }
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "test_design": {
