@@ -218,38 +218,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 4,
-      "correction_runs": 3,
+      "attempt": 5,
+      "correction_runs": 4,
       "findings": [],
-      "finished_at": "2026-11-01T05:31:48Z",
+      "finished_at": "2026-11-01T06:07:53Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:2c1af88e84734bdd997eceba5000279525be0586",
-          "tests": "v1:sha256:140a73fbeb6b9e0d0f69b0b14d6f1603a5b2b85b370d27c55d76f254b0bf87c3"
+          "tests": "v1:sha256:69cae951ed16e0c3015005bd6ecf778e33a7df62f2149b7a9b6b4a4e2b0c4dc0"
         },
         "policy": {},
-        "subject": "v1:sha256:f0c18c77195be0f9c0086e82a1cba76a4df27ef20eb4959a327d25bff0586c3a"
+        "subject": "v1:sha256:34b7483799d4e882039c513490d8c398f5688d7b75aab8fb8ae33fced64aa0a2"
       },
-      "holder": "claude:e6ad/review_tests-1016-4",
-      "input_fp": "v1:sha256:c7c226b156a2c669430417220c78b1b4964ec2f87f1b19ee51a3b0ff9728e6a0",
+      "holder": "claude:e6ad/review_tests-1016-5",
+      "input_fp": "v1:sha256:4ff00a762ff2bb25f75cfeeac2faf1ce57d11bc96b05b9b61ecfe15f17302f3f",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "4f89d2ecae4b6f6137f4d8c4d115891d40c1ef1f",
-          "commit": "601a958d761ad09d706b29a4bca621d7bd338a35",
+          "blob": "b49cb045893617f79079bc7b303084fd0d045189",
+          "commit": "cc26f29fcdc1ee5b8c289ec2f8df6e415c7a67a8",
           "path": ".zzzops/reviews/1016/review_tests.md"
         },
-        "summary": "Approved. The only change since attempt 3 (ff6fb6e) is sound: the missing-old-blob test now matches fetch_work_of's exact refspec '+refs/heads/zzzops/work/g<G>:...' (session.py:177), which the coordinator glob '+refs/heads/zzzops/work/g<G>*:...' (store.py:114) cannot match. A mutation that calls fetch_work_of on the changed-input path makes the test fail, so it catches a real call. The commands are still the full list, and they pass at ff6fb6e."
+        "summary": "Approved. 521d78b's plain-start next assertion fails on the pre-fix render/card (('routine',1)) and passes after; all 30 card_ux tests pass. The reclaim-case next assertion cannot tell old from new code because a reclaimable frontier state has no stale_because/record_stale, so next always shows the node's own tier there. That is not material: the reclaim card assertion already covers the design promise, and the next assertion still guards against regressions. Non-blocking implementation note: for a pure-rebase reclaim, next shows reasoning while the card gives routine (this already happened before the fix, errs safe, and the design promises nothing about it)."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "ec2f744ee88addec9468a3e2cf86c99fa517fcdd",
-          "commit": "ff6fb6e8f12d84e4c1348eada23cf6bc827a11e0",
-          "tree": "f56d75480bd332815ae0ba3688d4fbe765d5265d"
+          "change": "dfe70799cbc9f250188033c8d353c1f1075a6683",
+          "commit": "521d78b4392378258b843d3ce1fa02113f2bb46a",
+          "tree": "5b016358250323c1276ed81145ad1c782d23e507"
         }
       },
       "status": "done"
