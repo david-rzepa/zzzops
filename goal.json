@@ -44,6 +44,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T22:01:40Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:6d8fbae4113e024a5ee3029f064ccb3682d5a79e37cdf4d152ea4ab7200ad912"
+        },
+        "policy": {},
+        "subject": "v1:sha256:2707ee9d85b11c93814f9b9bf2ed0ff71136591faabba586c3bc8a3ee6a81671"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:ed2bc6dbd35da8ec978cc8175520df81b5b0204ad886be4bac57d85eda063df4",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T22:01:40Z",
+        "decided_by": "Dave (owner), recorded by Claude (root agent)",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approved merging PR #755 (G1032) at head dbcde14 into dev: when rulesets/rules/protection reads return 403 or otherwise fail (e.g. a private free-plan repository), bootstrap step 2 takes required_ci from the owner or recent PR check runs before validating and landing, records a declined CI gate, and tells the owner merges are guarded only by the required-check gate and --match-head-commit; step 7 skips the rules probes; SETUP, BRANCH_PROTECTION and INITIALIZATION document it; a guard test fails if any engine path ever reads those endpoints. Merges cleanly onto dev after G1029. Tests and code review approved; required CI passed. The owner asked to merge everything on the Release 1 stack; merged with --admin because of the dev ruleset's last-push rule."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "2758f04ea98dd740f77b2fff6776237933435768",
+          "commit": "da7fbc0d3fde2476d7e6036ba487ccbc5cc08672",
+          "tree": "2b9a23c95aaaa75297470a1bd96e3d0930d4dffb"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 1,
       "correction_runs": 0,
