@@ -1,19 +1,16 @@
-# G1016 review_impl (attempt 2)
+# G1016 review_impl attempt 3: rebase conflict resolution
 
-Reviewed: cc26f29 (code) and 521d78b (tests), both on base 54d7e83, against design attempt 4. The prior review was at 8da55ca/601a958. run_tests passed: 100 targeted tests, the full 407-test discovery, and prompt_stats --check. I also re-ran `test_engine_card_ux.CapabilityTests` on an export of cc26f29. All 4 passed.
+Decision: approved.
 
-## Verdict: approved
+Scope: `git range-diff 54d7e83..cc26f29 6747a5e..6c99d60` only (code previously approved at 8da55ca + f9117d0).
 
-## Prior finding
+- Commits 1-6, 8-14, 16-18, 20-21: identical patches.
+- Commit 7 (tests): test_engine_lifecycle.py context now matches dev's `shrink_candidates` size check; G1016's only change there (dropping the top-level `renew` key from expected card keys) is preserved.
+- Commit 15 (feature):
+  - card.py: import merged to `clip, command, first_line` + `SHA`; rest of patch identical, so G1018 card views in the base are untouched.
+  - verbs.py: import keeps G1014's `live_input_changes` and `lease_commands, live_lease_entry`, adds `restart_command`; abandon's `restart` now uses `restart_command`.
+  - render.py: `restart_command(ctx, g, n)` returns `command(ctx, ["start", g, n, "--as", LABEL, "--reclaim"])`; `LABEL == "<LABEL>"`, so argv and the command string (LABEL unquoted) match both G1014's `lease_commands` restart and G1016's former literal. `lease_commands` still returns (abandon, restart) as before.
+  - CLI_USAGE.md: G1014 renew/edit rows kept; abandon row merges both wordings; G1015 Legacy paragraph kept.
+- Commit 19: import line now also includes `clip`; otherwise identical.
 
-- review_impl:1:1 (`next` advertised `routine` for a correction run): **resolved**. f9117d0 adds `render.run_capability(state)`, one rule that both `render.capability` (for `next` actions) and `card.build` call. A retry gets `reasoning`. A run stale only on `inputs.base` with no corrections gets `routine`. Anything else falls back to the node's own tier. The rule reads the record's staleness: it uses `record_stale` when that key is present, which it always is on a card because `verbs.staleness` always sets it, even when it is None. Otherwise it uses `stale_because`, which on a frontier `ready/stale` state comes only from the record (`frontier.py:219`). So the card gives exactly what it gave at 8da55ca. `next` now leaves out the routine downgrade when there are live corrections. The new tests in 521d78b check the `next` action's `(capability, corrections)` for three cases: a reopened correction stale on base gets reasoning with 1 correction, a reopened reclaim after abandon gets reasoning with 1 correction, and a pure base restack gets routine with no corrections.
-
-## Scope since 8da55ca
-
-`git diff 8da55ca cc26f29 -- ':/' ':(exclude).zzzops/reviews'` touches only engine/card.py and engine/render.py (the fix) and .agents/test_engine_card_ux.py (the ff6fb6e refspec narrowing and the 521d78b `next` assertions). Nothing else changed, and no test was weakened.
-
-## Known, not raised
-
-At a reclaim, `next` shows the node's own tier, while the card can show `routine` for a pure-rebase reclaim. This happens because reclaimable frontier states carry no record staleness. The mismatch only over-provisions `next`. Correction runs never get downgraded on either surface. It is a logged follow-up and outside this design's promises.
-
-No new findings.
+Evidence: run_tests passed on the rebased tree (checks context, passed=true). No material findings.
