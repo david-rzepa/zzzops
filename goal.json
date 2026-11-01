@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-01T05:59:03Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [],
   "graph": "default",
   "id": 1015,
@@ -197,6 +202,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T05:59:03Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:e65d80b8ab3942950ed5373ec7c9525956bfc5a6f36313c510d9ceb52cb004c3"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:1f2fd0ae0e85f4c9773dd5d3e583eabe00468e373eb7a578ed075815f690d7a6",
+      "ok": true,
+      "output": {
+        "merge_commit": "6747a5ea3c91aedd39089d1811a415680521bfed",
+        "merged_at": "2026-11-01T05:59:01Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -453,6 +480,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Release 1 must migrate existing users without them knowing to look for MIGRATING.md. When the CLI runs in a repository that still has pre-reset ZzzOps state, it detects that and presents migration as the next step, the way `next` presents any other action.\n\nDetection, which must be cheap and must not break the bounded-cost rule that normal reads touch no issues or comments:\n- Local and integration-branch signals, free: a schema-1 or old-format .zzzops/POLICY.json or workflow, PROJECT_AUDIT.md, BOOTSTRAP.json, old marker blocks, and old ref namespaces on the remote (for example zzzops/attempts/*, zzzops/native-candidates/*), from the fetch the CLI already does or a one-time ls-remote.\n- GitHub signal, one call: open issues with the `zzzops` label or the old goal envelope marker.\n- The GitHub check runs once per engine version per clone, or when the local signals fire, never on every `next`. The result is cached under the Git directory (for example .git/zzzops/), keyed by engine version, so a version change re-checks. This restores the old engine's 'version changed' detection in a bounded form. Investigate whether the old engine's equivalent was lost in the reset (R11, the installation-validation and legacy-cleanup gate) and reuse what makes sense.\n\nDisclosure:\n- When legacy state is found, `next` and `validate` report a `legacy` item, not a hard blocker, unless the policy itself is old-format, in which case it is the blocker. The item carries counts (open legacy goal issues, legacy refs, legacy files) and the exact next step.\n- The next step is a shipped migrate skill (new, or MIGRATING.md promoted to a skill) that walks the agent through it: bootstrap the new policy if needed; triage the open legacy goals (close what is obsolete or delivered with a comment, recreate what still matters with `zzzops new`, linking the old issue); optionally run the cleanup tool for legacy files; and report.\n- The skill follows progressive disclosure: the CLI points to it only when needed.\n- Once migration is done, which is detected rather than remembered, the item disappears. Dismissal is explicit, through a policy setting such as `legacy.ignore: true` for repositories that deliberately keep old issues.\n\nAcceptance:\n- Engine tests with fake gh: a repository with legacy issues shows the legacy item once per engine version, with exactly one gh call, cached; a clean repository makes no gh call after the first check; an old-format policy is a blocker that names the migrate skill; the item disappears after migration.\n- The migrate skill exists and is listed in package.py.\n- The audit performed by hand on this repository (115 issues triaged on 2026-10-31) serves as the worked example in the skill.\n- MIGRATING.md, CLI_USAGE, PRIVACY (if a new GitHub read is added) and SETUP are updated.",
-  "state": "open",
+  "state": "closed",
   "title": "Detect old-style ZzzOps installations and disclose migration as the next step"
 }
