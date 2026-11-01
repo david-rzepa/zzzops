@@ -8,7 +8,35 @@
     "issue": null
   },
   "priority": "P2",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T04:04:19Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "spec": "v1:sha256:375b616c1db26ae1bd46c8f477173f1b1a7049e796a2b199aa8d24a5aefee7b6"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/design-1014-1",
+      "input_fp": "v1:sha256:26bbd2d8fa5239394b9efe7e2cd325f8f35f855923dc8e8d6e134e23a4e55867",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "8431de9a41fea3d5da1e4618a142e9778198d7f8",
+          "commit": "4ce80deabc85a728c516972907fea0e87f9304ba",
+          "path": ".zzzops/reviews/1014/design.md"
+        },
+        "summary": "A running node's state already carries the input fingerprint computed from recorded values. edit's impact preview misses it because it compares only state strings, which stay \"running\" whatever the inputs. The design adds a shared helper, frontier.live_input_changes(before, after), which flags live leases whose fingerprint changed. edit's dry run and applied result list these leases in a new live_leases_on_changed_nodes field (holder, attempt, expires_at, stale_because, abandon and `start --reclaim` commands); stale_agent_phases keeps its meaning. After a successful push, renew compares the current fingerprint with the lease's Input-Fp and adds inputs_changed with the same commands. policy_impact reuses the helper and so also catches fingerprint-only changes; nothing is fetched beyond what each verb already fetches."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
