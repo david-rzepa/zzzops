@@ -35,6 +35,60 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:4d2ffd04c316513b6e06de5fe93fd3b00b03cb5f76a8e7b306a1d81074bbc440",
+          "text": "F1: The filter's freshness (§7 liveness) is computed from its inputs (spec, doc, lens summaries) only; lens findings are not in its fp_parts. A lens that re-runs without a design change (intent herd, prompt rev bump, def-stale 'resubmit it') and keeps the same summary while adding a non-material finding leaves the filter fresh, and the new note has no verdict, so it is neither live nor judged. Impact: reviewer-labelled notes bypass the independent filter silently; the experiment shows those are exactly the harmful cases (I32, GT3, GT8) the filter exists to recover, breaking the spec's 'never silently drop' and 'err toward keeping'. Fix: include the candidate set (open lens finding ids and material) in the filter's fp_parts, or treat an unverdicted open note as live; add a test for a policy-stale lens re-run with an unchanged summary and a new note.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:4d2ffd04c316513b6e06de5fe93fd3b00b03cb5f76a8e7b306a1d81074bbc440",
+          "text": "F2: §12/D8 name no owner or trigger for steps 2-3. G1000 closes at its step-1 merge, which unblocks dependents G1002 and G1003 (dogfood) while this repo still runs the 12-node graph, so the spec's 'adopt it in this repository' and 'intent written with the owner' can lapse silently. Step 2 also requires refreshing the Codex plugin, but the owner pinned Codex to the 15b59a5 copies while another agent uses them; raising engine.min to 1.1.0 strands it with engine_too_old. Fix: state that the root opens zzzops/policy/engine-1.1.0 immediately after G1000 merges (an open policy branch already blocks all workflow work), with the owner's explicit go-ahead for the Codex repoint listed on the approve_merge item, then zzzops/policy/lenses.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T04:22:10Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:14d91754bedbce4c9f77b937eb87ee8c31d09e30",
+          "spec": "v1:sha256:3cda08394ea5edabf2c55b2983b4a2414276e3d3ee81d5b6f5d6364b096221d6"
+        },
+        "policy": {},
+        "subject": "v1:sha256:4d2ffd04c316513b6e06de5fe93fd3b00b03cb5f76a8e7b306a1d81074bbc440"
+      },
+      "holder": "claude:e6ad/review_design-1000-1",
+      "input_fp": "v1:sha256:9966ada4d0ab89bb4974a37187b6da5328a48efced2c9c99bf711a89e4332d51",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "15165aa87f6c10f710db06e8c4152cdf96c53a0b",
+          "commit": "a2c5e59572be0abb8baa6d2cf7e3c1aa4a43231e",
+          "path": ".zzzops/reviews/1000/review_design.md"
+        },
+        "summary": "Changes requested (2 findings): the design achieves the spec and the experiment's conclusions follow from its data, but the filter's fingerprint does not cover lens findings (a note can escape it silently), and rollout steps 2-3 lack an owner and trigger and conflict with the owner's Codex plugin pin."
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
