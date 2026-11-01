@@ -276,7 +276,7 @@ class CanonTests(unittest.TestCase):
         self.assertEqual(2, Refused("push_refused").exit)
         self.assertEqual(3, Refused("superseded").exit)
         self.assertEqual(4, Refused("not_bootstrapped").exit)
-        self.assertEqual(28, len([c for c, x in EXIT.items() if x == 1]))
+        self.assertEqual(27, len([c for c, x in EXIT.items() if x == 1]))   # G1027 removed engine_too_new
         with self.assertRaises(ValueError):
             Refused("nope")
         env = Refused("sync_refused", "m", hint="h").envelope({"commit": "c"})
