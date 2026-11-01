@@ -69,15 +69,17 @@ def release_prompts() -> dict:
 def require_release_lines(policy: dict) -> dict:
     """Make the policy require capability `release_lines` under whichever scheme the engine has (G1027 §5 covers both
     merge orders): `settings.engine.requires` when declared capabilities exist, else `engine.min` at this engine."""
-    from engine import ENGINE_VERSION, schemas
+    from engine import schemas                     # never ENGINE_VERSION here: G1027 deletes it
     eng = schemas.SETTINGS_SHAPE["engine"]
+    settings_engine = policy["settings"]["engine"]
     if isinstance(eng, dict) and "requires" in eng:
-        policy["settings"]["engine"].setdefault("requires", [])
-        if "release_lines" not in policy["settings"]["engine"]["requires"]:
-            policy["settings"]["engine"]["requires"].append("release_lines")
-        policy["settings"]["engine"].pop("min", None) if "min" not in eng else None
+        requires = settings_engine.setdefault("requires", [])
+        if "release_lines" not in requires:
+            requires.append("release_lines")
+        settings_engine.pop("min", None)            # a leftover engine.min would only add a deprecation warning
     else:
-        policy["settings"]["engine"]["min"] = ENGINE_VERSION
+        import engine
+        settings_engine["min"] = engine.ENGINE_VERSION
     return policy
 
 
@@ -288,7 +290,11 @@ class FrontierTests(unittest.TestCase):
 
 
 # golden digest of every node's input_fp and fp_parts over a fixed journey on the frozen 12-node graph, computed on
-# b452cd7, before G1025 (§13 item 9). The shipped graph is not pinned: G1022 rewrites it.
+# b452cd7, before G1025 (§13 item 9). The shipped graph is not pinned: G1022 rewrites it. After a goal legitimately
+# changes these fingerprints and this branch is restacked onto it, regenerate the digest AT THE NEW BASE COMMIT (never
+# at this branch's head, which would pin G1025's own changes): check out the base, then run
+#   python -c "import sys; sys.path.insert(0, '.agents'); import engine_fixtures as fx, test_engine_branching as t; \
+#              print(t.journey_fps(fx.load_template('workflow.json')))"
 GOLDEN_FP = {"graph12": "1f5dada7505f698b5ff2dca604c2d2aedffce4b11b0e9f67e287bd643ccfb128"}
 
 
@@ -513,7 +519,10 @@ class Branching(GitHubJourney):
         return g, out["goal"]
 
     def cancel(self, g):
-        f = self.w.file({"set": {"state": "closed", "closed.reason": "cancelled", "closed.note": "not needed"}})
+        self.close_as(g, "cancelled")
+
+    def close_as(self, g, reason):
+        f = self.w.file({"set": {"state": "closed", "closed.reason": reason, "closed.note": f"{reason} by hand"}})
         self.w.ok("a", "edit", str(g), "--file", f, "--base", self.goal_tip(g))
 
     def answer_blocked(self, g, node, text="resolution approved"):
@@ -571,6 +580,19 @@ class CutItemTests(Branching):
         self.cancel(a)
         self.assertEqual([], find_kind(self.nxt(), "release_cut"))
 
+    def test_superseded_goal_neither_blocks_the_cut_nor_completes_the_release_alone(self):
+        sup = self.goal(release=1)
+        a = self.goal(release=1)
+        self.close_as(sup, "superseded")
+        out = self.nxt()
+        self.assertEqual([], find_kind(out, "release_cut"))                # alone it does not complete release 1
+        self.assertEqual(1, out["releases"]["effective"])
+        self.done(a)
+        items = find_kind(self.nxt(), "release_cut")                      # and it does not block the cut
+        self.assertEqual(1, len(items))
+        self.assertEqual(1, items[0]["release"])
+        self.assertIn(a, items[0]["goals"])
+
     def test_hotfix_members_are_ignored_and_the_item_goes_once_a_line_exists(self):
         a = self.goal(release=1)
         self.goal(release=1, flow={"hotfix": "login-crash"})              # an open hotfix member does not block
@@ -601,6 +623,9 @@ class LedgerTests(Branching):
         c = self.goal(release=1)
         self.cancel(c)
         self.assertIn("Closed: cancelled", self.message(self.goal_tip(c)))
+        sup = self.goal(release=1)
+        self.close_as(sup, "superseded")
+        self.assertIn("Closed: superseded", self.message(self.goal_tip(sup)))
         self.done(a)
         self.assertIn("Closed: done", self.message(self.goal_tip(a)))
         line = self.cut(1)["goal"]
