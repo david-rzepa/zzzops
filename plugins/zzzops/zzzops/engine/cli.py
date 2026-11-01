@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from engine import ENGINE_VERSION, schemas
+from engine import CAPABILITIES, build_id, schemas
 from engine.canon import iso
 from engine.errors import EngineError, Refused
 from engine.ops import OPS
@@ -215,7 +215,7 @@ def cmd_validate(argv):
             goals[str(g)] = []
     policy = []
     for b in st.blockers:
-        if b["kind"] in ("legacy_policy", "policy_invalid", "not_bootstrapped", "engine_too_old", "engine_too_new", "wrong_integration_branch"):
+        if b["kind"] in ("legacy_policy", "policy_invalid", "not_bootstrapped", "engine_too_old", "wrong_integration_branch"):
             policy += b.get("errors") or [b["message"]]
     p = s.portfolio()
     warnings = s.warnings(p)
@@ -225,8 +225,9 @@ def cmd_validate(argv):
     if s.git.config("remote." + (s.R or "origin") + ".partialclonefilter") or s.git.config("extensions.partialClone"):
         warnings.append({"kind": "partial_clone", "message": "partial clone: missing goal documents cost one round trip each"})
     ok = not env and not policy and not any(goals.values())
+    warnings += schemas.engine_warnings(st.policy_raw.get("settings") if isinstance(st.policy_raw, dict) else None)
     out = {"ok": ok, "coordinator": st.coordinator, "goals": goals, "policy": policy, "environment": env,
-           "warnings": warnings}
+           "warnings": warnings, "engine": engine_info()}
     from engine import legacy
     item = legacy.status(s, "force", gh_ok=not gh_env, full=True)
     if item:
@@ -238,6 +239,10 @@ def cmd_validate(argv):
             pass
     emit(out)
     return 0 if ok else 1
+
+
+def engine_info() -> dict:
+    return {"build": build_id(), "capabilities": sorted(CAPABILITIES)}
 
 
 def package_check() -> str | None:
@@ -273,7 +278,9 @@ def validate_policy_dir(a) -> int:
         errors += list(schemas.validate_workflow(workflow, policy if policy is not None and not errors else None,
                                                  lambda f: (d / "prompts" / f).is_file(), OPS))
     out = {"ok": not errors, "coordinator": {}, "goals": {}, "policy": errors, "environment": [],
-           "warnings": schemas.intent_warnings((policy or {}).get("settings")) if not errors else []}
+           "warnings": (schemas.intent_warnings((policy or {}).get("settings"))
+                        + schemas.engine_warnings((policy or {}).get("settings"))) if not errors else [],
+           "engine": engine_info()}
     if not errors:
         try:
             out.update(policy_impact(a, policy, workflow))
@@ -577,7 +584,7 @@ def main(argv=None) -> int:
         sys.stdout.write(USAGE)
         return 0
     if argv[0] == "--version":
-        sys.stdout.write(ENGINE_VERSION + "\n")
+        sys.stdout.write(build_id() + "\n")
         return 0
     name = argv[0]
     # global flags before the verb

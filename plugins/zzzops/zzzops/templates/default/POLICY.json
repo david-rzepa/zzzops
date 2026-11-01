@@ -2,7 +2,10 @@
   "schema_version": 2,
   "settings": {
     "engine": {
-      "min": "0.0.0"
+      "requires": [
+        "lens_findings",
+        "lenses"
+      ]
     },
     "integration_branch": "main",
     "verification": {

@@ -1,0 +1,1 @@
+Finding carry-over (G1028): the finding key `follows`, naming the prior finding a new finding continues. An engine without it reads the key as unknown.

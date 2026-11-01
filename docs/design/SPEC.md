@@ -14,7 +14,7 @@
 3. Schemas
    - 3.1 `workflow.json` · 3.2 `POLICY.json` · 3.3 Goal document · 3.4 Record · 3.5 Checkpoint and artifact values · 3.6 Finding · 3.7 Blocked record · 3.8 Lease commit · 3.9 Goal commit · 3.10 Submit output file · 3.11 Blocked file · 3.12 Answer files · 3.13 New-goal file · 3.14 Task card (`start` output) · 3.15 `next` output · 3.16 Other verb outputs · 3.17 Error envelope and exit codes
 4. Algorithms
-   - 4.1 Git runner and environment · 4.2 Fetch and snapshot · 4.3 Reading goals and policy · 4.4 Per-goal compare-and-swap write · 4.5 Engine floor, ceiling and schemas · 4.6 (deleted in revision 6) · 4.7 `code_tree`, `change`, artifact commits and the I1/I2 checks · 4.8 Fingerprints · 4.9 Frontier (two passes, `ok` semantics) · 4.10 Portfolio, stuck, budgets and lease guards · 4.11 Ordering and `next` rendering · 4.12 Leases: claim, renew, reclaim, abandon, orphans, capacity · 4.13 Sync rule and goal worktree · 4.14 Submit · 4.15 Answer · 4.16 Preserve (test-freeze) · 4.17 Goal creation and id allocation · 4.18 Edit, reopen and the impact preview · 4.19 Generic close · 4.20 Task card construction · 4.21 Carry-forward across a clean replay
+   - 4.1 Git runner and environment · 4.2 Fetch and snapshot · 4.3 Reading goals and policy · 4.4 Per-goal compare-and-swap write · 4.5 Engine capabilities, floor and schemas · 4.6 (deleted in revision 6) · 4.7 `code_tree`, `change`, artifact commits and the I1/I2 checks · 4.8 Fingerprints · 4.9 Frontier (two passes, `ok` semantics) · 4.10 Portfolio, stuck, budgets and lease guards · 4.11 Ordering and `next` rendering · 4.12 Leases: claim, renew, reclaim, abandon, orphans, capacity · 4.13 Sync rule and goal worktree · 4.14 Submit · 4.15 Answer · 4.16 Preserve (test-freeze) · 4.17 Goal creation and id allocation · 4.18 Edit, reopen and the impact preview · 4.19 Generic close · 4.20 Task card construction · 4.21 Carry-forward across a clean replay
 5. Operations
    - 5.1 Op interface · 5.2 `git.base` (stacked delivery) · 5.3 `checks.run` · 5.4 `git.integrate` · 5.5 `github.merge` · 5.6 The `gh` wrapper
 6. CLI reference
@@ -141,7 +141,7 @@ Developer clones that do not run ZzzOps may add the negative refspec `git config
 | `<primary>/.zzzops/worktrees/g<id>` | Local | Goal worktree. `/.zzzops/worktrees/` is added to `<git-common-dir>/info/exclude` once. |
 | `<git-common-dir>/zzzops/coordinator` | Local | Best-effort mirror of the coordinator commit, for agents to browse. |
 | `<git-common-dir>/zzzops/coordinator.lock` | Local | Non-blocking file lock for the mirror update. |
-| `<git-common-dir>/zzzops/legacy.json` | Local | The legacy check's cache: its key (engine version, remote URL, local legacy signals), last result and `retry_after` (G1015). |
+| `<git-common-dir>/zzzops/legacy.json` | Local | The legacy check's cache: its key (the detector digest, remote URL, local legacy signals), last result and `retry_after` (G1015). |
 | `<git-common-dir>/zzzops/empty-hooks/` | Local | Empty directory used as `core.hooksPath` for engine Git commands, except pushes that include a work or PR ref (§4.1). |
 
 ### 2.4 Goal branch shape
@@ -252,7 +252,7 @@ There is no `review_path` field: the review path is the constant `.zzzops/review
 {
   "schema_version": 2,                           // int; 1 = pre-reset policy (refused: "see MIGRATING.md"); > 2 refused as engine_too_old
   "settings": {
-    "engine":       {"min": "0.0.0"},            // semver string; floor and ceiling (§4.5)
+    "engine":       {"requires": ["lens_findings"]},   // capability names the engine must declare (§4.5); "min" (semver) is deprecated
     "integration_branch": "dev",                 // string; must equal I on every verb (§4.3)
     "verification": {"commands": ["<shell>"],    // strings; run by checks.run after the node's own commands
                      "required_ci": ["<check name>"],   // strings; [] = no required checks
@@ -272,7 +272,7 @@ There is no `review_path` field: the review path is the constant `.zzzops/review
 }
 ```
 - Every key shown is required (the shipped template sets them all), except the optional `legacy` and `intent`. Unknown keys anywhere are errors.
-- **`settings.legacy.ignore`** (bool, default false, not fingerprinted; G1015) dismisses the legacy item (§3.15) for the whole repository. Set it only once every clone runs an engine released at or after 1.0.0. Any later optional settings key must raise `ENGINE_VERSION`, so that `engine.min` can protect it.
+- **`settings.legacy.ignore`** (bool, default false, not fingerprinted; G1015) dismisses the legacy item (§3.15) for the whole repository. A pre-G1015 development build reports it as `policy_invalid`. Any later optional settings key ships with a new capability (§4.5).
 - **`settings.intent`** (G1000): the project's intent, `{"purpose": text, "serves": text, "not": [text], "principles": [text]}`, with extra keys allowed (text or list of text). It is required only by the graph: a node declaring `policy: ["intent"]` makes a missing key a `validate --policy` error (§3.1 rule 6). Values starting with `TODO:` (the template's placeholder) give the warning `intent_placeholder`. Changing it is a policy change.
 - Ranges are validated; a violation makes the policy invalid (global blocker, §4.3).
 - `instructions` keys match `^[a-z][a-z0-9_]*$`; texts are non-empty.
@@ -438,7 +438,7 @@ zzzops: <verb> G<id>[ <node>][ attempt <n>][ by <holder>]
 ]Outcome: <outcome>
 State: <open|held|closed>
 [Request-Key: <key>
-]Engine: <engine version>
+]Engine: <build id>
 ```
 - `Request-Key:` appears only on a goal's root (`new`) commit, and carries the request identity of §3.13 (G1001).
 - `<verb>` ∈ `new`, `submit`, `start` (op outcomes and carry-forward), `answer`, `reopen`, `edit`, `abandon`. The `Outcome:`, `State:` and `Engine:` trailers are always present.
@@ -467,7 +467,7 @@ Strings in `responses` start with `fixed: ` or `disputed: ` followed by non-empt
 
 - **Checkpoint overrides (G1016)** must be a full 40-hex sha; ref names such as `HEAD` and short shas are refused with `validation`. `edit`'s `{"commit"}`-only record completion (§4.18) applies the same rule, and a missing commit is refused instead of stored as null.
 - **Responses that do not match (G1016).** When the keys of `responses` differ from the live correction ids, `submit` refuses with `validation` and `details: {"respond_to": [{"id", "from", "target", "text", "upheld", "full"?}], "no_longer_live": [ids]}`, hint: "Findings arrived while you ran: answer each in `responses` … (drop the ones under no_longer_live), then resubmit." Texts longer than the inline limit are clipped, with `full` as a view.
-- **Closed ids and `follows` (G1028).** An id from `previous.resolved` (resolved or waived) restated as `resolved` is a no-op; restated as `open` it is refused with `validation`, "already resolved: <ids>" (or "already waived"), hint: a closed finding cannot be reopened by status; raise a new finding with `"follows": "<id>"`. An id the reviewer's latest record does not hold is refused with "unknown finding ids: …" and `details.needs_status` (the open ids). A new finding's `follows` must name a finding of this reviewer's latest record; if that finding is open, this submit must resolve it. Submit refuses `follows` unless the policy keeps older engines away from the key (capability `finding_follows`; in this engine: `settings.engine.min` ≥ 1.2.0, §4.5), and a non-review node's finding with `follows` is refused.
+- **Closed ids and `follows` (G1028).** An id from `previous.resolved` (resolved or waived) restated as `resolved` is a no-op; restated as `open` it is refused with `validation`, "already resolved: <ids>" (or "already waived"), hint: a closed finding cannot be reopened by status; raise a new finding with `"follows": "<id>"`. An id the reviewer's latest record does not hold is refused with "unknown finding ids: …" and `details.needs_status` (the open ids). A new finding's `follows` must name a finding of this reviewer's latest record; if that finding is open, this submit must resolve it. Submit refuses `follows` unless the policy keeps older engines away from the key (its required set contains capability `finding_follows`, §4.5), and a non-review node's finding with `follows` is refused.
 - **Lens findings (G1000).** A review with a `filter` (§3.1) gives each new finding `impact` (non-empty text: what goes wrong if it is ignored) and `material` (bool). A filter node's output file gives `verdicts`: `{"<finding id>": {"verdict": "keep" | "note", "reason": "…"}}` for exactly the non-material `candidates` on its card.
 
 ### 3.11 Blocked file (`submit --blocked F`)
@@ -570,7 +570,7 @@ A **value view** is the value itself when its canonical form is at most 600 byte
  "now": "iso",
  "wake_at": "iso" | null,                         // earliest retry_after or live-lease expires_at in scope (§4.11)
  "scope": {"goals": [1002]},                      // or {"goals": "all"}
- "blockers": [{"kind": "policy_branch|policy_invalid|not_bootstrapped|legacy_policy|wrong_integration_branch|engine_too_old|engine_too_new|environment", "message": "…"}],
+ "blockers": [{"kind": "policy_branch|policy_invalid|not_bootstrapped|legacy_policy|wrong_integration_branch|engine_too_old|environment", "message": "…"}],   // engine_too_old also carries "missing": [capability names]
  "legacy"?: { /* G1015, below */ },
  "actions": [{"goal": 1002, "node": "design", "title": "G1002 Add `release cut` command",
               "kind": "agent",                    // "agent" | "op"
@@ -649,7 +649,7 @@ With `--all`, the output also carries `"goals": [{"id", "title", "state", "stage
 | Exit | Meaning | Codes |
 |---|---|---|
 | 0 | Success | — |
-| 1 | Refused: validation or precondition | `usage`, `validation`, `not_found`, `not_ready`, `independence`, `workspace_busy`, `capacity`, `budget_exceeded`, `crash_loop`, `mass_expiry`, `goal_held`, `goal_closed`, `lease_held`, `dirty_worktree`, `sync_refused`, `test_freeze`, `checkpoint_required`, `goal_changed`, `fp_mismatch`, `goal_rewritten`, `goal_deleted`, `too_large`, `wrong_integration_branch`, `engine_too_old`, `engine_too_new`, `engine_bug`, `op_error`, `environment` |
+| 1 | Refused: validation or precondition | `usage`, `validation`, `not_found`, `not_ready`, `independence`, `workspace_busy`, `capacity`, `budget_exceeded`, `crash_loop`, `mass_expiry`, `goal_held`, `goal_closed`, `lease_held`, `dirty_worktree`, `sync_refused`, `test_freeze`, `checkpoint_required`, `goal_changed`, `fp_mismatch`, `goal_rewritten`, `goal_deleted`, `too_large`, `wrong_integration_branch`, `engine_too_old`, `engine_bug`, `op_error`, `environment` |
 | 2 | Remote or Git unavailable, or the remote refused the push | `remote`, `push_refused` |
 | 3 | Lost a race | `claim_lost`, `superseded`, `contention` |
 | 4 | Policy blocked | `policy_branch`, `policy_invalid`, `not_bootstrapped`, `legacy_policy` (a pre-reset `.zzzops/POLICY.json`; G1015) |
@@ -719,7 +719,7 @@ Parse cost is therefore O(open goals and their dependencies), not O(goals ever c
 Then:
 - **Old-format policy first (G1015).** A `.zzzops/POLICY.json` on `I` in the pre-reset format is `legacy_policy` (exit 4 for mutating verbs, a blocker for read-only verbs; "run the migrate-zzzops-repository skill"). This check comes before "Not bootstrapped".
 - **Not bootstrapped.** If `<integration>:.zzzops/workflow.json` is missing, every verb except `validate --policy` reports `not_bootstrapped` ("this repository has no ZzzOps policy on `<I>`; run the bootstrap skill"; exit 4 for mutating verbs, a blocker for read-only verbs).
-- **Engine floor first** (§4.5): read `schema_version` and `settings.engine.min` tolerantly, before strict validation.
+- **Engine floor first** (§4.5): read `schema_version`, `settings.engine.requires` and the deprecated `settings.engine.min` tolerantly, before strict validation.
 - **Policy.** Parse and validate POLICY.json (§3.2) and workflow.json (§3.1, including graph validation against that policy). Prompt files are read later, on demand, as `<integration>:.zzzops/prompts/<file>`. If anything is invalid: `policy_invalid` is a global blocker; mutating verbs exit 4; read-only verbs show the blocker and still list goals.
 - **Integration branch.** `settings.integration_branch` must equal `I`. Otherwise every mutating verb refuses with `wrong_integration_branch` ("this clone is configured for `<I>`; the policy says `<X>`: run `git config zzzops.integrationBranch <X>`"), and read-only verbs show it as a blocker. A deliberate switch lands the new value on both branches.
 - **Goals.** Parse each `goal.json`; a goal whose JSON or schema fails §3.3 is *invalid*: it offers nothing, `next` warns `invalid_goal` with the errors, and its dependents see a `dependency` miss with state `invalid`. A goal whose `schema` is newer than this engine knows is *newer* (§4.5): it is read-only here, and its dependents wait ("engine upgrade").
@@ -771,15 +771,16 @@ def write_goals(verb, ids, mutate, extra=None, retry=True):
 - **Whole-document edits** and every `--base` edit call `write_goals(..., retry=False)`: a rejection is reported as `goal_changed` with the new preview, never re-applied (§4.18).
 - **Worktree housekeeping.** After any successful mutating verb, the CLI runs `remove_if_safe` (§4.13) on at most one local goal worktree whose goal is closed in the snapshot (a directory listing of `<primary>/.zzzops/worktrees/` compared with the snapshot). Best effort; failures are ignored.
 
-### 4.5 Engine floor, ceiling and schemas
-- **Engine version** is the installed package version (`MAJOR.MINOR.PATCH`); `REQUIRES_MIN` is a version compiled into the engine: the oldest engine whose semantics it can coexist with. Versions compare numerically per component.
-- **Floor first.** Before strict validation, POLICY.json is parsed as plain JSON and only `schema_version` and `settings.engine.min` are read. If `settings.engine.min` > the engine version, or `schema_version` is newer than the engine supports, the engine reports only `engine_too_old` ("upgrade the plugin"), never `policy_invalid`. Writes are refused (exit 1); reads still work, and `next` shows the blocker.
-- **`engine_version_check()`** applies the floor and the ceiling before every write.
-- **Ceiling.** While `settings.engine.min` < `REQUIRES_MIN`, writes are refused with `engine_too_new` ("waiting for policy to raise engine.min to `<REQUIRES_MIN>`"). A newer engine installed early reads but does not write.
-- **What ships with an `engine.min` bump** (one list): a new goal schema; any change to fingerprint, canonical-JSON, `code_tree` or `change` semantics; any op `version`; the lease message format; any new POLICY or workflow key, field or op; any new record or finding key.
-- **`follows` (G1028, engine 1.2.0).** The finding key `follows` (§3.6) is read only by engines 1.2.0 and later, so `submit` writes it only while `settings.engine.min` ≥ 1.2.0; the policy branch that raises the floor comes first. When declared capabilities replace the floor (G1027), this is the capability `finding_follows` (1.2.0 maps to it), and the gate becomes "`finding_follows` is required".
+### 4.5 Engine capabilities, floor and schemas
+- **Capabilities.** The engine declares a set of capability names, one file each under `engine/capabilities/<name>.txt` (one paragraph: the format or behaviour it guards and the goal that added it). A capability is never removed. Shipped: `lens_findings` (G1000: finding keys `impact` and `material`, filters and their verdicts, notes, skippable review nodes) `finding_follows` (G1028: the finding key `follows`) and `lenses` (G1022: the node field `lenses`, skip keys `<node>:<lens>` and the finding key `lens`).
+- **Build id** is `<plugin version> <package revision, 12 hex>` (`package_provenance()`), or `unknown` when it cannot be read. It is the `Engine:` trailer (§3.9) and `zzzops --version`; `validate` shows `engine: {build, capabilities}`. It identifies one build, so a bad build's writes can be found (§8.4).
+- **Floor first.** Before strict validation, POLICY.json is parsed as plain JSON and only `schema_version`, `settings.engine.requires` and `settings.engine.min` are read. The required set is `requires` plus the capabilities of the deprecated `min` (`LEGACY_VERSIONS`: `1.0.0` → none, `1.1.0` → `lens_findings`, `1.2.0` → `lens_findings` and `finding_follows`, `1.3.0` → `lens_findings`, `finding_follows` and `lenses`; a version maps to the highest entry not above it; a version above every entry requires `engine_min_<min>`, which no engine has, and the message says to replace it with `requires`). If a required capability is missing, or `schema_version` is newer than the engine supports, the engine reports only `engine_too_old` ("upgrade the plugin"), with `missing` (sorted) on the blocker and in the error `details`, never `policy_invalid`. Writes are refused (exit 1); reads still work, and `next` shows the blocker. `validate` warns `engine_min_deprecated` while `min` is present.
+- **`engine_version_check()`** applies the floor before every write. There is no ceiling: an engine never refuses a policy for requiring too little.
+- **Older engines.** An engine from before capabilities reads `requires` as an unknown key and reports `policy_invalid` (work paused, writes refused): it fails closed. Upgrade it; never remove the key (the trade-off against `evo:H4` is in DESIGN §3.10).
+- **What ships with a new capability** (one list): a new goal schema (reading is still gated by the goal schemas the engine knows, below; the capability gates the policy that lets an engine write them); any change to fingerprint, canonical-JSON, `code_tree` or `change` semantics; any op `version`; the lease message format; any new POLICY or workflow key, field or op; any new record or finding key. The goal that makes the change adds `engine/capabilities/<name>.txt` in its own PR, and its rollout adds `<name>` to `settings.engine.requires` before the first such write.
+- **`follows` (G1028, capability `finding_follows`).** The finding key `follows` (§3.6) is read only by engines with `finding_follows`, so `submit` writes it only while the policy's required set contains `finding_follows`; the policy branch that adds it to `settings.engine.requires` comes first.
 - **Goal schemas.** An engine reads every goal schema it has shipped and writes the newest when it writes a goal (a lazy migration). Known schemas today: `{1}`. A goal whose schema is newer than the engine knows is *newer*: writes to it are refused with `engine_too_old`, and its dependents show `waiting: engine upgrade`, never a stuck item.
-- **Fingerprint versions** (§4.8): a record's fingerprint is compared only in the version it carries. An engine computes only its own version, so a record in another version is stale. A version is bumped only when the old one is unsafe (it missed changes), together with an `engine.min` bump; the cost is that every open goal re-runs its nodes. There is no multi-version support.
+- **Fingerprint versions** (§4.8): a record's fingerprint is compared only in the version it carries. An engine computes only its own version, so a record in another version is stale. A version is bumped only when the old one is unsafe (it missed changes), always together with a new capability; the cost is that every open goal re-runs its nodes. There is no multi-version support.
 - **Upgrade and rollback** are REPAIR.md recipes (§8.4).
 - **Tests, not self-tests.** The identity fixtures (blobs, the `B`/`C` commit pair with review files at `.zzzops/reviews/` and a top-level `reviews` directory path, a gitlink entry, a binary change, a mode-only change and a blank context line) are ordinary unit tests in CI, which pin `code_tree`, `change` and `input_fp` values. CI also runs them under a hostile global configuration (`diff.suppressBlankEmpty=true`, `diff.submodule=log`, a `core.attributesFile` marking files `-diff`) and expects identical values. The engine runs no self-test.
 
@@ -1224,7 +1225,7 @@ def abandon(g, X, N=None, force=False, note=None):
   c = git commit-tree <EMPTY_TREE> -p <L.tip> -m <same body with "Timeout: 0", first line "zzzops abandon G<g> <X>">
   ups = [(lease_ref, L.tip, c)]                                  # an expired renewal: never a deletion
   if force:
-    gc = commit-tree <goal tip^{tree}> -p <goal tip> -m "zzzops: abandon G<g> <X> attempt <n> --force\n\n<note>\n\nOutcome: abandoned\nState: <state>\nEngine: <v>"
+    gc = commit-tree <goal tip^{tree}> -p <goal tip> -m "zzzops: abandon G<g> <X> attempt <n> --force\n\n<note>\n\nOutcome: abandoned\nState: <state>\nEngine: <build id>"
     ups.append((goal_ref, goal_tip, gc))                         # the note is in the goal's history
   push_atomic(ups)
 ```
@@ -1462,7 +1463,7 @@ def new(file):
            "spec": a.spec, "priority": a.priority, "release": a.release, "depends_on": a.depends_on,
            "skip": a.skip, "links": a.links, "budget": None, "records": {}}
     validate_goal(doc, None, docs | {gid: doc}); engine_version_check()
-    c = commit_tree(tree_with_goal_json(doc), parents=[], msg=f"zzzops: new G{gid}\n\nOutcome: created\nState: {doc.state}\nEngine: <v>")
+    c = commit_tree(tree_with_goal_json(doc), parents=[], msg=f"zzzops: new G{gid}\n\nOutcome: created\nState: {doc.state}\nEngine: <build id>")
     res = push_atomic([(f"refs/heads/zzzops/goal/g{gid}", "", c)])          # create-only
     if res == "ok": print {created, next: next(scope=[gid])}; return
     if res == "remote": exit 2
@@ -1666,7 +1667,7 @@ class Blocked:
 OPS = {"git.base": Op(version=1, gh=False, self_sync=True, ...), "checks.run": Op(version=1, gh=False, self_sync=False, ...),
        "git.integrate": Op(version=1, gh=True, self_sync=True, ...), "github.merge": Op(version=1, gh=True, self_sync=False, ...)}
 ```
-- Each op declares `version` (an integer in `node_def_fp`, bumped only when its output semantics change, and always together with an `engine.min` bump, §4.5), whether it needs `gh`, whether it does its own work-branch reconciliation (`self_sync`), and a validator for the node's inputs and outputs. `git.base` uses `gh` only to close a stack PR, through the wrapper (§5.6); it is not checked up front.
+- Each op declares `version` (an integer in `node_def_fp`, bumped only when its output semantics change, and always together with a new capability, §4.5), whether it needs `gh`, whether it does its own work-branch reconciliation (`self_sync`), and a validator for the node's inputs and outputs. `git.base` uses `gh` only to close a stack PR, through the wrapper (§5.6); it is not checked up front.
 - **Findings** from an op get the id `<node>:<sanitize(key)>` and target the producer of the named input. A failing op that returns no finding is an engine bug and refuses with `engine_bug`.
 - Ops never write goal lifecycle (`state`, `closed`) and never name another node except through `producers`. They read a dependency's lifecycle only through `dep_kinds`. The carry-forward (§4.21) is done by the engine, from `replayed`.
 - **Text caps.** Ops cap their own texts: `checks.run` keeps `details` ≤ 4,096 bytes in total, cutting tails first; summaries, reasons and questions are cut to 1,024 bytes.
@@ -2090,8 +2091,8 @@ Every verb prints one JSON object on stdout (`show` prints text unless `--json`)
 |---|---|---|---|---|
 | `next` | `--goal G` (repeatable) \| `--all` | Read-only. Portfolio frontier (§4.10), ordering and rendering (§4.11). `--goal` scopes actions and human items, renders full human items, and adds `also_pending`; `--all` lifts the 8 KB cap and adds the per-goal summary of open and held goals (it replaces the old `status`). | §3.15 | 0, 1 |
 | `show G` | `--node X`, `--json` | Read-only. The goal document, its goal commit (for `edit --base`), node states and leases; `--node` narrows to one record and its lease. Prints the history command `git log -p refs/zzzops/goal/<R>/g<id>`. | §3.16 | 0, 1 (`not_found`) |
-| `new` | `--file F` (§3.13) | Allocates the id and creates `zzzops/goal/g<id>` create-only (§4.17). Refused while the policy is invalid, not bootstrapped, or the engine is outside `engine.min` (§4.5); allowed while a policy branch exists. | `{created, next}` for the new goal | 0, 1, 2, 3, 4 |
-| `start G X` | `--as L` (default from the environment, §1.6), `--reclaim`, `--force` (with `--reclaim`, or on a `crash_loop` item) | Refused (in this order) when: a policy branch exists (`policy_branch`, exit 4); the policy is invalid or missing (`policy_invalid`, `not_bootstrapped`, 4); the integration branch differs from policy (`wrong_integration_branch`); the engine is outside `engine.min` (`engine_too_old`, `engine_too_new`); the goal is held or closed; X is not `ready`, not `reclaimable` with `--reclaim`, not `running` with `--reclaim --force`, or is a `crash_loop` without `--force` (`not_ready`, `lease_held`, `crash_loop`); mass expiry without `--force`; agent node and the budget is exceeded (`budget_exceeded`); review node and `L` equals the subject record's holder (`independence`); workspace node and another workspace lease of the goal is live (`workspace_busy`), or with `--reclaim` the goal worktree is dirty unless `--force` (`dirty_worktree`); agent node at capacity (`capacity`). Then: workspace nodes ensure and sync the worktree; claim the lease (§4.12). Agent nodes print the task card; op nodes run to completion (§5.1). | agent: §3.14; op: §3.16 | 0, 1, 2, 3, 4 |
+| `new` | `--file F` (§3.13) | Allocates the id and creates `zzzops/goal/g<id>` create-only (§4.17). Refused while the policy is invalid, not bootstrapped, or the engine lacks a required capability (§4.5); allowed while a policy branch exists. | `{created, next}` for the new goal | 0, 1, 2, 3, 4 |
+| `start G X` | `--as L` (default from the environment, §1.6), `--reclaim`, `--force` (with `--reclaim`, or on a `crash_loop` item) | Refused (in this order) when: a policy branch exists (`policy_branch`, exit 4); the policy is invalid or missing (`policy_invalid`, `not_bootstrapped`, 4); the integration branch differs from policy (`wrong_integration_branch`); the engine lacks a required capability (`engine_too_old`); the goal is held or closed; X is not `ready`, not `reclaimable` with `--reclaim`, not `running` with `--reclaim --force`, or is a `crash_loop` without `--force` (`not_ready`, `lease_held`, `crash_loop`); mass expiry without `--force`; agent node and the budget is exceeded (`budget_exceeded`); review node and `L` equals the subject record's holder (`independence`); workspace node and another workspace lease of the goal is live (`workspace_busy`), or with `--reclaim` the goal worktree is dirty unless `--force` (`dirty_worktree`); agent node at capacity (`capacity`). Then: workspace nodes ensure and sync the worktree; claim the lease (§4.12). Agent nodes print the task card; op nodes run to completion (§5.1). | agent: §3.14; op: §3.16 | 0, 1, 2, 3, 4 |
 | `submit G X` | `--attempt N`, `--as L`, and (`--output F` [`--artifact F`] \| `--blocked F`) | §4.14. Allowed while a policy branch exists. | §3.16 | 0, 1, 2, 3 |
 | `renew G X` | `--attempt N` | §4.12; pushes only the lease. Allowed while a policy branch exists. | §3.16 | 0, 2, 3 |
 | `abandon G X` | `--attempt N` \| `--force --note T` | §4.12: pushes an expired renewal (`Timeout: 0`), never a deletion; the next start is a reclaim. The previous record is untouched. `--force` acts on anyone's lease and records the note in the goal's history. | §3.16 | 0, 1, 2, 3 |
@@ -2154,10 +2155,10 @@ The shipped `POLICY.json`, prompts and graph are configuration (owner decision, 
 ### 8.4 `REPAIR.md` recipes referenced by this spec
 - **Forward commit** for a force-pushed goal (`goal_rewritten`, §4.2).
 - **Delete an orphan or unparsable lease:** `git push <R> --force-with-lease=refs/heads/zzzops/lease/g<id>/<node>:<tip> :refs/heads/zzzops/lease/g<id>/<node>`.
-- **Upgrade the engine:** push `zzzops/policy/engine-<X>` raising `engine.min` (this pauses starts); wait until `next` shows nothing `running`; upgrade the plugins everywhere; land the branch. **Rollback** is the same procedure lowering the floor, plus reverting newer-schema documents with `git show <last commit without the new Engine trailer>:goal.json` and `edit --file … --base …`.
+- **Upgrade the engine:** push `zzzops/policy/requires-<name>` adding the capabilities to `settings.engine.requires` (this pauses starts); wait until `next` shows nothing `running`; upgrade the plugins everywhere (`validate` lists them under `engine.capabilities`); land the branch. **Rollback** is the same procedure removing the names, plus reverting newer-schema documents with `git show <last commit without the new Engine trailer>:goal.json` and `edit --file … --base …`.
 - **Rename a node:** while the policy branch is open, stage `records.<new>` (a copy), `skip.<new>` and any finding `target` rewrites on every goal, closed ones included, with one multi-goal `edit`; unknown record and skip keys are accepted and ignored until the graph has them (§3.3 rule 2); then land the branch. Finding ids stay as they are. Nodes read through `deps.` need the closed goals' records moved too.
 - **Delete old work branches:** for goals closed more than N months ago with no open dependents; artifact views then degrade to "(full text no longer available)" (§4.20).
-- **Bulk revert of one bad release's writes:** `git log --format=%H --grep='^Engine: <v>$' refs/zzzops/goal/<R>/g<id>` across goals; `git show <c>^:goal.json`; one multi-goal `edit --file … --base …`.
+- **Bulk revert of one bad release's writes:** `git log --format=%H --grep='^Engine: <build id>$' refs/zzzops/goal/<R>/g<id>` across goals; `git show <c>^:goal.json`; one multi-goal `edit --file … --base …`.
 - **Close a cancelled goal's PR and issue:** the `follow_up` commands of §4.18.
 
 - **A PR that conflicts with the integration branch** (G1021): GitHub runs no `pull_request` workflows on a conflicting PR, so checks never appear. `integrate` and `merge` raise a `conflict` finding on `base`, which rebases or asks for a hand resolution in the goal worktree. An older record stuck on "checks pending": `zzzops reopen <id> base --note "conflicts with <I>"`.
@@ -2255,7 +2256,7 @@ Each item below is a point that neither DESIGN.md nor the change lists decide. T
 72. `since` for human items is derived from record times (§4.11), not stored.
 73. `merge` gets the context input `dep_merges` (`deps.merge.merge_commit`, optional) so that it waits for every dependency's merge. (Superseded in revision 6.1: a PR base other than `I` is `Blocked {waiting_for: human}` with a `reopen` option for the PR's producer, not a finding on `integrate`, REV6 H7. Was: a finding.)
 74. `gh` floor: 2.40.0.
-75. `not_bootstrapped` exits 4 (a policy blocker); `wrong_integration_branch` and `engine_too_new` exit 1; `push_refused` exits 2.
+75. `not_bootstrapped` exits 4 (a policy blocker); `wrong_integration_branch` and `engine_too_old` (a missing capability, with `missing`) exit 1; `push_refused` exits 2.
 76. Op time waits other than CI polling share one helper, `ctx.wait`, with exponential backoff capped at 30 minutes and the `ci_timeout_minutes` escalation.
 77. The template's `integration_branch` is `main`; bootstrap sets it. The tiers list one Claude id per tier beside the GPT ids (two in `architectural`).
 
