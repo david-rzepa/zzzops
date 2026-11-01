@@ -35,6 +35,48 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:585696b0a8e3f8abc71f0c87a240a620b281d518b54ec1db9e4d7733ec4bc2cf",
+          "text": "F1 Card size budget does not hold. At 54d7e83 the real implement card (card-1014-implement) is 4,621 canonical bytes after shrink has already blobbed the prompt and all instructions. shrink stops and returns an oversized card (test_card_shape_and_size already allows 4096+2000). A sub-field checkpoint view adds about 303 bytes, so shrink immediately blobs it into {summary:'{', blob, read}, which shows less than today's bare id. review_impl (3 instruction blobs, doc, checks, two views) works out to about 4.7 KB, so both views get blobbed. Consequence: the spec acceptance (review_impl carries commit/base/diff) fails on real cards, and the design's journey test either fails or passes only on fixture-sized cards. Fix: exempt checkpoint views from shrink (or blob them last) and recover space elsewhere (truncate artifact summaries, which shrink never touches today; drop duplicate argv/command forms), optionally drop tree when tree is not the selected sub-field, give blob_view a useful summary, and state the budget with measured real-size implement/review_impl cards, or record an explicit limit decision and test the actual bound.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T04:29:31Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:70c137761708ceadc6591a629571ae434fe46f56",
+          "spec": "v1:sha256:1081e6600afea17d81dd4f899ddad04ceddabf62fcc2d3ccb9ddc015a5c6ad57"
+        },
+        "policy": {},
+        "subject": "v1:sha256:585696b0a8e3f8abc71f0c87a240a620b281d518b54ec1db9e4d7733ec4bc2cf"
+      },
+      "holder": "claude:e6ad/review_design-1018-1",
+      "input_fp": "v1:sha256:28bfac0cb812689d2200c2047cbcd9961cab26f74a8a3e3ad27411162febe990",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "284303329fb4ec93f1585449455e3210d9610c16",
+          "commit": "2c0348bafef74a97253f67f0a2fc9b87792f67d0",
+          "path": ".zzzops/reviews/1018/review_design.md"
+        },
+        "summary": "Fingerprint safety and the change/tree guard are sound (checked: value_of is called only from build after claim; selector_type is plain for path selectors; the guard source matches resolve for node and deps). F1: the 4 KB budget claim is false. The real implement card is already 4,621 bytes at 54d7e83 with everything shrinkable shrunk, and review_impl would be about 4.7 KB with two views, so shrink blobs the new checkpoint views (summary '{') on exactly the cards the fix targets. Redesign the budget (exempt views from shrink and reclaim space from artifact summaries or duplicate command forms, or a smaller view plus an explicit limit decision) and measure real-size cards."
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
