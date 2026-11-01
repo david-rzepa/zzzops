@@ -8,7 +8,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T03:54:11Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "spec": "v1:sha256:73f53b686ecd3713354c33c165401c3a3eb920fcb017163664b0557c71a2d297"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/design-1001-1",
+      "input_fp": "v1:sha256:c55fb519a87f4d94fac37c9d78127b3d8a682dab721d0fc756eb26ca0fb6c775",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "b2dfc5b37cd06d95a957280500d9d0948a426de2",
+          "commit": "fedcd62d7dc9c63397e6d48aaf3c40daaffcd296",
+          "path": ".zzzops/reviews/1001/design.md"
+        },
+        "summary": "Each `new` request gets a key: an explicit `request_key`, or by default sha256 over the canonical title, spec and sorted depends_on. The key is recorded as a `Request-Key:` trailer on the goal's immutable root commit. Before allocating an id, and again after any push that is rejected or reports a remote failure, `new` scans the goal roots with one `git log --max-parents=0` and returns the existing goal with `created.recovered: true`. A key match with different contents is refused with a `validation` error. No goal-schema or error-code change; tests cover exact retry, a push that lands but reports failure, concurrent identical calls, key conflicts, same-title distinct specs and recovery after edit."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
