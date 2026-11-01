@@ -286,7 +286,7 @@ def finding_effect(graph, n) -> str:
     """What a finding from this phase does (one place for G1000's filtered-review branch)."""
     if graph.is_review(n):
         return "Each open finding reopens its target: it re-runs and must answer it in responses."
-    return "it reopens that ancestor; this phase re-runs if its output changes."
+    return "it reopens that ancestor; this phase re-runs if that ancestor's output changes."
 
 
 def output_schema(graph, n, s, follows: bool = False) -> dict:
@@ -311,7 +311,7 @@ def output_schema(graph, n, s, follows: bool = False) -> dict:
             if t == "checkpoint":
                 out[k] = ("checkpoint (optional): omit the key to default to the suggested checkpoint, else your work "
                           "branch's HEAD (no new commit keeps the previous one). Override: {\"commit\": \"<full 40-hex "
-                          "sha>\"}, no refs or short shas. A restack may make submit ask for one.")
+                          "sha>\"}, no refs or short shas. A restack may require one.")
             elif t == "artifact":
                 out[k] = "artifact: write it to a local file and pass that file with --artifact; artifact.path is where submit stores it."
             else:
