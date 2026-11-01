@@ -43,49 +43,61 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:af8f6994c739eaeb9994bc78579e22d33e93628fd70b02908b031643b7ec953e",
           "text": "F1: an older plugin treats a newer recorded base as 'upstream changed', and its reviewed record downgrades the base. §3.3's last row lists a base that is null or not in the running engine's history store as upstream changed / local unknown, with a manual compare against the running template; record.reviewed resets every base to the running S. Plugin version skew is normal here (two marketplace caches, 6747a5e and c3791a0, plus the Codex engine on 15b59a5). An older plugin seeing B = S_new would offer its older template as 'the new default'. Writing its reviewed record sets B back to S_old, and the newer plugin then lists the file again: a ping-pong. Fix: a non-null base absent from the running store is reported as upstream: unknown_base ('recorded by a newer or unreleased plugin: upgrade to compare'), with no diff to the running template and no apply. record.reviewed keeps such bases unchanged, or is omitted when every listed file is in that state. null keeps the manual compare. Test: a record written with a larger store gives no downgrade direction, and its reviewed record leaves that base as it was.",
           "upheld": false
+        },
+        {
+          "id": "review_design:2:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 3,
+          "target_fp": "v1:sha256:7713cc127484f64fda30b01799f6fd08cc727203e467a0c0e2e4bf64c35d72d2",
+          "text": "2:1: installs on different plugin versions still ping-pong the record over files only one version ships. §3.5 drops record entries for files no longer shipped, and §3.3 lists 'B not in record, S present' as added/copy. After G1022 removes review_design.md, a post-G1022 plugin's reviewed record omits it. A pre-G1022 plugin then shows added/copy and writes it back, and the newer plugin shows removed/delete, round after round. Fix: reviewed keeps a tombstone for each file no longer shipped (e.g. a removed map holding the last base). An engine that still ships the file lists nothing when the tombstoned id is in its store or equals S, and treats it as unknown_base otherwise. An engine that no longer ships it lists nothing. Say how a reader that does not know the tombstone form behaves (invalid_record is acceptable). Extend test 11 with a removed file read alternately by both engines. Secondary: a base recorded by an unmerged build stays unknown_base on every engine, listed forever and impossible to decline; the skill should say to set it to null once the newest plugin still shows unknown_base.",
+          "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T18:41:40Z",
+      "finished_at": "2026-11-01T18:44:18Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:1173b49844869e460b025ea30851b774f6c2be91",
+          "doc": "v1:blob:2fcca3d21d6b7059b44539abd4251f728aaee98e",
           "spec": "v1:sha256:5391c2d2289d1f818238efa5e7e169590aeef7c208341471c4f6ae9097278744"
         },
         "policy": {},
-        "subject": "v1:sha256:af8f6994c739eaeb9994bc78579e22d33e93628fd70b02908b031643b7ec953e"
+        "subject": "v1:sha256:9fab07cc2890d1ded9c6b3f4d7e13e490e4c3375cdbe7e6185ae16762230aebf"
       },
       "holder": "claude:e6ad/rd1025",
-      "input_fp": "v1:sha256:8e072fdc5f6bb1c9df50f9bfc1af20061c4e0556c7e55390f059af36984faf1c",
+      "input_fp": "v1:sha256:a801e20672b923e2570aacbdda5d8beb01417c1cd6c32c817c97167807a5d893",
       "ok": false,
       "output": {
         "decision": "changes_requested",
         "report": {
-          "blob": "666d625690fb90b4fe13efe2cf574fa8e8d86ccc",
-          "commit": "e2a4ea5a60e0d24020bf4560554449f0e21bfadc",
+          "blob": "cdb57cfd8f5e55cf2ce19bf0724363eedf6c4708",
+          "commit": "47bb6a64e62c150366ab4394ce387914614127e2",
           "path": ".zzzops/reviews/1024/review_design.md"
         },
-        "summary": "Changes requested (one finding). The design meets the spec in the reset's style: an explicit policy, a capability-free .zzzops/TEMPLATE.json record, a content-addressed history store (verified: 28 blobs at 8d8437a; this repository's drift matches), a non-blocking policy_update item in next (compact, within the 8,192 cap) and validate (full), and reviewed policy-branch updates and declines run by the skill. F1: under plugin version skew, a base unknown to the running engine is shown as an upstream change, and the reviewed record would downgrade it. Notes: the TEMPLATE.json guard gap is acceptable (add an execute-skill line), per-file applies must follow the workflow.json decision, and G1025's template additions need history entries. No owner question."
+        "summary": "Changes requested (one new finding). review_design:1:1 is resolved for files both plugin versions ship: unknown_base has no diff or apply, reviewed keeps the base, and test 11 covers it. The three notes are taken (TEMPLATE.json goal-edit ban, workflow.json-first prompt decisions, G1025 history note). New 2:1: files that only one version ships still ping-pong, because reviewed drops entries for files no longer shipped and the older plugin re-adds them. Fix: keep tombstones in the record. Also, an unmerged-build base stays unknown_base forever; the skill should give a way to reset it to null. No owner question."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "1173b49844869e460b025ea30851b774f6c2be91",
-          "commit": "06e536be9ae6e5323dce2b7cdbd5346d1cfb7253"
+          "blob": "2fcca3d21d6b7059b44539abd4251f728aaee98e",
+          "commit": "ecc2dfd2383353e0518303b0b3f35d3cbab815ea"
         }
       },
       "status": "done"
