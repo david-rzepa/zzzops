@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-01T17:18:08Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [],
   "graph": "default",
   "id": 1021,
@@ -192,6 +197,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T17:18:08Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:56380273b23c181609bd70f6354217e9c02c5fd6fd777d0ebf8d8f0299ecda8d"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:a374c2db040240050bf95098823f80bd21bb0b42facede43600f0c4d9e128715",
+      "ok": true,
+      "output": {
+        "merge_commit": "a05fb9714f105b4b6da43deafde535ea6eed8a88",
+        "merged_at": "2026-11-01T17:18:06Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -403,6 +430,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Bug found while dogfooding Release 1. After G1014, G1018, G1001 and G1015 merged into dev, the PRs for G1016 (#747) and G1000 (#748) conflicted with dev (GitHub mergeable CONFLICTING, mergeStateStatus DIRTY). GitHub runs no pull_request workflows on a conflicting PR, so no checks ever appear, and git.integrate kept answering 'required checks pending: dev-required-tests' with a retry. It would have waited forever, and nothing pointed at the real problem. github.merge already handles CONFLICTING/DIRTY by raising a conflict finding on the base input; integrate does not.\n\nOutcome:\n- After pushing or updating the PR, git.integrate reads `mergeable` and `mergeStateStatus` from the `pr view` call it already makes.\n- On CONFLICTING or DIRTY it finishes not-ok with a `conflict` finding on its `base` input, as github.merge does, so `base` re-runs and rebases onto the current integration tip, or asks for a conflict resolution through its existing retry path.\n- On UNKNOWN it waits briefly, as merge does.\n- A 'checks pending' wait that has seen no check at all after a bounded time, and whose PR is not mergeable, never just waits again.\n- Also check whether `base` should already be stale when the integration branch moves while integrate is waiting. It was not offered in this incident. Explain why, and fix it if the design intends it.\n\nAcceptance:\n- Fake-gh tests: a conflicting PR gives a conflict finding and base ready; UNKNOWN then MERGEABLE proceeds; a mergeable PR with pending checks still waits.\n- A journey: two goals both touch one file; the first merges; the second's integrate sends it back to base, and it then integrates cleanly after the rebase.\n- No extra GitHub calls in the common case: reuse the pr view fields.\n- Docs: REPAIR.md mentions the case.",
-  "state": "open",
+  "state": "closed",
   "title": "integrate must detect a conflicting PR instead of waiting for checks forever"
 }
