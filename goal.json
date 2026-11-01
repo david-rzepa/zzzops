@@ -12,10 +12,10 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T19:32:39Z",
+      "finished_at": "2026-11-01T19:39:09Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -29,13 +29,16 @@
       "ok": true,
       "output": {
         "doc": {
-          "blob": "2adddada44fe4f179b53e2f1dfaf589a0cfc0cf3",
-          "commit": "b49df20abb3e715cb28f427f1533e8f8356035b7",
+          "blob": "606311b216268f9b2f2f2495e94b654838796672",
+          "commit": "7f0befbde4aa4691e0f9a7b8c9b725bb7adfae3b",
           "path": ".zzzops/reviews/1033/design.md"
         },
-        "summary": "Cause: build_marketplace_bundle.plugin_files always renders the 'official' channel. The Claude build is run with the canonical 0.0.0-dev version, but package_status expects 'development' for that version. So every generated Claude marketplace, and every Claude install made from one (including ~/.claude/plugins/cache/zzzops/zzzops/unknown), fails skills/add-zzzops-goal/SKILL.md. Fix: one shared package.channel_for_version used by both the build and the check, plus an install_harness() that works from the install path. It makes the reinstall hint name Claude Code, Codex, or both. CI's Claude acceptance and a new cross-platform test run the full validate from a generated marketplace and require no environment entries. No DESIGN/SPEC contract change."
+        "responses": {
+          "review_design:1:1": "fixed: every environment == [] assertion is replaced by a package-check-only assertion. No environment entry may start with `plugin package` (covering both cli.package_check failure forms), and none may contain `skill discovery metadata`. The SKILL.md channel and policy-entry assertions stay, and a negative case checks that the assertion fires on a wrong-channel build. A fake gh on PATH was considered and not chosen. Notes taken: the test runs via sys.executable zzzops.py and is added to NATIVE_COVERAGE; exact-dict package_status() assertions are grepped at implement; a comment explains why `<m>` (the cache segment, which is the marketplace.json name) is used."
+        },
+        "summary": "Revision 2 answers review_design:1:1. Tests no longer assert environment == [], because validate's environment also carries git and gh checks, and CI has no token. They assert that no entry starts with `plugin package` and that `skill discovery metadata` is absent. They also keep the SKILL.md channel and policy-entry checks, and add a negative case proving the assertion can fail. The new bundle test runs through zzzops.py and joins NATIVE_COVERAGE, the `<m>` derivation is commented, and implement greps for exact-dict package_status() assertions. Cause and fix are unchanged: one shared channel_for_version for build and check, plus a path-based install_harness() for a Claude/Codex/neutral reinstall hint."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
