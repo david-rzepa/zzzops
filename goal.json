@@ -47,45 +47,69 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:1aaf15b7a99e2c6f760d6a1d35a63315aca3d5544ddec84dd009c30e5e86b2fa",
           "text": "The pending-amendment mechanism has an unowned window. The design checks G1000, G1001, G1014, G1015 and G1016 only once, at G1017's implement time. Any of them that merges after that but before G1017 merges is listed as pending, and its own PR (built on a base without docs/design/) will never edit docs/design/. G1001, G1014 and G1015 are already past base and in test_design while G1017 is at review_design, so they are headed into this window. Consequence: SPEC §3.16, §4.1, §4.17 and §4.19 and DESIGN §10 silently disagree with the engine on dev, and workers reading read_dev act on stale contract text, which is the drift this goal exists to remove. Fix: (1) re-run the five-goal check against the dev tip at G1017's integrate step (or whenever base moves) and apply every goal that has merged by then, from its merged diff and approved design; (2) allow no pending row for a goal that has merged by the time G1017 merges; (3) give each remaining pending row an owner, either a follow-up 'apply pending contract amendments' goal that depends on those goals, or a `zzzops edit` adding the docs/design update to the goal's spec while it is still before implement.",
           "upheld": false
+        },
+        {
+          "id": "review_design:2:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:4482a5aae8cd2d5561e11330eb65fc30ff8a5a5d1a9467bdb92d5f0f97954662",
+          "text": "The guard does not see the integration tip. The design says test_no_landed_goal_is_pending 'sees the integration tip that the PR would merge into' and that 'CI catches anything that merges later'. But the dev ruleset has strict_required_status_checks_policy false, validate.yml triggers only on pull_request, and ops/merge.py merges on a green rollup. G1021's merge-tree check finds no conflict, because the owner goal never touches docs/design. So G1017 and an owner goal that does not depend on G1017 (the G1020 fallback, or any past-implement goal found at implement) can both pass CI against stale tips and both merge. Dev then holds the landed code and its pending row, and every later PR fails the required check, which its implement cannot fix. Fix: (1) a pending row is allowed only if its owner has 1017 in depends_on, so the first tree with the owner's code and its row is the owner's own PR; (2) a past-implement contract goal that cannot take that dependency gets no row, and instead zzzops edit 1017 adds it to G1017's depends_on, so case 1 applies (G1020 has already integrated, so this costs almost nothing); (3) add a REPAIR line for a red dev; (4) correct the 'sees the integration tip' claim.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:2:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:4482a5aae8cd2d5561e11330eb65fc30ff8a5a5d1a9467bdb92d5f0f97954662",
+          "text": "G1024 (default-policy update notices, new in Release 1, open, no records, no dependencies) changes the contract but is not in the inventory. It adds a bootstrap provenance record in POLICY.json settings or .zzzops/TEMPLATE.json (SPEC §3.2 and bootstrap), a non-blocking policy_update item in next and validate --policy output (SPEC §3.16 and approval-item rendering), a recorded decline, and a one-time missing-record item. The design's implement-time search for 'DESIGN, SPEC, contract or G1017' does not match G1024's spec, which contains none of them, so the SPEC would drift when G1024 merges. Fix: add G1024 to 'Pending, owner assigned now' the same way as G1022. The root runs zzzops edit 1024 right after approval: depends_on gains 1017, the acceptance line requires the docs/design edit, the HISTORY §4 row and deleting its pending row, and the marker is e.g. plugins/zzzops/zzzops/engine contains \"policy_update\". Replace the keyword search with a behavioural one: any open goal that changes CLI output, card or approval-item content, policy or settings schema, the template graph, or engine algorithms gets a row and an owner.",
+          "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T04:27:43Z",
+      "finished_at": "2026-11-01T17:40:59Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:9e3d642213de86aaa10bd1d22aeb8417cb583121",
+          "doc": "v1:blob:7597f57f53d0021a1e234d31b497da04a1aa2b0f",
           "spec": "v1:sha256:d510d0f4ee516876f569e5777e626c26cd577acb0bb898776228b91f270a0576"
         },
         "policy": {},
-        "subject": "v1:sha256:1aaf15b7a99e2c6f760d6a1d35a63315aca3d5544ddec84dd009c30e5e86b2fa"
+        "subject": "v1:sha256:1871364187f5e91cf8b89fceb257dc992e99623c412981612df28f64b796a12a"
       },
-      "holder": "claude:e6ad/review_design-1017-1",
-      "input_fp": "v1:sha256:6a4adfba3a7a60ad343a0b648e720083d02b44c99516984ecdb8dd1fc8c8a8d5",
+      "holder": "claude:e6ad/rd1017",
+      "input_fp": "v1:sha256:8e8c9e21edbd1e857d58be786b4d867cf87680a2d34fdc4daf5a13ef894c77e0",
       "ok": false,
       "output": {
         "decision": "changes_requested",
         "report": {
-          "blob": "c1c83c1c7bc70a71225ef997c73cb32477a19966",
-          "commit": "727961a6a123c161bb18e60fec517acc1c78721f",
+          "blob": "fb1971f22f7a65a1f461766d1a569236e8f76c1d",
+          "commit": "b78f143ff8f80f4f1edd430f850f1ab6919a4269",
           "path": ".zzzops/reviews/1017/review_design.md"
         },
-        "summary": "Sound design: the scrub is complete (the gate regex also catches SPEC:532's name, which the inventory missed), citations stay resolvable with numbering preserved, and nothing new ships (both marketplaces source ./plugins/zzzops). One material finding: the pending-amendment rule checks the five goals only once, at implement time. A goal that merges between G1017's implement and its merge, or whose own implement has already passed, has no owner to edit docs/design, so the contract drifts. G1001, G1014 and G1015 are already in test_design on bases without docs/design, so they are headed into that window. Fix: re-check and apply merged goals at integrate, allow no pending row for a merged goal, and give each remaining row an owner (a follow-up goal, or a spec edit before implement)."
+        "summary": "The prior finding is resolved: every implement re-checks merged goals, each pending row has an owner and a tree marker, and a guard test exists. Two new findings. F2: the guard assumes CI sees the integration tip, but the dev ruleset has strict_required_status_checks_policy false and validate.yml runs only on pull_request. A goal without depends_on 1017 and G1017 can both merge green, which leaves every later PR failing the guard. Fix: allow pending rows only for owners that depend on 1017, and have G1017 depend on any past-implement contract goal (the G1020 fallback). F3: G1024 changes the contract (provenance record, a policy_update item in next/validate --policy, decline) but has no row, and the implement-time keyword search would miss it. Fix: give it a G1022-style edit (depends_on 1017, a docs/design acceptance line, a marker) and replace the keyword search with a behavioural test."
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     }
   },
