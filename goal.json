@@ -164,15 +164,15 @@
       "status": "done"
     },
     "review_impl": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_impl:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "implement",
           "target_attempt": 1,
           "target_fp": "v1:sha256:15dc369d68ec0c82431de21a453b46b6e76d79d0a6c31ad5209745fb18b8f98c",
@@ -180,36 +180,36 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T05:07:49Z",
+      "finished_at": "2026-11-01T05:46:49Z",
       "fp_parts": {
         "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
         "inputs": {
-          "code": "v1:sha256:eb55bf9446d652eda8516c0e4d648fbbedd65d4e5a69a9fb1c717522710cd64f",
+          "code": "v1:sha256:6d64e62645ca8d096809430bf1181bcc67986c01ca736a7640e943cb7838544f",
           "doc": "v1:blob:e13cc44f710cd45197460ce8524bb85d19eb21e7",
-          "tests": "v1:sha256:bab1902f152366b13fd88ba6b174f93e9f951443ae214e15647cc6eae47d63b1"
+          "tests": "v1:sha256:6d64e62645ca8d096809430bf1181bcc67986c01ca736a7640e943cb7838544f"
         },
         "policy": {},
-        "subject": "v1:sha256:15dc369d68ec0c82431de21a453b46b6e76d79d0a6c31ad5209745fb18b8f98c"
+        "subject": "v1:sha256:5cb33212ace3d499653b5747da5acfe44510afc1254dfb784a0f4340ae54f126"
       },
-      "holder": "claude:e6ad/review_impl-1001-1",
-      "input_fp": "v1:sha256:f4db2911733077d8a7ac4096c7d8cd6f59e52341f620eaf82e8be4a8f456a480",
-      "ok": false,
+      "holder": "claude:e6ad/review_impl-1001-2",
+      "input_fp": "v1:sha256:80c55718ff88b066511a32dacdfc127aaa9896179ee22674ecf9587ad319afe2",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "662da54588c7ec21bc960bc2c1aee8826c1e8d04",
-          "commit": "93211eb35505242eabd3299b00f7d8fe7970b029",
+          "blob": "e89bb13cedd60f1d1cb9a278d99ead810df5b850",
+          "commit": "0357effdc855ae974cc4ed195f27d4991f2b36fa",
           "path": ".zzzops/reviews/1001/review_impl.md"
         },
-        "summary": "Implementation follows design attempt 3 faithfully. The tests are unchanged and pass. The concurrency, uncertain-push, up_to_date and contents-check paths are correct, and the implementer's extra is_ancestor check is sound, so it stays. One material finding: find_request_key returns [] when its git log fails, so new silently allocates a duplicate id on a retry or after losing a race. That defeats the goal's guarantee and the EngineError convention. Fix: raise EngineError on a non-zero exit (main maps it to engine_bug before any write)."
+        "summary": "Re-review of 62196dd. The commits up to 0e491ec are unchanged, and only store.py and one test changed in code since then. find_request_key now raises EngineError on a failed scan, which main maps to engine_bug (exit 1) before any write. The new test exercises a real git failure and asserts that nothing was pushed. The run_tests tree matches the code. No new findings."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "code": {
           "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "3a0e0f14f9619ee467d2b1ff69e31486e87a5538",
-          "commit": "0e491ecc37a0569b2bf8a1b50844844adf0bb425",
-          "tree": "1bd2fd1c20eb026b8148d827f8d52a32ef7504cf"
+          "change": "b40e6ba83a9c5e4b3b27224add17e466a7453d54",
+          "commit": "62196dd94f75bd5c45f175e59582e09a3a37f597",
+          "tree": "851e522f5401c277e037ddd877434de7123b4bb8"
         }
       },
       "status": "done"
