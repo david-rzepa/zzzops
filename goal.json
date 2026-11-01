@@ -217,10 +217,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T21:30:05Z",
+      "finished_at": "2026-11-01T21:33:23Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -250,14 +250,17 @@
           "python3 -m unittest discover -s .agents -t .agents -p 'test_design_docs.py'",
           "python3 -m unittest discover -s .agents -t .agents -p 'test_engine_*.py'"
         ],
+        "responses": {
+          "review_tests:1:1": "fixed: the module no longer imports ENGINE_VERSION at module level. It does `import engine`, detects the merge order with `CAPS_DIR.is_dir() or hasattr(engine, \"CAPABILITIES\")`, and reads `ENGINE_VERSION = getattr(engine, \"ENGINE_VERSION\", None)`, used only in the G1028-first branches (follows_settings and the 9b bump check, which is kept). Checked: with ENGINE_VERSION deleted and engine.CAPABILITIES set, the module imports and follows_settings returns the engine.requires form."
+        },
         "tests": {
           "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "744fe1c34411a09eea0b49e8ed70e19347b6c51c",
-          "commit": "f0048e09efca47fda8251c5ca70a4636b0721a0a",
-          "tree": "ac8a4a869220366457349c7e75632b259fcdee6b"
+          "change": "9ed79971974472fe654806fc9861e601a30e9c3a",
+          "commit": "d3fae5202ffe6946a19f005e6e4c259e18aa8b1f",
+          "tree": "117a41c52857aa537086f2de5c6a5e5389a50cfc"
         }
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     }
   },
