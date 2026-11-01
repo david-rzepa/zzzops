@@ -187,6 +187,61 @@
       },
       "status": "done"
     },
+    "run_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T06:33:18Z",
+      "fp_parts": {
+        "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
+        "inputs": {
+          "code": "v1:sha256:4494c4b20d0026d5df2f1ddbaaa8d8dc32441f8dabef159f35ae7da0e0775144",
+          "commands": "v1:sha256:cb3e70d3ad64395928bbbb0e6599a56cb52066c3b274c7c876b01f7e5b286f31"
+        },
+        "policy": {
+          "verification.commands": [
+            "python3 -m unittest discover -s .agents"
+          ]
+        }
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:5ba5a4944e74aaaa47af018864e2b04d1f4998eb05d1fa7839c0942f9fc0a757",
+      "ok": true,
+      "output": {
+        "result": {
+          "details": [
+            {
+              "cmd": "python3 -m unittest discover -s .agents -t .agents -p test_engine_lenses.py",
+              "exit": 0,
+              "seconds": 189,
+              "tail": "rning: Enable tracemalloc to get the object allocation traceback\n...../home/dave/Work/dev/zzzops/.zzzops/worktrees/g1000/.agents/test_engine_lenses.py:116: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpjsr3_2pw/tpl/POLICY.json' mode='r' encoding='UTF-8'>\n  p = json.loads(open(os.path.join(d, \"POLICY.json\")).read())\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 61 tests in 189.793s\n\nOK\n"
+            },
+            {
+              "cmd": "python3 -m unittest discover -s .agents -t .agents -p 'test_*.py'",
+              "exit": 0,
+              "seconds": 430,
+              "tail": "rceWarning: subprocess 3094268 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...................................................................................................................\n----------------------------------------------------------------------\nRan 438 tests in 430.673s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmpz5icbbpa\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
+            },
+            {
+              "cmd": "python3 .agents/prompt_stats.py --check",
+              "exit": 0,
+              "seconds": 0,
+              "tail": "# Enforced prompt budgets\n\nOnly always-loaded context and frequent routed workflows are blocking. Other workflows and total inventory are advisory.\n\n| Context | Bytes | Est. tokens | Limit | Status |\n| --- | ---: | ---: | ---: | --- |\n| always-loaded/codex | 0 | 0 | 700 | PASS |\n| capture/codex | 6914 | 1729 | 3700 | PASS |\n| execution/codex | 9576 | 2394 | 8800 | PASS |\n\nAdvisory total inventory: 26 prompts, 46347 bytes, ~11597 tokens.\n\n## Policy context boundary\n\nPublic documentation is excluded. Static prompts, the current project policy, and cold default/review context are counted separately.\n\n| Context class | Bytes | Est. tokens |\n| --- | ---: | ---: |\n| static-hot-prompts | 35195 | 8799 |\n| current-project-policy | 7536 | 1884 |\n| cold-default-review | 33875 | 8469 |\nPASS: all enforced prompt contexts are within their committed limits.\n"
+            },
+            {
+              "cmd": "python3 -m unittest discover -s .agents",
+              "exit": 0,
+              "seconds": 425,
+              "tail": "rceWarning: subprocess 3256399 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...................................................................................................................\n----------------------------------------------------------------------\nRan 438 tests in 425.572s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmpazsi9m34\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
+            }
+          ],
+          "passed": true,
+          "tree": "221f1d882da4495d02645fd77b743d6374ebec74"
+        }
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "test_design": {
       "attempt": 3,
       "correction_runs": 2,
