@@ -1,13 +1,16 @@
 # G1033 design: the Claude build reports a false skill-metadata mismatch with a Codex-only hint
 
-Revision 1.
+Revision 2. It answers review_design:1:1.
+- **1:1:** `validate`'s `environment` list also holds the git and gh checks (`cli.py:194-202`). In CI, with no GitHub token, it contains a "gh is not authenticated" entry; on a machine without gh it contains "gh is not installed". Every planned `environment == []` assertion is therefore replaced by an assertion about the package check only: no entry starts with `plugin package`, and no entry contains `skill discovery metadata`. The `SKILL.md` channel and `policy` entry assertions stay. The review's notes are also taken: the platform coverage is stated correctly, the new test runs on Windows through `zzzops.py`, exact-dict `package_status()` assertions are grepped for at implement, and the code comments where `<m>` comes from.
+
+The approach, the cause and the hint design are unchanged from revision 1.
 
 ## Outcome
 
-- A Claude marketplace built by `.github/scripts/build_claude_plugin.py` passes the package self-check. This covers installs made from that marketplace and runs in place from its directory. `zzzops validate` run from it reports no `environment` entry.
+- A Claude marketplace built by `.github/scripts/build_claude_plugin.py` passes the package self-check. This covers installs made from that marketplace and runs in place from its directory. `zzzops validate` run from it reports no package-check (`plugin package…`) entry in `environment`. Git and gh entries are separate checks and are not affected by this goal.
 - The rule that maps a version to a channel lives in one place, and both the build and the check use it, so the two cannot drift apart again.
 - When the self-check does fail, the reinstall hint names the harness the package was installed for: Claude Code, Codex, or both when that cannot be told.
-- CI runs the full `validate` from a generated Claude marketplace, not only `validate --policy`, so this regression cannot come back unseen.
+- CI runs the full `validate` from a generated Claude marketplace, not only `validate --policy`, and requires that it reports no package-check entry, so this regression cannot come back unseen.
 
 ## Reproduction (read_dev 8d8437a; cache built from c3791a0)
 
@@ -16,7 +19,7 @@ Revision 1.
 - A scratch clone of this repository (with `zzzops.integrationBranch dev`) prints the same entry.
 - **Difference from the card's note:** in this session, `validate` run in `/home/dave/Work/dev/zzzops` from that cache also prints the entry. The check does not depend on the repository at all: `package_status()` reads only the plugin's own tree (`PLUGIN_ROOT`). Nothing about the repository explains a run without the error. The earlier run most likely used another command (only `validate` reports `environment`) or another launcher, such as the Codex install or the source tree. The check's inputs do not support any other explanation.
 - The real Claude install on this machine, `~/.claude/plugins/cache/zzzops/zzzops/unknown/`, was installed from a generated directory marketplace. Claude shows its version as `unknown` because the marketplace is not Git-backed. It has the same `— official plugin.` text and the same error. So the bug reaches real Claude installs, not only in-place runs.
-- Installs from the repository marketplace itself (`.claude-plugin/marketplace.json` → `./plugins/zzzops`) are not affected. The canonical source passes the check: I ran `plugins/zzzops/bin/zzzops validate` from a dev checkout and got `environment: []`.
+- Installs from the repository marketplace itself (`.claude-plugin/marketplace.json` → `./plugins/zzzops`) are not affected. The canonical source passes the check: I ran `plugins/zzzops/bin/zzzops validate` from a dev checkout and got `environment: []`. gh is authenticated on this machine, so no gh entry appeared either.
 
 ## Cause
 
@@ -27,7 +30,7 @@ Revision 1.
 - CI missed it because `claude_plugin_acceptance.py` installs from a copy of the canonical tree (`write_repository_marketplace`), which is the development channel and passes. It checks the generated marketplace only with `claude plugin validate`. It runs the packaged CLI only as `--help` and `validate --policy`, and that offline path (`validate_policy_dir`) never calls `package_check()`.
 - The hint is hard-coded in `package_status()`: `f"{exc}; reinstall ZzzOps from its Codex marketplace."`.
 
-I checked the fix: I patched only the channel argument in a scratch clone and rebuilt with `--version 0.0.0-dev`. `validate` then gives `environment: []`. A `--version 1.2.0` build also gives `[]`. The generated `skills/` then differ from the canonical tree only in YAML quoting.
+I checked the fix: I patched only the channel argument in a scratch clone and rebuilt with `--version 0.0.0-dev`. `validate` then gives `environment: []` (gh authenticated here; see Tests for why CI asserts less). A `--version 1.2.0` build also gives `[]`. The generated `skills/` then differ from the canonical tree only in YAML quoting.
 
 ## Approach
 
@@ -48,7 +51,7 @@ I checked the fix: I patched only the channel argument in a scratch clone and re
   4. `PLUGIN_ROOT.parent/.claude-plugin/marketplace.json` exists and `PLUGIN_ROOT.parent/.agents/plugins/marketplace.json` does not → `claude`. This is the generated Claude marketplace run in place, like the c3791a0 cache.
   5. Otherwise `None`. This covers a source checkout (`plugins/zzzops`, where both marketplaces sit two levels up) and unknown layouts.
 - `package_status()` builds the failure detail as `f"{exc}; {reinstall_hint(harness)}"`:
-  - `claude`: `update or reinstall ZzzOps in Claude Code: claude plugin marketplace update <m>, then claude plugin update zzzops@<m>.` Here `<m>` is the path segment after `plugins/cache/` when installed, and `zzzops` otherwise.
+  - `claude`: `update or reinstall ZzzOps in Claude Code: claude plugin marketplace update <m>, then claude plugin update zzzops@<m>.` Here `<m>` is the path segment after `plugins/cache/` when installed, and `zzzops` otherwise. Claude names that cache directory after the marketplace's `name` in `marketplace.json`, so the segment is the marketplace name. The code says this in a comment, so a future change to Claude's cache layout is noticed rather than silently giving a wrong command. For a generated marketplace run in place, `<m>` is read from the sibling `.claude-plugin/marketplace.json` `name`, falling back to `zzzops`.
   - `codex`: `reinstall ZzzOps from its Codex marketplace.` This is today's text, kept for Codex.
   - `None`: `reinstall ZzzOps from the Claude Code or Codex marketplace it was installed from.`
 - `package_status()` also returns `"harness"` in both the ok and the failure dict, which tests can use. `cli.package_check()` still uses only `detail`, so the CLI output shape does not change.
@@ -57,7 +60,7 @@ I checked the fix: I patched only the channel argument in a scratch clone and re
 
 ### 3. Docs
 
-- `docs/CLAUDE_MARKETPLACE.md`, "Verification evidence": state that the generated marketplace renders skill metadata for the channel that matches its version. Also state that acceptance runs the full `validate` from the generated marketplace and from the installed cache, and requires `environment` to be empty.
+- `docs/CLAUDE_MARKETPLACE.md`, "Verification evidence": state that the generated marketplace renders skill metadata for the channel that matches its version. Also state that acceptance runs the full `validate` from the generated marketplace and from the installed cache, and requires that no `environment` entry comes from the package check.
 - `docs/MAINTAINING.md`, Semantic releases: one sentence saying the channel comes from the version through `package.channel_for_version`, and that the build and the check share it.
 - No DESIGN or SPEC contract change. DESIGN C4 and R11 only keep the `package_status` self-check. They do not fix its text or harness. Two cases if G1017's `docs/design/` lands first:
   - If its SPEC names the Codex-only hint, this goal's PR corrects that line.
@@ -89,10 +92,17 @@ I checked the fix: I patched only the channel argument in a scratch clone and re
 
 ## Tests
 
-- `.agents/test_marketplace_bundle.py` runs on every platform leg and needs no Claude CLI.
-  - **New test:** `build_claude_plugin.write_marketplace(ROOT, tmp/out, <canonical version>)`, as acceptance does. Then create a temp repository with one commit, a local bare origin and `zzzops.integrationBranch main`, and run `tmp/out/zzzops/bin/zzzops validate` in it. Assert:
-    - `environment == []`;
+**The package-check assertion.** `validate`'s `environment` is `check_environment(git)` + `gh_problems(s)` + `package_check()`. It can legitimately hold a gh entry in CI (no token) or on a machine without gh. So no test asserts `environment == []`. Wherever this section says "no package-check entry", the test asserts both of these:
+- no `environment` entry starts with `plugin package`. `cli.package_check()` uses this prefix for both of its failure forms, `plugin package: …` and `plugin package check failed: …`;
+- no entry contains `skill discovery metadata` (the bug's own text, asserted positively).
+
+A fake gh on `PATH` was considered and not chosen. It adds a platform-dependent shim to tests whose subject is the package, not gh.
+
+- `.agents/test_marketplace_bundle.py` needs no Claude CLI and runs on the Linux leg. It also runs on Windows and macOS because its id is added to `run_product_validation.NATIVE_COVERAGE`. The build and the check both touch paths and line endings, so native coverage is worth the few seconds.
+  - **New test:** `build_claude_plugin.write_marketplace(ROOT, tmp/out, <canonical version>)`, as acceptance does. Then create a temp repository with one commit, a local bare origin and `zzzops.integrationBranch main`. In it, run `sys.executable tmp/out/zzzops/zzzops/zzzops.py validate`. The test uses this rather than the POSIX `bin/zzzops` launcher, so the same test works on Windows. Assert:
+    - no package-check entry (as defined above);
     - the `policy` entry is the expected "no ZzzOps policy" one, which shows that `validate` got past setup.
+  - Also run the same command against an unfixed-style build: write the marketplace, then render one `SKILL.md` with the wrong channel. The test asserts that the entry appears and that its hint names Claude Code, which proves the assertion can fail.
   - Repeat with `--version 2.0.0`.
   - Assert the generated `SKILL.md` for `0.0.0-dev` contains `— development plugin.`, and for `2.0.0` contains `— official plugin.` The existing official-channel assertion stays.
 - `.agents/test_agent_plugin.py`:
@@ -103,11 +113,12 @@ I checked the fix: I patched only the channel argument in a scratch clone and re
     - with a generated-marketplace layout (sibling `.claude-plugin/marketplace.json`), the result is `claude`;
     - with no recognisable layout, the result is the neutral text, and `harness is None`.
 - `.agents/test_plugin_cachebuster.py`: one assertion that a failing cachebustered copy names Codex.
+- At implement, grep `.agents/` for exact-dict or key-set assertions on `package_status()` output. The review found none, and `cli.package_check()` reads only `detail`, but the new `harness` key must not break one.
 - `.agents/claude_plugin_acceptance.py`, CI's `validate-claude` leg:
   - Give `project` a commit, a bare origin and `zzzops.integrationBranch`.
-  - Run `<generated>/zzzops/bin/zzzops validate` and `<install>/zzzops/zzzops.py validate` there, and require `environment == []` for both.
+  - Run `<generated>/zzzops/bin/zzzops validate` and `<install>/zzzops/zzzops.py validate` there, and require no package-check entry for both (as defined above; the job has no GitHub token, so a gh entry is expected and ignored).
   - `.agents/test_claude_plugin_acceptance.py` gets matching fakes if it stubs those calls.
-- Manual check before submit of implement: rebuild a marketplace from the goal branch with `--version 0.0.0-dev` and repeat the reproduction above. Expect `environment: []`.
+- Manual check before submit of implement: rebuild a marketplace from the goal branch with `--version 0.0.0-dev` and repeat the reproduction above. Expect no `plugin package:` entry.
 
 ## Out of scope
 
