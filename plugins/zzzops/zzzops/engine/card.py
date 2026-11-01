@@ -8,7 +8,7 @@ import json
 
 from engine.canon import canonical, iso
 from engine.frontier import recorded_out, resolve
-from engine.render import clip, command, first_line
+from engine.render import clip, command, first_line, run_capability
 from engine.schemas import SHA
 
 CARD_LIMIT = 4096
@@ -118,11 +118,7 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
             continue
         target = context if nd["inputs"][name].get("context") else inputs
         target[name] = value_of(session, res, n, name, vals[name])
-    cap = nd.get("capability", "bounded")
-    if s.get("reason") == "retry":
-        cap = "reasoning"
-    elif s.get("record_stale") == ["inputs.base"] and not s.get("corrections"):
-        cap = "routine"     # only the base moved since the accepted output and no finding asks for a change: a rebase
+    cap = run_capability(s) or nd.get("capability", "bounded")
     timeout = lease["timeout"]
     every = max(1, timeout // 4)
     card = {"ok": True, "coordinator": session.state.coordinator, "goal": g, "title": doc["title"], "node": n,
