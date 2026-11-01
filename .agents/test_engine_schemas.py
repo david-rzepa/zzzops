@@ -166,8 +166,13 @@ class PolicyTests(unittest.TestCase):
     def test_schema_versions(self):
         self.check(lambda p: p.update({"schema_version": 1}), "MIGRATING.md")
         self.check(lambda p: p.update({"schema_version": 3}), "must be 2")
-        self.assertEqual((3, "9.0.0"), schemas.policy_floor({"schema_version": 3, "settings": {"engine": {"min": "9.0.0"}}}))
-        self.assertEqual((None, None), schemas.policy_floor("garbage"))
+        self.assertEqual((3, "9.0.0", None),
+                         schemas.policy_floor({"schema_version": 3, "settings": {"engine": {"min": "9.0.0"}}}))
+        self.assertEqual((2, None, ["a", "b"]),
+                         schemas.policy_floor({"schema_version": 2, "settings": {"engine": {"requires": ["a", "b"]}}}))
+        self.assertEqual((2, None, None),            # a malformed list is left to validation (G1027 §3.2)
+                         schemas.policy_floor({"schema_version": 2, "settings": {"engine": {"requires": "a"}}}))
+        self.assertEqual((None, None, None), schemas.policy_floor("garbage"))
 
 
 class GoalTests(unittest.TestCase):
