@@ -8,6 +8,8 @@ The lens set comes from the experiment in §11. The spec's five-lens hypothesis 
 
 **Changes in revision 3** (answering `review_design` round 1): the filter's fingerprint now covers the candidate findings, and a note without a verdict counts as kept (§7, F1). The rollout is a list of root follow-ups with an owner gate, and G1003 is held until the lens graph is in force (§12, F2). Coverage is reported as measured (§11). The demotion count is corrected to 11 of 13. The budget is stated in rounds (§14). D9 is resolved by G1017, and the contract amendments are listed in §17.
 
+**Changes in revision 4** (answering `review_tests` round 1): `edit` refuses a new skip of a node while it has any open finding that is not a note, so a lens can no longer be skipped while its findings wait for the filter (D6, §5, §13, §17). §13 also gains an explicit per-lens independence test and an intent-staleness check at the implementation stage.
+
 ## 2. Decisions (for `approve_design`)
 
 | # | Decision | Rejected alternatives |
@@ -17,7 +19,7 @@ The lens set comes from the experiment in §11. The spec's five-lens hypothesis 
 | D3 | **The filter is the join.** Lens findings go live only once the filter has a fresh record, and the filter reads every lens's output. So the subject reopens once per round, with every finding. | A separate "reopen batching" frontier rule (draft 1). Five lenses called it unrequested scope and an unbounded wait. |
 | D4 | **Project intent is `settings.intent`** in POLICY.json: `{purpose, serves, not, principles}`. The Intent lens nodes declare `"policy": ["intent"]`. Through the existing fingerprint rules, that makes intent validated (missing intent fails `validate --policy`), shown on the card, and stales Intent reviews when it changes. | A section of PROJECT.md (not bound to policy, not fingerprinted). A POLICY instruction (not fingerprinted). A new `policy.` input selector (more engine code). |
 | D5 | **The template ships a placeholder intent** (strings starting with `TODO:`). `validate --policy` passes on it, with an `intent_placeholder` warning; a missing `settings.intent` is an error. The bootstrap skill requires the warning to be gone. Together these satisfy both acceptance bullets literally. **Owner: confirm, or choose the strict alternative.** | Strict alternative: the template has no intent, so `validate --dir <template>` fails with exactly that error. That contradicts "validate --policy passes for the template", and five lenses objected to it. |
-| D6 | **New node field `skippable`** (default `true`). It is `false` on `intent_*`, `simplicity_*`, `filter_*` and `approve_merge`. `edit` also refuses to add a skip of a node that has live findings: waive the findings first, visibly. | Inferring skippability from optional inputs (implicit, and it can disagree with the inputs). Visibility of skips alone, without the refusal (the "skip the objecting lens" attack). |
+| D6 | **New node field `skippable`** (default `true`). It is `false` on `intent_*`, `simplicity_*`, `filter_*` and `approve_merge`. `edit` also refuses to add a skip of a node while its latest record has any open finding that is not a note (live, or waiting for its filter): waive the findings first, visibly. | Inferring skippability from optional inputs (implicit, and it can disagree with the inputs). Visibility of skips alone, without the refusal (the "skip the objecting lens" attack). |
 | D7 | **Re-review pointer:** `reviewed` also records the subject's artifact blobs, and the card shows `previous.changed = git diff <old blob> <new blob>`. `reviewed` is written only on a fresh submit, when the lease's fingerprint equals the current one, the same condition as `target_fp`. | Recording the subject at submit time even for a stale lease. The diff would then start from a version the lens never read. The same latent bug exists for checkpoints today, and this fixes both. |
 | D8 | **Three-step rollout, run by the root:** (1) G1000's PR. (2) `zzzops/policy/engine-1.1.0` raising `engine.min`, opened **only after the owner says go**, because it strands the Codex agent the owner has pinned to the 15b59a5 plugin copies. Repointing Codex stays with the owner and is out of scope. (3) `zzzops/policy/lenses`, with this repository's graph, prompts and the Appendix B intent strawman. The owner rewrites and approves the intent on that PR. G1003 is held from G1000's `approve_merge` until step 3 lands (§12). | One change (integrate refuses goal diffs that touch policy files). Raising the floor automatically at merge (it would break the owner's pinned Codex agent mid-work). Raising it in step 3 (lens records would then be written while 1.0 clones may still run). |
 | D9 | **SPEC.md and DESIGN.md:** G1017 brings them into the repository. G1000 does not edit the external copies. §17 lists G1000's contract amendments for G1017 to apply, or to list as pending, whichever lands first. | Editing the external copies and showing their diff at `approve_merge` (draft 2; unreviewable in the PR). |
@@ -75,7 +77,7 @@ Removed: `review_design`, `review_impl`, `review_design.md`, `review_impl.md`. B
 
 ## 5. Skips
 
-- **Engine:** `NODE_FIELDS["skippable"]` (boolean, all kinds). Goal validation adds "`<node>` is not skippable (`skippable: false` in workflow.json)". `edit` refuses a new `skip.<n>` while `n` has live findings. `render.py` offers no `skip` option for non-skippable nodes. `node_def_fp` is an allowlist, so no fingerprint changes.
+- **Engine:** `NODE_FIELDS["skippable"]` (boolean, all kinds). Goal validation adds "`<node>` is not skippable (`skippable: false` in workflow.json)". `edit` refuses a new `skip.<n>` while `n`'s latest record has any open finding that is not a note. A note is an open finding with the verdict `note` on its filter's fresh latest record (§7); every other open finding counts, whether it is live, waiting for the filter, or waiting for re-review. So the refusal holds through the filter's join window, when a lens's findings are not yet live. The message names the findings and the waiver: `edit --set records.<n>.findings[<id>].status="waived"` with a `note`. It reuses §7's note test and needs no other liveness check. It is stricter than liveness: an old finding waiting for re-review also needs a waiver before the skip, which is the visible path D6 asks for. `render.py` offers no `skip` option for non-skippable nodes. `node_def_fp` is an allowlist, so no fingerprint changes.
 - **Validation:** a filter's input from a skippable lens must be `optional`, and an input from a non-skippable lens must be required.
 - **Skills:**
   - add-goal proposes skips from the goal's risks. It names node ids in pairs, for example `skip.concurrency_design` and `skip.concurrency_impl` for a docs-only goal, and `experience_*` for internal-only changes.
@@ -242,7 +244,7 @@ G1000 delivers step 1. Steps 2 and 3 are follow-ups that the root performs after
   3. Every lens re-reviews with `previous.changed`.
   4. `skip.concurrency_design` gives "skipped" plus its reason on `approve_design`.
   5. `new` with `skip.intent_design` is refused.
-  6. `edit` adding a skip of a lens with live findings is refused.
+  6. `edit` adding a skip of a lens with live findings is refused. **A skip is also refused before the filter runs:** a lens submits a material finding, `filter_design` has not yet submitted (another lens is still running), and `edit --set skip.<lens>` is refused; after the finding is waived the same skip is accepted. A lens whose only open findings are notes judged `note` on a fresh filter can be skipped.
   7. `approve_design`'s item lists the filter summary and every lens summary.
   8. The PR body lists every code lens and the skips.
 - **Nitpick filter:**
@@ -256,9 +258,10 @@ G1000 delivers step 1. Steps 2 and 3 are follow-ups that the root performs after
   - **Unjudged note (F1):** the filter is fresh and every lens is current. Then `settings.intent` changes, and `intent_design` re-runs with the same summary and one new non-material finding. Check that `filter_design` becomes stale with `stale_keys == ["candidates"]` and that the design stays current, not reopened and not advanced past, until the filter re-submits. After a `keep` verdict the design reopens. After a `note` verdict the design stays current, and the note shows on its next card. The filter re-run does not count against the budget. Repeat with a lens `rev` bump in place of the intent change.
   - **Missing verdict fails safe:** a hand-built filter record that is fresh but lacks a verdict for an open note (written directly to `goal.json`, as a human might) makes that note live.
   - A filter holder who produced the subject is refused at `start`.
+  - **Per-lens independence:** the designer's `start` on a design lens (and the implementer's on a code lens) is refused with `independence`.
 - **Intent:**
   - The Intent lens card shows `policy.intent`.
-  - Changing it stales only `intent_*`.
+  - Changing it stales only `intent_*`, checked at both stages: at the design stage, and again once `intent_impl` has a record (it goes stale, the other code lenses stay current).
   - The placeholder warning works.
   - An unknown extra intent key with a text value passes, a non-text value fails, and other settings keys still reject extras (the new shape kind).
 - **Pointer:**
@@ -298,7 +301,7 @@ G1017 applies these to the in-repository SPEC and DESIGN if G1000 has merged fir
   - §4.9: a filtered lens's record is `ok`. The filter's fingerprint gains the `candidates` part. Liveness: a filtered lens's finding is live only once the filter is fresh, and then unless it is non-material with verdict `note`. A missing verdict counts as kept.
   - §4.10: a `candidates`-only stale does not count against the budget.
   - §4.14: verdict validation (exactly the card's non-material candidates); `reviewed` records artifact blobs, on a fresh submit only.
-  - §4.18: `edit` refuses a skip of a non-skippable node, and a new skip of a node with live findings.
+  - §4.18: `edit` refuses a skip of a non-skippable node, and a new skip of a node whose latest record has any open finding that is not a note (live, or waiting for its filter).
   - §4.20: card sections `policy`, `candidates`, `notes`, `previous.changed`.
   - Independence: a filter's subject is derived from its lenses.
   - §5.4: the PR body's `## Reviews` section.
