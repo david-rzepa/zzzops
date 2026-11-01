@@ -1,6 +1,14 @@
 # G1024 design: tell repositories when the shipped default policy changed, and offer a reviewed update
 
-Revision 3. It answers review_design:1:1 (F1, version skew) and takes the review's three notes.
+Revision 4. It answers review_design:2:1: files that only one plugin version ships.
+- **Tombstones.** `reviewed` now keeps a tombstone in a top-level `removed` map for each file the running engine no longer ships (§3.1, §3.5).
+  - An engine that still ships the file lists nothing when it recognises the tombstoned id (the id equals S or is in its store). Otherwise the file is `unknown_base` (§3.3).
+  - An engine that no longer ships the file lists nothing.
+  - Every engine that reads TEMPLATE.json understands tombstones: they are in schema 1 from the start, and pre-G1024 engines never read the file (§3.1).
+- **Test 11** gains a removed file read alternately by both engines.
+- **The secondary point is taken.** If `unknown_base` remains on the newest plugin, the skill sets that base to `null`, or deletes that tombstone, then compares once by hand (§3.7).
+
+Revision 3 answered review_design:1:1 (F1, version skew) and took the review's three notes.
 - **1:1:** a non-null base that the running engine's history store does not hold is now its own case, `upstream: unknown_base` ("recorded by a newer or unreleased plugin: upgrade the plugin to compare"). It gets no diff and no apply, and `record.reviewed` keeps that base unchanged, so an older plugin can never present its older template as the new default or downgrade the record (§3.3, §3.4, §3.5, §9). Test 11 covers it.
 - **Notes:** the execute skill says never to edit `.zzzops/TEMPLATE.json` in a goal (§3.7); per-file applies follow the `workflow.json` decision (§3.7 step 3), which matters for G1022's restructure; G1025's template additions get the same history note as G1022 (§7).
 
@@ -58,6 +66,9 @@ Size: one new engine module, `engine/defaults.py` (about 200 lines), about 30 li
     "prompts/design.md": "2acc59e0fbbc5fc705a5150935b75e5e2a2ddd3a",
     "prompts/review_design.md": null,
     "workflow.json": "9b4f755befc154a65f3ad9f1b50709886876deb7"
+  },
+  "removed": {
+    "prompts/review_impl.md": "<id of its last reviewed version>"
   }
 }
 ```
@@ -65,6 +76,8 @@ Size: one new engine module, `engine/defaults.py` (about 200 lines), about 30 li
 - **Fields.**
   - `files` maps a path relative to `.zzzops/` (the same relative path as in `templates/default/`) to its **base**: the id of the shipped default the repository last reviewed for that file.
   - `null` means unknown: a file that matches no shipped version, written only in the inferred record (§3.5).
+  - `removed` (optional) holds **tombstones**. It maps a path that some engine stopped shipping to the base it had when that engine wrote `reviewed`. A path in both `files` and `removed` is an error.
+  - **Who reads tombstones.** Every reader understands them: they are part of schema 1 from the first engine that reads TEMPLATE.json, and pre-G1024 engines never read the file. A later incompatible change raises `schema`, which older readers report as `newer_record`. So no reader ever misreads a tombstone, and `invalid_record` arises only from a damaged file.
   - Unknown keys, a path that is not a safe relative path (no `..`, no leading `/`, `/` separators), or an id that is not 40 lowercase hex are errors.
   - Written as `json.dumps(indent=2, sort_keys=True) + "\n"`; read tolerant of formatting.
 - **The id** is the git blob id (SHA-1) of the content with CRLF normalised to LF. That is exactly `git hash-object` of the committed blob, and the engine already requires SHA-1 repositories. Normalising makes a CRLF install or checkout give the same id.
@@ -93,10 +106,18 @@ For each path in (shipped files ∪ record keys), with S = the shipped id (absen
 |---|---|---|---|
 | B == S (both present, or both absent) | no | – | – |
 | B present, S present, B != S | yes | `changed` | `unchanged` if L == B, `changed` if L differs, `deleted` if L is absent |
-| B not in record, S present | yes | `added` | `absent` if L is absent, `changed` if a same-named local file exists |
+| B not in record and no tombstone, S present | yes | `added` | `absent` if L is absent, `changed` if a same-named local file exists |
 | B present, S absent | yes | `removed` | `unchanged` / `changed` / `deleted` as above |
 | B null (unknown provenance, written only by `inferred`) | yes, unless L == S | as above (`changed` when S is present) | `unknown` |
 | B non-null and not in the running engine's history store | yes | `unknown_base` | `unknown` |
+| Tombstone T, S absent | no | – | – |
+| Tombstone T, S present, and T == S or T is in the store | no | – | – |
+| Tombstone T, S present, T unknown to this engine | yes | `unknown_base` | `unknown` |
+
+**Tombstones.** They stop the ping-pong over files that only one plugin version ships. Take G1022, which removes `review_design.md`:
+- A post-G1022 engine's `reviewed` moves the entry to `removed` instead of dropping it.
+- A pre-G1022 engine still ships the file, and its store holds the tombstoned id, so it does not offer the file as `added`. Its `reviewed` keeps the tombstone as it is.
+- **Limitation:** a default that is re-added after a removal must use a new file name. An engine that ships the old name would read a recognised tombstone as "reviewed". The maintainers' rule sits in `.agents/template_history.py`'s docstring and the CLI_USAGE maintainer sentence.
 
 A non-null base that this engine does not know was recorded by a newer plugin, or by an unreleased build. The running engine cannot tell whether its own template is newer or older than that base, so it claims neither: the row is checked before the others, and the base is never compared with S. It is not an update offer.
 
@@ -172,7 +193,7 @@ When every listed file is `unknown_base`, the message says only "this repository
 
 The engine stays read-only. It computes the exact record content. The agent writes it in a policy-branch worktree with its file tool, as it writes `answer` and `edit` files. Shell redirection is not used, because PowerShell 5.1 writes UTF-16.
 
-- **`reviewed`** sets every shipped file's base to its current shipped id, and drops entries for files no longer shipped. Writing it means "these files were reconciled with the running engine's defaults". The skill uses it:
+- **`reviewed`** sets every shipped file's base to its current shipped id. Entries for files the running engine no longer ships become tombstones under `removed`, keeping their base (a `null` base is dropped instead). Existing tombstones are kept unchanged, whether the running engine ships the path or not, so `reviewed` never resurrects a file another engine removed. Writing it means "these files were reconciled with the running engine's defaults". The skill uses it:
   - after bootstrap;
   - after an update, whether files were merged, copied or kept;
   - for a decline: only the record changes.
@@ -196,7 +217,7 @@ It is a warning, not a `policy_invalid` error. A stricter validation would pause
 **Bootstrap skill, new section "Update from the shipped defaults"** (used for `update`, `no_record` and `invalid_record`). It has these steps:
 1. Tell the owner what changed: the files, and which were edited here. Updating or declining is the owner's choice.
 2. Create a worktree on a new branch `zzzops/policy/defaults-<template>` from `<I>`. Do not push it until it is ready, because the push pauses new work.
-3. In the worktree, run `zzzops validate --policy --dir .zzzops`. **Decide `workflow.json` first.** For a `workflow.json` change, read MIGRATING's section for it, then take it, merge it or keep the local file. The prompts follow that decision. Copy an `added` prompt only if the chosen workflow uses it, and delete a `removed` prompt only if the chosen workflow no longer names it, whatever its `apply` says. This matters for G1022's restructure. Then, for each other file, read `diff` and do its `apply`, or keep the local file. Resolve any conflict markers. `unknown_base` files are left alone: upgrade the plugin first.
+3. In the worktree, run `zzzops validate --policy --dir .zzzops`. **Decide `workflow.json` first.** For a `workflow.json` change, read MIGRATING's section for it, then take it, merge it or keep the local file. The prompts follow that decision. Copy an `added` prompt only if the chosen workflow uses it, and delete a `removed` prompt only if the chosen workflow no longer names it, whatever its `apply` says. This matters for G1022's restructure. Then, for each other file, read `diff` and do its `apply`, or keep the local file. Resolve any conflict markers. `unknown_base` files are left alone: upgrade the plugin first. **If `unknown_base` remains on the newest plugin**, the base was recorded by an unmerged build. Set that `files` base to `null`, or delete that tombstone, by hand in this branch's `TEMPLATE.json`, and compare once by hand. Otherwise it is listed forever and cannot be declined.
 4. Write `record.reviewed` to `.zzzops/TEMPLATE.json`. For `no_record` without a review, write `record.inferred` instead.
 5. Re-run `validate --policy --dir .zzzops`. It must pass, with no `policy_update` (after `reviewed`) and no `policy_merge_markers`.
 6. Commit, push, and preview the impact with `zzzops validate --policy-ref <branch>` and `zzzops next --policy-ref <branch>`. A changed prompt re-runs nodes that use it. Land through a PR whose body lists what was taken, kept and declined, then delete the branch.
@@ -294,6 +315,12 @@ New `.agents/test_engine_defaults.py`, using the engine fixtures' bootstrapped r
     - The file is listed as `upstream: unknown_base`, `local: unknown`, with no `diff` and no `apply`, and nothing in the item offers the older template.
     - `record.reviewed` keeps that base equal to S_new while updating other files' bases. When it is the only listed file, `reviewed` is absent.
     - Running the newer engine on the record the older engine offered lists nothing for that file, so there is no ping-pong.
+    - **Removed file (review_design:2:1).** The newer engine's store and template no longer ship `prompts/review_design.md`; the older one ships it. The record is read alternately, writing each engine's `reviewed` in turn, for four rounds:
+      - The newer engine writes a tombstone and lists nothing afterwards.
+      - The older engine never lists the file as `added` and keeps the tombstone unchanged.
+      - The record is byte-identical after the first round.
+    - **Unknown tombstone.** A tombstone id unknown to an engine that ships the path gives `unknown_base`. After the skill's manual fix (tombstone deleted), it gives the normal `added` case.
+    - **Shape.** A path in both `files` and `removed` gives `invalid_record`, and the engine stays non-blocking.
 
 New `.agents/test_template_history.py`:
 - Every `templates/default` file's id is in the store with identical normalised bytes, and the failure message names `.agents/template_history.py --write`.
