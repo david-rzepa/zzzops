@@ -152,6 +152,45 @@
         }
       },
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T21:35:43Z",
+      "fp_parts": {
+        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "inputs": {
+          "base": "v1:sha256:8a2e8ac0217a3e46b72c1e3ce2d2c6f98e60949f5743134ece85574f6cb677e3",
+          "doc": "v1:blob:606311b216268f9b2f2f2495e94b654838796672"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        ".agents/test_agent_plugin.py",
+        ".agents/test_ci_selection.py",
+        ".agents/test_claude_plugin_acceptance.py",
+        ".agents/test_marketplace_bundle.py",
+        ".agents/test_plugin_cachebuster.py",
+        ".github/scripts/run_product_validation.py"
+      ],
+      "holder": "claude:e6ad/td1033",
+      "input_fp": "v1:sha256:0fbc839776ddc1c308b6d4d3956ae68e3d3ae5fc34ee91853d28028fba3c583f",
+      "ok": true,
+      "output": {
+        "commands": [
+          "cd .agents && python -m unittest test_marketplace_bundle test_agent_plugin test_plugin_cachebuster test_claude_plugin_acceptance test_ci_selection test_release_validation",
+          "python .github/scripts/run_product_validation.py --platform linux"
+        ],
+        "tests": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "daff743d26c169d1fe2acdf1898a0302143d40e3",
+          "commit": "47a033380d7476f736e40a47b38f344da76ffc0c",
+          "tree": "9fbe10437925ffff633039758a8ad70b611a4c11"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
