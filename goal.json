@@ -213,39 +213,39 @@
       "status": "done"
     },
     "review_impl": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-01T07:44:34Z",
+      "finished_at": "2026-11-01T17:58:07Z",
       "fp_parts": {
         "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
         "inputs": {
-          "code": "v1:sha256:2c0574165b3d1b73286cfd17f2b9fdf6f92587b44fbace7c285d20cf2ab637c6",
+          "code": "v1:sha256:a06cb57d8598146667540a9fe8819f3afd5b4f241a5f85a4876c3e5b723e6687",
           "doc": "v1:blob:5ed045be21817ba93e467355960e3c37a4cb091f",
-          "tests": "v1:sha256:2c0574165b3d1b73286cfd17f2b9fdf6f92587b44fbace7c285d20cf2ab637c6"
+          "tests": "v1:sha256:a06cb57d8598146667540a9fe8819f3afd5b4f241a5f85a4876c3e5b723e6687"
         },
         "policy": {},
-        "subject": "v1:sha256:9d155ce2c36c4a8a65003ad87d666618fe2ae602713189d787aedb3bc447ac92"
+        "subject": "v1:sha256:831e57f547ab4512135e44627878f2bb5506351af2ef7cfe1f1b28e459fb5819"
       },
-      "holder": "claude:e6ad/review_impl-1000-2",
-      "input_fp": "v1:sha256:cfafb14a274bf89c23fe9b69f481a80d33113482cf7b6b54d49d63172f690386",
+      "holder": "claude:e6ad/rt5",
+      "input_fp": "v1:sha256:49d4d7f6ba7608126d394ebe928e08d9044c0eb5f5cfe01ab756d06de913e66b",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "29d6faeeb709cd974da7883293e410c15a198b58",
-          "commit": "9631dd41e3a19e9e4d9380490e20510733e6131a",
+          "blob": "a8f3d6af7efc5adffec207ea733972aab4299cc3",
+          "commit": "1196db03958bce51b7c48cb00627791e1f4b2569",
           "path": ".zzzops/reviews/1000/review_impl.md"
         },
-        "summary": "Rebase conflict resolution onto dev 6747a5e is sound. range-diff 54d7e83..e270a25 vs 6747a5e..6476249: only commits 11 (engine) and 13 (docs) differ, and only in how G1000's hunks sit on the new base. frontier.py: the running state keeps G1014's rparts/parts and passes R to fp_parts, so a running filter's parts include `candidates` and live_input_changes/stale_keys report `candidates` correctly. card.py: G1000's `policy` section and long candidates/notes are expressed as G1018 _steps/_apply steps; views are still skipped (_is_view), every step is measured by shrink_candidates before use (never grows), and `full` stops re-blobbing (fixed point). A probe with long policy, candidates and notes confirmed the checkpoint view stays the same, the card shrinks, and shrink(shrink(c)) == shrink(c). Docs: G1000's hunks are unchanged and dev's new text (legacy state, Edits, request_key, MIGRATING housekeeping) is kept. No material findings."
+        "summary": "Range-diff: only commits 11-13 differ, exactly at the two conflict sites; every other commit is unchanged (new commits 16-21 are review docs and the graph12 fixture sync). card.py keeps G1000 (notes, candidates, policy, previous artifact changed pointer) and G1016 (previous(..., stale_because=record_stale), top-level card.changed from stale_because); CLI_USAGE Outputs sentence carries both the lens/filter outputs and the full-sha checkpoint wording; implement.md follows G1016 wording plus G1000 note lines. No field collisions: top-level card.changed (keys inputs.*, ignores candidates/subject/def/policy.*) is distinct from previous.changed (artifact diff, inside previous); card.notes and card.candidates are new keys, absent from dev; record_stale is only read by previous(). Run_tests passed on the full suite. Only nit: card.py has a duplicate `from engine.schemas import` line (SHA, get_dotted plus SHA); harmless."
       },
       "reason": "stale",
       "reviewed": {
         "code": {
-          "base": "6747a5ea3c91aedd39089d1811a415680521bfed",
-          "change": "2ff7c35411997dbfcdb07e167588638466848d7d",
-          "commit": "6476249c590625ad6628f56f728f7c8eea02b9f2",
-          "tree": "81c1446cce52a31639b51ff756252d040e81f62f"
+          "base": "a05fb9714f105b4b6da43deafde535ea6eed8a88",
+          "change": "97c185d5cf500b2a1e8f64e4bceef8ab4c51f73e",
+          "commit": "d417d47a911ed1d0b2bbbe5af77828ef8a8ba956",
+          "tree": "c23c5d333a09d2e6ba12370e4ecf9595769ac40a"
         }
       },
       "status": "done"
