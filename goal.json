@@ -175,6 +175,68 @@
       },
       "reason": "stale",
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T21:36:50Z",
+      "fp_parts": {
+        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "inputs": {
+          "base": "v1:sha256:8a2e8ac0217a3e46b72c1e3ce2d2c6f98e60949f5743134ece85574f6cb677e3",
+          "doc": "v1:blob:496ddd5a4af997072a6592b0a8c591ece5625b54"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        ".agents/engine_fixtures.py",
+        ".agents/fixtures/graph26/POLICY.json",
+        ".agents/fixtures/graph26/prompts/approve_design.md",
+        ".agents/fixtures/graph26/prompts/approve_merge.md",
+        ".agents/fixtures/graph26/prompts/design.md",
+        ".agents/fixtures/graph26/prompts/filter.md",
+        ".agents/fixtures/graph26/prompts/implement.md",
+        ".agents/fixtures/graph26/prompts/lens_adversary.md",
+        ".agents/fixtures/graph26/prompts/lens_concurrency.md",
+        ".agents/fixtures/graph26/prompts/lens_experience.md",
+        ".agents/fixtures/graph26/prompts/lens_intent.md",
+        ".agents/fixtures/graph26/prompts/lens_rollout.md",
+        ".agents/fixtures/graph26/prompts/lens_simplicity.md",
+        ".agents/fixtures/graph26/prompts/lens_truth.md",
+        ".agents/fixtures/graph26/prompts/review_tests.md",
+        ".agents/fixtures/graph26/prompts/test_design.md",
+        ".agents/fixtures/graph26/workflow.json",
+        ".agents/fixtures/node_def_fp_1.1.json",
+        ".agents/test_design_docs.py",
+        ".agents/test_engine_lens_polish.py",
+        ".agents/test_engine_lenses.py",
+        ".agents/test_engine_names.py",
+        ".agents/test_engine_review_lenses.py",
+        ".agents/test_marketplace_bundle.py"
+      ],
+      "holder": "claude:e6ad/td1022",
+      "input_fp": "v1:sha256:c325c98427f86c39e191beb39af95013500b099132948de14536115904db731e",
+      "ok": true,
+      "output": {
+        "commands": [
+          "python -m unittest discover -s .agents -p test_engine_review_lenses.py",
+          "python -m unittest discover -s .agents -p test_engine_lenses.py",
+          "python -m unittest discover -s .agents -p test_engine_lens_polish.py",
+          "python -m unittest discover -s .agents -p test_engine_names.py",
+          "python -m unittest discover -s .agents -p test_marketplace_bundle.py",
+          "python -m unittest discover -s .agents -p test_design_docs.py",
+          "python .agents/prompt_stats.py --check"
+        ],
+        "tests": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "004467a58a810eb9b65ecb37f975e8ac9ebdf0cc",
+          "commit": "73cdb03a8877aec4a858729d39607cb0de0d34d1",
+          "tree": "7f17c2d5f952ad71ac9882d57d126154b134dcb8"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
