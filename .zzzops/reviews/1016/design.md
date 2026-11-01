@@ -2,6 +2,8 @@
 
 Read at integration commit 54d7e83. Coordinated with G1014 (approved design, attempt 2) and G1000 (design under review).
 
+Attempt 2. It fixes review finding F1 (reclaim cards could downgrade capability to `routine`; see §2, "Capability and `previous.output`"). It also takes notes N1, N2 and N4, and the checkpoint wording fix (dogfood item 17).
+
 ## Outcome
 
 - `abandon` prints the command that restarts the phase.
@@ -32,15 +34,26 @@ Add `"restart": command(ctx, ["start", str(g), X, "--as", LABEL, "--reclaim"])` 
 
 **Root cause.** For a reclaimable node, the frontier state is `{"name": "reclaimable", "lease": L, "fp", "parts"}`, with no `stale_because`. `claim()` copies it into `kind_state`, so the card prints `reason: reclaim` and nothing else, even when the abandoned attempt's inputs differ from today's. A ready-stale start already has `stale_because` (from the record's `fp_parts`), but nothing shows *what* changed.
 
-**Staleness keys.** In `claim()`, when `st0` is `reclaimable` or `running` (forced) and `st0["lease"]` exists, set:
+**Staleness keys.** In `claim()`, whenever `st0["lease"]` exists, set the two sets below. That covers `reclaimable`, forced `running`, and (N4) a crash-loop `needs_human` state with cap `lease` taken with `--force --reclaim`.
 
 ```python
-sb = set(stale_keys(L_old.fp_parts, parts))                 # since the abandoned attempt started
-if r and r["input_fp"] != fp: sb |= set(stale_keys(r["fp_parts"], parts))   # since the last record
+rec_sb = set(stale_keys(r["fp_parts"], parts)) if r and r["input_fp"] != fp else set()   # against the done record
+sb = rec_sb | set(stale_keys(L_old.fp_parts, parts))                                    # plus since the abandoned attempt started
 kind_state["stale_because"] = sorted(sb) or None
+kind_state["record_stale"] = sorted(rec_sb) or None
 ```
 
-The union matters. On attempt 3, after a stale attempt 2 was abandoned, the new worker must still learn that its inputs differ from the last accepted output, because it never saw attempt 2's card. The existing card rules keyed on `stale_because` (`["inputs.base"]` gives capability `routine`; `["def"]` adds `previous.output`) apply unchanged.
+For a ready-stale start (no lease), `claim()` sets `record_stale = stale_because`, since the frontier computed that set against the record. A `new` or `reopened` start has neither.
+
+The union matters for display. On attempt 3, after a stale attempt 2 was abandoned, the new worker must still learn that its inputs differ from the last accepted output, because it never saw attempt 2's card. The card shows the union as `stale_because`. `record_stale` is internal to `kind_state` and is not printed.
+
+**Capability and `previous.output` (fix for F1).** Both existing rules that read `stale_because` in `card.build` assume a done record whose inputs moved. They now read `record_stale` instead:
+
+- `record_stale == ["inputs.base"]` gives capability `routine`. Only the base moved since the accepted output, so the work is a rebase.
+- `"def" in record_stale` adds `previous.output`.
+- `reason == "retry"` still wins and gives `reasoning`, as today.
+
+Lease-since-claim staleness never changes capability. A reclaimed first attempt (`new`, no record) or a reclaimed `reopened` correction (record current, so `record_stale` is empty) keeps the node's own capability, even when its only lease-side change is `inputs.base`. Base re-runs whenever the integration branch moves, so this is the common case for `implement` and `test_design`. Keying the rule on the record set is simpler than looking at the abandoned lease's reason, and it stays correct after several reclaims.
 
 **Reuse of G1014.** G1014's `live_input_changes` compares a before portfolio with an after portfolio. At reclaim there is no before portfolio, only the abandoned lease's recorded `Fp-Parts`. The reusable piece is the comparison G1014's `renew` makes: `stale_keys(L.fp_parts, current parts)`. G1016 uses the same expression and adds no second helper. **Decision:** no shared function, because it would be a one-line wrapper. Recorded here so reviewers do not ask for one.
 
@@ -74,12 +87,15 @@ The card gets `"changed": {...}` next to `stale_because`, only when it is non-em
 Add a sentence to the `findings` text, built by a new `card.finding_effect(graph, n)` so that G1000 has a single place to extend:
 
 - review node: `… for new ones. Each open finding reopens its target: it re-runs and must answer it in responses.`
-- non-review node: `optional: [{"target": <ancestor node>, "text": …}]; a finding reopens that ancestor, and this phase re-runs after it.`
+- non-review node: `optional: [{"target": <ancestor node>, "text": …}]; a finding reopens that ancestor; this phase re-runs if that ancestor's output changes.` (N1: liveness ends when the target's output fingerprint changes. A `disputed:` answer, or a fix that leaves the output the same, leaves this phase current.)
 
 **Merge rule with G1000:** G1000 owns the finding shape for reviews that declare `review.filter`. Whichever goal lands second adds to `finding_effect` the filtered branch: "A finding with material: true reopens its target; a note (material: false) reopens it only if the filter keeps it." No other G1016 code reads G1000's fields.
 
-**Checkpoint keys (root's added item).** `submit` accepts an omitted checkpoint key and uses the suggestion or HEAD (verbs.done_record). The text becomes:
-`checkpoint (optional): omit it to use the suggested checkpoint if any, else HEAD (a phase that adds no commit keeps its previous checkpoint); or {"commit": sha}. If a restack rewrote the previous checkpoint, submit refuses with checkpoint_required and asks for one.`
+**Checkpoint keys (root's added item, dogfood items 9 and 17).** `submit` accepts an omitted checkpoint key and uses the suggestion or the work-branch HEAD (verbs.done_record). Today's text ("the suggested checkpoint if any, else HEAD") led a worker to submit the literal `"HEAD"`, which is refused. The text becomes:
+`checkpoint (optional): omit the key to default to the suggested checkpoint if any, else your work branch's HEAD (a phase that adds no commit keeps its previous checkpoint). To override, give {"commit": "<sha>"}; the literal "HEAD" is refused. If a restack rewrote the previous checkpoint, submit refuses with checkpoint_required and asks for one.`
+
+**Artifact keys (N2).** Workers confused `card.artifact.path` with the file to pass. The text becomes:
+`artifact: write it to a local file and pass that file with --artifact; artifact.path is where submit stores it.`
 It still starts with `checkpoint`, which the journey tests match on (test_engine_journeys.py:43). The CLI_USAGE **Outputs** paragraph gets the same "optional" wording.
 
 ### 5. One renew entry (card.build)
@@ -98,7 +114,8 @@ Add one line after the verb table: "`ZZZOPS_TRACE=<file>` appends one JSON line 
 |---|---|
 | `abandon` output | adds `restart`, `hint` |
 | task card | `stale_because` also on reclaim cards (union of lease and record staleness); new optional `changed`; top-level `renew` removed; `commands.renew.when` added |
-| `output_schema` text | findings consequence sentence; checkpoint "optional" wording |
+| `output_schema` text | findings consequence sentence; checkpoint "optional" / omit-the-key wording; artifact `--artifact` vs `artifact.path` wording |
+| `card.build` capability | `routine` downgrade and `previous.output` keyed on record staleness only (`kind_state.record_stale`, not printed) |
 | `submit` `validation` refusal on responses | `details.respond_to`, `details.no_longer_live`, new hint |
 | CLI_USAGE | `abandon` row (+`restart`, on G1014's text), Outputs paragraph, `ZZZOPS_TRACE` line |
 
@@ -120,9 +137,11 @@ Add one line after the verb table: "`ZZZOPS_TRACE=<file>` appends one JSON line 
 - **Abandon** (test_engine_lifecycle.py): `abandon` returns `restart.argv == ["start", g, "design", "--as", "<LABEL>", "--reclaim"]`. Running it with a real label succeeds, and a plain `start` is still refused with `not_ready`.
 - **Reclaim after a spec edit:** start `design`, then `edit --set spec=…`, `abandon`, and `start --reclaim`. The card has `reason: reclaim`, `stale_because == ["inputs.spec"]`, and a `changed["inputs.spec"].diff` whose output (run with git) contains the new spec line. Control: abandon and reclaim with no edit, and the card has neither key.
 - **Union:** a record-stale attempt 2 is abandoned, then reclaimed with no further edit. Attempt 3's card still lists the record-stale keys.
+- **Capability (F1):** start `implement` (no record, reason `new`), advance the integration branch so `base` re-runs, then `abandon` and `start --reclaim`. The card has `stale_because == ["inputs.base"]` and `run.capability == "bounded"` (implement's own), not `routine`. Same check for a reclaimed `reopened` correction run on `design` after base moved: its capability is `architectural`. Control: a ready-stale `implement` whose record is stale only on `inputs.base` still gets `routine`, both on plain `start` and after an abandon and reclaim.
+- **Crash-loop reclaim (N4):** a `needs_human` crash-loop node with a live lease, taken with `--force --reclaim` after a spec edit, gets `stale_because == ["inputs.spec"]`.
 - **Artifact pointer:** a reclaim after `design` re-ran upstream gives `changed["inputs.doc"].diff == "git diff <old> <new>"`. With the old blob deleted locally, the entry is the "not available" note, and the trace shows no extra fetch (`ZZZOPS_TRACE` line count unchanged).
 - **Submit refusal:** start `design`. A review raises a finding on it while it runs (submitted with a second agent). Then `design` submits without `responses`. The refusal has `details.respond_to[0]` with the finding's id, `from`, `target == "design"` and text. A response to a finding resolved meanwhile appears in `no_longer_live`.
-- **Card snapshot** (4, 5): for a review card, a non-review card and a checkpoint-output card, assert the `findings` text contains "reopens", the checkpoint text starts with "checkpoint (optional)", there is no top-level `renew`, and `commands.renew.when` mentions the interval. The existing journey tests pass unchanged (prefix matching).
+- **Card snapshot** (4, 5): for a review card, a non-review card and a checkpoint-output card, assert the `findings` text contains "reopens" (and, for the non-review card, "if that ancestor's output changes"), the checkpoint text starts with "checkpoint (optional)" and contains "omit the key", the artifact text contains "artifact.path", there is no top-level `renew`, and `commands.renew.when` mentions the interval. The existing journey tests pass unchanged (prefix matching).
 - **Docs:** the CLI_USAGE lines are present, and `prompt_stats.py --check` passes.
 
 ## Out of scope
