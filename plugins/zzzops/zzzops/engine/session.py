@@ -18,7 +18,7 @@ from engine.errors import Refused
 from engine.frontier import orphan_leases, portfolio
 from engine.gitrun import Git, require_environment
 from engine import schemas
-from engine.store import (RemoteError, State, coordinator_fetch, goal_commit, goal_message, offline_snapshot,
+from engine.store import (RemoteError, State, coordinator_fetch, resolve_policy_ref, goal_commit, goal_message, offline_snapshot,
                           push_atomic, read_state, resolve_integration, resolve_remote, update_mirror)
 
 WRITE_DEADLINE = 30.0
@@ -37,7 +37,7 @@ class GitReader(render.Reader):
         self.s = session
 
     def prompt(self, name: str):
-        data = self.s.git.cat(f"{self.s.snap.integration}:.zzzops/prompts/{name}")
+        data = self.s.git.cat(f"{self.s.snap.policy_commit}:.zzzops/prompts/{name}")
         return data.decode("utf-8", "replace") if data is not None else None
 
     def diffstat(self, base, commit):
@@ -59,10 +59,11 @@ class GitReader(render.Reader):
 
 
 class Session:
-    def __init__(self, cwd=None, remote=None, integration=None, now=None):
+    def __init__(self, cwd=None, remote=None, integration=None, now=None, policy_ref=None):
         self.now = now if now is not None else read_now()
         self.git = Git.discover(cwd or os.getcwd(), self.now)
         self.remote_arg, self.integration_arg = remote, integration
+        self.policy_ref = policy_ref
         self.R = self.I = None
         self.snap = None
         self.state: State | None = None
@@ -86,6 +87,8 @@ class Session:
                 raise Refused("remote", f"cannot reach `{self.R}`: {str(exc).splitlines()[0] if str(exc) else ''}",
                               hint="check the network and credentials, then retry") from exc
             self.snap = offline_snapshot(self.git, self.R, self.I)
+        if self.policy_ref:
+            self.snap.preview = resolve_policy_ref(self.git, self.snap, self.policy_ref)
         self.state = read_state(self.git, self.snap, all_goals=all_goals, wanted=goals)
         self._portfolio = None
         self._goals = list(goals)
@@ -93,6 +96,8 @@ class Session:
 
     def refetch(self, goals=(), deps=(), all_goals=False):
         self.snap = coordinator_fetch(self.git, self.R, self.I, goals, deps)
+        if self.policy_ref:
+            self.snap.preview = resolve_policy_ref(self.git, self.snap, self.policy_ref)
         self.state = read_state(self.git, self.snap, all_goals=all_goals, wanted=goals)
         self._portfolio = None
 
@@ -178,6 +183,8 @@ class Session:
 
     # ------------------------------------------------------------------ writes (§4.4)
     def require_writable(self, goals=()):
+        if self.policy_ref:
+            raise Refused("usage", "--policy-ref is a read-only preview: it works with next, show and validate")
         st = self.state
         if st.write_block is not None:
             raise st.write_block

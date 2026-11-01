@@ -1,6 +1,6 @@
 # ZzzOps CLI
 
-Every verb prints one JSON object (`show` prints text unless `--json`). **Running it:** with the plugin's launcher on `PATH` (Claude Code), `zzzops <verb> …`. Otherwise run `<python> <plugin>/zzzops/zzzops.py <verb> …`, where `zzzops.py` is the file next to this reference's folder (`../zzzops.py` from here) and `<python>` is the first of `python3`, `python` and `py -3` that reports Python 3.10 or later (`<python> --version`). After the first call, run every command exactly as the CLI prints it (its `command` field); in PowerShell prefix it with `& `. Global flags: `--remote R`, `--integration B`. Exit codes: 0 ok; 1 refused (fix the input or the state); 2 remote unreachable or the push refused by a rule; 3 lost a race (re-read and retry); 4 policy blocked.
+Every verb prints one JSON object (`show` prints text unless `--json`). **Running it:** with the plugin's launcher on `PATH` (Claude Code), `zzzops <verb> …`. Otherwise run `<python> <plugin>/zzzops/zzzops.py <verb> …`, where `zzzops.py` is the file next to this reference's folder (`../zzzops.py` from here) and `<python>` is the first of `python3`, `python` and `py -3` that reports Python 3.10 or later (`<python> --version`). After the first call, run every command exactly as the CLI prints it (its `command` field); in PowerShell prefix it with `& `. Global flags: `--remote R`, `--integration B`, and `--policy-ref REF` (a read-only preview for `next`, `show` and `validate`: the policy is read from `REF`, a `zzzops/policy/*` branch or its topic, a branch on the remote, or a local commit, instead of the integration branch; the previewed branch does not pause its own preview, and `validate` adds the impact on current goals; commands that change goals refuse it). Exit codes: 0 ok; 1 refused (fix the input or the state); 2 remote unreachable or the push refused by a rule; 3 lost a race (re-read and retry); 4 policy blocked.
 
 | Verb | Use |
 |---|---|
@@ -14,7 +14,7 @@ Every verb prints one JSON object (`show` prints text unless `--json`). **Runnin
 | `answer G X --fp P --file F` | Record a human decision (the item's `answer_template`). Refused with `fp_mismatch` when the question changed. |
 | `reopen G X --note T` | Re-run a done node (for example re-observe a flaky check). |
 | `edit G… (--file F… \| --set PATH=JSON…) [--base C]…` | Change goals: hold, unhold, depend, skip, close, budget, waive. Without `--base` for every goal it is a dry run that prints the impact preview. |
-| `validate [G…]` / `validate --policy [--dir D]` | Check goals, the environment and policy files; changes nothing. |
+| `validate [G…]` / `validate --policy [--dir D]` | Check goals, the environment and policy files; changes nothing. With `--policy-ref REF`, check the policy on `REF` and report its impact. |
 
 **Examples.**
 ```sh
@@ -23,6 +23,7 @@ zzzops start 1002 implement --as claude:9c1d/implement-1
 zzzops submit 1002 implement --attempt 1 --as claude:9c1d/implement-1 --output out.json
 zzzops edit 1002 --set 'state="held"' --base <goal commit from show>
 zzzops validate --policy --dir .zzzops
+zzzops next --policy-ref zzzops/policy/ci-lint
 ```
 
 **Outputs** of agent nodes are JSON files: every declared output except checkpoints and artifacts; `responses` for every listed correction (`fixed: …` or `disputed: …`); review nodes give `decision`, `summary` and a status for every prior finding. Checkpoints default to the card's suggestion, else `HEAD`; name `{"<key>": {"commit": "<sha>"}}` to choose an earlier commit.

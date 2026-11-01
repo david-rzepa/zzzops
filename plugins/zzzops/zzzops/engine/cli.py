@@ -28,6 +28,9 @@ verbs:
   validate [G...] | --policy [--dir D]
 
 global flags: --remote R, --integration B
+  --policy-ref REF   read-only preview (next, show, validate): read the policy from REF, a zzzops/policy/*
+                     branch (or its topic), a branch on the remote, or a local commit, instead of the
+                     integration branch
 """
 
 VERBS = {}
@@ -76,7 +79,8 @@ class Args:
         return self.opts.get(name, default)
 
 
-GLOBAL = {"remote": "value", "integration": "value"}
+GLOBAL = {"remote": "value", "integration": "value", "policy-ref": "value"}
+PREVIEW_VERBS = "next, show and validate"
 
 
 def emit(obj: dict):
@@ -90,9 +94,11 @@ def goal_id(text: str) -> int:
     return int(t)
 
 
-def session(args, environment=True):
+def session(args, environment=True, preview=False):
     from engine.session import Session
-    s = Session(remote=args.get("remote"), integration=args.get("integration"))
+    if args.get("policy-ref") and not preview:
+        raise Refused("usage", f"--policy-ref is a read-only preview: it works with {PREVIEW_VERBS}")
+    s = Session(remote=args.get("remote"), integration=args.get("integration"), policy_ref=args.get("policy-ref"))
     if environment:
         s.check_environment()
     return s
@@ -114,7 +120,7 @@ def load_json_file(path: str, what: str):
 @verb("next")
 def cmd_next(argv):
     a = Args(argv, dict(GLOBAL, goal="list", all="bool"))
-    s = session(a)
+    s = session(a, preview=True)
     s.open(goals=[goal_id(g) for g in a.get("goal", [])], readonly=True)
     scope = [goal_id(g) for g in a.get("goal", [])] or None
     out = s.render_next(scope=scope, all_=bool(a.get("all")))
@@ -129,7 +135,7 @@ def cmd_show(argv):
     if len(a.pos) != 1:
         raise Refused("usage", "show G [--node X] [--json]")
     g = goal_id(a.pos[0])
-    s = session(a)
+    s = session(a, preview=True)
     st = s.open(goals=[g], readonly=True, all_goals=True)
     if g not in s.snap.goals:
         raise Refused("not_found", f"G{g} does not exist")
@@ -182,8 +188,10 @@ def cmd_show(argv):
 def cmd_validate(argv):
     a = Args(argv, dict(GLOBAL, policy="bool", dir="value"))
     if a.get("policy"):
+        if a.get("policy-ref"):
+            raise Refused("usage", "use either --policy (a directory) or --policy-ref (a ref), not both")
         return validate_policy_dir(a)
-    s = session(a, environment=False)
+    s = session(a, environment=False, preview=True)
     from engine.gitrun import check_environment
     env = check_environment(s.git)
     from engine.gh import gh_problems
@@ -215,8 +223,14 @@ def cmd_validate(argv):
     if s.git.config("remote." + (s.R or "origin") + ".partialclonefilter") or s.git.config("extensions.partialClone"):
         warnings.append({"kind": "partial_clone", "message": "partial clone: missing goal documents cost one round trip each"})
     ok = not env and not policy and not any(goals.values())
-    emit({"ok": ok, "coordinator": st.coordinator, "goals": goals, "policy": policy, "environment": env,
-          "warnings": warnings})
+    out = {"ok": ok, "coordinator": st.coordinator, "goals": goals, "policy": policy, "environment": env,
+           "warnings": warnings}
+    if a.get("policy-ref") and not policy and st.policy is not None:
+        try:
+            out.update(policy_impact(dict(a.opts, **{"policy-ref": None}), st.policy, st.workflow))
+        except (Refused, Exception):
+            pass
+    emit(out)
     return 0 if ok else 1
 
 
