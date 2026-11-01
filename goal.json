@@ -10,10 +10,10 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T04:13:12Z",
+      "finished_at": "2026-11-01T04:23:44Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -22,18 +22,23 @@
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/design-1015-1",
+      "holder": "claude:e6ad/design-1015-2",
       "input_fp": "v1:sha256:9123e9670cae514646d7aa0725eb29d241f784e2d2cda7c2b65d73051debe6a0",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "444f6181edf79a6f19f6fd9a16d51f558487d7aa",
-          "commit": "4e6236fcc17188c653c51f13dec20fd45b1b4889",
+          "blob": "fb5b4190ac489d3d95280c8cbf4efc6c4fd1d4d3",
+          "commit": "8c50f6df893672cad7c8e0387b134af7377b5b98",
           "path": ".zzzops/reviews/1015/design.md"
         },
-        "summary": "Adds engine/legacy.py: free local signals (old-format POLICY.json, PROJECT_AUDIT/BOOTSTRAP/rules files, old ignore blocks, cleanup_legacy's retired install roots) plus, only when a cached key of (engine version, remote, signals) changes, one ls-remote for old ref namespaces and one gh GraphQL search for open legacy-labelled or envelope-marked issues, cached in <git-common>/zzzops/legacy.json; validate always re-checks so migration is detected, not remembered. `next`/`validate` gain a top-level `legacy` item with counts and the new shipped skill `migrate-zzzops-repository` (a triage checklist with this repo's 115-issue audit as its worked example); an old-format policy becomes the `legacy_policy` blocker (exit 4) naming that skill; dismissal is an optional `settings.legacy.ignore`. It restores R11's lost version-keyed detection without its gate, and amends DESIGN §10 item 10 with one bounded GitHub-call exception."
+        "responses": {
+          "review_design:1:1": "fixed: §6 amends the §3.15 `next` row (+1 ls-remote, +1 GitHub on a legacy check), adds a `validate` row and a note on when a check runs, and updates §10 items 2 and 10 and R11. These amendments are recorded in the design for G1017 to apply to docs/design/, because DESIGN.md is not in the repository. §7: World.add_clone seeds a clean cache using the engine's own legacy.cache_key and write_cache, so CostBudgetTests and the journeys' assertions stay unchanged, with no filtering and no off switch. New test 3 asserts that a cold-cache `next` is exactly fetch then ls-remote plus one `api graphql` call (no issue/view/list/comments), and gives the `validate` budget.",
+          "review_design:1:2": "fixed: §2's failure table caches only gh-missing or unauthenticated as `unavailable`, retried after 7 days so a later install or login is picked up. GhError.transient and other non-transient errors become `retry` with retry_after at 24 h. The last good counts are kept, and the item shows issues:null only when there are none. The design also takes the reviewer's optional point: an active item re-checks daily, so a migration in another clone clears. A clean result never expires. Test 9 covers transient, auth and missing gh, with clock steps; test 10 covers the active re-check.",
+          "review_design:1:3": "fixed: (a) the skill ships references/REMOVED.md, a self-contained table of old features and label families mapped to their R id and replacement or 'removed' (written out in §4, derived from DESIGN §5 R1-R15, plus zzzops-feedback/D9). Triage and OBSOLETE comments cite its rows, and so does EXAMPLE.md. (b) `validate`'s legacy item includes `issues` (counted numbers minus linked ones), `linked`, `queries` (the exact search strings, module constants) and `truncated`. The skill inventories exactly that set, using a copyable paginated `gh api graphql -f q=<query>` command, and step 8 says what remains if the item persists. (c) Step 6 and the MIGRATING.md edit say to clone david-rzepa/zzzops and check out zzzops-pre-reset. Note that the tag is currently only local (not on origin), so the design adds a fallback to commit 64d5196f6f4f and a release-checklist item for the owner to push the tag. Also added the reviewer's CLI_USAGE note about pre-G1015 dev builds and legacy.ignore, and the rule that later optional keys must raise ENGINE_VERSION."
+        },
+        "summary": "Revision 2 of the G1015 design. engine/legacy.py reads free local signals (old-format POLICY.json, PROJECT_AUDIT/BOOTSTRAP/rules files, old ignore blocks, cleanup_legacy's retired install roots). A check (one ls-remote plus one gh GraphQL search, whose two query strings are module constants) runs in `next` only on a cache-key change (engine version, remote URL, signals) or when retry_after passes: 24 h after a transient failure or while the item is active, 7 days after gh is missing or unauthenticated, never for a clean result. `validate` always checks and exposes the counted issue numbers, the linked exclusions and the query strings. Disclosure is a top-level `legacy` item; an old-format policy becomes the `legacy_policy` blocker (exit 4); `settings.legacy.ignore` dismisses it. The shipped skill migrate-zzzops-repository has a self-contained REMOVED.md table (R1-R15), inventories exactly the detector's set with a copyable paginated gh command, and says to clone david-rzepa/zzzops at zzzops-pre-reset (tag is not yet on origin; commit fallback given). The contract amendments to DESIGN §3.15/§5 R11/§10 items 2 and 10 and the SPEC sections are recorded in §6 for G1017 to apply. Test fixtures seed a clean cache through legacy.cache_key so the existing budget assertions stay unchanged, and there is a new cold-cache budget test."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
