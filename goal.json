@@ -134,6 +134,43 @@
       "reason": "stale",
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T05:11:02Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:8ec7fbf673f2260d90895827429fa7455e445a73",
+          "tests": "v1:sha256:18010a5b87b608912ca2c1dff1d08fd0a9d1687cbdf5358b5bc5a5c92a74ced4"
+        },
+        "policy": {},
+        "subject": "v1:sha256:5904cb2640b77d9567b2fdd8e009a71bf4f7a2d5e55b7ba23c9b5bad09442e79"
+      },
+      "holder": "claude:e6ad/review_tests-1018-1",
+      "input_fp": "v1:sha256:2edc81f6c62547f066bf55fa04d4d630c175985fae907bfa7bc55cca545bb80a",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "6ad193d5d7e6ba07aa8d40af675cea8741f734e0",
+          "commit": "81aee913dd0fd714f4aff3a87548b0af82bc81de",
+          "path": ".zzzops/reviews/1018/review_tests.md"
+        },
+        "summary": "Approved. The tests cover G1-G4, the step order, the lossless and clip steps, the key summary, every value_of case (change/tree/recorded/mismatch/missing/skipped/whole/deps), the card and approve_merge views and the fingerprints, on both graphs, and they apply review_design notes 1-4. On the 54d7e83 engine they fail for the right reasons (30 failures, 4 errors). A minimal rendering prototype passes all 19 view, journey and lifecycle tests. The fixture sizes match the real cards and the replay within a few bytes (implement 4,677 vs 4,710 after the old shrink, review_impl 4,326 vs 4,327). The lifecycle edit makes the test stricter. No findings."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
+          "change": "76e1fdab18f870c739b117df206ebd8728778f13",
+          "commit": "bcf4ecf1b11c937f9daa0981521b02f63b6153e1",
+          "tree": "ce5a77186780e6bb9b649cbbfc2b88e7e4868cee"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
