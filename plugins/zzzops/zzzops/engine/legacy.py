@@ -16,7 +16,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from engine import ENGINE_VERSION
+from engine import build_id
 from engine.canon import canonical, iso, parse_iso
 
 SKILL = "migrate-zzzops-repository"
@@ -60,9 +60,25 @@ def _cleanup_constants() -> tuple:
 # ------------------------------------------------------------------------------------------------ cache
 
 
-def cache_key(engine_version: str, remote_url, signals) -> str:
-    """sha256 of the canonical JSON of the engine version, the configured remote URL and the sorted local signals."""
-    return hashlib.sha256(canonical({"engine": engine_version, "remote": remote_url or "",
+def _detector() -> str:
+    """The detection sources' digest (G1027 §3.5): this module and scripts/cleanup_legacy.py, CRLF-normalised. Any
+    change to the rules, roots or markers re-checks once; a new build with the same detector does not."""
+    h = hashlib.sha256()
+    for path in (Path(__file__).resolve(), Path(__file__).resolve().parents[2] / "scripts" / "cleanup_legacy.py"):
+        try:
+            h.update(path.read_bytes().replace(b"\r\n", b"\n"))
+        except OSError:                                        # pragma: no cover - a damaged install
+            h.update(b"missing")
+        h.update(b"\0")
+    return h.hexdigest()[:12]
+
+
+DETECTOR = _detector()
+
+
+def cache_key(detector: str, remote_url, signals) -> str:
+    """sha256 of the canonical JSON of the detector digest, the configured remote URL and the sorted local signals."""
+    return hashlib.sha256(canonical({"engine": detector, "remote": remote_url or "",
                                      "signals": sorted(signals)})).hexdigest()
 
 
@@ -196,7 +212,7 @@ def linked_issues(session) -> set:
 
 def run_check(session, key: str, url, policy: bool, files: list, previous: dict | None, gh_ok: bool) -> dict:
     now = session.now
-    rec = {"schema": SCHEMA, "key": key, "engine": ENGINE_VERSION, "checked_at": iso(now), "github": "none",
+    rec = {"schema": SCHEMA, "key": key, "engine": build_id(), "checked_at": iso(now), "github": "none",
            "retry_after": None, "error": None, "issues": None, "issue_count": None, "linked": None, "refs": None}
     same = previous if previous and previous.get("key") == key else None
     refs, ref_err = count_refs(session)
@@ -254,7 +270,7 @@ def _status(session, mode, gh_ok, full):
     policy, files = local_signals(session)
     url = git.config(f"remote.{session.R}.url") if session.R else None
     signals = list(files) + (["policy:old"] if policy else [])
-    key = cache_key(ENGINE_VERSION, url, signals)
+    key = cache_key(DETECTOR, url, signals)
     cache = read_cache(git.common)
     can_check = (mode in ("check", "force") and session.snap is not None and session.snap.current
                  and not session.policy_ref)

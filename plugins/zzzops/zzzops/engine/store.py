@@ -10,8 +10,8 @@ import re
 import time
 from dataclasses import dataclass, field
 
-from engine import ENGINE_VERSION, GOAL_SCHEMAS, POLICY_SCHEMA, REQUIRES_MIN
-from engine.canon import goal_bytes, version_tuple
+from engine import CAPABILITIES, GOAL_SCHEMAS, POLICY_SCHEMA, build_id
+from engine.canon import goal_bytes
 from engine.errors import EngineError, Refused
 from engine.gitrun import Git, GitError
 from engine.leases import parse_message, to_lease
@@ -318,14 +318,17 @@ def read_state(git: Git, snap: Snapshot, all_goals: bool = False, wanted=()) -> 
                                  hint="run the bootstrap skill")
     else:
         floor_check(st)
-        if st.write_block is None or st.write_block.code == "engine_too_new":       # a newer engine reads but does not write
+        lacking = st.write_block is not None and bool(st.write_block.details.get("missing"))
+        if st.write_block is None or lacking:          # an engine lacking a capability still reads (SPEC §4.5)
             errors = [e for e in (perr, werr) if e]
             if not errors:
                 errors = list(schemas.validate_policy(st.policy_raw))
             if not errors:
                 errors = list(schemas.validate_workflow(st.workflow_raw, st.policy_raw,
                                                         lambda f: git.cat(f"{P}:.zzzops/prompts/{f}") is not None, OPS))
-            if errors:
+            if errors and lacking:
+                pass                                   # the floor is the only report (SPEC §4.5)
+            elif errors:
                 msg = "the ZzzOps policy is invalid: " + "; ".join(errors[:5])
                 st.blockers.append({"kind": "policy_invalid", "message": msg, "errors": errors})
                 st.pause = True
@@ -451,27 +454,33 @@ def policy_landed(git: Git, tip: str, integration: str) -> bool:
 
 
 def floor_check(st: State):
-    """SPEC §4.5: the floor first (tolerant), then the ceiling."""
-    sv, mn = schemas.policy_floor(st.policy_raw)
-    try:
-        too_old = (sv is not None and sv > POLICY_SCHEMA) or (mn is not None and version_tuple(mn) > version_tuple(ENGINE_VERSION))
-    except ValueError:
-        too_old = False
-    if too_old:
-        msg = f"this engine ({ENGINE_VERSION}) is older than the policy requires (engine.min {mn}): upgrade the plugin"
-        st.blockers.append({"kind": "engine_too_old", "message": msg})
-        st.pause = True
-        st.write_block = Refused("engine_too_old", msg, hint="upgrade the plugin")
-        return
-    try:
-        too_new = mn is not None and version_tuple(mn) < version_tuple(REQUIRES_MIN)
-    except ValueError:
-        too_new = False
-    if too_new:
-        msg = f"waiting for policy to raise engine.min to `{REQUIRES_MIN}`"
-        st.blockers.append({"kind": "engine_too_new", "message": msg})
-        st.pause = True
-        st.write_block = Refused("engine_too_new", msg)
+    """SPEC §4.5: the floor, read tolerantly before strict validation. The policy's required capabilities (with a
+    deprecated `engine.min` mapped through LEGACY_VERSIONS) must all be declared by this engine."""
+    sv, mn, req = schemas.policy_floor(st.policy_raw)
+    if sv is not None and sv > POLICY_SCHEMA:
+        msg = f"this engine reads policy schema {POLICY_SCHEMA}, the policy is schema {sv}: upgrade the plugin"
+        missing = []
+    else:
+        missing = sorted((set(req or ()) | set(schemas.legacy_caps(mn))) - CAPABILITIES)
+        if not missing:
+            return
+        above = [m for m in missing if m.startswith("engine_min_")]
+        lacking = [m for m in missing if not m.startswith("engine_min_")]
+        parts = []
+        if lacking:
+            parts.append("this engine lacks capabilities the policy requires (" + ", ".join(f"`{m}`" for m in lacking)
+                         + "): upgrade the plugin")
+        if above:
+            parts.append(f"engine.min `{mn}` is above `{schemas.last_numbered_engine()}`, the last numbered engine: "
+                         "replace it with `settings.engine.requires`, or upgrade the plugin")
+        msg = "; ".join(parts)
+    block = {"kind": "engine_too_old", "message": msg}
+    if missing:
+        block["missing"] = missing
+    st.blockers.append(block)
+    st.pause = True
+    st.write_block = Refused("engine_too_old", msg, hint="upgrade the plugin",
+                             details={"missing": missing} if missing else None)
 
 
 # --------------------------------------------------------------------------------------------- mirror
@@ -578,7 +587,7 @@ def goal_message(verb: str, g: int, outcome: str, state: str, node: str | None =
         head += f" by {holder}"
     body = f"{note.strip()}\n\n" if note else ""
     key = f"Request-Key: {request_key}\n" if request_key else ""
-    return f"{head}\n\n{body}Outcome: {outcome}\nState: {state}\n{key}Engine: {ENGINE_VERSION}\n"
+    return f"{head}\n\n{body}Outcome: {outcome}\nState: {state}\n{key}Engine: {build_id()}\n"
 
 
 NEW_HEAD = re.compile(r"^zzzops: new G(\d+)$")

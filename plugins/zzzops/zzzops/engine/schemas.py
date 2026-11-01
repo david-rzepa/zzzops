@@ -588,7 +588,7 @@ def get_dotted(obj, dotted: str):
 # ----------------------------------------------------------------------------------------------- policy (§3.2)
 
 SETTINGS_SHAPE = {
-    "engine": {"min": "version"},
+    "engine": {"min": ("optional", "version"), "requires": ("optional", "names")},
     "integration_branch": "branch",
     "verification": {"commands": "strings", "required_ci": "strings", "timeout_minutes": (1, 240),
                      "ci_timeout_minutes": (10, 1440)},
@@ -605,34 +605,79 @@ INTENT_KEYS = ("purpose", "serves", "not", "principles")
 PLACEHOLDER = "TODO:"
 
 
-# Optional settings keys: absent from the shipped template and undeclared, so changing one stales nothing. Any new
-# optional key (and any new record or finding key, such as G1028's `follows`) must raise ENGINE_VERSION, so that
-# `engine.min` can keep older engines away from it.
+# Optional settings keys: absent from the shipped template and undeclared, so changing one stales nothing. A new
+# optional key ships with a new capability (SPEC §4.5, "What ships with a new capability"), which a repository adds to
+# `settings.engine.requires` before using the key.
 OPTIONAL_SETTINGS = {"legacy": {"ignore": "bool"}}
+
+# `settings.engine.min` (deprecated, G1027): each numbered engine and the capabilities it had.
+LEGACY_VERSIONS = {"1.0.0": (), "1.1.0": ("lens_findings",), "1.2.0": ("lens_findings", "finding_follows"),
+                   "1.3.0": ("lens_findings", "finding_follows", "lenses")}
+
+
+def legacy_caps(mn) -> tuple:
+    """The capabilities a deprecated `engine.min` requires: those of the highest listed version not above it. A
+    version above the map requires `engine_min_<min>`, which no engine has."""
+    if not isinstance(mn, str):
+        return ()
+    try:
+        want = version_tuple(mn)
+    except ValueError:
+        return ()
+    best = None
+    for v in LEGACY_VERSIONS:
+        if version_tuple(v) <= want and (best is None or version_tuple(v) > version_tuple(best)):
+            best = v
+    if want > max(version_tuple(v) for v in LEGACY_VERSIONS):
+        return (f"engine_min_{mn}",)
+    return tuple(LEGACY_VERSIONS[best]) if best else ()
+
+
+def last_numbered_engine() -> str:
+    return max(LEGACY_VERSIONS, key=version_tuple)
+
+
+def required_caps(settings: dict | None) -> set:
+    """The capabilities the policy requires (SPEC §4.5): `settings.engine.requires` plus those of a deprecated
+    `engine.min` (through LEGACY_VERSIONS)."""
+    eng = (settings or {}).get("engine") if isinstance(settings, dict) else None
+    eng = eng if isinstance(eng, dict) else {}
+    req = eng.get("requires")
+    req = [x for x in req if isinstance(x, str)] if isinstance(req, list) else []
+    return set(req) | set(legacy_caps(eng.get("min")))
 
 
 def follows_required(settings: dict | None) -> bool:
-    """Whether the policy keeps every writing engine able to read the finding key `follows` (SPEC §4.5, G1028):
-    `engine.min` at least the engine that ships it."""
-    from engine import FOLLOWS_SINCE
-    from engine.canon import version_tuple
-    mn = ((settings or {}).get("engine") or {}).get("min")
-    try:
-        return isinstance(mn, str) and version_tuple(mn) >= version_tuple(FOLLOWS_SINCE)
-    except (ValueError, TypeError):
-        return False
+    """Whether the policy keeps every writing engine able to read the finding key `follows` (SPEC §4.5, G1028): its
+    required capabilities include `finding_follows`."""
+    return "finding_follows" in required_caps(settings)
 
 
 def policy_floor(raw) -> tuple:
-    """Tolerant pre-read (SPEC §4.5): (schema_version, engine.min) or (None, None) when unreadable."""
+    """Tolerant pre-read (SPEC §4.5): (schema_version, engine.min, engine.requires); None for each part unreadable."""
     if not isinstance(raw, dict):
-        return None, None
+        return None, None, None
     sv = raw.get("schema_version")
     try:
-        mn = raw["settings"]["engine"]["min"]
+        eng = raw["settings"]["engine"]
     except (KeyError, TypeError):
-        mn = None
-    return (sv if _is_int(sv) else None), (mn if isinstance(mn, str) else None)
+        eng = None
+    eng = eng if isinstance(eng, dict) else {}
+    mn, req = eng.get("min"), eng.get("requires")
+    return ((sv if _is_int(sv) else None), (mn if isinstance(mn, str) else None),
+            (list(req) if isinstance(req, list) and all(isinstance(x, str) for x in req) else None))
+
+
+def engine_warnings(settings) -> list:
+    """Warning engine_min_deprecated (validate only)."""
+    eng = (settings or {}).get("engine") if isinstance(settings, dict) else None
+    if not isinstance(eng, dict) or "min" not in eng:
+        return []
+    caps = [c for c in legacy_caps(eng["min"]) if not c.startswith("engine_min_")]
+    names = ", ".join(f"`{c}`" for c in caps) or "none"
+    return [{"kind": "engine_min_deprecated",
+             "message": f"settings.engine.min is deprecated: replace it with settings.engine.requires ({names}) "
+                        "through a policy branch"}]
 
 
 def validate_policy(p) -> list:
@@ -730,6 +775,10 @@ def _check_shape(e: Errors, where, value, shape):
             version_tuple(value) if isinstance(value, str) else (_ for _ in ()).throw(ValueError())
         except ValueError:
             e.add(where, "must be a MAJOR.MINOR.PATCH version string")
+    elif shape == "names":
+        if not (isinstance(value, list) and all(isinstance(x, str) and NODE_ID.match(x) for x in value)
+                and len(set(value)) == len(value)):
+            e.add(where, "must be an array of unique names matching ^[a-z][a-z0-9_]*$")
     elif shape == "bool":
         if not isinstance(value, bool):
             e.add(where, "must be a boolean")

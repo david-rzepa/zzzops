@@ -462,11 +462,10 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
                       hint="put long text in the artifact" if code == "too_large" else None)
     if any(isinstance(f, dict) and "follows" in f for f in out.get("findings") or []) \
             and not schemas.follows_required(s.settings):
-        from engine import FOLLOWS_SINCE
-        raise Refused("validation", f"follows needs the policy to keep older engines away from it (finding_follows): "
-                                    f"settings.engine.min must be at least {FOLLOWS_SINCE}",
-                      hint=f"Resolve the prior finding and raise a plain new finding, or ask the owner to push a policy "
-                           f"branch raising settings.engine.min to {FOLLOWS_SINCE}.")
+        raise Refused("validation", "follows needs the policy to keep older engines away from it: "
+                                    "settings.engine.requires must include capability `finding_follows`",
+                      hint="Resolve the prior finding and raise a plain new finding, or ask the owner to push a policy "
+                           "branch adding `finding_follows` to settings.engine.requires.")
     corr = corrections_of(res, X)
     carriers = {f["id"]: c for c, f in res.live.get(X, [])}
     rec.check_responses(out.get("responses", {}), corr, carriers, s.ctx().reader.blob_view)
@@ -666,7 +665,7 @@ def abandon(s, g: int, X: str, N: int | None, force=False, note=None) -> dict:
         tree = s.git.out("rev-parse", f"{tip}^{{tree}}")
         doc = s.state.docs[g]
         msg = (f"zzzops: abandon G{g} {X} attempt {L.attempt} --force\n\n{note or 'forced'}\n\n"
-               f"Outcome: abandoned\nState: {doc['state']}\nEngine: {__import__('engine').ENGINE_VERSION}\n")
+               f"Outcome: abandoned\nState: {doc['state']}\nEngine: {__import__('engine').build_id()}\n")
         ups.append((f"refs/heads/zzzops/goal/g{g}", tip, s.git.commit_tree(tree, [tip], msg)))
     r, _ = push_atomic(s.git, s.R, ups)
     if r == "remote":

@@ -53,12 +53,14 @@ git -C <worktree> push <R> HEAD:refs/heads/zzzops/work/g<id>
 (only when the remote branch is an ancestor of the local one).
 
 ## Upgrade the engine
-1. Push `zzzops/policy/engine-<X>` raising `settings.engine.min` to `<X>` (this pauses new starts everywhere).
+1. Push `zzzops/policy/requires-<name>` adding the capability names to `settings.engine.requires` (this pauses new starts everywhere). Say in its PR body: an older build that reports `policy_invalid` on `settings.engine.requires` must be upgraded; never remove the key.
 2. Wait until `zzzops next --all` shows nothing `running`.
-3. Upgrade the plugin on every machine.
+3. Upgrade the plugin on every machine; `zzzops validate` lists the names under `engine.capabilities`.
 4. Land the branch on the integration branch and delete it.
 
-**Rollback:** land a policy change lowering `engine.min`, then reinstall the older plugin. Goal documents the newer engine wrote with a newer goal schema are read-only for the older engine: revert each to its last older-schema version with the "Undo a goal change" recipe (find them with `git log --grep='^Engine: <newer version>$'`).
+A policy that still has the deprecated `settings.engine.min` keeps working; replace it with `requires` in the same branch.
+
+**Rollback:** land a policy change removing the names, then reinstall the older plugin. Goal documents the newer engine wrote with a newer goal schema are read-only for the older engine: revert each to its last older-schema version with the "Undo a goal change" recipe (find them with `git log --grep='^Engine: <newer build>$'`, the build from `zzzops --version`).
 
 ## Rename a node
 While a policy branch is open, stage `records.<new>` (a copy of the old record), `skip.<new>` and any finding `target` rewrites on every goal, closed ones included, with one multi-goal `edit --file … --base …`; then land the workflow change and remove the old keys.
@@ -103,7 +105,7 @@ Their artifacts then show "(full text no longer available)".
 
 ## Bulk revert of one bad release's writes
 ```sh
-git log --format=%H --grep='^Engine: <version>$' refs/zzzops/goal/<R>/g<id>
+git log --format=%H --grep='^Engine: <build>$' refs/zzzops/goal/<R>/g<id>   # <build>: the bad build's `zzzops --version`
 git show <commit>^:goal.json > g<id>.json      # the document before the bad write
 zzzops edit <id> --file g<id>.json --base <current goal commit>
 ```
