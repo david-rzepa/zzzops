@@ -252,14 +252,14 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T04:55:21Z",
+      "finished_at": "2026-11-01T05:36:33Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:3645fecfe0925e45dfbc059dbce48fe4719cd2c418504842040382a9b0ee1d77",
+          "code": "v1:sha256:f48f93c5b03d8f3df9a8104e8779fc0a88361dde6324d6153c4c42a227be561f",
           "commands": "v1:sha256:f88ba542821ff592b34adfa4b0c926bdf45dab2f47add774f75737ba76ea6b73"
         },
         "policy": {
@@ -269,7 +269,7 @@
         }
       },
       "holder": "claude:e6ad/op",
-      "input_fp": "v1:sha256:697f0183f263395490dee5b947d2d99cc28cc308bc15b538b566fc549eafbd43",
+      "input_fp": "v1:sha256:9e63feed0aa017939d00e7c0333cd07653d6ded28e8df5c6a95b22384e7dc9e1",
       "ok": true,
       "output": {
         "result": {
@@ -277,27 +277,27 @@
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_store.py'",
               "exit": 0,
-              "seconds": 16,
-              "tail": "..../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2191057 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2191860 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n............../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2197142 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2197340 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2197611 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2198632 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n..........................\n----------------------------------------------------------------------\nRan 52 tests in 16.071s\n\nOK\n"
+              "seconds": 15,
+              "tail": "-----------------------------------\nRan 53 tests in 15.902s\n\nOK\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=18>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=19>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=16>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=17>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=14>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=15>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_*.py'",
               "exit": 0,
-              "seconds": 282,
-              "tail": "b/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2544656 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2544935 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2545308 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2546643 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n........................................\n----------------------------------------------------------------------\nRan 314 tests in 281.913s\n\nOK\n"
+              "seconds": 261,
+              "tail": "b/python3.14/subprocess.py:1139: ResourceWarning: subprocess 1079974 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 1080220 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 1080587 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 1081913 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n........................................\n----------------------------------------------------------------------\nRan 315 tests in 261.899s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents",
               "exit": 0,
-              "seconds": 270,
-              "tail": ":0: ResourceWarning: unclosed file <_io.BufferedReader name=23>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=20>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=21>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=18>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=19>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=12>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=13>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
+              "seconds": 266,
+              "tail": ":0: ResourceWarning: unclosed file <_io.BufferedReader name=23>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=20>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=21>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=14>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=15>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=12>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=13>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
             }
           ],
           "passed": true,
-          "tree": "1bd2fd1c20eb026b8148d827f8d52a32ef7504cf"
+          "tree": "851e522f5401c277e037ddd877434de7123b4bb8"
         }
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "test_design": {
