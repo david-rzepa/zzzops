@@ -6,7 +6,7 @@ EXIT = {}
 for _code in ("usage validation not_found not_ready independence workspace_busy capacity budget_exceeded crash_loop "
               "mass_expiry goal_held goal_closed lease_held dirty_worktree sync_refused test_freeze checkpoint_required "
               "goal_changed fp_mismatch goal_rewritten goal_deleted too_large wrong_integration_branch engine_too_old "
-              "engine_bug op_error environment").split():
+              "engine_bug op_error environment conflict").split():
     EXIT[_code] = 1
 for _code in ("remote", "push_refused"):
     EXIT[_code] = 2

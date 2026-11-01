@@ -1,0 +1,1 @@
+Git-flow release lines (G1025): the optional setting `branching`, the `release` graph's line ops and node fields `schedule`/`line_complete`, goal schema 2 (`flow`, targets) and the fingerprint part `target`. An engine without it rejects them.
