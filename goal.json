@@ -165,6 +165,50 @@
         }
       },
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T21:30:05Z",
+      "fp_parts": {
+        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "inputs": {
+          "base": "v1:sha256:8a2e8ac0217a3e46b72c1e3ce2d2c6f98e60949f5743134ece85574f6cb677e3",
+          "doc": "v1:blob:6f4c7854b055f0ef632f22312336a6e094a53cd5"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        ".agents/test_engine_card_ux.py",
+        ".agents/test_engine_findings_rounds.py",
+        ".agents/test_engine_frontier.py",
+        ".agents/test_engine_lifecycle.py",
+        ".agents/test_engine_live_input_changes.py"
+      ],
+      "holder": "claude:e6ad/td1028",
+      "input_fp": "v1:sha256:9bf66f68e967ab746faa58e68347fae9a743fa40566b6701a64142c0e00dad28",
+      "ok": true,
+      "output": {
+        "commands": [
+          "python3 -m unittest discover -s .agents -t .agents -p 'test_engine_findings_rounds.py'",
+          "python3 -m unittest discover -s .agents -t .agents -p 'test_engine_frontier.py'",
+          "python3 -m unittest discover -s .agents -t .agents -p 'test_engine_card_ux.py'",
+          "python3 -m unittest discover -s .agents -t .agents -p 'test_engine_lifecycle.py'",
+          "python3 -m unittest discover -s .agents -t .agents -p 'test_engine_live_input_changes.py'",
+          "python3 -m unittest discover -s .agents -t .agents -p 'test_engine_card_budget.py'",
+          "python3 -m unittest discover -s .agents -t .agents -p 'test_design_docs.py'",
+          "python3 -m unittest discover -s .agents -t .agents -p 'test_engine_*.py'"
+        ],
+        "tests": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "744fe1c34411a09eea0b49e8ed70e19347b6c51c",
+          "commit": "f0048e09efca47fda8251c5ca70a4636b0721a0a",
+          "tree": "ac8a4a869220366457349c7e75632b259fcdee6b"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
