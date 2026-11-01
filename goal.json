@@ -10,7 +10,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T18:19:59Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:38bd2bb7e360625c8d4fd7863ee482fb7080b82f31a6acb087c3ad8deb301589",
+          "spec": "v1:sha256:16f454d18ffa4e5e45bca2195b94e0af94ae14c9a6fb8d44ce2d4d83d7b4c63f"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1027",
+      "input_fp": "v1:sha256:3d6dfb3d4191d50fb58fb9623406259a99c5da2a8c6eff3beced6fb266440d40",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "47298bfc949e6fd28d0b87f8f199dfc60b07dbe0",
+          "commit": "270fca67f513adf76e7a5a8d1f64fbaba33b2ed0",
+          "path": ".zzzops/reviews/1027/design.md"
+        },
+        "summary": "The engine declares capabilities as one file per name under engine/capabilities/ (lens_findings for G1000's 1.1.0), so goals add theirs without conflicting or racing for a version number. POLICY gains settings.engine.requires; a missing name refuses writes with engine_too_old naming it. engine.min becomes optional and deprecated, mapped through a fixed table (1.0.0 -> none, 1.1.0 -> lens_findings) with a validate warning, and the dead engine_too_new ceiling and REQUIRES_MIN go. ENGINE_VERSION is removed: the Engine: trailer, --version and validate show a build id (plugin version plus package revision from package.py), and the legacy cache key uses a hash of the detector's source. G1022 takes capability lenses, G1025 release_lines, G1024 policy_update if it needs one, with both merge orders covered."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
