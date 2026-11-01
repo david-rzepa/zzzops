@@ -9,7 +9,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_CODE = ROOT / "plugins" / "zzzops" / "zzzops"
-TEMPLATES = PLUGIN_CODE / "templates" / "default"
+# The engine tests run on a frozen copy of the 12-node graph (G1000 §13), so they do not depend on the shipped graph;
+# SHIPPED is the shipped template, used only by the template and lens tests.
+TEMPLATES = ROOT / ".agents" / "fixtures" / "graph12"
+SHIPPED = PLUGIN_CODE / "templates" / "default"
 if str(PLUGIN_CODE) not in sys.path:
     sys.path.insert(0, str(PLUGIN_CODE))
 
