@@ -154,15 +154,15 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_tests:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:2ab2b3cefbb1b51b0f58f0e75e4737283731736d16d909ce38f8978a953a56d8",
@@ -170,35 +170,35 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T20:42:54Z",
+      "finished_at": "2026-11-01T21:23:25Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:f4c441999a3da82b48323c1b35d7f55058578cc7",
-          "tests": "v1:sha256:19e185c08e35d84ab946a55bcf9a67c95f6e1fdfa76085853585acaafff157b7"
+          "tests": "v1:sha256:17960be0d86d77405c1f82798717b2a22198c9e78fefe75abe836c3400d157d5"
         },
         "policy": {},
-        "subject": "v1:sha256:2ab2b3cefbb1b51b0f58f0e75e4737283731736d16d909ce38f8978a953a56d8"
+        "subject": "v1:sha256:65063f217d58fa594b1259a57797883e447e4824ef8fdf0b3d65f119e88c91eb"
       },
       "holder": "claude:e6ad/rd1022",
-      "input_fp": "v1:sha256:cb5b5339f4d3c640801850f80f953ca6f5ae815f7d2dd4e0f609799f1bb9b882",
-      "ok": false,
+      "input_fp": "v1:sha256:0bca0b368cd5945def7b3554b76e749326eaf92cb45c3805da88fa309f9a1ce4",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "83ba60ca684e7eb224b0dfe3e66d40452de2c7bd",
-          "commit": "660d706a040549ce6ec301aa763e470a26617e4a",
+          "blob": "8d3bfd548c34e0a79631c275ca77f83643e44387",
+          "commit": "72673bbc8a1cbd61419bafbb64f49670b6db0d6f",
           "path": ".zzzops/reviews/1029/review_tests.md"
         },
-        "summary": "The three tests match design tests 1-3, and the two new-behaviour tests fail before the implementation. But the recorded command `python3 -m unittest -v test_prompt_stats ...` fails with ModuleNotFoundError when run_tests runs it from the worktree root, so run_tests would fail on any implementation. Record it with `cd .agents && ...` or the discover form."
+        "summary": "The command now starts with `cd .agents &&`. Run from the worktree root it runs 33 tests, and only the two new-behaviour tests fail pre-implementation. The intent-node test now also filters on stage == discovery. review_tests:1:1 resolved."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "e92b17b5860edb30eb452104a32b39db006da81d",
-          "commit": "0dffafab215930125098f4321f28c1edca0e98db",
-          "tree": "a71917f28004e46a62f1799ac7fc3d320eb074bf"
+          "change": "013087883bf6279714942d59c6e186e865319336",
+          "commit": "f2ac13cde7428d487c03fcfd51086fc789d21929",
+          "tree": "f089c1e2380de39ac8be5b0138f3aa0892c73eff"
         }
       },
       "status": "done"
