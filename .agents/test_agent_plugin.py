@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import runpy
+import shutil
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +26,25 @@ def quoted_yaml_value(data: bytes, field: str) -> str:
     prefix = field + ":"
     line = next(line for line in data.decode("utf-8").splitlines() if line.lstrip().startswith(prefix))
     return json.loads(line.split(":", 1)[1].strip())
+
+HARNESS_ENV = ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "HOME", "USERPROFILE")
+NEUTRAL_HINT = "reinstall ZzzOps from the Claude Code or Codex marketplace it was installed from."
+
+
+def broken_copy_status(plugin: Path, env: dict[str, str], *, codex_version: str | None = None) -> dict:
+    """Copy the package to `plugin`, break one SKILL.md, and run that copy's own package_status() under `env`."""
+    shutil.copytree(PLUGIN, plugin, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"))
+    if codex_version is not None:
+        manifest_path = plugin / ".codex-plugin" / "plugin.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["version"] = codex_version
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    skill = plugin / "skills" / "add-zzzops-goal" / "SKILL.md"
+    skill.write_text(skill.read_text(encoding="utf-8").replace("v0.0.0-dev", "v9.9.9", 1), encoding="utf-8")
+    cleared = {key: value for key, value in os.environ.items() if key not in HARNESS_ENV}
+    with mock.patch.dict(os.environ, {**cleared, **env}, clear=True):
+        package = runpy.run_path(str(plugin / "zzzops" / "package.py"))
+        return package["package_status"]()
 
 
 class AgentPluginTests(unittest.TestCase):
@@ -70,6 +93,92 @@ class AgentPluginTests(unittest.TestCase):
         status = package["package_status"]()
         self.assertTrue(status["ok"], status["detail"])
         self.assertEqual("0.0.0-dev", status["version"])
+
+    def test_channel_follows_the_version_through_one_shared_rule(self) -> None:
+        """G1033: the build and the check share package.channel_for_version."""
+        channel_for_version = runpy.run_path(str(PLUGIN / "zzzops" / "package.py"))["channel_for_version"]
+        self.assertEqual("development", channel_for_version("0.0.0-dev"))
+        self.assertEqual("official", channel_for_version("1.0.0"))
+        self.assertEqual("official", channel_for_version("2.0.0"))
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = Path(directory) / "plugin"
+            shutil.copytree(PLUGIN, plugin, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"))
+            manifest_path = plugin / ".codex-plugin" / "plugin.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["version"] = "0.0.0-dev+codex.123"
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+            package = runpy.run_path(str(plugin / "zzzops" / "package.py"))
+            # the channel comes from the Agent Plugins manifest, which the Codex cachebuster never changes
+            self.assertEqual("development", package["channel_for_version"](package["read_plugin_manifest"]()["version"]))
+            status = package["package_status"]()
+            self.assertTrue(status["ok"], status["detail"])
+
+    def test_reinstall_hint_names_the_harness_the_package_was_installed_for(self) -> None:
+        """G1033: a failing self-check tells the user how to repair it in the harness that installed it."""
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory).resolve()
+            elsewhere = {"CLAUDE_CONFIG_DIR": str(tmp / "no-claude"), "CODEX_HOME": str(tmp / "no-codex"),
+                         "HOME": str(tmp / "no-home"), "USERPROFILE": str(tmp / "no-home")}
+
+            with self.subTest(layout="claude install cache"):
+                status = broken_copy_status(tmp / "claude/plugins/cache/mk/zzzops/abc",
+                                            {**elsewhere, "CLAUDE_CONFIG_DIR": str(tmp / "claude")})
+                self.assertFalse(status["ok"])
+                self.assertEqual("claude", status["harness"])
+                self.assertIn("skill discovery metadata", status["detail"])
+                self.assertIn("Claude Code", status["detail"])
+                self.assertIn("claude plugin marketplace update mk", status["detail"])
+                self.assertIn("claude plugin update zzzops@mk", status["detail"])
+                self.assertNotIn("Codex", status["detail"])
+
+            with self.subTest(layout="claude install cache under the default home"):
+                home = {**elsewhere, "HOME": str(tmp / "home"), "USERPROFILE": str(tmp / "home")}
+                del home["CLAUDE_CONFIG_DIR"]
+                status = broken_copy_status(tmp / "home/.claude/plugins/cache/other/zzzops/unknown", home)
+                self.assertEqual("claude", status["harness"])
+                self.assertIn("claude plugin update zzzops@other", status["detail"])
+
+            with self.subTest(layout="codex install cache"):
+                status = broken_copy_status(tmp / "codex/plugins/cache/mk/zzzops/abc",
+                                            {**elsewhere, "CODEX_HOME": str(tmp / "codex")})
+                self.assertFalse(status["ok"])
+                self.assertEqual("codex", status["harness"])
+                self.assertIn("reinstall ZzzOps from its Codex marketplace.", status["detail"])
+                self.assertNotIn("Claude Code", status["detail"])
+
+            with self.subTest(layout="codex cachebuster"):
+                status = broken_copy_status(tmp / "busted/zzzops", elsewhere, codex_version="0.0.0-dev+codex.123")
+                self.assertEqual("codex", status["harness"])
+                self.assertIn("Codex marketplace", status["detail"])
+
+            with self.subTest(layout="generated claude marketplace run in place"):
+                generated = tmp / "generated"
+                (generated / ".claude-plugin").mkdir(parents=True)
+                (generated / ".claude-plugin" / "marketplace.json").write_text(
+                    json.dumps({"name": "generated-mk", "plugins": [{"name": "zzzops", "source": "./zzzops"}]}),
+                    encoding="utf-8")
+                status = broken_copy_status(generated / "zzzops", elsewhere)
+                self.assertEqual("claude", status["harness"])
+                self.assertIn("claude plugin update zzzops@generated-mk", status["detail"])
+
+            with self.subTest(layout="source checkout with both marketplaces"):
+                source = tmp / "source"
+                for catalog in (".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json"):
+                    (source / catalog).parent.mkdir(parents=True, exist_ok=True)
+                    (source / catalog).write_text('{"name": "zzzops"}', encoding="utf-8")
+                status = broken_copy_status(source / "plugins" / "zzzops", elsewhere)
+                self.assertIsNone(status["harness"])
+                self.assertIn(NEUTRAL_HINT, status["detail"])
+
+            with self.subTest(layout="unrecognised"):
+                status = broken_copy_status(tmp / "plain/zzzops", elsewhere)
+                self.assertFalse(status["ok"])
+                self.assertIsNone(status["harness"])
+                self.assertTrue(status["detail"].endswith("; " + NEUTRAL_HINT), status["detail"])
+
+        status = runpy.run_path(str(PLUGIN / "zzzops" / "package.py"))["package_status"]()
+        self.assertTrue(status["ok"], status["detail"])
+        self.assertIn("harness", status)
 
     def test_open_and_codex_manifests_describe_the_same_release(self) -> None:
         open_manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))

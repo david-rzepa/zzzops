@@ -57,6 +57,8 @@ REQUIRED_OBLIGATIONS = {
 REQUIRED_NATIVE_IDS = {
     "test_legacy_cleanup.LegacyCleanupTests.test_default_cli_is_dry_run_and_interrupted_cleanup_converges",
     "test_marketplace_bundle.MarketplaceBundleTests.test_fixed_version_build_is_deterministic_and_complete",
+    "test_marketplace_bundle.MarketplaceBundleTests.test_generated_claude_marketplace_passes_the_full_package_check",
+    "test_marketplace_bundle.MarketplaceBundleTests.test_package_check_assertion_fails_on_a_wrong_channel_build_with_a_claude_hint",
     "test_agent_plugin.AgentPluginTests.test_marketplace_points_to_the_self_contained_package",
     "test_engine_docs.CliWithoutRepositoryTests.test_help_and_policy_validation_need_no_repository",
     "test_engine_identity.IdentityTests.test_crlf_checkout_gives_the_same_identities",

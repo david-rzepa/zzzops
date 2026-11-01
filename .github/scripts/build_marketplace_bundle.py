@@ -193,6 +193,8 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
         raise BundleError("canonical Claude manifest must omit version so Git commits drive updates")
     package = runpy.run_path(str(plugin / "zzzops" / "package.py"))
     renderer = package["render_skill_metadata"]
+    # One rule for the channel a build claims, shared with package_status(), so a build never fails its own check.
+    channel = package["channel_for_version"](version)
     result: dict[str, bytes] = {}
     allowed_top_level = {
         ".claude-plugin", ".codex-plugin", "assets", "bin", "concepts", "plugin.json", "rules", "scripts", "skills", "zzzops",
@@ -214,7 +216,7 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
                 manifest["version"] = version
             data = canonical_json(manifest)
         try:
-            data = renderer(relative, data, version, "official")
+            data = renderer(relative, data, version, channel)
         except ValueError as exc:
             raise BundleError(f"invalid skill discovery metadata in {relative}: {exc}") from exc
         scan_for_secrets(relative, data)
