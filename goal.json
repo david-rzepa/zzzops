@@ -1,0 +1,18 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [],
+  "graph": "default",
+  "id": 1014,
+  "links": {
+    "issue": null
+  },
+  "priority": "P2",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Found while dogfooding Release 1. `zzzops edit` that changes a goal field consumed by a phase that is currently running (live lease) reports `stale_agent_phases: 0` and gives no warning. Example: `start 1000 design`, then `edit 1000 --set spec=... --base C`. The running worker then submits work that is stale on arrival, and the phase silently re-runs.\n\nOutcome:\n- Both edit's dry-run preview and its applied result list every live lease whose node's inputs the edit changes: goal, node, attempt, holder, expires_at.\n- Each comes with the commands to act on it: `abandon G X --attempt N`, then a fresh `start`. Or say to let it finish and re-run.\n- `stale_agent_phases` counts these phases too, or a separate `live_leases_on_changed_nodes` field is added, matching `validate --policy` impact.\n- The task card of a phase whose inputs changed after its start says so on `renew`: the renew result carries `inputs_changed: true` with the restart commands, so the worker learns before it submits.\n\nAcceptance:\n- Engine tests: an edit of spec during a running design lists the live lease in the preview and the result; renew of that lease reports inputs_changed; an edit that touches no consumed input lists nothing; a held or closed goal's edits are unaffected.\n- CLI_USAGE and the execute skill describe the flow.\n- No extra fetch: the computation uses the already-fetched snapshot.",
+  "state": "open",
+  "title": "Warn when edit changes the inputs of a running phase"
+}
