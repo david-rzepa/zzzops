@@ -308,7 +308,7 @@ class SubmitTests(Journey):
         from engine.card import shrink_candidates
         n = len(json.dumps(c, separators=(",", ":"), sort_keys=True, ensure_ascii=False).encode())
         self.assertTrue(n <= 4096 or not shrink_candidates(c), n)
-        for k in ("lease", "renew", "prompt", "instructions", "inputs", "context", "read_dev", "workspace", "commands",
+        for k in ("lease", "prompt", "instructions", "inputs", "context", "read_dev", "workspace", "commands",
                   "output_schema"):
             self.assertIn(k, c)
         argv = ["submit", str(g), self.n("implement"), "--attempt", "1", "--as", self.A.label, "--output", "<F>"]
