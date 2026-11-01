@@ -233,12 +233,18 @@ class ShippedTemplateTests(unittest.TestCase):
         self.assertEqual(on_disk, listed)
 
     def test_engine_version_or_capability_marks_the_new_shapes(self):
-        """A 1.1 engine must not read `lenses`/`lens`: the engine takes the next minor version (§8), or, if G1027's
-        capability files landed first, declares `engine/capabilities/lenses.txt` instead (root hand-off)."""
-        from engine import ENGINE_VERSION
+        """A 1.1 engine must not read `lenses`/`lens`. If G1027's capability files landed first, the engine declares
+        `engine/capabilities/lenses.txt` and the template requires `lenses` (root hand-off; G1027 deletes
+        ENGINE_VERSION); otherwise the engine takes the next minor version (§8)."""
+        import engine
         cap = fx.PLUGIN_CODE / "engine" / "capabilities" / "lenses.txt"
-        bumped = tuple(int(x) for x in ENGINE_VERSION.split(".")) >= (1, 2, 0)
-        self.assertTrue(bumped or cap.is_file(), (ENGINE_VERSION, str(cap)))
+        if cap.is_file():
+            requires = shipped("POLICY.json")["settings"]["engine"].get("requires") or []
+            self.assertIn("lenses", requires, requires)
+            return
+        version = getattr(engine, "ENGINE_VERSION", None)
+        self.assertIsNotNone(version, f"neither {cap} nor engine.ENGINE_VERSION exists")
+        self.assertGreaterEqual(tuple(int(x) for x in version.split(".")), (1, 2, 0), version)
 
 
 class ShippedPromptTextTests(unittest.TestCase):
