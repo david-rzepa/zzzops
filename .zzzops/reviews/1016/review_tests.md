@@ -1,31 +1,14 @@
-# Review of the G1016 tests (attempt 5)
+# Review of the G1016 tests (attempt 6, after the rebase onto dev 6747a5e)
 
-Scope: commit 521d78b, which adds `next --goal` capability assertions to `CapabilityTests` in `.agents/test_engine_card_ux.py`. Nothing else changed since the approved tests: the range-diff is identical through ff6fb6e, plus 601a958/7921d86 (reviews), f9117d0 (the fix) and 521d78b.
+**Decision: approved.** No findings.
+
+## What I checked
+- `git range-diff 54d7e83..521d78b 6747a5e..e46d1d1`: commits 1-6, 8-14, 16-18 and 20 are `=`. Commits 15 and 19 (implementation) differ only in imports and context that sit on top of G1014/G1018 code. Those belong to the implementation review, not this one. The only test commit that changed is 7 (802c016 -> a3ec211).
+- In a3ec211 the only change is in `.agents/test_engine_lifecycle.py::SubmitTests.test_card_shape_and_size`. The resolved body is identical to dev 6747a5e (G1018, f7c58da), except that `renew` is removed from the expected top-level keys.
+
+## Both intents are kept
+- **G1018:** the `n <= 4096 or not shrink_candidates(c)` size rule, the `commands.submit.command` string match with the optional `argv` check, and the strict requirement that `inputs.tests` is a dict containing `diff` are all kept word for word. This is stricter than the pre-rebase G1016 version, which had a 4096+2000 bound and a lenient `diff` fallback.
+- **G1016:** design §5 removes the top-level `renew` and says "The `test_card_shape_and_size` key list drops `renew`". The resolution does exactly that, and `.agents/test_engine_card_ux.py` asserts the removal positively (`assertNotIn("renew", c)`, `commands.renew.when` contains the interval, and `commands.renew.argv`).
 
 ## Evidence
-
-I made two scratch copies of 521d78b. "new" is unchanged. In "old", `engine/render.py` and `engine/card.py` are reverted to 7921d86, the commit before the fix.
-
-- new: `CapabilityTests` gives 4/4 OK, and the whole `test_engine_card_ux` module gives 30/30 OK.
-- old: only `test_plain_start_of_reopened_node_after_base_moved_keeps_its_capability` fails, with `('reasoning', 1) != ('routine', 1)`. So the plain-start `next` assertion is what pins the fix (implement:3:1).
-
-## Why the reclaim-case `next` assertion passes on both
-
-I dumped the `next` action for the reclaimed, reopened `test_design`. It is the same on old and new:
-
-`{"capability": "reasoning", "reason": "reclaim", "corrections": 1, ...}`. It has no `stale_because` and no `record_stale`.
-
-The cause is in the frontier (frontier.py, the `reclaimable` branch). A reclaimable state is `{name, lease, fp, parts, corrections}`. Record staleness is only worked out at claim time, inside `start`. `run_capability` gets neither `record_stale` nor `stale_because`, so it returns None on both old and new code, and the node's own tier is used. `next` never shows a reclaimable node as base-stale, so this assertion cannot tell the two behaviours apart. That is expected, and it is not material:
-
-- The design's reclaim promise (§2 "Reclaim", Verification (b)) is about the card. `test_reclaimed_reopened_correction_keeps_its_capability` already asserts `stale_because == ["inputs.base"]`, non-empty corrections and `run.capability == "reasoning"` on the reclaim card. That assertion was approved earlier and does catch the old card rule.
-- The `next` assertion still guards against regressions. If a later change put `record_stale` on reclaimable states and dropped the corrections check, it would fail. It is cheap and not brittle.
-
-## Non-blocking note (implementation, not a test gap)
-
-I added a probe to the control test (scratch only). After the abandon, `next` shows the reclaim as `capability: "reasoning"` (test_design's own tier). The reclaim card then gives `routine`. So for a pure-rebase reclaim, `next` and the card still disagree, for the frontier reason above. The commit message's "next and the card share one rule" is true of the function, but not of the inputs it gets at reclaim.
-
-This mismatch already existed before the fix. It errs on the safe side: it over-advertises the tier and never hands correction work to `routine`. The design makes no promise about `next` at reclaim. So it is not a finding against `test_design`. If wanted, a follow-up could carry `stale_keys(L.fp_parts, parts) ∪ record staleness` on reclaimable states. The control test could then assert `routine` from `next` after the abandon.
-
-## Decision
-
-Approved. No findings are open. The new assertions are sound. The plain-start one tells old code from new, and the reclaim and control ones are consistent regression guards.
+I ran `python -m unittest test_engine_lifecycle.SubmitTests.test_card_shape_and_size test_engine_card_ux` on a `git archive` of e46d1d1: 31 tests passed.
