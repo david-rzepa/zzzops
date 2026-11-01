@@ -233,8 +233,8 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
         PurePosixPath(path).parts[1] for path in result
         if len(PurePosixPath(path).parts) >= 3 and PurePosixPath(path).parts[0] == "skills"
     }
-    if shipped_skills != {"add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops"}:
-        raise BundleError("plugin archive must contain exactly the three product skills")
+    if shipped_skills != {"add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-zzzops-repository"}:
+        raise BundleError("plugin archive must contain exactly the four product skills")
     missing_metadata = sorted(
         f"skills/{skill}/{relative}"
         for skill in shipped_skills

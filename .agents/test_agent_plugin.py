@@ -12,6 +12,7 @@ SKILL_UI = {
     "add-zzzops-goal": ("Add Goal", "Capture one durable project goal safely"),
     "bootstrap-zzzops-repository": ("Bootstrap Repository", "Create or strengthen an agent-ready repository"),
     "execute-zzzops": ("Execute", "Run the primary autonomous ZzzOps goal loop"),
+    "migrate-zzzops-repository": ("Migrate Repository", "Move a pre-reset ZzzOps repository to the new engine"),
 }
 SHIPPED_SKILLS = set(SKILL_UI)
 SUPPORT_EMAIL = "zzzops.support@gmail.com"

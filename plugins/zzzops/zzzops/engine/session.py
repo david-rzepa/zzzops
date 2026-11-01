@@ -143,7 +143,10 @@ class Session:
                                                           f"slept; local now {iso(self.now)}, newest committer date {iso(newest)}"})
         return out
 
-    def render_next(self, scope=None, all_=False) -> dict:
+    def render_next(self, scope=None, all_=False, legacy="cache") -> dict:
+        """legacy: "check" in the `next` verb (a bounded legacy check may run), "cache" in the next embedded in a
+        write (never checks)."""
+        from engine import legacy as legacy_mod
         p = self.portfolio()
         warnings = self.warnings(p)
         paused = self.state.pause
@@ -153,7 +156,7 @@ class Session:
             warnings.append({"kind": "offline", "message": f"`{self.R}` is unreachable: showing the last fetch; leases "
                                                            "and policy branches are unknown, so no action is offered"})
         return render.render_next(self.ctx(), p, scope=scope, all_=all_, blockers=self.state.blockers,
-                                  warnings=warnings, paused=paused)
+                                  warnings=warnings, paused=paused, legacy=legacy_mod.status(self, legacy))
 
     def mirror(self):
         if self.snap is not None and self.snap.integration:

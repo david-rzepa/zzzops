@@ -12,7 +12,7 @@ for _code in ("remote", "push_refused"):
     EXIT[_code] = 2
 for _code in ("claim_lost", "superseded", "contention"):
     EXIT[_code] = 3
-for _code in ("policy_branch", "policy_invalid", "not_bootstrapped"):
+for _code in ("policy_branch", "policy_invalid", "not_bootstrapped", "legacy_policy"):
     EXIT[_code] = 4
 
 

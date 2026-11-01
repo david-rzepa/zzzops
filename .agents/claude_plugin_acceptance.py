@@ -16,7 +16,7 @@ import tempfile
 from typing import Any
 
 
-EXPECTED_SKILLS = {"add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops"}
+EXPECTED_SKILLS = {"add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-zzzops-repository"}
 
 
 class AcceptanceError(ValueError):

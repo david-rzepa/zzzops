@@ -7,6 +7,8 @@ description: ZzzOps v0.0.0-dev — development plugin. Initialize or review repo
 
 Communicate as [the shared guide](../../rules/COMMUNICATION.md) says, and respect its data boundary. Run the CLI as [CLI usage](../../zzzops/references/CLI_USAGE.md) says (without the `zzzops` launcher on `PATH`: `<python> ../../zzzops/zzzops.py`, Python 3.10 or later). Command reference: [CLI usage](../../zzzops/references/CLI_USAGE.md).
 
+On a `legacy_policy` blocker (a pre-reset `.zzzops/POLICY.json`) or a `legacy` item, use the migrate-zzzops-repository skill; it calls back here for the policy files.
+
 A checklist over the shipped templates, `zzzops validate` and plain `git`/`gh`. Nothing here is a ZzzOps verb. Templates: `../../zzzops/templates/default/` (`POLICY.json`, `workflow.json`, `prompts/`).
 
 1. **Remote and integration branch.** Greenfield: `git init -b <I>` and push the first commit before any branch rules exist. Brownfield: use the existing trunk, or create `dev` from it and push.
