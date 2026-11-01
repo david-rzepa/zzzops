@@ -8,7 +8,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T04:26:12Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "spec": "v1:sha256:1081e6600afea17d81dd4f899ddad04ceddabf62fcc2d3ccb9ddc015a5c6ad57"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/design-1018-1",
+      "input_fp": "v1:sha256:a0625718721e8e9afb9954fd2fd7d9c6fdde8125b1f638071e455735f6ba52a3",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "70c137761708ceadc6591a629571ae434fe46f56",
+          "commit": "b6ce8b81632db95b8c9c0022675f81a7f3fe9407",
+          "path": ".zzzops/reviews/1018/design.md"
+        },
+        "summary": "Rendering-only fix. card.value_of will detect checkpoint inputs selected by `change` or `tree` and render the producer's full checkpoint (commit, base, tree, change, diff), taken from the same source resolve used and guarded by an equality check against the selected id, with a fallback to the bare value. card.checkpoint_view gains `base`, and render.checkpoint_view (approve items, which already expand these selectors) gains `commit` and `base`, so approve_merge shows the code commit. Fingerprints are untouched because value_of never feeds them. Tests cover the review_tests and review_impl cards, the approve_merge item, fingerprint stability, the fallback, and a default- plus renamed-graph journey regression that every checkpoint view's commit resolves via git cat-file and that no bare non-commit 40-hex id appears on a card."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
