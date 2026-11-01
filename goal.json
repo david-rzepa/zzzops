@@ -98,6 +98,35 @@
       "reason": "stale",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T22:16:51Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:8a2e8ac0217a3e46b72c1e3ce2d2c6f98e60949f5743134ece85574f6cb677e3",
+          "doc": "v1:blob:496ddd5a4af997072a6592b0a8c591ece5625b54",
+          "tests": "v1:sha256:ab4587ed9a9ccbce97138a167701b6cb6f77e23c735bc427c074110e3425c3a1"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1022",
+      "input_fp": "v1:sha256:aaf02940fadc26918b24430fb3d8fded0d376ddbcf4b32e985007ecc78486349",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "a9c19f896fa543cfb0581e34d7862e917ee93c7a",
+          "commit": "256ec0e52ee761899293de959dfdd624af06c676",
+          "tree": "d5ab0d4591f962c1710a39bf895b21a1c09cb85e"
+        },
+        "summary": "The shipped graph is now 15 nodes. review_design applies seven lenses beside a separate adversary_design (G1000's node, unchanged), and both feed filter_design. review_impl applies compliance, correctness, missing, tests and craft, and feeds filter_impl. The engine adds the `lenses` node field, `<node>:<lens>` goal skip keys (a mandatory lens is refused, an unknown one warns), a required `lens` finding tag, a lens checklist on reviewer cards and approval items, the PR body's lens list, and a budget-exempt `lenses` fingerprint part; `Graph.lenses` is renamed `Graph.reviewers` and ENGINE_VERSION goes to 1.2.0. One addition beyond the design: an input that a redefinition adds or removes is also budget-exempt, so adopting the new graph re-asks approve_design without charging the goal's budget. docs/design SPEC and DESIGN are amended (engine contract only; the graph is configuration), with a HISTORY §4 row, and the G1022 pending row is deleted; skills, MIGRATING, EXECUTION and CLI_USAGE are updated. The full suite passes (732 tests)."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 2,
       "correction_runs": 1,
