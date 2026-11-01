@@ -105,6 +105,35 @@
       "reason": "reopened",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T21:43:58Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:8a2e8ac0217a3e46b72c1e3ce2d2c6f98e60949f5743134ece85574f6cb677e3",
+          "doc": "v1:blob:606311b216268f9b2f2f2495e94b654838796672",
+          "tests": "v1:sha256:1bcf0065f9c13154198538ca456d5aa89dccfd8fc2fa0b0619b5fb5a7fb833af"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1033",
+      "input_fp": "v1:sha256:9701f155a8c7e83494eeda06bbb2c66122d0ab6da5ee48180d41186565af2ec2",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "96038a9a1e4cc800745928dbd5756a3a559a2aca",
+          "commit": "a1d408fe3e2d27ca136069f5ad08664a26a7ee6a",
+          "tree": "330f15c24cedd93493f7b382f10dbae82396d04e"
+        },
+        "summary": "Generated Claude marketplaces no longer fail their own package self-check. The bundle builder now renders skill metadata with package.channel_for_version, the rule package_status uses, so a 0.0.0-dev build claims the development channel. The self-check failure hint now names the installing harness, detected from the install location: Claude Code with the marketplace update and plugin update commands, Codex, or a neutral line naming both. Claude acceptance runs the full validate from the generated marketplace and the installed cache and fails on any plugin package entry, and the Claude marketplace and maintaining docs describe the rule."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 2,
       "correction_runs": 1,
