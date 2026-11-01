@@ -1,0 +1,20 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [
+    1017
+  ],
+  "graph": "default",
+  "id": 1027,
+  "links": {
+    "issue": null
+  },
+  "priority": "P1",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "The owner's question (2026-11-01): \"what is engine.min? I don't see how it can work off of dev branch because we only compute semantic version on merge to main\". Today the engine carries a hand-maintained ENGINE_VERSION (engine/__init__.py, 1.1.0 since G1000), POLICY has settings.engine.min, and the CLI refuses writes when engine.min > ENGINE_VERSION (store.py:457). The number is unrelated to the product's semantic-release version, and it fails in three ways: builds installed from dev report whatever __init__.py says, so one number covers different engines (CLI_USAGE already notes a pre-G1015 dev build also reports 1.0.0); goals in flight race for the next number (G1022 and G1024 both had to say \"whichever merges second takes the next minor\"); and the owner has to track two version numbers. The owner chose capabilities instead.\n\n1. The engine declares a set of capability names (e.g. `lens_findings`, `lens_skips`, `policy_update`, `release_lines`), one per format or behaviour that an older engine must not touch. A goal that adds such a format adds its capability name in its own PR; no ordering between goals.\n2. POLICY declares `settings.engine.requires: [names]`. The CLI refuses writes, as engine_too_old does today, when any required capability is missing, and the message names the missing ones and says to upgrade the plugin.\n3. Migration: `engine.min` keeps working for repositories that have it (map 1.0.0 and 1.1.0 to their capability sets, or keep the comparison during a transition; decide in the design) and validate warns that it is deprecated. ENGINE_VERSION is removed or kept only as display, and goal commits record the capabilities (or a build id) instead of `Engine: <version>`. Legacy detection's cache key (legacy.py) stops depending on ENGINE_VERSION.\n4. The goals that would raise ENGINE_VERSION (G1022, G1024, G1025, and any later one) declare capabilities instead; this goal names theirs if they merge after it, and G1000's 1.1.0 becomes the capability `lens_findings` (impact/material, filters, notes).\n5. This repository: the lens policy branch (G1000 rollout step 3, after G1022) requires the capabilities its graph needs instead of raising engine.min. The owner confirmed the Codex agent on the 15b59a5 plugin is finished, so locking out 1.0 engines is approved.\n\nAcceptance:\n- Engine tests: a policy requiring a capability the engine lacks refuses writes with the names; one it has proceeds; engine.min still works per the migration rule with a deprecation warning; two goals adding different capabilities merge without conflict.\n- CLI_USAGE, MIGRATING and REPAIR (\"Upgrade the engine\" recipe) describe requires.\n- This PR edits docs/design for its contract changes and adds a HISTORY §4 row (G1017's rule).",
+  "state": "open",
+  "title": "Replace ENGINE_VERSION and engine.min with declared engine capabilities"
+}
