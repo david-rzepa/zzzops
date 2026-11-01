@@ -17,30 +17,33 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T04:24:35Z",
+      "finished_at": "2026-11-01T17:37:34Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
-          "dep_designs": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "dep_designs": "v1:sha256:2282e4f304f3a4c1775e1c71689b2228660daf6dd789d8479583378eb675bda7",
           "spec": "v1:sha256:d510d0f4ee516876f569e5777e626c26cd577acb0bb898776228b91f270a0576"
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/design-1017-1",
-      "input_fp": "v1:sha256:d41c20832f1c1ccfccb27b6aa7f56a8420b344d9aba869b457f3c4a272113d54",
+      "holder": "claude:e6ad/d1017",
+      "input_fp": "v1:sha256:7b7f01a9c7e8e0085e29e767abd1d3a0d42b0b1236a3e310d71ed228d849a8f3",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "9e3d642213de86aaa10bd1d22aeb8417cb583121",
-          "commit": "602e04ad20da2378588fbda00765be7192e8e216",
+          "blob": "7597f57f53d0021a1e234d31b497da04a1aa2b0f",
+          "commit": "4ef22c88aac94f8565cd81b4f10628c746711b58",
           "path": ".zzzops/reviews/1017/design.md"
         },
-        "summary": "Move the approved rev 6.3 DESIGN.md and SPEC.md, plus the completed IMPLEMENTATION_PLAN as a historical record, into docs/design/ with numbering intact, so every existing DESIGN §/SPEC §/Step citation in engine and tests still resolves. Review reports, passes, audit and HTML renders stay outside; a new HISTORY.md summarises them and indexes every cited REV5/REV6 amendment id, and a docs/design/README.md states SPEC is the contract and DESIGN the rationale. The scrub removes absolute paths (all in the plan), the owner name in examples and example session labels; --policy-ref is applied now, and G1000/G1001/G1014/G1015/G1016 are applied only if merged by implement time, otherwise listed as pending (all five are open at read_dev). Nothing new ships in the plugin; only two engine docstrings change to the in-repo path, and a small test guards against external-folder references, broken links and unindexed amendment ids."
+        "responses": {
+          "review_design:1:1": "fixed: 'Contract amendments' is rewritten. (1) Every implement run, which re-runs whenever base moves, lists the goals merged into its base and applies each contract change. A CI guard in .agents/test_design_docs.py runs on the PR merge ref (dev-required-tests) and fails if a goal whose tree marker has landed still has a pending row, so a goal merging between G1017's implement and its merge sends G1017 back to implement. (2) The same guard makes a pending row for a merged goal impossible in any tree. (3) Every remaining row names an owner goal, which is told by zzzops edit before its implement (G1022: depends_on gains 1017 and its acceptance line gains the docs/design edit; the root runs it right after approval, and implement verifies it). Goals already past implement (G1020) are covered by the re-check if they merge first, and by the guard plus a reopen-base recipe if they merge second. At a05fb97, G1001, G1014, G1015, G1016, G1018 and G1021 have merged and are in the applied list. G1000 is applied through G1017's dependency on it."
+        },
+        "summary": "Revision 2. The layout is unchanged: scrubbed rev 6.3 DESIGN.md, SPEC.md and IMPLEMENTATION_PLAN move to docs/design/ with numbering intact, plus HISTORY.md (review summary, amendment index, post-approval amendment log) and a README (SPEC is the contract, DESIGN the rationale). New rule: a goal's contract change is applied exactly when its code is in the tree. G1017's implement applies #742, G1014, G1018, G1001, G1015, G1016, G1021 and G1000 (its §17 list) from their merged diffs and designs, and re-checks on every base move. A CI guard (test_no_landed_goal_is_pending) fails any tree where a landed goal still has a README pending row, so neither G1017 nor the pending goal can merge with drift. Each pending row has an owner goal: G1022 gets depends_on 1017 and a docs/design acceptance line by zzzops edit before its design; G1020 is covered by the re-check and the guard; G1023's wording is folded under G1016's row."
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "review_design": {
