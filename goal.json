@@ -45,111 +45,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [
-        {
-          "id": "review_design:1:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:a9f3ce03f3a5532016ae8faaea1d6c170cbf11bb077c9f1dec2f0adb5065ac23",
-          "text": "F1 (major): effective release and cut completeness are said to be computed 'from the documents', but store.read_state (store.py:379) skips closed goals' documents (only the State trailer is read), and goal_message carries no release or closed-reason trailer. After finish closes line goal N, effective falls back to releases.current, so release N+1 merges are gated again and dev freezes. The cut's 'every release N goal closed, one done' cannot be evaluated either. Fix: make line existence and release membership cheap to read (e.g. Release/Closed/Line trailers on goal commits, with a document fallback only when branching is on), or load closed and line goals when branching is on and state the cost. Test: after finishing release 1, a release 2 goal still passes its merge gate.",
-          "upheld": false
-        },
-        {
-          "id": "review_design:1:2",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:a9f3ce03f3a5532016ae8faaea1d6c170cbf11bb077c9f1dec2f0adb5065ac23",
-          "text": "F2: two release lines can be open at once and nothing defines that state. The cut for N+1 is offered while release/N is still open. release/N syncs then never reach release/N+1, the order of finishes into production is undefined, and D9's 'the open release branch' is ambiguous. git flow (and its tool) allows one release branch at a time, which is the clear winner. Fix: add 'no open release line' to the cut conditions, show the item as waiting otherwise, and add a test.",
-          "upheld": false
-        },
-        {
-          "id": "review_design:1:3",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:a9f3ce03f3a5532016ae8faaea1d6c170cbf11bb077c9f1dec2f0adb5065ac23",
-          "text": "F3: concurrent release cut (and hotfix start) can create two line goals for one branch. The loser of the push race refetches, sees release/N as an ancestor of the I tip, and takes §3 step 3's adopt path, creating a second Release N goal. The G1001 request key only helps if it is derived from (line kind, name), not from the answer file. Fix: a deterministic key per line; re-check line existence after a rejected push and before adopting; a duplicate-line human item in the portfolio. Test with two racing cuts.",
-          "upheld": false
-        },
-        {
-          "id": "review_design:1:4",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:a9f3ce03f3a5532016ae8faaea1d6c170cbf11bb077c9f1dec2f0adb5065ac23",
-          "text": "F4: §4 retargets dependents to 'the merged goal's target'. For §8's dev goal stacked on a release-N goal, that puts a release N+1 PR's base on release/N, so it shows every dev commit since the cut and could land N+1 work in the release branch. GitHub also auto-retargets to the merged PR's base when the dependency's head branch is deleted. Fix: retarget each dependent to its own target(d) before the dependency's PR branch is deleted, and test it.",
-          "upheld": false
-        },
-        {
-          "id": "review_design:1:5",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:a9f3ce03f3a5532016ae8faaea1d6c170cbf11bb077c9f1dec2f0adb5065ac23",
-          "text": "F5: line_complete gates only approve_finish. A release-N goal created or edited onto N after the approval, but before finish completes, starts on release/N and then silently retargets to dev when the line closes, missing the release. Fix: finish re-checks completeness when it runs and blocks back to approve_finish if a member is open; new and edit warn once approve_finish is current. Add a test.",
-          "upheld": false
-        },
-        {
-          "id": "review_design:1:6",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:a9f3ce03f3a5532016ae8faaea1d6c170cbf11bb077c9f1dec2f0adb5065ac23",
-          "text": "F6: the scheduled restack needs a defined mechanism. The frontier is one topological pass, so 'base ready if a workspace agent would be ready' needs a second override pass: specify it. Block all workspace nodes downstream of base, not only agents, because run_tests can otherwise be dispatched on the pre-restack tree beside base. Bound re-triggers when dev moves between the restack and the agent's start (e.g. one restack per agent ready-epoch), or name the starvation risk. Add tests.",
-          "upheld": false
-        },
-        {
-          "id": "review_design:1:7",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:a9f3ce03f3a5532016ae8faaea1d6c170cbf11bb077c9f1dec2f0adb5065ac23",
-          "text": "F7: define the line goal's branches and fetch. sync puts merge commits on zzzops/work/g<line>, but wt.sync and unpushed_replay (patch_ids --no-merges), salvage, worktree creation at snap.integration and check_i1_i2 at submit assume linear histories. Name the sync branch and which generic paths line ops bypass, so a hand-resolved merge survives start's resume. Say what happens when dev moves after a hand resolution and the sync PR turns DIRTY or BEHIND. Fetching production and line branches 'with explicit refspecs' needs the policy and the line goals from the same fetch round, so it needs a second round or a prefix wildcard: say which.",
-          "upheld": false
-        },
-        {
-          "id": "review_design:1:8",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:a9f3ce03f3a5532016ae8faaea1d6c170cbf11bb077c9f1dec2f0adb5065ac23",
-          "text": "F8 (minor): G1017's case 3 gives a pending README row to a goal whose contract sections are known, and §15 now names them, so §10's 'no pending row' is out of date. Fix: as G1022 §12 does, send §15's list for a row, and have this PR delete the G1025 pending row, so test_no_landed_goal_is_pending passes.",
-          "upheld": false
-        },
         {
           "id": "review_design:2:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:3a352241961dec729184d3dd1ce5bb7c5e4c228717ec5c0a4e297c5cc482a777",
@@ -161,7 +65,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:3a352241961dec729184d3dd1ce5bb7c5e4c228717ec5c0a4e297c5cc482a777",
@@ -173,7 +77,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:3a352241961dec729184d3dd1ce5bb7c5e4c228717ec5c0a4e297c5cc482a777",
@@ -185,7 +89,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:3a352241961dec729184d3dd1ce5bb7c5e4c228717ec5c0a4e297c5cc482a777",
@@ -193,33 +97,33 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T18:18:30Z",
+      "finished_at": "2026-11-01T18:21:34Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:2cc794e3db1c84558b8d76bb6f5784ea771da028",
+          "doc": "v1:blob:f240bd5994202bea10cb430a216b74cce56ace63",
           "spec": "v1:sha256:1d314cf8bf1b01e23f5fc28018d6afa358a2f5c5c29969a978f16676fab30e45"
         },
         "policy": {},
-        "subject": "v1:sha256:665858e9598ac2b0ef310336827345bd63e55de9d1b7a037dcd36f22f9914c6b"
+        "subject": "v1:sha256:76d1cdd4e77eac0a586249f8010ae7eff6dafc99d69a72027c1cc6cb5a9d78d9"
       },
       "holder": "claude:e6ad/rd1025",
-      "input_fp": "v1:sha256:841dc7e5e22b7e4d2ed6ae678144bf4fc5a2ad645e339b9320f428cc95ce61a4",
-      "ok": false,
+      "input_fp": "v1:sha256:ec22aca95702c14b49f72fc0bc50adb93c874cea16a3663caac3b857f038c8b4",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "dd03df6f2a6be075187baf17dfa27fc7c3d5d000",
-          "commit": "3d17926172ab5e1c7d72015e06f5fad64eb02873",
+          "blob": "21f1f7fa379ef52966ac23459e68c2699029538a",
+          "commit": "7d079c38b00beee8dcac960fc81d579056e9794e",
           "path": ".zzzops/reviews/1025/review_design.md"
         },
-        "summary": "Changes requested. All 8 attempt-1 findings are resolved; for review_design:1:5 this holds for release lines, and its hotfix gap is new 2. The new mechanisms are well specified: the trailer ledger, one open line, the line-derived request key with duplicate_line, retargeting to target(d), the bounded pass 3, the sync branches and the second fetch. Four new holes: the recorded release_sync and line_members_open waits are never re-evaluated and hang forever (new 1); hotfix lines have no tip binding for approve_finish (new 2); a finished hotfix name cannot be reused (new 3); and the Closed trailer omits superseded (new 4). No owner question; the capability requirement matches the owner's G1027 decision."
+        "summary": "Approved. Revision 3 resolves review_design:2:1 to 2:4. The release_sync and line_members_open waits are now frontier-computed and end on their own, and a race at run time returns a time wait. Hotfix sync runs in record-only mode, so approve_finish is bound to the hotfix tip. Hotfix names are single-use. Closed: <reason> covers superseded. Round-1 findings stay resolved, and no new holes were found. Note: the capability is still named 'branching'; G1027 names it 'release_lines', which the implementer should use."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "2cc794e3db1c84558b8d76bb6f5784ea771da028",
-          "commit": "da690e409fa5ef5c60c51db1375b30bf35004888"
+          "blob": "f240bd5994202bea10cb430a216b74cce56ace63",
+          "commit": "5f64fd675c917f466237051c5f3a1633292dd667"
         }
       },
       "status": "done"
