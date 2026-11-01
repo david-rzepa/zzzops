@@ -197,10 +197,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T04:47:06Z",
+      "finished_at": "2026-11-01T04:53:58Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -213,22 +213,25 @@
         ".agents/test_engine_card_ux.py",
         ".agents/test_engine_lifecycle.py"
       ],
-      "holder": "claude:e6ad/test_design-1016-1",
+      "holder": "claude:e6ad/test_design-1016-2",
       "input_fp": "v1:sha256:2a19f4707eb16d7045e82aead1c72e30bce2a066a3f06e410437a9bc4723d309",
       "ok": true,
       "output": {
         "commands": [
-          "cd .agents && python3 -m unittest test_engine_card_ux test_engine_lifecycle test_engine_schemas test_engine_journeys test_engine_docs",
-          "python3 .agents/prompt_stats.py --check"
+          "cd .agents && python3 -m unittest test_engine_card_ux test_engine_lifecycle"
         ],
+        "responses": {
+          "review_tests:1:1": "fixed: DocsTests.test_prompts_name_full_shas now loops over fx.TEMPLATES/'prompts' only (plugins/zzzops/zzzops/templates/default/prompts); .zzzops/prompts is no longer read, so implement need not touch policy files. The implementer should edit only the template copies of test_design.md and implement.md (design 4a's '.zzzops/prompts' paths are superseded by this).",
+          "review_tests:1:2": "fixed: rewritten as outlined, on test_design: through_design, test_design submit, review_tests changes_requested with a finding on test_design, start test_design (asserts reason 'reopened', no stale_because), restack_base, abandon, start --reclaim; asserts reason 'reclaim', stale_because == ['inputs.base'] and run.capability == 'reasoning'. Fails before implementation (KeyError 'stale_because' at the post-reclaim assertion). Decision recorded for implement: in this scenario the test_design record was produced on the old base, so after the restack record_stale is also ['inputs.base'] (a reopened lease's claimed parts equal the record's parts, so the lease-side and record-side sets coincide). A rule keyed only on record_stale == ['inputs.base'] (design section 2) would therefore give 'routine' and fail this test. The implementation must also leave capability unchanged when the node has live corrections (e.g. routine only if record_stale == ['inputs.base'] and no corrections), which matches the design's stated intent that a reclaimed reopened correction keeps the node's own capability. The control test (no corrections, record stale only on base) still expects routine."
+        },
         "tests": {
           "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "cd2d9ad289da99ee0b739d4d78e6a8eee95b105d",
-          "commit": "802c01608eff84423c0c885ec904b652b9b594f8",
-          "tree": "fdd05d60402a5464346adb752f4a65a135d2c0fa"
+          "change": "71d097026cbf204379ee405e00529c06f1df5006",
+          "commit": "6234405cb1a17a14197472aea43c1735f3908dc0",
+          "tree": "22950c7190c76579948fe13b52b47b4c4454a08d"
         }
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     }
   },
