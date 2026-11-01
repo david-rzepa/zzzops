@@ -1,6 +1,11 @@
 {
   "budget": 37,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-01T17:16:52Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [],
   "graph": "default",
   "id": 1016,
@@ -221,6 +226,28 @@
       "reason": "retry",
       "status": "done"
     },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T17:16:52Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:cdb70ff58c8bd4753e41f5f51bb9ea1671cdc0bbaa0f5b2a7d1f016c50e45c02"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:8645a5a9437b68d30db3ab2a7e56b78f295f6457c514514040dc7940668edf89",
+      "ok": true,
+      "output": {
+        "merge_commit": "dd5efbe8c2a9ab2e9ec07fffb9dfd8bcdf631e88",
+        "merged_at": "2026-11-01T17:16:45Z"
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 4,
       "correction_runs": 3,
@@ -414,6 +441,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Dogfooding Release 1 (2026-11-01) found several places where workers were misled or under-informed by cards and lease verbs. Fix them together:\n1. `abandon` prints the exact restart command (`start G X --as <LABEL> --reclaim`). Plain `start` after an abandon is refused without `--reclaim`, which misled the root agent.\n2. A card issued by a reclaim (or any start) whose node's inputs changed since the previous attempt carries `stale_because` and a pointer to what changed (for example the old and new spec blobs or a diff command). Today it says `reason: reclaim` only.\n3. A `submit` refused because findings arrived while the worker ran (responses are checked against findings live at submit time) lists those findings with their text and targets, so the worker can answer them without re-reading state.\n4. The card's `output_schema` states that a finding reopens its target node. Coordinate with G1000, which adds materiality and non-blocking notes; this item only makes the consequence explicit in whatever form G1000 lands.\n5. The task card's top-level `renew` prose and `commands.renew` are merged or clearly labelled, so the runnable command is obvious.\n6. CLI_USAGE documents that ZZZOPS_TRACE records network git and gh calls only.\nAcceptance: engine tests for 1-3 (abandon output; reclaim card after a spec edit has stale_because; submit refusal lists the new findings); card snapshot tests for 4-5; docs for 6. No extra fetches. Coordinate with G1014, which adds live-lease entries and renew's inputs_changed (reuse its helper for item 2).",
-  "state": "open",
+  "state": "closed",
   "title": "Make task cards and lease verbs explain restarts, staleness and findings"
 }
