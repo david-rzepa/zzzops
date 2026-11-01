@@ -10,10 +10,10 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 2,
-      "correction_runs": 0,
+      "attempt": 3,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T04:16:05Z",
+      "finished_at": "2026-11-01T04:28:35Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -22,18 +22,22 @@
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/design-1000-1",
+      "holder": "claude:e6ad/design-1000-3",
       "input_fp": "v1:sha256:6f3931ebb1d3c4d1f3f4d1e29fa47395318fd8f86df45b02aa04d8737f369d46",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "14d91754bedbce4c9f77b937eb87ee8c31d09e30",
-          "commit": "10cb8273510ca4e752e16206f9d27f65c5b94c1e",
+          "blob": "d7d3e64f91bd9fe8264ac1b901a4ddcaa0536992",
+          "commit": "03a1def500198ab779be831b9d787d46d50200d0",
           "path": ".zzzops/reviews/1000/design.md"
         },
-        "summary": "Replaces review_design and review_impl with seven independent lenses on each subject. Intent and Simplicity cannot be skipped; Truth, Adversary, Concurrency, Rollout and Experience can. The set was chosen by a 16-lens experiment on the draft and on a replay of revision 6's A1 with 12 known defects: the merged seven cover 31/32 material issues, where the spec's five covered 17/32. Each subject also gets a cheap, independent filter node. A finding reopens work if the reviewer claims it is material or the filter promotes it; the filter can never demote a claim, because blind demotion lost 9/16 harmful issues. That cuts the blocking-finding nit rate from 54% to 11% and also batches the reopens. Project intent becomes settings.intent, which the Intent lens declares. The template ships a placeholder that validates with a warning (an owner decision, D5). The engine also gets a skippable field, a re-review blob-diff pointer and a PR-body lens list, and the rollout has three steps: PR, engine floor, then a lens policy branch with the owner-written intent."
+        "responses": {
+          "review_design:1:1": "fixed: §7 now adds a `candidates` part to the filter's fp_parts (sorted [id, material] of open findings on its lenses' latest records, computed from records like the `subject` part). A lens re-run that adds, closes or relabels a finding, including the intent herd, a lens rev bump or a def-stale resubmit with an unchanged summary, stales the filter, and the lenses' findings wait for it to re-judge (the filter stays the join). A candidates-only stale does not count against the budget, like def/policy in frontier.counts. As a fail-safe default, once the filter is fresh a finding is live unless it is non-material and has the verdict `note`, so a note with no verdict counts as kept. §13 adds the test you asked for: a policy-stale intent_design re-run with the same summary and a new note leaves the design neither reopened nor advanced until the filter re-submits, and the same with a rev bump. It also adds a test that a hand-built fresh filter record missing a verdict makes the note live.",
+          "review_design:1:2": "fixed: D8 and §12 now make steps 2-3 explicit root follow-ups after G1000's merge, recorded on G1000's approve_merge item. Repointing the Codex plugin is out of scope and controlled by the owner. Step 2: the root asks the owner before opening zzzops/policy/engine-1.1.0, because raising engine.min strands the Codex agent pinned to 15b59a5 with engine_too_old. It opens the branch only on an explicit yes, then follows REPAIR's upgrade recipe. Until then this repo keeps the 12-node graph, which is safe with mixed 1.0/1.1 engines. Step 3: after step 2 lands, the root opens zzzops/policy/lenses (graph, prompts, POLICY instruction `review`, and settings.intent seeded with the Appendix B strawman). It previews from a local ref and pushes when the owner is ready, because an open branch stops all work. The owner rewrites and approves the intent there. Waiting goals: the root holds G1003 before approving G1000's merge and unholds it after step 3 lands, so the dogfood run uses the lens graph. G1002 does not wait. I did not list the Codex repoint as an approve_merge go-ahead, as you suggested, because the root/owner constraint puts it outside G1000 entirely; the owner's gate is on the engine-1.1.0 branch instead."
+        },
+        "summary": "Revision 3 of the parallel-lens design. F1: the filter's fingerprint gains a `candidates` part (open lens finding ids and material), so any lens re-run that changes the candidate set stales the filter and its findings wait for it; once fresh, a note without a `note` verdict counts as kept (fail-safe), with tests. F2: rollout steps 2-3 are root follow-ups after G1000 merges; engine-1.1.0 is opened only on the owner's explicit go-ahead (Codex repoint out of scope, owner-controlled), then zzzops/policy/lenses carries the intent strawman for the owner to rewrite; G1003 is held from approve_merge until the lens policy lands. Coverage now reported as measured (28/32, 23/24) vs extrapolated (31/32); demotions corrected to 11/13; budget stated in rounds; _check_shape and filter-subject independence implementation points added; D9 resolved by G1017 with a §17 amendments list; G1018 noted for code-lens inputs."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
