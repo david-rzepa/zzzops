@@ -339,14 +339,14 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T19:13:55Z",
+      "finished_at": "2026-11-01T20:08:10Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:bc084c6c992e4796cbe6b416332a7b8c63e8a920c28390d1728ca2a7097a295b",
+          "code": "v1:sha256:820b22ef7055314cb7c0222c24a668027603aeb5aa79e03992b1504cf6ae214b",
           "commands": "v1:sha256:2523db9a45c6fc09641ff93b79ba8d15c01e14482028d96ea0d6ce22dd5d669c"
         },
         "policy": {
@@ -356,7 +356,7 @@
         }
       },
       "holder": "claude:e6ad/op",
-      "input_fp": "v1:sha256:c3b59c974430310321154e92b013c36894201810a6748a8407d87738b6152c7b",
+      "input_fp": "v1:sha256:8e3764400b47e2a81e2e3edd4ff65840267de8a4fe0f742ee038eaab0a8e3710",
       "ok": true,
       "output": {
         "result": {
@@ -365,26 +365,26 @@
               "cmd": "python3 -m unittest discover -s .agents -p 'test_design_docs.py' -v",
               "exit": 0,
               "seconds": 0,
-              "tail": "_way_round) ... ok\ntest_landed_message_names_the_goal_its_design_and_the_fix (test_design_docs.PendingGuardUnitTests.test_landed_message_names_the_goal_its_design_and_the_fix) ... ok\ntest_malformed_rows_fail_with_a_parse_error_rather_than_being_skipped (test_design_docs.PendingGuardUnitTests.test_malformed_rows_fail_with_a_parse_error_rather_than_being_skipped) ... ok\ntest_marker_path_that_does_not_exist_fails (test_design_docs.PendingGuardUnitTests.test_marker_path_that_does_not_exist_fails) ... ok\ntest_missing_or_duplicated_table_fails (test_design_docs.PendingGuardUnitTests.test_missing_or_duplicated_table_fails) ... ok\ntest_trailing_slash_on_a_directory_marker_is_accepted (test_design_docs.PendingGuardUnitTests.test_trailing_slash_on_a_directory_marker_is_accepted) ... ok\ntest_untracked_marker_file_counts_as_missing (test_design_docs.PendingGuardUnitTests.test_untracked_marker_file_counts_as_missing) ... ok\n\n----------------------------------------------------------------------\nRan 35 tests in 0.220s\n\nOK\n"
+              "tail": "_way_round) ... ok\ntest_landed_message_names_the_goal_its_design_and_the_fix (test_design_docs.PendingGuardUnitTests.test_landed_message_names_the_goal_its_design_and_the_fix) ... ok\ntest_malformed_rows_fail_with_a_parse_error_rather_than_being_skipped (test_design_docs.PendingGuardUnitTests.test_malformed_rows_fail_with_a_parse_error_rather_than_being_skipped) ... ok\ntest_marker_path_that_does_not_exist_fails (test_design_docs.PendingGuardUnitTests.test_marker_path_that_does_not_exist_fails) ... ok\ntest_missing_or_duplicated_table_fails (test_design_docs.PendingGuardUnitTests.test_missing_or_duplicated_table_fails) ... ok\ntest_trailing_slash_on_a_directory_marker_is_accepted (test_design_docs.PendingGuardUnitTests.test_trailing_slash_on_a_directory_marker_is_accepted) ... ok\ntest_untracked_marker_file_counts_as_missing (test_design_docs.PendingGuardUnitTests.test_untracked_marker_file_counts_as_missing) ... ok\n\n----------------------------------------------------------------------\nRan 35 tests in 0.235s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_*.py'",
               "exit": 0,
-              "seconds": 647,
+              "seconds": 643,
               "tail": ":0: ResourceWarning: unclosed file <_io.BufferedReader name=23>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=20>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=21>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=14>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=15>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=12>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=13>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents",
               "exit": 0,
-              "seconds": 648,
+              "seconds": 646,
               "tail": ":0: ResourceWarning: unclosed file <_io.BufferedReader name=23>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=20>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=21>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=14>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=15>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=12>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=13>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
             }
           ],
           "passed": true,
-          "tree": "3a1fb0a66d99563460f06803c59ec5bf88d34d8c"
+          "tree": "48c1ba1696c4d1edf789040b816a860b4b377c39"
         }
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "test_design": {
