@@ -93,10 +93,23 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 1,
-      "correction_runs": 0,
-      "findings": [],
-      "finished_at": "2026-11-01T04:54:56Z",
+      "attempt": 2,
+      "correction_runs": 1,
+      "findings": [
+        {
+          "id": "implement:2:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:3a1b4e4f976c5a1cab48422f9ddd51a3d6ab79076deff38a5876b735f228969c",
+          "text": "Add a test for the failed request-key scan: make the scan's `git log --stdin --max-parents=0` exit non-zero (e.g. patch Git.run for that call) and assert `new` returns engine_bug (exit 1) and pushes no goal ref. Neither the pre-allocation scan nor the post-rejection rescan failure path is covered today.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T05:22:34Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -106,19 +119,22 @@
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/implement-1001-1",
+      "holder": "claude:e6ad/implement-1001-2",
       "input_fp": "v1:sha256:b554f8477468d8d7672eb5771df08c9226f367332a8be544236548db01cba70f",
       "ok": true,
       "output": {
         "code": {
           "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "3a0e0f14f9619ee467d2b1ff69e31486e87a5538",
-          "commit": "0e491ecc37a0569b2bf8a1b50844844adf0bb425",
-          "tree": "1bd2fd1c20eb026b8148d827f8d52a32ef7504cf"
+          "change": "f849f28ca24351ac8addf8c1c1ad5dc1b446ea85",
+          "commit": "53e7b5e78348142425f5ec4d4ebffd7a518709c0",
+          "tree": "a0d4ecab9602a72c7d3c8f42648b6670aa858a3a"
         },
-        "summary": "`zzzops new` is now idempotent: each root goal commit carries a `Request-Key` trailer (the file's optional `request_key`, else sha256 over title, spec and sorted depends_on), and `new` scans goal roots for it in one `git log --stdin --max-parents=0` before allocating and again after any failed or rejected push, returning the existing goal with `created.recovered: true` (fresh creates report `recovered: false` and the key). A key reused with different contents is refused with `validation` (details.goal, details.fields); `push_atomic(report_up_to_date=True)` makes an identical-twin push count as a recovery, and the scan refetches once when nothing matched and `snap.deleted` is non-empty. CLI_USAGE's `new` row and the add-zzzops-goal skill document `request_key` and safe retries; the full suite (412 tests) and prompt_stats --check pass, and the race tests passed 21 of 21 repeated runs."
+        "responses": {
+          "review_impl:1:1": "fixed: find_request_key raises EngineError(\"request-key scan failed: ...\") on a non-zero git log exit instead of returning []; main reports engine_bug (exit 1) before any write. GitError is not used, so nothing unhandled propagates. Test for this path left to test_design (tests frozen); raised as a finding."
+        },
+        "summary": "Fixed review_impl:1:1: store.find_request_key now raises errors.EngineError(\"request-key scan failed: <stderr[:200]>\") when the scan's `git log --stdin --max-parents=0` exits non-zero, instead of returning []. main maps EngineError to engine_bug (exit 1); both scan call sites in cmd_new (pre-allocation scan and the rescan after a failed/rejected push) run before any further write, so a broken scan can no longer lead to a duplicate allocation. No bare GitError escapes (the log stays check=False and is converted explicitly). Docstring updated. Tests frozen and unchanged; full .agents suite (412 tests) and test_engine_*.py (314) pass; prompt_stats --check PASS. Tests are frozen, so test_design should add a unit test that patches git.run to fail the scan and expects engine_bug with no push."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
