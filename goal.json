@@ -226,10 +226,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-01T05:12:25Z",
+      "finished_at": "2026-11-01T05:28:24Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -242,7 +242,7 @@
         ".agents/test_engine_card_ux.py",
         ".agents/test_engine_lifecycle.py"
       ],
-      "holder": "claude:e6ad/test_design-1016-3",
+      "holder": "claude:e6ad/test_design-1016-4",
       "input_fp": "v1:sha256:9cb599f56e17cea33174e11f7bdc12d6bb0b616a6907ae6d3e1fd82be550510b",
       "ok": true,
       "output": {
@@ -250,14 +250,17 @@
           "cd .agents && python3 -m unittest test_engine_card_ux test_engine_lifecycle test_engine_schemas test_engine_journeys test_engine_docs",
           "python3 .agents/prompt_stats.py --check"
         ],
+        "responses": {
+          "implement:1:1": "fixed: test_missing_old_blob_gives_a_note_and_no_fetch now matches only fetch_work_of's exact refspec (an argument starting with `+refs/heads/zzzops/work/g{g}:`, no `*` glob, per session.fetch_work_of), so the coordinator fetch's glob refspec no longer matches. It passes with the implementation; a temporary mutation calling session.fetch_work_of on the missing-old-blob path in card.changed made it fail (reverted). Nothing else changed."
+        },
         "tests": {
           "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "da481f3209de656775b79bcc1873219d0cc66aa4",
-          "commit": "e0d8f73b6d5b157d6b19a89745655707ac5fa92b",
-          "tree": "000f90069e57c732dfdcd4debd08fc79d408b13f"
+          "change": "ec2f744ee88addec9468a3e2cf86c99fa517fcdd",
+          "commit": "ff6fb6e8f12d84e4c1348eada23cf6bc827a11e0",
+          "tree": "f56d75480bd332815ae0ba3688d4fbe765d5265d"
         }
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     }
   },
