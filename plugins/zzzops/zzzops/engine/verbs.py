@@ -17,7 +17,7 @@ from engine.fingerprint import out_fp, stale_keys
 from engine.frontier import live_input_changes, recorded_out, resolve
 from engine.identity import Identity
 from engine.leases import lease_ref, message as lease_message
-from engine.render import command, lease_commands, live_lease_entry, restart_command, state_string
+from engine.render import clip, command, lease_commands, live_lease_entry, restart_command, state_string
 from engine.store import goal_message, parse_commit, push_atomic
 from engine import worktree as wt
 
@@ -460,6 +460,13 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
         code = "too_large" if any("too_large" in e for e in errs) else "validation"
         raise Refused(code, "; ".join(errs[:5]), details={"errors": list(errs)},
                       hint="put long text in the artifact" if code == "too_large" else None)
+    if any(isinstance(f, dict) and "follows" in f for f in out.get("findings") or []) \
+            and not schemas.follows_required(s.settings):
+        from engine import FOLLOWS_SINCE
+        raise Refused("validation", f"follows needs the policy to keep older engines away from it (finding_follows): "
+                                    f"settings.engine.min must be at least {FOLLOWS_SINCE}",
+                      hint=f"Resolve the prior finding and raise a plain new finding, or ask the owner to push a policy "
+                           f"branch raising settings.engine.min to {FOLLOWS_SINCE}.")
     corr = corrections_of(res, X)
     carriers = {f["id"]: c for c, f in res.live.get(X, [])}
     rec.check_responses(out.get("responses", {}), corr, carriers, s.ctx().reader.blob_view)
@@ -631,7 +638,7 @@ def renew_inputs_changed(s, g: int, X: str, L) -> dict:
     a = res.st.get(X) if res else None
     if not a or a["name"] != "running" or a["fp"] == L.input_fp:
         return {}
-    abandon_cmd, restart_cmd = lease_commands(s.ctx(), g, X, L.attempt)
+    abandon_cmd, restart_cmd = lease_commands(s.ctx(worker=True), g, X, L.attempt)
     return {"inputs_changed": True,
             "stale_because": stale_keys(L.fp_parts, a["parts"]) if a["parts"] else ["unresolved"],
             "abandon": abandon_cmd, "restart": restart_cmd,
@@ -667,7 +674,7 @@ def abandon(s, g: int, X: str, N: int | None, force=False, note=None) -> dict:
     if r == "rejected":
         raise Refused("contention", "the lease or goal moved; retry")
     out = {"ok": True, "coordinator": s.state.coordinator, "expired": f"zzzops/lease/g{g}/{X}",
-           "restart": restart_command(s.ctx(), g, X),
+           "restart": restart_command(s.ctx(worker=True), g, X),
            "hint": "The node is now reclaimable: a plain start is refused; run restart."}
     if note:
         out["note"] = note
@@ -847,6 +854,8 @@ def apply_sets(doc: dict, sets: list) -> dict:
                 if not isinstance(arr, list):
                     raise Refused("usage", f"{name} is not an array in {path!r}")
                 el = next((x for x in arr if isinstance(x, dict) and x.get("id") == sel), None)
+                if el is None and sel.isdigit() and int(sel) < len(arr) and isinstance(arr[int(sel)], dict):
+                    el = arr[int(sel)]                         # no element has that id: a position (G1028 waive lines)
                 if el is None:
                     raise Refused("not_found", f"no element with id {sel!r} in {name}")
                 if last:
@@ -917,7 +926,7 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
     ctx = s.ctx()
     live = [live_lease_entry(ctx, g, n, L, sb)
             for g, n, L, sb in live_input_changes(before, after, s.now, impact_scope(before, after, gids))]
-    extra = {"live_leases_on_changed_nodes": live}
+    extra = {"live_leases_on_changed_nodes": live, "carried_findings": carried_findings(after, impact_scope(before, after, gids))}
     if live:
         extra["warning"] = f"{len(live)} running phase(s) have inputs this edit changes; see live_leases_on_changed_nodes"
     stale = sum(1 for g, nodes in prev.items() for n, ch in nodes.items()
@@ -945,12 +954,35 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
         return goal_message("edit", gg, ", ".join(paths[:6]) or "no change", new["state"])
 
     kind, updates, closed = s.write_goals("edit", gids, op, retry=False, message=message)
+    if extra["carried_findings"]:
+        w = (f"{len(extra['carried_findings'])} open finding(s) stay live on their targets after this edit; "
+             "see carried_findings")
+        extra["warning"] = (extra["warning"] + "; " + w) if extra.get("warning") else w
     out = {"ok": True, "coordinator": s.state.coordinator, "applied": True,
            "goal_commits": {str(g): s.snap.goals[g] for g in gids}, "preview": prev, "stale_agent_phases": stale,
            **extra, "pushed": pushed_summary(updates)}
     if follow:
         out["follow_up"] = follow
     return out
+
+
+def carried_findings(after, scope) -> list:
+    """SPEC §3.16 (G1028): every finding live after the edit only because it is carried (its carrier is stale), with
+    the `--set` lines that waive it."""
+    out = []
+    for g in sorted(scope):
+        res = after.goals.get(g)
+        if res is None:
+            continue
+        for t in res.graph.topo:
+            for c, f in res.live.get(t, []):
+                if c not in res.stale or c == t:
+                    continue
+                i = next(k for k, x in enumerate(res.doc["records"][c]["findings"]) if x is f)
+                out.append({"goal": g, "id": f["id"], "from": c, "target": t, "text": clip(f["text"], 120),
+                            "waive": f"--set 'records.{c}.findings[{i}].status=\"waived\"' "
+                                     f"--set 'records.{c}.findings[{i}].note=\"<who waived it, and why>\"'"})
+    return sorted(out, key=lambda x: (x["goal"], x["id"]))
 
 
 def skip_refusal(s, g: int, old: dict, new: dict):

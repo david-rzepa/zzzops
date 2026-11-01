@@ -39,6 +39,9 @@ The reset builds no automatic migration. Old goals stay on GitHub untouched: iss
 
 Publication nodes are not carried: the operations re-observe.
 
+## Partly fixed findings (engine 1.2)
+Engine 1.2 lets a reviewer link a new finding to the one it narrows (`follows`, a finding key a 1.1 engine does not understand). `submit` accepts `follows` only once `settings.engine.min` is at least `1.2.0`: push `zzzops/policy/engine-1.2.0` raising it, with the "Upgrade the engine" recipe in REPAIR.md, after every clone runs 1.2. Until then reviewers resolve the finding and raise a plain new one. Engine 1.2's other changes (carried findings, `previous.resolved`, `--repo`) store nothing new and need no floor. When declared capabilities replace the floor, 1.2.0 maps to the capability `finding_follows`.
+
 ## Releases and housekeeping
 Each migrated goal takes the release the owner confirmed at triage (the skill's step 4: from the old milestone, labels or release plan, its dependencies and priority). Releases are whole numbers; a goal waits only at its `merge` while its release is after `settings.releases.current`. A goal may not depend on a goal of a later release. Closing moot or delivered issues is what the `migrate-zzzops-repository` skill does; labels and comments stay as the archive.
 
