@@ -93,6 +93,35 @@
       "reason": "reopened",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T04:33:35Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:f0f86e3e5d7131680049bfd289e2d0b91b2df6ab0e5273c2ec770b60152ca61d",
+          "doc": "v1:blob:6133138ad0d302b59d4184b15a459e555b1bdf61",
+          "tests": "v1:sha256:41d4a5e0bb736b2a3eccf1c7aab3e0d9570061dcd6574b1d23b392aa7a3ae04e"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/implement-1014-1",
+      "input_fp": "v1:sha256:0f938631a5c4489e18084f8d6562fc9ed00d8f63601f961464b266a59f6174ff",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
+          "change": "9a6de06974cf9918ddb151763151e50708e6768a",
+          "commit": "87cdd533fef9eae3801fdde946f0d9d5b9f66670",
+          "tree": "8769dc8c17f953d97305123187f27904760e21ba"
+        },
+        "summary": "The running frontier state now keeps its fingerprint parts, and a new frontier.live_input_changes() compares running fingerprints before and after. edit (preview and applied) uses it over the edit's impact scope to list live_leases_on_changed_nodes (built by render.live_lease_entry, with abandon and start --reclaim commands) plus a warning; stale_agent_phases is unchanged. renew re-evaluates with the renewed lease and adds inputs_changed/stale_because/commands/hint when the fingerprint differs from the one recorded at start (guarded so a pushed renew never fails), and validate --policy unions the state-change rule with the fingerprint rule. CLI_USAGE (renew, edit, corrected abandon row) and execute-zzzops SKILL.md are updated; full suite (403 tests) and prompt_stats --check pass."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 2,
       "correction_runs": 1,
