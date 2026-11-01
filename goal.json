@@ -10,30 +10,30 @@
   "priority": "P1",
   "records": {
     "approve_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T04:32:51Z",
+      "finished_at": "2026-11-01T05:09:38Z",
       "fp_parts": {
         "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
         "inputs": {
-          "doc": "v1:blob:d7d3e64f91bd9fe8264ac1b901a4ddcaa0536992",
-          "summary": "v1:sha256:7c16807ac89c642383c32e8e07027bc4e245431a8d403e1ffe509f99451e4f16"
+          "doc": "v1:blob:5ed045be21817ba93e467355960e3c37a4cb091f",
+          "summary": "v1:sha256:bcf0a7893f152ae45f5a2be1d73612c6f9b5b5743e586538b4fc45aec2ba2115"
         },
         "policy": {},
-        "subject": "v1:sha256:153b9774468c836cfad989f4ce1e2e30cc62339b3e3fcbe86eb203721760713b"
+        "subject": "v1:sha256:deea214bfe68c92e11bad5d9f364a3332af9908880b49b7712e8e8b28b8fa055"
       },
       "holder": "human",
-      "input_fp": "v1:sha256:f7ce05959f37540b4d6b184d222298aeb2e4cd8dba1b47ba8b53aeb5706f56b7",
+      "input_fp": "v1:sha256:793c3d0b6c04ec4f94190b302366ce223dd8710820692d88dc42791c4d7e2bea",
       "ok": true,
       "output": {
-        "decided_at": "2026-11-01T04:32:51Z",
+        "decided_at": "2026-11-01T05:09:38Z",
         "decided_by": "Claude (root agent), delegated by Dave",
         "decision": "approved",
         "quote": "Do not wait for my approval",
-        "summary": "Approved the G1000 design (attempt 3): seven lenses chosen by the experiment, intent and simplicity not skippable, truth, adversary, concurrency, rollout and experience skippable; each used for the design and the implementation, 26 nodes. Measured coverage is 28 of 32 issues and 23 of 24 harmful ones, against 17 of 32 for the five-lens hypothesis. The nitpick filter is an engine rule plus one filter node per subject; a finding reopens work if the reviewer claims it is material or the filter keeps it, and the filter cannot demote a claim (D2 accepted on the evidence that a demoting filter lost 9 of 16 harmful issues). The filter is the join, and its fingerprint covers candidate findings. Project intent is settings.intent, a declared input of the Intent lens; the template ships a TODO placeholder that passes with a warning, which bootstrap must clear (D5: placeholder accepted, strict alternative rejected). New fields: skippable, and previous.changed for re-reviews. Engine 1.1.0. Rollout D8: the root's follow-ups after merge; raising engine.min waits for the owner's explicit yes because of the pinned Codex agent; this repo's intent is approved by the owner on the lenses policy PR. D9 is resolved by G1017. Decision made by Claude (root agent) under the owner's standing delegation for Release 1; the owner retains the engine.min gate and the final wording of this repository's intent."
+        "summary": "Approved the G1000 design (attempt 4): as approved at attempt 3, plus edit refuses a new skip of a lens while its latest record has any open finding that is not a filter-judged note (closes the join-window skip), with per-lens independence and impl-stage intent-staleness tests. Directive to implement for the reviewer's remaining non-blocking hole (a skip accepted while the lens is running with no record): approval items and the PR body must also list open findings recorded on skipped nodes, so a late finding is never invisible. Decision made by Claude (root agent) under the owner's standing delegation for Release 1; owner keeps the engine.min gate and this repository's intent wording."
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "base": {
