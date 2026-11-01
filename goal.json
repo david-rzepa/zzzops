@@ -13,10 +13,10 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-01T18:42:59Z",
+      "finished_at": "2026-11-01T18:45:56Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -30,14 +30,14 @@
       "ok": true,
       "output": {
         "doc": {
-          "blob": "2fcca3d21d6b7059b44539abd4251f728aaee98e",
-          "commit": "ecc2dfd2383353e0518303b0b3f35d3cbab815ea",
+          "blob": "891e284f14d6d39fa3bd3d0854b643b5c887b5a6",
+          "commit": "11c38f55fd6009c58e76a81774c34c737898fb1c",
           "path": ".zzzops/reviews/1024/design.md"
         },
         "responses": {
-          "review_design:1:1": "fixed: §3.3 adds a row checked first: a non-null base not in the running engine's store is upstream 'unknown_base' (local 'unknown'), note 'recorded by a newer or unreleased plugin: upgrade the plugin to compare', no diff and no apply; null keeps the manual compare. §3.5: record.reviewed copies such bases unchanged and is omitted when every listed file is unknown_base. §9's unmerged-build risk degrades the same way. Test 11 covers skew: no downgrade offer, base kept, and no ping-pong when the newer engine reads the result."
+          "review_design:2:1": "fixed: §3.1 adds an optional `removed` map of tombstones (path -> last base; a path in both maps is invalid). §3.5: reviewed turns entries for files no longer shipped into tombstones and keeps existing tombstones unchanged. §3.3: a tombstone lists nothing when S is absent, or when T == S or T is in the store; otherwise it is unknown_base. Readers: tombstones are in schema 1 from the first reader, pre-G1024 engines never read the file, and a later incompatible change raises schema (newer_record), so no reader misreads them. Test 11 alternates both engines over a removed file until the record is byte-stable, and covers an unknown tombstone and the shape error. Secondary taken: §3.7 says to set a still-unknown base to null, or delete the tombstone, on the newest plugin, then compare once by hand. Limitation recorded: a re-added default must use a new file name."
         },
-        "summary": "Revision 3 answers review_design:1:1: a non-null base that the running engine's history store lacks is reported as upstream unknown_base ('recorded by a newer or unreleased plugin: upgrade'), with no diff or apply, and record.reviewed keeps such bases unchanged (omitted when all listed files are in that state), so installs on different plugin versions cannot downgrade or ping-pong the record; test 11 covers it. It also takes the notes: the execute skill forbids editing TEMPLATE.json in a goal, prompts' copy/delete follow the workflow.json decision, and G1025 gets the same history-store note as G1022. The rest of the design (TEMPLATE.json record, content-addressed history store, non-blocking policy_update item in next/validate, read-only engine with a bootstrap-skill policy-branch update and decline) is unchanged."
+        "summary": "Revision 4 answers review_design:2:1: reviewed now keeps a tombstone (top-level `removed` map, path -> last base) for each file the running engine no longer ships. An engine still shipping the file lists nothing if it recognises the id (equals S or is in its store), otherwise unknown_base. Every TEMPLATE.json reader understands tombstones (schema 1 from the start; pre-G1024 engines never read the file). Test 11 runs a removed file alternately through both engines until the record is stable, and the skill tells agents to null a base, or drop a tombstone, that stays unknown_base on the newest plugin. Everything else is unchanged: the record, the content-addressed history store, the non-blocking policy_update item, and the read-only engine with a bootstrap-skill update and decline."
       },
       "reason": "reopened",
       "status": "done"
