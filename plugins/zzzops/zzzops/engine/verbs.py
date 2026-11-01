@@ -579,8 +579,12 @@ def outcome_of(s, g, X, r, old, new) -> str:
     head = "ok"
     if opened:
         targets = sorted({f["target"] for f in opened})
-        label = "changes_requested" if (r.get("output") or {}).get("decision") == "changes_requested" else "failed"
-        head = f"{label}: {len(opened)} finding{'s' if len(opened) != 1 else ''} → {', '.join(targets)}"
+        decision = (r.get("output") or {}).get("decision")
+        if decision == "approved":     # a filtered lens approving with notes
+            head = f"approved with {len(opened)} note{'s' if len(opened) != 1 else ''} → {', '.join(targets)}"
+        else:
+            label = "changes_requested" if decision == "changes_requested" else "failed"
+            head = f"{label}: {len(opened)} finding{'s' if len(opened) != 1 else ''} → {', '.join(targets)}"
     if new["state"] == "closed" and (old or {}).get("state") != "closed":
         head += f"; closed: {new['closed']['reason']}"
     return head

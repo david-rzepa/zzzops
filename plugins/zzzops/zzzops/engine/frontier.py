@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 from engine.canon import parse_iso
 from engine.fingerprint import fp_parts, input_fp, out_fp, stale_keys
-from engine.schemas import Graph
+from engine.schemas import Graph, is_material
 
 ABSENT = object()
 
@@ -294,7 +294,7 @@ def filter_verdicts(graph: Graph, R: dict, fresh: dict, lens: str):
 def is_note(f: dict, verdicts) -> bool:
     """An open, non-material lens finding with the verdict `note` (SPEC §4.9 as amended by G1000)."""
     v = verdicts.get(f["id"]) if isinstance(verdicts, dict) else None
-    return (f["status"] == "open" and f.get("material", True) is False and isinstance(v, dict)
+    return (f["status"] == "open" and not is_material(f) and isinstance(v, dict)
             and v.get("verdict") == "note")
 
 
