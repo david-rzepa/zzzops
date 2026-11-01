@@ -176,6 +176,44 @@
       "reason": "stale",
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T08:33:01Z",
+      "fp_parts": {
+        "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
+        "inputs": {
+          "code": "v1:sha256:3235d0461a85a4b79c5be8c71d9ab3bb360730843d5ab2ed24c01b422d98d41e",
+          "doc": "v1:blob:137369030420987f7ff4f2f87e69612b97276be0",
+          "tests": "v1:sha256:a6a0a4620efdcc175be03e56aafc65795d80c0c417325e3d988d828ed6f35bf5"
+        },
+        "policy": {},
+        "subject": "v1:sha256:512d4a52308f7c3ee3c97bce8965667209dfae0cc3c57985fd3a705ed841251f"
+      },
+      "holder": "claude:e6ad/review_impl-1020-1",
+      "input_fp": "v1:sha256:a9f87e378f1f2f78f11c3b69b35043dc23a9360ec106a2b93bef167f8e54bd90",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "55555f18c4309d33461c0e0db49774e2fe5e923d",
+          "commit": "4ebcc8eca42f5250fb2e7602d20574908666fccb",
+          "path": ".zzzops/reviews/1020/review_impl.md"
+        },
+        "summary": "Approved: is_material shared and behaviour-preserving in all four places; filtered-lens approval cannot pass a material (or key-less prior) finding; unfiltered reviews, hint, outcome text, template sentence and lens_truth match design rev 2; diff is G1020-only on G1000's head with frozen tests unchanged."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "6d4715a1164fd913115f28c8b3bc2df39761be73",
+          "change": "f0638b3a9e505131819cdfc99896f2551adaabcf",
+          "commit": "70531e807ab6e086fb9b64b47fe6e25c7ea99070",
+          "tree": "54731517588e3e6a42894e3fca7f577d699eac79"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 1,
       "correction_runs": 0,
