@@ -63,10 +63,10 @@
       "status": "done"
     },
     "design": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-01T04:33:40Z",
+      "finished_at": "2026-11-01T05:06:59Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -75,19 +75,19 @@
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/design-1016-3",
+      "holder": "claude:e6ad/design-1016-4",
       "input_fp": "v1:sha256:8ec390f70a3828e06bcc6ecddc38865d0090666980c3b6fadbfc586f9148497b",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "9008e0101ebef0dff6bcfb3075aae0f32f1a20d1",
-          "commit": "77635d50b8b60981c057df0282579d4da55ad8c2",
+          "blob": "2c1af88e84734bdd997eceba5000279525be0586",
+          "commit": "0733ee380b882677dff3f98b75cbbb42b443003c",
           "path": ".zzzops/reviews/1016/design.md"
         },
         "responses": {
-          "review_design:2:1": "fixed: new section 4a. validate_submit_output requires SHA.match for the override, with the reviewer's message. The rev_parse/ancestry checks in done_record stay. fill_current_records (verbs.py:917) gets the same full-sha rule, plus a 'does not exist' refusal where rev_parse returns None. The card wording is now 'give {\"commit\": \"<full 40-hex sha>\"}; ref names such as HEAD and short shas are refused', and prompts/CLI_USAGE match it. Tests: HEAD, 'main', a goal branch name, a short sha and uppercase hex each get validation; 'a'*40 is accepted; an end-to-end submit of HEAD is refused and the work-branch full sha succeeds; the existing 'not in the work branch' and 'does not exist' refusals still fire; the edit-completion cases are covered. Minor note: section 2 now says record_stale == [\"def\"] is kept on purpose (the 'If it still holds, resubmit it' hint is safe only when def alone changed)."
+          "review_tests:2:2": "fixed: §2 now states the rule `routine` only when record_stale == [\"inputs.base\"] and kind_state has no live corrections (the frontier already attaches corrections to ready, reclaimable and crash-loop states, frontier.py:213-254). Decided the no-lease case: a plain start of a reopened node whose base moved (ready/stale, [\"inputs.base\"], corrections present) keeps its own capability instead of today's routine, recorded as a deliberate behaviour change. The reclaim case is the same. The verification bullet now uses test_design (which has inputs.base) for both plain start and reclaim; the no-corrections control still expects routine. Interfaces table updated."
         },
-        "summary": "Attempt 3 of the G1016 design. It fixes F2 (review_design:2:1). A checkpoint override must now be a full 40-hex sha: validate_submit_output (schemas.py:933) adds SHA.match with the message 'a checkpoint override is {\"commit\": \"<40-hex sha>\"}; omit the key to use the default'. done_record keeps its rev_parse existence check and ancestry check. The same rule applies to the {\"commit\"}-only completion in fill_current_records (verbs.py:917), which also now refuses a commit that does not exist instead of storing None. The card text, the implement/test_design prompts and CLI_USAGE now say ref names such as HEAD and short shas are refused. New tests: schema-level refusal of HEAD, branch names, a short sha and uppercase hex, with a full sha accepted; an end-to-end submit refusal for HEAD; and edit-time completion. The previous.output rule is settled on purpose as record_stale == [\"def\"], today's exact match, because its 'resubmit it' hint is safe only when the definition alone changed. Everything else is unchanged from attempt 2."
+        "summary": "Design attempt 4: §2's routine downgrade now requires record_stale == [\"inputs.base\"] AND no live corrections, on both the reclaim and the plain-start path; a plain start of a reopened node after base moved now keeps its own capability (deliberate change). Verification moved to test_design. Everything else unchanged from attempt 3."
       },
       "reason": "reopened",
       "status": "done"
