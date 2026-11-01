@@ -37,6 +37,7 @@ NATIVE_COVERAGE = {
     "git_crlf_drift": (
         "test_engine_identity.IdentityTests.test_crlf_checkout_gives_the_same_identities",
         "test_engine_identity.IdentityTests.test_identity_under_hostile_global_configuration",
+        "test_engine_identity.IdentityTests.test_text_input_reaches_git_unchanged",
     ),
     "path_confinement": ("test_engine_identity.IdentityTests.test_i1_i2_and_artifact_commits",),
     "goal_journey": ("test_engine_lifecycle.SubmitTests.test_new_creates_no_branch_and_first_artifact_does",),

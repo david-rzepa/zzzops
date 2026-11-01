@@ -50,8 +50,10 @@ class Gh:
     def run(self, *args, input=None, check=True) -> str:
         start = time.monotonic()
         try:
-            p = subprocess.run(["gh", *args], input=input, capture_output=True, text=True, env=self.env(),
-                               timeout=TIMEOUT, cwd=self.s.git.primary)
+            p = subprocess.run(["gh", *args], input=input.encode("utf-8") if isinstance(input, str) else input,
+                               capture_output=True, env=self.env(), timeout=TIMEOUT, cwd=self.s.git.primary)
+            p.stdout = p.stdout.decode("utf-8", "replace")      # bytes on the pipes: no "\r\n" on Windows
+            p.stderr = p.stderr.decode("utf-8", "replace")
         except subprocess.TimeoutExpired:
             trace({"cmd": ["gh", *args], "rc": -1, "ms": int((time.monotonic() - start) * 1000)})
             raise GhError(list(args), -1, "timed out", True)

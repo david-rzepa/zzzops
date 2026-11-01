@@ -86,10 +86,12 @@ class GitDir:
         self.path, self.env = path, env
 
     def git(self, *args, input=None, check=True) -> str:
-        p = subprocess.run(["git", "-C", self.path, *args], input=input, capture_output=True, text=True, env=self.env)
+        p = subprocess.run(["git", "-C", self.path, *args], input=input.encode("utf-8") if isinstance(input, str) else input,
+                           capture_output=True, env=self.env)
+        out, err = p.stdout.decode("utf-8", "replace"), p.stderr.decode("utf-8", "replace")
         if check and p.returncode != 0:
-            raise AssertionError(f"git {' '.join(args)}: {p.stderr}")
-        return p.stdout.strip()
+            raise AssertionError(f"git {' '.join(args)}: {err}")
+        return out.strip()
 
     def write(self, files: dict):
         for rel, content in files.items():

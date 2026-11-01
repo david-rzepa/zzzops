@@ -94,13 +94,17 @@ class Git:
                       "GIT_COMMITTER_DATE": git_date(self.now)})
         if env:
             e.update(env)
-        if isinstance(input, str) and not text:
+        if isinstance(input, str):
             input = input.encode("utf-8")
         start = time.monotonic()
         try:
-            p = subprocess.run(cmd, input=input, capture_output=True, text=text, env=e, timeout=timeout)
+            # always bytes on the pipes: text mode would turn "\n" into "\r\n" on Windows (mktree names, messages)
+            p = subprocess.run(cmd, input=input, capture_output=True, env=e, timeout=timeout)
         except subprocess.TimeoutExpired as exc:
             raise GitError(list(args), -1, f"timed out after {timeout} s") from exc
+        if text:
+            p.stdout = p.stdout.decode("utf-8", "replace")
+            p.stderr = p.stderr.decode("utf-8", "replace")
         verb = next((a for a in args if not a.startswith("-")), "")
         if verb in NETWORK:
             trace({"cmd": ["git", *args], "rc": p.returncode, "ms": int((time.monotonic() - start) * 1000)})

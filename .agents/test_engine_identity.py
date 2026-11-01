@@ -179,6 +179,21 @@ class IdentityTests(unittest.TestCase):
             b = Identity(Git.discover(clone.path, 1)).change(self.base, c)
         self.assertEqual(a, b)
 
+    def test_text_input_reaches_git_unchanged(self):
+        """Engine text sent to Git keeps its LF bytes on every platform (Windows text pipes would add CR)."""
+        import hashlib
+        with fx.env_of(self.repo.env):
+            g = Git.discover(self.repo.path, 1)
+            oid = g.out("hash-object", "--stdin", input="line one\nline two\n")
+            from engine.store import goal_commit
+            c = goal_commit(g, {"id": 1}, None, "zzzops: new G1\n\nOutcome: created\nState: open\nEngine: t\n")
+            names = g.run("ls-tree", "--name-only", "-z", c, text=False).stdout
+            message = g.run("cat-file", "commit", c, text=False).stdout
+        data = b"line one\nline two\n"
+        self.assertEqual(hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest(), oid)
+        self.assertEqual(b"goal.json\0", names)
+        self.assertNotIn(b"\r", message)
+
     def test_patch_ids_per_commit(self):
         r = self.repo
         c1 = r.commit({"src/a.py": "a = 5\n"}, "feat: 1")
