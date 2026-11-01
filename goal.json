@@ -38,6 +38,84 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:cd155536270d85fc05ace2430a5ba66b23aef29e2345ee4b435d3247916b1e12",
+          "text": "F1 (material): the Missing lens searches the wrong tree. The experiment reviewers had a full worktree at the submission, which is how GT1 was found. The shipped review_impl has only the code checkpoint view and read_dev, the integration tip, and the review instruction says to check claims against read_dev. For a stacked goal (G1022 itself), read_dev lacks the dependency code. Fix: lens_missing.md (and the review instruction, for code) searches the subject commit with git grep <pattern> <code.commit> and git show <code.commit>:<path>; or the checkpoint view gains a grep command. Add a card-snapshot test and a caveat in A.5.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:cd155536270d85fc05ace2430a5ba66b23aef29e2345ee4b435d3247916b1e12",
+          "text": "F2 (material): not aligned with G1017's current design. G1017 makes G1022 depend on [1000, 1020, 1017] and requires G1022's PR to edit docs/design, add a HISTORY section 4 row and delete its pending row. This design puts SPEC/DESIGN text out of scope (section 11), assumes G1022 may merge first (section 12) and orders delivery without G1017 (section 8). G1017's row also understates the sections: it is missing SPEC 3.3, 3.6, 4.8, 4.10, 4.18, 4.20, 5.4 and 8.3. Fix: adopt case 3 now (depends_on, in-scope docs/design edits listed from section 12, a guard test, G1017 in the delivery order and the release window), and add a follow-up that sends G1017 the full section list.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:3",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:cd155536270d85fc05ace2430a5ba66b23aef29e2345ee4b435d3247916b1e12",
+          "text": "F3 (material): the rollout ignores G1024, the only way other bootstrapped repositories learn that the default graph changed. Fix: section 8 names G1024's policy_update item as the notice and MIGRATING 'Adopting the consolidated graph' as its procedure. Decide that the release shipping the 15-node template includes G1024. Hand G1024 three points: added and removed template files (review.md, the lens prompts, removed review_design.md/review_impl.md); workflow.json restructuring needs MIGRATING, not a text merge; this repository's record is created or refreshed by zzzops/policy/lenses if G1024 lands first. Phrase ENGINE_VERSION and the floor as 'the next minor at merge', since G1024 may also need a bump.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:4",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:cd155536270d85fc05ace2430a5ba66b23aef29e2345ee4b435d3247916b1e12",
+          "text": "F4: the migration claim and test 11 are wrong. A carried-over review_design has stale_keys [def, lenses, policy.intent], not [def] (still uncounted). review_impl gains a spec input, so inputs.spec is stale and frontier.counts charges the re-run to the budget, contrary to section 8. Fix: correct section 8 and test 11, and either accept and document one counted run per in-flight goal past implement, or drop spec from review_impl. For the 26-node path, MIGRATING should say to set an explicit budget first, since the default limit falls from 60 to 27.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T17:48:42Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:0424a9a0a2592feab90f62d7d1357560a0492f5c",
+          "spec": "v1:sha256:af94133f2c4c82135155cab3d35c4bb3c6f008f2d589a6ffaf8ce5df843a9015"
+        },
+        "policy": {},
+        "subject": "v1:sha256:cd155536270d85fc05ace2430a5ba66b23aef29e2345ee4b435d3247916b1e12"
+      },
+      "holder": "claude:e6ad/rd1022",
+      "input_fp": "v1:sha256:eacd78a89a394619080aa70340b0ff4bf12b6bbe484e51ee24434f50a68b2c86",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "234522a1e58e91420bde88b10764584d61bf42cb",
+          "commit": "0f8c34d5aa6a1967f15403c5fec6e65f34d7272e",
+          "path": ".zzzops/reviews/1022/review_design.md"
+        },
+        "summary": "Sound consolidation that matches the spec and the owner's direction, with code claims verified against G1020. Four changes needed: point the Missing lens at the subject's own commit, not read_dev; adopt G1017's case-3 dependency and edit docs/design in this PR; add the G1024 notice path and version coordination to the rollout; correct the migration stale keys and budget charge for review_impl."
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
