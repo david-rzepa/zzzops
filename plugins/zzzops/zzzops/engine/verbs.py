@@ -244,7 +244,7 @@ def claim(s, res, X, label, state, reclaim, force, extra_updates=()):
     fp, parts = state.get("fp"), state.get("parts")
     if fp is None or parts is None:
         raise Refused("not_ready", f"G{g} {X} has no resolvable inputs")
-    prompt = s.git.rev_parse(f"{s.snap.integration}:.zzzops/prompts/{nd['prompt']}") if nd.get("prompt") else None
+    prompt = s.git.rev_parse(f"{s.snap.policy_commit}:.zzzops/prompts/{nd['prompt']}") if nd.get("prompt") else None
     updates = list(extra_updates)
     workspace = None
     if nd.get("workspace"):

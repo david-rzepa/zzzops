@@ -30,6 +30,7 @@ class Snapshot:
     R: str
     I: str
     integration: str | None = None
+    preview: dict | None = None                      # {"ref", "commit", "topic"} when --policy-ref overrides the policy
     goals: dict = field(default_factory=dict)        # id -> accepted tip
     rewritten: dict = field(default_factory=dict)    # id -> the force-pushed tip
     deleted: set = field(default_factory=set)
@@ -41,6 +42,10 @@ class Snapshot:
     dep_pr: dict = field(default_factory=dict)
     current: bool = True
     known: set = field(default_factory=set)          # every goal id this clone has seen
+
+    @property
+    def policy_commit(self):
+        return self.preview["commit"] if self.preview else self.integration
 
     def ref_value(self, ref: str):
         m = re.match(r"^refs/heads/zzzops/(goal|work|pr|stack)/g(\d+)$", ref)
@@ -271,6 +276,8 @@ class State:
     @property
     def coordinator(self) -> dict:
         c = {"commit": self.snap.integration, "current": self.snap.current}
+        if self.snap.preview:
+            c["policy_preview"] = {"ref": self.snap.preview["ref"], "commit": self.snap.preview["commit"]}
         if self.policy_branches:
             c["policy_branches"] = [{"name": f"zzzops/policy/{b['topic']}", "date": b["date"], "author": b["author"]}
                                     for b in self.policy_branches]
@@ -282,6 +289,8 @@ def read_state(git: Git, snap: Snapshot, all_goals: bool = False, wanted=()) -> 
     from engine.canon import iso
     st = State(snap)
     I = snap.integration
+    P = snap.policy_commit                      # where policy files are read: the integration tip, or a preview ref
+    where = snap.preview["ref"] if snap.preview else snap.I
 
     def blob_json(spec):
         data = git.cat(spec)
@@ -293,10 +302,10 @@ def read_state(git: Git, snap: Snapshot, all_goals: bool = False, wanted=()) -> 
             return None, f"{spec.split(':', 1)[1]}: not valid JSON ({exc})"
 
     # 1. policy and workflow
-    st.policy_raw, perr = blob_json(f"{I}:.zzzops/POLICY.json")
-    st.workflow_raw, werr = blob_json(f"{I}:.zzzops/workflow.json")
+    st.policy_raw, perr = blob_json(f"{P}:.zzzops/POLICY.json")
+    st.workflow_raw, werr = blob_json(f"{P}:.zzzops/workflow.json")
     if st.workflow_raw is None and werr is None:
-        st.blockers.append({"kind": "not_bootstrapped", "message": f"this repository has no ZzzOps policy on `{snap.I}`; "
+        st.blockers.append({"kind": "not_bootstrapped", "message": f"this repository has no ZzzOps policy on `{where}`; "
                                                                    "run the bootstrap skill"})
         st.pause = True
         st.write_block = Refused("not_bootstrapped", f"this repository has no ZzzOps policy on `{snap.I}`",
@@ -309,7 +318,7 @@ def read_state(git: Git, snap: Snapshot, all_goals: bool = False, wanted=()) -> 
                 errors = list(schemas.validate_policy(st.policy_raw))
             if not errors:
                 errors = list(schemas.validate_workflow(st.workflow_raw, st.policy_raw,
-                                                        lambda f: git.cat(f"{I}:.zzzops/prompts/{f}") is not None, OPS))
+                                                        lambda f: git.cat(f"{P}:.zzzops/prompts/{f}") is not None, OPS))
             if errors:
                 msg = "the ZzzOps policy is invalid: " + "; ".join(errors[:5])
                 st.blockers.append({"kind": "policy_invalid", "message": msg, "errors": errors})
@@ -351,6 +360,8 @@ def read_state(git: Git, snap: Snapshot, all_goals: bool = False, wanted=()) -> 
             continue
         c = parse_commit(tip, raw)
         info = {"topic": topic, "tip": tip, "date": iso(c.author_date), "author": c.author}
+        if snap.preview and snap.preview.get("topic") == topic:
+            continue                            # the change being previewed does not pause its own preview
         if policy_landed(git, tip, I):
             st.landed.append(info)
             st.warnings.append({"kind": "policy_branch_landed",
@@ -402,6 +413,10 @@ def read_state(git: Git, snap: Snapshot, all_goals: bool = False, wanted=()) -> 
         st.warnings.append({"kind": "goal_deleted", "message": f"zzzops/goal/g{g} was deleted on the remote; see REPAIR.md"})
     for key in st.unparsable:
         st.warnings.append({"kind": "orphan_lease", "message": f"lease zzzops/lease/g{key[0]}/{key[1]} does not parse"})
+    if snap.preview:
+        st.warnings.append({"kind": "policy_preview",
+                            "message": f"policy preview: policy read from `{snap.preview['ref']}` "
+                                       f"({snap.preview['commit'][:12]}), not `{snap.I}`; read-only, nothing is recorded"})
     if st.policy_branches and st.write_block is None:
         b = st.policy_branches[0]
         st.blockers.append({"kind": "policy_branch", "message":
@@ -560,3 +575,15 @@ def goal_commit(git: Git, doc: dict, parent: str | None, message: str) -> str:
     blob = git.hash_object(goal_bytes(doc))
     tree = git.run("mktree", input=f"100644 blob {blob}\tgoal.json\n").stdout.strip()
     return git.commit_tree(tree, [parent] if parent else [], message)
+
+
+def resolve_policy_ref(git: Git, snap: Snapshot, ref: str) -> dict:
+    """`--policy-ref`: a `zzzops/policy/*` branch (or its topic), a remote branch, or any local commit-ish."""
+    topic = ref[len("zzzops/policy/"):] if ref.startswith("zzzops/policy/") else ref
+    if topic in snap.policy:
+        return {"ref": f"zzzops/policy/{topic}", "commit": snap.policy[topic], "topic": topic}
+    for spec in (f"refs/remotes/{snap.R}/{ref}", ref):
+        c = git.rev_parse(f"{spec}^{{commit}}")
+        if c:
+            return {"ref": ref, "commit": c, "topic": None}
+    raise Refused("not_found", f"--policy-ref `{ref}` is not a policy branch, a branch on `{snap.R}`, or a local commit")
