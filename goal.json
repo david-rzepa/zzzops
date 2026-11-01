@@ -37,6 +37,54 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:22ac30ce1f56d9cc4881867008a00075c018fbde04049557a58d767cd4f1b1a7",
+          "text": "F1: D3's lens paragraph tells the Intent lens to stop raising a departure whenever the spec ends with a `Project intent:` paragraph. That spec text is agent-written. The root often captures goals without the owner present, `edit --set spec` can add the paragraph later, and D4's 'Proceed' could be taken by the agent. G1022 D6 makes the Intent lens the only project-intent guard, add-goal may skip approve_design for small goals, and approve_design.md does not mention the paragraph. So a label can remove project intent from every human view, against the intent's own principle that the owner decides departures. Fix (prompts only): skill step 2 makes Amend and Proceed require the owner's own words; with no owner present, create the goal with no paragraph so the Intent lens raises it as an owner question. Skill step 3 never offers an approve_design skip when the spec has the paragraph. The lens paragraph honours it only when it quotes the owner with a date (D2 format). approve_design.md shows the paragraph beside the lens verdicts. Test 2 also checks the label in approve_design.md.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T19:03:14Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:829886d7e9ff6dca106c72d3412ad08a6587b4ca",
+          "spec": "v1:sha256:f4bc6075ba50b55bdfd75c0a018ddf9ea610b94f5c1579a653dad4d105f49fcc"
+        },
+        "policy": {},
+        "subject": "v1:sha256:22ac30ce1f56d9cc4881867008a00075c018fbde04049557a58d767cd4f1b1a7"
+      },
+      "holder": "claude:e6ad/rd1022",
+      "input_fp": "v1:sha256:3d0e15c14293d4758d5ede736796dd6220681c90ac7bdf4a65847f53fd0e5347",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "da55eabc49567a61ec5ba1d19840caeddf330d8f",
+          "commit": "c2305c99900bee4f8ff0be7b67cb9df3862d946c",
+          "path": ".zzzops/reviews/1029/review_design.md"
+        },
+        "summary": "The skill-only design is right-sized, and the `Project intent:` spec paragraph reaches the Intent lens on both the 26-node and G1022's 15-node graph (review_design has `spec` from goal.spec, `policy: [\"intent\"]` and lens_intent.md). One fix: honour a recorded departure only with the owner's quoted words, keep it visible at approve_design, and never offer to skip approve_design for such a goal."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "829886d7e9ff6dca106c72d3412ad08a6587b4ca",
+          "commit": "4c15904b721870efbacf385a636ebad3e5f8ac75"
+        }
+      },
+      "status": "done"
     }
   },
   "release": 1,
