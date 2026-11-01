@@ -1,0 +1,18 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [],
+  "graph": "default",
+  "id": 1006,
+  "links": {
+    "issue": null
+  },
+  "priority": "P2",
+  "records": {},
+  "release": 2,
+  "schema": 1,
+  "skip": {},
+  "spec": "Update plugins/zzzops/skills/execute-zzzops/SKILL.md (and agents/openai.yaml if needed) so the coordinator does not end its turn while any worker subagent it dispatched, or any op `start` it launched, is still live. It waits on the harness's own handle (Claude Code background agents, Codex agent wait/status), re-inspects after a wait timeout, and only then re-reads `zzzops next`. Distinguish a live worker from a stale lease shown in `running` (lease tip age versus timeout) and point to `abandon`/`start --reclaim` and REPAIR.md for the dead-worker case. If `next` shows the same frontier repeatedly with nothing running, do one diagnostic pass (`show G --json`, lease state) and report a concrete blocker instead of looping. Acceptance: the skill text covers attended and unattended runs, never busy-polls, and uses no synthetic liveness probe or daemon. Dropped versus the old wording: heartbeat probes, CLI monitor fields and worker-process identity (R10).\n\nMigrated from GitHub issue #519 after the engine reset (#740).",
+  "state": "open",
+  "title": "Execute skill: keep the turn alive while workers or ops are running"
+}
