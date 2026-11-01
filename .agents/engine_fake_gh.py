@@ -1,6 +1,8 @@
 """A fake `gh` for the engine tests (IMPLEMENTATION_PLAN §1.2): the subset of SPEC §5.6, acting on the bare remote.
 
-State lives in the JSON file named by ZZZOPS_FAKE_GH_STATE; every call is appended to <state>.calls.jsonl."""
+State lives in the JSON file named by ZZZOPS_FAKE_GH_STATE; every call is appended to <state>.calls.jsonl.
+GitHub's lazy views (G1021) are default-off faults that only `pr view` sees: `mergeable_lag`, `head_lag` (an int for
+every PR or {"<number>": int}) and `advance_before_view` ({"ref", "to"}, applied once)."""
 
 from __future__ import annotations
 
@@ -72,6 +74,58 @@ def refresh(st, pr):
             git(st, "update-ref", f"refs/pull/{pr['number']}/head", h)
 
 
+def fault_count(st, name, pr):
+    """A per-PR count fault: an int applies to every PR, a {"<number>": int} map to the PRs it names."""
+    v = (st.get("faults") or {}).get(name) or 0
+    if isinstance(v, dict):
+        v = v.get(str(pr["number"])) or 0
+    return int(v)
+
+
+def lagged_head(st, pr):
+    """The `head_lag` fault (G1021): for the first N views after the PR branch moves, GitHub still shows the head an
+    earlier view showed. Returns that old head while it should be shown, else None."""
+    n = fault_count(st, "head_lag", pr)
+    if not n or pr["state"] != "OPEN":
+        return None
+    lag = pr.setdefault("lag", {})
+    h, old = pr.get("headRefOid"), lag.get("shown_head")
+    if old is None or old == h:
+        lag["shown_head"] = h
+        return None
+    if lag.get("head_tip") != h:
+        lag.update(head_tip=h, head_left=n)
+    if lag["head_left"] > 0:
+        lag["head_left"] -= 1
+        return old
+    lag["shown_head"] = h
+    return None
+
+
+def lagged_mergeability(st, pr, head):
+    """The `mergeable_lag` fault (G1021): GitHub computes mergeability lazily, so the first N views after the head or
+    the base changes read UNKNOWN/UNKNOWN. Returns True while the view should read UNKNOWN."""
+    n = fault_count(st, "mergeable_lag", pr)
+    if not n:
+        return False
+    key = f"{head}:{tip(st, pr['baseRefName'])}"
+    lag = pr.setdefault("lag", {})
+    if lag.get("merge_key") != key:
+        lag.update(merge_key=key, merge_left=n)
+    if lag["merge_left"] > 0:
+        lag["merge_left"] -= 1
+        return True
+    return False
+
+
+def advance_before_view(st):
+    """The `advance_before_view` fault (G1021): {"ref": branch, "to": sha} moves a branch on the remote just before the
+    next `pr view` answers, as when the integration branch moves between an op's fetch and GitHub's computation."""
+    adv = (st.get("faults") or {}).pop("advance_before_view", None)
+    if adv:
+        git(st, "update-ref", f"refs/heads/{adv['ref']}", adv["to"])
+
+
 def mergeability(st, pr):
     base = tip(st, pr["baseRefName"])
     if not base or not pr.get("headRefOid"):
@@ -103,15 +157,19 @@ def rollup(st, pr):
     return out
 
 
-def pr_json(st, pr, fields):
+def pr_json(st, pr, fields, view=False):
     refresh(st, pr)
-    m, ms = mergeability(st, pr) if pr["state"] == "OPEN" else ("UNKNOWN", "UNKNOWN")
+    old = lagged_head(st, pr) if view else None
+    shown = dict(pr, headRefOid=old) if old else pr               # what GitHub shows; the stored PR is unchanged
+    m, ms = mergeability(st, shown) if pr["state"] == "OPEN" else ("UNKNOWN", "UNKNOWN")
+    if view and pr["state"] == "OPEN" and lagged_mergeability(st, pr, shown["headRefOid"]):
+        m, ms = "UNKNOWN", "UNKNOWN"
     full = {"number": pr["number"], "url": f"https://github.com/{st['repo']}/pull/{pr['number']}", "state": pr["state"],
-            "headRefName": pr["headRefName"], "headRefOid": pr["headRefOid"], "baseRefName": pr["baseRefName"],
+            "headRefName": pr["headRefName"], "headRefOid": shown["headRefOid"], "baseRefName": pr["baseRefName"],
             "title": pr["title"], "body": pr["body"], "isDraft": pr["draft"], "mergeable": m, "mergeStateStatus": ms,
             "mergeCommit": {"oid": pr["mergeCommit"]} if pr.get("mergeCommit") else None,
             "mergedAt": pr.get("mergedAt"), "mergedBy": {"login": pr["mergedBy"]} if pr.get("mergedBy") else None,
-            "autoMergeRequest": pr.get("autoMergeRequest"), "statusCheckRollup": rollup(st, pr)}
+            "autoMergeRequest": pr.get("autoMergeRequest"), "statusCheckRollup": rollup(st, shown)}
     return {k: full[k] for k in fields}
 
 
@@ -413,7 +471,8 @@ def main(argv):
     if pr is None:
         die(f"no pull requests found for {pos}")
     if sub == "view":
-        out = pr_json(st, pr, o.get("json", "number").split(","))
+        advance_before_view(st)
+        out = pr_json(st, pr, o.get("json", "number").split(","), view=True)
         save(st)
         print(json.dumps(out))
         return 0

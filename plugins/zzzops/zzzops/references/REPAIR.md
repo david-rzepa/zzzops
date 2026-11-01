@@ -70,6 +70,12 @@ git push <R> <parent's checkpoint commit>:refs/heads/zzzops/work/g<child id>
 ```
 Its `base` then rebases the child's own commits onto its stack base as usual; prefer a `depends_on` on the parent, which stacks automatically.
 
+## A PR that conflicts with the integration branch
+GitHub runs no `pull_request` workflows on a conflicting PR, so its checks never appear. `integrate` checks the merge locally (`git merge-tree`) and reads GitHub's `mergeable`; on a conflict it (like `merge`) raises a `conflict` finding on `base`. `base` then re-runs: it rebases onto the integration tip, or blocks with `rebase conflict in <files>`; resolve that in the goal worktree (`git add`, `git rebase --continue`) and run `start <id> base` again. If an older record is stuck on "required checks pending" for such a PR, reopen `base` by hand:
+```sh
+zzzops reopen <id> base --note "conflicts with <I>"
+```
+
 ## Record a merge done on GitHub
 Nothing to do by hand: `start <id> merge` observes a PR already merged into the integration branch and records it (and `approve_merge` records the human's merge as the approval, as the execute skill says).
 
