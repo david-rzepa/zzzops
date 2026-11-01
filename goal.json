@@ -163,6 +163,44 @@
       "reason": "stale",
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T05:33:52Z",
+      "fp_parts": {
+        "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
+        "inputs": {
+          "code": "v1:sha256:ccaac5e9f7ba9e6d7966226da95c3a48e7d75b201a1909389a5d7cd781270a23",
+          "doc": "v1:blob:8ec7fbf673f2260d90895827429fa7455e445a73",
+          "tests": "v1:sha256:18010a5b87b608912ca2c1dff1d08fd0a9d1687cbdf5358b5bc5a5c92a74ced4"
+        },
+        "policy": {},
+        "subject": "v1:sha256:15b2f22c4278d9e8e90578e1d64ec5b6d128860c16779d9808584d3d0ad7095c"
+      },
+      "holder": "claude:e6ad/review_impl-1018-1",
+      "input_fp": "v1:sha256:b0e1c897e5d7644e1bae4f34befd3820dadb4436e4949d7b5bd86db6d715a90a",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "277a7cc87a9e70aeee90ac487a3924fdd8eac2cc",
+          "commit": "1bf502dd2e5a5cafa15b6bbbce0a074de6e1dd03",
+          "path": ".zzzops/reviews/1018/review_impl.md"
+        },
+        "summary": "Approved: a18ca9a matches design-1018-2. Fingerprints untouched (value_of only feeds card.build), equality guard with bare fallback, shrink never grows a card or blobs a view, shrink_candidates measures without Git writes, key_summary and both checkpoint_view changes as specified; review_design notes 2-4 addressed. Clean merge with G1000; two trivial textual conflicts with G1016 (import line, test key list)."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
+          "change": "0d88fac2bd23a69d10b6ee615f0b5c6608c5888e",
+          "commit": "a18ca9aaf90157a0f341fa567473dcaa25743f30",
+          "tree": "2a23d345031f0b1fedb07f16dabf735694a67ad9"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 1,
       "correction_runs": 0,
