@@ -1,0 +1,20 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [
+    1017
+  ],
+  "graph": "default",
+  "id": 1033,
+  "links": {
+    "issue": null
+  },
+  "priority": "P1",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Found while designing G1003 (2026-11-01). `zzzops validate`, run from the Claude marketplace cache built by .github/scripts/build_claude_plugin.py (zzzops-claude-marketplace-c3791a0-20261101) on a fresh clone of another repository, reported `environment: \"plugin package: skill discovery metadata does not match the plugin build: skills/add-zzzops-goal/SKILL.md; reinstall ZzzOps from its Codex marketplace.\"`. A correct Claude install must not report a mismatch, and the hint must name the harness the plugin was installed for.\n\nFind why the Claude build's SKILL.md differs from what the package check expects (build step rewriting the file, or the check assuming the Codex bundle), fix it, and make the reinstall hint harness-aware.\n\nAcceptance: a test builds the Claude marketplace (as CI's installed-cache acceptance does) and runs validate from it with no environment error; the hint names Claude or Codex correctly; docs/design edits if the contract changes.",
+  "state": "open",
+  "title": "Claude installs report a false skill-metadata mismatch with a Codex reinstall hint"
+}
