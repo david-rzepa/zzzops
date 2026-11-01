@@ -49,6 +49,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T20:38:23Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:a737cbebccc787f6eed11ec0e36b5af2331e62dec2491634058667a3dcc01570"
+        },
+        "policy": {},
+        "subject": "v1:sha256:db09c36fb49b155dcf98d506014f702c1b44e502dede72780a776cce7e0e5a00"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:83efdaaab4013fda3caf5c3ad840c3bc1cefd7307f0c70ee49219fe854becb7d",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T20:38:23Z",
+        "decided_by": "Dave (owner), recorded by Claude (root agent)",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approved merging PR #752 (G1017) at head 5b3ddf2 into dev: the engine's DESIGN, SPEC and IMPLEMENTATION_PLAN move into docs/design/ (scrubbed), with HISTORY and a README holding the pending table and its CI guard; all post-approval amendments applied; SPEC covers only the engine contract (default graph and templates are configuration, owner decision). Code review approved after one round; required CI passed. The owner asked to merge everything on the Release 1 stack; merged with --admin because of the dev ruleset's last-push rule."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "8d8437af244f85c4dd6cb20c1ed502140cb9ff77",
+          "change": "bef9cba555a42e17d0588b7d2cf5d7a189c75f9b",
+          "commit": "72df95f105dbb75a156d7c5fcf8e394fc7b4f5dc",
+          "tree": "48c1ba1696c4d1edf789040b816a860b4b377c39"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 1,
       "correction_runs": 0,
