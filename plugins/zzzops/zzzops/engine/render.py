@@ -101,13 +101,22 @@ def cancel_option(ctx: Ctx, g: int) -> dict:
 # --------------------------------------------------------------------------------------------- actions
 
 
-def capability(res: GoalResult, n: str, state: dict) -> str | None:
-    nd = res.graph.nodes[n]
+def run_capability(state: dict) -> str | None:
+    """The one capability rule, shared by `next` actions and task cards: a retry needs `reasoning`; a run whose
+    record is stale only on `inputs.base` and that has no live corrections is a rebase (`routine`); otherwise None
+    (the caller falls back to the node's own tier). `record_stale` (set at claim time) is the staleness since the
+    accepted record; a frontier state carries no `record_stale`, and its `stale_because` is exactly that."""
     if state.get("reason") == "retry":
         return "reasoning"
-    if state.get("stale_because") == ["inputs.base"]:
-        return "routine"
-    return nd.get("capability", "bounded") if nd["kind"] == "agent" else None
+    record_stale = state["record_stale"] if "record_stale" in state else state.get("stale_because")
+    if record_stale == ["inputs.base"] and not state.get("corrections"):
+        return "routine"     # only the base moved since the accepted output and no finding asks for a change
+    return None
+
+
+def capability(res: GoalResult, n: str, state: dict) -> str | None:
+    nd = res.graph.nodes[n]
+    return run_capability(state) or (nd.get("capability", "bounded") if nd["kind"] == "agent" else None)
 
 
 def action(ctx: Ctx, p: Portfolio, res: GoalResult, n: str) -> dict:
