@@ -109,6 +109,7 @@ class ShippedTemplateTests(unittest.TestCase):
         """G1029: the capture-time `Project intent:` paragraph reaches the Intent lens through the spec input."""
         found = [(name, n) for name, n in self.nodes.items()
                  if "intent" in (n.get("policy") or [])
+                 and n.get("stage") == "discovery"
                  and any(s.get("from") == "design.doc" for s in n.get("inputs", {}).values())]
         self.assertTrue(found, "no design-stage node declares policy: [intent]")
         for name, node in found:
