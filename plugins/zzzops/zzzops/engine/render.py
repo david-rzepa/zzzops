@@ -69,10 +69,14 @@ def clip(text: str, limit: int) -> str:
 LIVE_LEASE_NOTE = "Either abandon then restart, or let it finish: its submit lands but the phase re-runs as ready (stale)."
 
 
+def restart_command(ctx: Ctx, g: int, n: str) -> dict:
+    """After abandon the node is reclaimable, so a restart uses --reclaim (shared by abandon and live-lease entries)."""
+    return command(ctx, ["start", str(g), n, "--as", LABEL, "--reclaim"])
+
+
 def lease_commands(ctx: Ctx, g: int, n: str, attempt: int) -> tuple:
-    """(abandon, restart) for a running phase; after abandon the node is reclaimable, so restart uses --reclaim."""
-    return (command(ctx, ["abandon", str(g), n, "--attempt", str(attempt)]),
-            command(ctx, ["start", str(g), n, "--as", LABEL, "--reclaim"]))
+    """(abandon, restart) for a running phase."""
+    return command(ctx, ["abandon", str(g), n, "--attempt", str(attempt)]), restart_command(ctx, g, n)
 
 
 def live_lease_entry(ctx: Ctx, g: int, n: str, L, stale_because: list) -> dict:
@@ -97,13 +101,22 @@ def cancel_option(ctx: Ctx, g: int) -> dict:
 # --------------------------------------------------------------------------------------------- actions
 
 
-def capability(res: GoalResult, n: str, state: dict) -> str | None:
-    nd = res.graph.nodes[n]
+def run_capability(state: dict) -> str | None:
+    """The one capability rule, shared by `next` actions and task cards: a retry needs `reasoning`; a run whose
+    record is stale only on `inputs.base` and that has no live corrections is a rebase (`routine`); otherwise None
+    (the caller falls back to the node's own tier). `record_stale` (set at claim time) is the staleness since the
+    accepted record; a frontier state carries no `record_stale`, and its `stale_because` is exactly that."""
     if state.get("reason") == "retry":
         return "reasoning"
-    if state.get("stale_because") == ["inputs.base"]:
-        return "routine"
-    return nd.get("capability", "bounded") if nd["kind"] == "agent" else None
+    record_stale = state["record_stale"] if "record_stale" in state else state.get("stale_because")
+    if record_stale == ["inputs.base"] and not state.get("corrections"):
+        return "routine"     # only the base moved since the accepted output and no finding asks for a change
+    return None
+
+
+def capability(res: GoalResult, n: str, state: dict) -> str | None:
+    nd = res.graph.nodes[n]
+    return run_capability(state) or (nd.get("capability", "bounded") if nd["kind"] == "agent" else None)
 
 
 def action(ctx: Ctx, p: Portfolio, res: GoalResult, n: str) -> dict:
