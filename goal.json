@@ -13,30 +13,30 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T18:37:48Z",
+      "finished_at": "2026-11-01T18:38:58Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
           "dep_designs": "v1:sha256:6d74ab5273e861b62bb1af56af43122d3d9ff9f6ac727043dbf65f3c81a32178",
-          "spec": "v1:sha256:e4c41146feba595efd999f0f4949b6bac08edfa874630363ec51c08b6025459d"
+          "spec": "v1:sha256:5391c2d2289d1f818238efa5e7e169590aeef7c208341471c4f6ae9097278744"
         },
         "policy": {}
       },
       "holder": "claude:e6ad/d1024",
-      "input_fp": "v1:sha256:22da8246ba191cfa0fd913ad93029ddf96e1cb95e7e2c2af7d1a3033cf8c4ecf",
+      "input_fp": "v1:sha256:45c799a69f5225b0bfe6b8d7f289a91ed0f38df408dd4e75b893f7208402b634",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "267a4af106706e6d388b6208915c67bb991ea511",
-          "commit": "511785e680082293053a8a1d498c426104cc793a",
+          "blob": "1173b49844869e460b025ea30851b774f6c2be91",
+          "commit": "06e536be9ae6e5323dce2b7cdbd5346d1cfb7253",
           "path": ".zzzops/reviews/1024/design.md"
         },
-        "summary": "Repositories get a capability-free record, .zzzops/TEMPLATE.json, mapping each policy file to the git blob id of the shipped default last reviewed; the plugin keeps every shipped template version in a content-addressed templates/history/ store, so the engine can diff and three-way merge from the old default and infer provenance for repositories bootstrapped earlier (this repo's pre-G1016 prompts match). next (compact) and validate (full) show a non-blocking top-level policy_update item (update, no_record, invalid_record, newer_record) with per-file upstream/local state, a diff command and an apply step, plus the exact record content to write (reviewed for bootstrap, update and decline; inferred for a missing record). The engine stays read-only: the bootstrap skill gains an 'Update from the shipped defaults' policy-branch procedure, declining writes only the reviewed record, and nothing blocks work or changes policy automatically."
+        "summary": "Revision 2 (only change: G1017's docs/design acceptance line is folded into §5 and test 10). Repositories get a capability-free record, .zzzops/TEMPLATE.json, mapping each policy file to the git blob id of the shipped default last reviewed; a content-addressed templates/history/ store in the plugin lets the engine diff and three-way merge from the old default and infer provenance for earlier repositories. next (compact) and validate (full) show a non-blocking top-level policy_update item with per-file upstream/local state, diff and apply steps and the exact record to write (reviewed or inferred); the engine stays read-only, and the bootstrap skill's policy-branch procedure covers update and decline."
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     }
   },
