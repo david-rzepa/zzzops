@@ -10,7 +10,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T18:37:30Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:38bd2bb7e360625c8d4fd7863ee482fb7080b82f31a6acb087c3ad8deb301589",
+          "spec": "v1:sha256:712a82bb1586f8af2e21fa5349d31dbf159031609fe366558e0f4003e9911e57"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1026",
+      "input_fp": "v1:sha256:144b4dcd0ac19056c1ab0d39f298876c869ccbfa01473c30935270a89b8bade2",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "514dd32e5a966ca4f9a5a439c6335880aee6b442",
+          "commit": "767eebcb1674af6465f3635fd7f5ed8135e4b38c",
+          "path": ".zzzops/reviews/1026/design.md"
+        },
+        "summary": "Owner questions reuse existing parts. A new POLICY instruction, owner_questions, states the owner's undo-reach test once and is listed on design, review_design, adversary_design and review_impl. Reviewers raise material 'owner question:' findings that target the design. design.md answers them by submitting --blocked, then records the owner's words verbatim in an Owner decisions section and answers 'fixed: owner chose ...'. The execute skill batches these questions across goals and keeps them with the owner even when approvals are delegated. The engine change is about 45 lines. A non-material owner question is refused at submit. A new optional record key, answers, carries the owner's words through later revisions, so approve_design, approve_merge (owner_decisions) and the PR body (## Owner decisions) show them. It is built on G1022's 15-node graph; the design recommends adding 1022 to depends_on, and the next-minor engine version and floor raise go with G1022's."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
