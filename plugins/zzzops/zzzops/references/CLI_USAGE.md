@@ -6,7 +6,7 @@ Every verb prints one JSON object (`show` prints text unless `--json`). **Runnin
 |---|---|
 | `next [--goal G]… [--all]` | What to do: `actions` (run their `start` command), `needs_human` (full items with `--goal`), `waiting`, `running`, `wake_at`, `blockers`. Read-only. |
 | `show G [--node X] [--json]` | One goal: its document, goal commit (for `edit --base`), node states and leases. |
-| `new --file F` | Create a goal from `{"title", "spec", "priority"?, "release"?, "depends_on"?, "skip"?, "links"?}`. Returns the goal's `design` action. |
+| `new --file F` | Create a goal from `{"title", "spec", "priority"?, "release"?, "depends_on"?, "skip"?, "links"?, "request_key"?}`. Returns the goal's `design` action. Safe to rerun: the same request (its `request_key`, by default title, spec and depends_on) returns the existing goal with `created.recovered: true`; the key reused with different contents is refused. |
 | `start G X --as L [--reclaim] [--force]` | Claim a node. Agent nodes print the task card; op nodes run to completion. |
 | `submit G X --attempt N --as L --output F [--artifact A]` | Finish an agent phase. `--blocked F` instead records a question for the human or the agent (`{"waiting_for", "question" or "instructions", "options"?, "recommendation"?}`). |
 | `renew G X --attempt N` | Keep the lease alive (every quarter of its timeout). |
