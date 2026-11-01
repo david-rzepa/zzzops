@@ -8,7 +8,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 2,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T04:16:05Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "spec": "v1:sha256:3cda08394ea5edabf2c55b2983b4a2414276e3d3ee81d5b6f5d6364b096221d6"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/design-1000-1",
+      "input_fp": "v1:sha256:6f3931ebb1d3c4d1f3f4d1e29fa47395318fd8f86df45b02aa04d8737f369d46",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "14d91754bedbce4c9f77b937eb87ee8c31d09e30",
+          "commit": "10cb8273510ca4e752e16206f9d27f65c5b94c1e",
+          "path": ".zzzops/reviews/1000/design.md"
+        },
+        "summary": "Replaces review_design and review_impl with seven independent lenses on each subject. Intent and Simplicity cannot be skipped; Truth, Adversary, Concurrency, Rollout and Experience can. The set was chosen by a 16-lens experiment on the draft and on a replay of revision 6's A1 with 12 known defects: the merged seven cover 31/32 material issues, where the spec's five covered 17/32. Each subject also gets a cheap, independent filter node. A finding reopens work if the reviewer claims it is material or the filter promotes it; the filter can never demote a claim, because blind demotion lost 9/16 harmful issues. That cuts the blocking-finding nit rate from 54% to 11% and also batches the reopens. Project intent becomes settings.intent, which the Intent lens declares. The template ships a placeholder that validates with a warning (an owner decision, D5). The engine also gets a skippable field, a re-review blob-diff pointer and a PR-body lens list, and the rollout has three steps: PR, engine floor, then a lens policy branch with the owner-written intent."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
