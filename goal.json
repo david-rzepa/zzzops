@@ -10,7 +10,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T18:03:38Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:38bd2bb7e360625c8d4fd7863ee482fb7080b82f31a6acb087c3ad8deb301589",
+          "spec": "v1:sha256:1d314cf8bf1b01e23f5fc28018d6afa358a2f5c5c29969a978f16676fab30e45"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1025",
+      "input_fp": "v1:sha256:92029dc0453fcf7b659107417ddf6dabbec94d048c0ca7505f4b309491d72218",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "5dad4c9519b8761d5d285c6feb4660cccfeb970a",
+          "commit": "b37c664fcc982367adcc9e2cdb6e6539d13380b8",
+          "path": ".zzzops/reviews/1025/design.md"
+        },
+        "summary": "Git-flow branching behind an optional settings.branching block (production, release_prefix, hotfix_prefix); without it the engine is unchanged. Each release or hotfix line is owned by a line goal on a new 'release' graph (approve_start, sync, approve_finish, finish; goal schema 2 adds an optional 'flow' key). Approving the release_cut item, shown when every release N goal is closed done, creates release/N from the dev tip, and the effective release gate then opens dev to N+1. Release-N goals base, integrate and merge on release/N; the sync op merges release/N into dev through merge-commit PRs, with conflicts going to an agent and then to an approval; finish merges into production, back-merges into dev and keeps the branch; hotfix/<x> lines go from main into main, dev and any open release branch. For item 4, merging into goal work branches was compared with rebasing them and dropped (owner O1). Goal branches keep today's rebase and identity rules, and in branching mode the restack is scheduled just before an agent phase starts, which costs no extra CI or review."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
