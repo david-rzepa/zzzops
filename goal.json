@@ -44,6 +44,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T22:00:51Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:df0ee076f2fc59175c2d1150f43ad9e8980abaca1aef0bf5f9a7e8bbd7dff44c"
+        },
+        "policy": {},
+        "subject": "v1:sha256:9b48be50bdae933b31e3bd2e561909267f7ebc55812b4ec5d61445018f281f45"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:083522eaf3e8df5c851811054386e5e6cca4dc6df67ef713deffdbf445b9b67e",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T22:00:51Z",
+        "decided_by": "Dave (owner), recorded by Claude (root agent)",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approved merging PR #754 (G1029) at head 064af21 into dev: the add-goal skill checks a new goal against settings.intent before `new` and offers change the goal, amend the intent (policy branch), or proceed; only the owner can choose amend or proceed, in their own dated words, recorded as a `Project intent:` paragraph the Intent lens honours (accepted-as-is at once, amendments once policy.intent holds them) and approve_design shows verbatim. Template prompts only. Tests and code review approved; required CI passed. The owner asked to merge everything on the Release 1 stack; merged with --admin because of the dev ruleset's last-push rule."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "7691eec337473b830085d04660a83bc35f18e821",
+          "commit": "474e3491b12e4a51fa492f019cd79b68956fab50",
+          "tree": "ac4db69dd4b9eb4f80c248e56e181ca3f63b6473"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 1,
       "correction_runs": 0,
