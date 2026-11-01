@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ZzzOps CLI entrypoint: `zzzops.py <verb> …` (DESIGN.md §3.15, SPEC.md §6)."""
+"""ZzzOps CLI entrypoint: `zzzops.py <verb> …` (docs/design/DESIGN.md §3.15, docs/design/SPEC.md §6)."""
 
 from __future__ import annotations
 
