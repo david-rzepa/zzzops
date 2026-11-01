@@ -12,10 +12,10 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T18:37:06Z",
+      "finished_at": "2026-11-01T18:42:51Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -29,13 +29,17 @@
       "ok": true,
       "output": {
         "doc": {
-          "blob": "2a9c17dfd4287092b93db268e7569bee3a14a74c",
-          "commit": "2b55072115d9c87236c0751570998f76e1cf39be",
+          "blob": "6f4c7854b055f0ef632f22312336a6e094a53cd5",
+          "commit": "2a7079ded6f3742b6f09547662566ef6c1af3e74",
           "path": ".zzzops/reviews/1028/design.md"
         },
-        "summary": "Open findings stay live when their review goes stale (spec or depends_on edit, sibling reopen), as long as the target's output is unchanged. They are marked stale_review on the target's card, and the edit preview lists them with waive lines. Op findings are not carried. Review cards list resolved findings separately under previous.resolved. A restated resolved is a no-op, and restating open gives 'already resolved'. New findings may carry follows: <prior id>, which inherits rounds and upheld so a dispute cannot be reset, and is shown on cards and approve-item facts. A global --repo flag is printed on every worker-facing command, and the not-in-repository error names the directory and the flag."
+        "responses": {
+          "review_design:1:1": "fixed: follows ships as G1027 capability finding_follows (engine/capabilities/finding_follows.txt, added to SHIPPED when G1027 has merged). Submit refuses follows until the required set (requires plus legacy_caps(min)) contains it. The rollout pushes zzzops/policy/requires-finding_follows before the first follows is written, and output_schema mentions follows only when it is required. Both merge orders are stated: if G1028 merges first it uses the next-minor engine.min, which G1027 maps in LEGACY_VERSIONS and converts to the capability. No dependency edge. The §4 table, §9 (SPEC §4.5), the HISTORY row and D8 are updated (§6a).",
+          "review_design:1:2": "fixed: a follows finding inherits rounds only and is always upheld: false. The follow-up of an upheld finding (rounds >= 2) therefore goes to the human as a dispute item at once, with its new text. §3.3, D5 and test 9 are updated, and new test 9a covers it."
+        },
+        "summary": "Revision 2. Open findings stay live while their review is stale and their target's output is unchanged, marked stale_review, and the edit preview lists every carried finding with waive lines. Closed ids move to previous.resolved: a restated resolved is a no-op, and restating open gives 'already resolved'. New findings may carry follows, inheriting rounds but never upheld. Follows ships as the G1027 capability finding_follows, with a submit gate and both merge orders covered. Worker commands carry a global --repo flag."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
