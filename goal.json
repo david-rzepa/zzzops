@@ -94,6 +94,35 @@
       "reason": "reopened",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T05:38:50Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:f0f86e3e5d7131680049bfd289e2d0b91b2df6ab0e5273c2ec770b60152ca61d",
+          "doc": "v1:blob:fb5b4190ac489d3d95280c8cbf4efc6c4fd1d4d3",
+          "tests": "v1:sha256:5fe7a70555feae17a1bd3e8df19ae901989939bf5441968e4f8446e7c4760958"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/implement-1015-1",
+      "input_fp": "v1:sha256:141a4def40fc9b54d7282336365b9792f95895cf4b7c7755e38aa05571e0aa37",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
+          "change": "e26ef4ea3799681170b471be6f7375ee4b0c0ee1",
+          "commit": "b5a1a7b451e217266334208b73c491b31decd83a",
+          "tree": "52168a4d6e9d0290d7b36735cfe12a3bdeec512f"
+        },
+        "summary": "Added engine/legacy.py: free local signals (old-format POLICY.json, old .zzzops files, old ignore blocks, cleanup_legacy's retired install roots) plus a bounded check (one ls-remote and one gh api graphql search over the two legacy.QUERIES strings), cached atomically in <git-common>/zzzops/legacy.json and re-run only on a cache-key change or after retry_after (24 h while active or after a transient/GraphQL failure, 7 days when gh is missing or unauthenticated). `next` shows a top-level `legacy` item (`validate` always re-checks and adds issues/linked/queries/truncated); an old-format policy is the new legacy_policy blocker (exit 4) ahead of not_bootstrapped, and settings.legacy.ignore (optional bool) dismisses everything. Shipped the migrate-zzzops-repository skill with references/REMOVED.md (R1-R15, D9) and EXAMPLE.md (this repository's 115-issue migration), listed it in package.py and the marketplace builder, and updated MIGRATING, CLI_USAGE (including the legacy.ignore engine-version caution), SETUP, PRIVACY, the execute and bootstrap skills and docs/SKILLS.md. The full suite (426 tests) and prompt_stats --check pass; the frozen tests are unchanged, but the hard-coded skill inventories in test_agent_plugin, test_marketplace_bundle, test_claude_plugin_acceptance and the claude_plugin_acceptance harness had to gain the fourth skill that the design requires."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 2,
       "correction_runs": 1,
