@@ -402,7 +402,7 @@ def read_state(git: Git, snap: Snapshot, all_goals: bool = False, wanted=()) -> 
         for g in sorted(list(st.docs)):
             doc = st.docs[g]
             closed = doc.get("state") == "closed"
-            errs, warns = schemas.validate_goal(doc, None, None if closed else known, st.workflow)
+            errs, warns = schemas.validate_goal(doc, None, None if closed else known, st.workflow, reading=True)
             if not errs and doc.get("id") != g:
                 errs = [f"goal.id {doc.get('id')} does not match the branch g{g}"]
             if errs:

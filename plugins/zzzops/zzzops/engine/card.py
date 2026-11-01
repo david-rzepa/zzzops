@@ -7,6 +7,7 @@ import hashlib
 import json
 
 from engine.canon import canonical, iso
+from engine.schemas import SHA, get_dotted
 from engine.frontier import recorded_out, resolve
 from engine.render import clip, command, first_line, run_capability
 from engine.schemas import SHA
@@ -143,6 +144,8 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
     card["instructions"] = {k: ({"text": ins[k]} if len(ins[k].encode("utf-8")) <= INLINE else reader.blob_view(ins[k]))
                             for k in nd.get("instructions", []) if k in ins}
     card["inputs"], card["context"] = inputs, context
+    if nd["kind"] == "agent" and nd.get("policy"):
+        card["policy"] = {k: view(reader, get_dotted(settings, k)) for k in nd["policy"]}
     if nd.get("workspace"):
         cmds = []
         for name in sorted(nd.get("inputs") or {}):
@@ -154,6 +157,11 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
             card["commands_to_run"] = {"from": "commands", "list": cmds, "note": "Run these in the workspace before you submit."}
     card["corrections"] = [{"id": f["id"], "from": _carrier(res, f), "text": f["text"], "rounds": f["rounds"],
                             "upheld": f["upheld"]} for f in s.get("corrections") or []]
+    notes = notes_for(res, n)
+    if notes:
+        card["notes"] = notes
+    if graph.is_filter(n):
+        card["candidates"] = candidates(res, n)
     prev = previous(session, res, n, dict(s, stale_because=s.get("record_stale")))   # previous.output: record staleness
     if prev:
         card["previous"] = prev
@@ -182,6 +190,29 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
                       when=f"every {every} minutes (timeout {timeout}); after any pause, renew first"),
         "abandon": command(ctx, ["abandon", str(g), n, "--attempt", N])}
     return shrink(card, reader)
+
+
+def notes_for(res, n) -> list:
+    """The filter-judged notes on target n: optional to act on, never corrections."""
+    return [{"id": f["id"], "lens": c, "text": f["text"], "impact": f.get("impact"), "reason": reason}
+            for c, f, reason in sorted(res.notes.get(n, []), key=lambda x: x[1]["id"])]
+
+
+def candidates(res, flt) -> list:
+    """A filter's card: every open finding on its lenses' latest (non-skipped) records."""
+    from engine.records import response_of
+    out = []
+    skip = res.doc.get("skip") or {}
+    records = res.doc.get("records") or {}
+    for lens in res.graph.lenses(flt):
+        if lens in skip:
+            continue
+        for f in (records.get(lens) or {}).get("findings") or []:
+            if f["status"] == "open":
+                out.append({"id": f["id"], "lens": lens, "target": f["target"], "text": f["text"],
+                            "impact": f.get("impact"), "material": f.get("material", True) is not False,
+                            "response": response_of(res.doc, f["target"], f["id"]) or f.get("response")})
+    return sorted(out, key=lambda c: c["id"])
 
 
 def _carrier(res, f):
@@ -273,6 +304,20 @@ def previous(session, res, n, s) -> dict | None:
                             for f in r.get("findings") or [] if f["target"] != n]
         for k, old in (r.get("reviewed") or {}).items():
             cur = (sr.get("output") or {}).get(k)
+            if "blob" in old:                                   # an artifact: what changed since the last review
+                if not isinstance(cur, dict) or cur.get("blob") == old["blob"]:
+                    continue
+                a, b = old["blob"], cur.get("blob")
+                if not (isinstance(a, str) and SHA.match(a) and isinstance(b, str) and SHA.match(b)):
+                    prev["note"] = "previous version not available; review in full"
+                    continue
+                if not session.git.exists(a):
+                    session.fetch_work_of(res.goal)
+                if session.git.exists(a):
+                    prev["changed"] = f"git diff {a} {b}"
+                else:
+                    prev["note"] = "previous version not available; review in full"
+                continue
             if not isinstance(cur, dict) or cur.get("change") == old.get("change"):
                 continue
             if session.git.exists(old["commit"]):
@@ -323,7 +368,7 @@ def _steps(card: dict) -> list:
     for k, v in (card.get("instructions") or {}).items():
         if isinstance(v, dict) and "text" in v:
             blobs.append((len(v["text"]), ("instructions", k)))
-    for sect in ("inputs", "context"):
+    for sect in ("inputs", "context", "policy"):
         for k, v in (card.get(sect) or {}).items():
             if v is None or _is_view(v) or (isinstance(v, dict) and "blob" in v):
                 continue
@@ -332,6 +377,11 @@ def _steps(card: dict) -> list:
     for i, c in enumerate(card.get("corrections") or []):
         if isinstance(c.get("text"), str) and len(c["text"]) > 200 and "full" not in c:
             blobs.append((len(c["text"]), ("corrections", i)))
+    for sect in ("candidates", "notes"):
+        for i, c in enumerate(card.get(sect) or []):
+            size = len(c.get("text") or "") + len(c.get("impact") or "")
+            if size > 200 and "full" not in c:
+                blobs.append((size, (sect, i)))
     blobs.sort(key=lambda b: -b[0])
     return steps + [("blob",) + path for _, path in blobs]
 
@@ -356,6 +406,13 @@ def _apply(card: dict, step: tuple, reader) -> dict:
         c = card["corrections"][step[2]]
         c["full"] = {k: v for k, v in _blob(reader, c["text"], SUMMARY).items() if k != "summary"}
         c["text"] = c["text"][:200]
+    elif step[1] in ("candidates", "notes"):
+        c = card[step[1]][step[2]]
+        full = json.dumps({"text": c.get("text"), "impact": c.get("impact")}, indent=2)
+        c["full"] = {k: v for k, v in _blob(reader, full, SUMMARY).items() if k != "summary"}
+        c["text"] = (c.get("text") or "")[:120]
+        if c.get("impact"):
+            c["impact"] = c["impact"][:80]
     else:
         card[step[1]][step[2]] = _blob(reader, card[step[1]][step[2]], SUMMARY)
     return card

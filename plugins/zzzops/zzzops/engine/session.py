@@ -129,7 +129,7 @@ class Session:
 
     def warnings(self, p) -> list:
         st = self.state
-        out = list(st.warnings)
+        out = list(st.warnings) + schemas.intent_warnings(st.settings)
         for (g, node) in orphan_leases(st.docs, st.graphs, st.leases):
             out.append({"kind": "orphan_lease", "message": f"lease zzzops/lease/g{g}/{node} is not valid for this goal "
                                                            "(see REPAIR.md to delete it)"})

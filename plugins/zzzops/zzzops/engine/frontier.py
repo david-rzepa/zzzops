@@ -143,7 +143,8 @@ def recorded_out(doc: dict, p: str):
 
 
 def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: dict, now: int):
-    """States of one goal's nodes. `leases`: node -> Lease (valid leases only). Returns (st, cur, live)."""
+    """States of one goal's nodes. `leases`: node -> Lease (valid leases only). Returns (st, cur, live, notes):
+    `notes` maps a target to the (lens, finding, reason) of its open lens findings that a fresh filter judged `note`."""
     N, topo = graph.nodes, graph.topo
     skip = doc.get("skip") or {}
     records = doc.get("records") or {}
@@ -153,17 +154,32 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
         return recorded_out(doc, p)
 
     # ---- pass 1: liveness, from recorded values only
-    live = {n: [] for n in topo}
+    fresh = {}
     for c in topo:
         if c not in R or R[c]["status"] != "done":
             continue
         vals, missing = resolve(graph, doc, c, recorded, dep_view)
         subj = graph.subject(c)
-        fresh = (not missing and not (subj and (subj not in R or R[subj]["status"] != "done"))
-                 and input_fp(fp_parts(graph, c, vals, R.get(subj), settings)) == R[c]["input_fp"])
+        fresh[c] = (not missing and not (subj and (subj not in R or R[subj]["status"] != "done"))
+                    and input_fp(fp_parts(graph, c, vals, R.get(subj), settings, R)) == R[c]["input_fp"])
+    live = {n: [] for n in topo}
+    notes = {}
+    for c in topo:
+        if c not in fresh:
+            continue
+        verdicts = filter_verdicts(graph, R, fresh, c)
         for f in R[c].get("findings") or []:
             t = f["target"]
-            if not fresh and t != c:
+            if verdicts is not None and t != c:
+                # a filtered lens's finding waits for its fresh filter (the join); a non-material one judged `note` is
+                # a note and never live; without a verdict it is kept
+                if verdicts is False:
+                    continue
+                if is_note(f, verdicts):
+                    if t in N:
+                        notes.setdefault(t, []).append((c, f, verdicts[f["id"]].get("reason")))
+                    continue
+            if not fresh[c] and t != c:
                 continue
             if (f["status"] == "open" and f["target_fp"] is not None and t in N and t in R
                     and R[t]["status"] == "done" and f["target_fp"] == out_fp(graph, t, R[t])
@@ -194,7 +210,7 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
         if L and L.live(now):
             rv, rmiss = resolve(graph, doc, n, recorded, dep_view)
             rsub = bool(subj) and (subj not in R or R[subj]["status"] != "done")
-            rparts = None if rmiss or rsub else fp_parts(graph, n, rv, R.get(subj), settings)
+            rparts = None if rmiss or rsub else fp_parts(graph, n, rv, R.get(subj), settings, R)
             f = input_fp(rparts) if rparts else None
             st[n] = {"name": "running", "lease": L, "fp": f, "parts": rparts}
             continue
@@ -204,7 +220,7 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
         if node.get("release_gate") and doc["release"] > settings["releases"]["current"]:
             st[n] = {"name": "waiting", "until": f"release {doc['release']}", "reason": "release"}
             continue
-        parts = fp_parts(graph, n, vals, R.get(subj), settings)
+        parts = fp_parts(graph, n, vals, R.get(subj), settings, R)
         f = input_fp(parts)
         corr = sorted((x for _, x in live[n]), key=lambda x: x["id"])
         if L:
@@ -260,7 +276,26 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
             st[n] = {"name": "needs_human", "kind": "approve", "ready": s, "fp": f, "parts": parts}
             continue
         st[n] = s
-    return st, cur, live
+    return st, cur, live, notes
+
+
+def filter_verdicts(graph: Graph, R: dict, fresh: dict, lens: str):
+    """None for an unfiltered node; False while the lens's filter has no fresh done record; else its verdicts."""
+    F = graph.filter_of(lens)
+    if not F:
+        return None
+    fr = R.get(F)
+    if not fr or not fresh.get(F):
+        return False
+    v = (fr.get("output") or {}).get("verdicts")
+    return v if isinstance(v, dict) else {}
+
+
+def is_note(f: dict, verdicts) -> bool:
+    """An open, non-material lens finding with the verdict `note` (SPEC §4.9 as amended by G1000)."""
+    v = verdicts.get(f["id"]) if isinstance(verdicts, dict) else None
+    return (f["status"] == "open" and f.get("material", True) is False and isinstance(v, dict)
+            and v.get("verdict") == "note")
 
 
 def escalates(N: dict, target: str, carrier: str, f: dict) -> bool:
@@ -281,6 +316,7 @@ class GoalResult:
     st: dict
     cur: dict
     live: dict
+    notes: dict = field(default_factory=dict)        # target -> [(lens, finding, reason)] (filter-judged notes)
     stuck: dict | None = None
     budget: dict = field(default_factory=dict)       # {"used", "limit", "over", "per_node"}
     close: bool = False                              # every terminal current but the goal is open
@@ -380,8 +416,8 @@ def portfolio(docs: dict, graphs: dict, leases: dict, settings: dict, now: int, 
             continue
         goal_leases = valid_leases(g, d, graph, leases)
         dep_view = {x: views.get(x, INVALID_VIEW) for x in d.get("depends_on") or []}
-        st, cur, live = frontier(graph, d, dep_view, goal_leases, settings, now)
-        res = GoalResult(g, d, graph, st, cur, live)
+        st, cur, live, notes = frontier(graph, d, dep_view, goal_leases, settings, now)
+        res = GoalResult(g, d, graph, st, cur, live, notes)
         finish_goal(res, goal_leases, now)
         results[g] = res
         stuck = res.stuck is not None
@@ -486,14 +522,15 @@ def counts(r0: dict | None, reason: str, old_parts: dict | None, parts: dict) ->
     """1 when a new record counts toward the correction budget (SPEC §4.10)."""
     if r0 is None:
         return 0
-    if reason == "stale" and all(k == "def" or k.startswith("policy.") for k in stale_keys(old_parts, parts)):
+    if reason == "stale" and all(k in ("def", "candidates") or k.startswith("policy.")
+                                 for k in stale_keys(old_parts, parts)):
         return 0
     return 1
 
 
 def all_terminal_current(doc: dict, graph: Graph, dep_view: dict, settings: dict, now: int) -> bool:
     """For §3.3 rule 8 and the generic close (§4.19); leases do not matter for currency."""
-    st, _, _ = frontier(graph, doc, dep_view, {}, settings, now)
+    st, _, _, _ = frontier(graph, doc, dep_view, {}, settings, now)
     return all(st[t]["name"] == "current" for t in graph.terminal)
 
 

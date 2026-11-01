@@ -263,6 +263,12 @@ def approve_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:
     if not full:
         return item
     item["context"] = approve_context(ctx, res, n, vals)
+    notes = notes_by_lens(res, n)
+    if notes:
+        item["notes"] = notes
+    skipped = skips(res)
+    if skipped:
+        item["skipped"] = skipped
     item.update(pr_and_stack(res))
     item["facts"] = facts(res)
     r = (res.doc.get("records") or {}).get(n)
@@ -283,6 +289,34 @@ def approve_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:
     item["answer_template"] = {"decision": "approved", "summary": "<what was approved, in your words>",
                                "quote": "<the human's words, verbatim>", "decided_by": "<name>"}
     return item
+
+
+def notes_by_lens(res: GoalResult, n: str) -> dict:
+    """The filter-judged notes of the lenses behind the filters that node n reads, grouped by lens."""
+    filters = {p for p in res.graph.producers(n) if res.graph.is_filter(p)}
+    lenses = {x for f in filters for x in res.graph.lenses(f)}
+    out = {}
+    for t in res.graph.topo:
+        for c, f, reason in sorted(res.notes.get(t, []), key=lambda x: x[1]["id"]):
+            if c in lenses:
+                out.setdefault(c, []).append({"id": f["id"], "target": t, "text": clip(f["text"], 300),
+                                              "impact": clip(f.get("impact") or "", 200), "reason": reason})
+    return out
+
+
+def skips(res: GoalResult) -> list:
+    """Every skip with its reason, and the open findings recorded on a skipped node (a late finding is never
+    invisible: G1000 approval directive)."""
+    records = res.doc.get("records") or {}
+    out = []
+    for n, reason in sorted((res.doc.get("skip") or {}).items()):
+        e = {"node": n, "reason": clip(reason, 300)}
+        opened = [{"id": f["id"], "target": f["target"], "text": clip(f["text"], 300)}
+                  for f in (records.get(n) or {}).get("findings") or [] if f["status"] == "open"]
+        if opened:
+            e["open_findings"] = opened
+        out.append(e)
+    return out
 
 
 def interdiff(ctx: Ctx, res: GoalResult, n: str, r: dict) -> str | None:
@@ -333,7 +367,7 @@ def dispute_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:
     if res.graph.nodes[carrier]["kind"] == "op":
         opts = [{"label": "uphold", "command": command(ctx, argv)},
                 {"label": "re-observe", "command": command(ctx, ["reopen", str(g), carrier, "--note", "<why>"])}]
-        if carrier not in res.graph.terminal:
+        if carrier not in res.graph.terminal and res.graph.skippable(carrier):
             opts.append(edit_option(ctx, g, f"skip {carrier}", {f"skip.{carrier}": "<reason>"}))
         opts.append(cancel_option(ctx, g))
     else:
@@ -376,7 +410,7 @@ def crash_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:
         one_more = {"label": "one more try (raise the budget first)", "command": raise_opt["command"],
                     "file": raise_opt["file"], "then": command(ctx, retry)}
     opts = [one_more]
-    if n not in res.graph.terminal:
+    if n not in res.graph.terminal and res.graph.skippable(n):
         opts.append(edit_option(ctx, g, f"skip {n}", {f"skip.{n}": "<reason>"}))
     opts.append(cancel_option(ctx, g))
     item["options"] = opts
@@ -416,7 +450,7 @@ def stuck_item(ctx: Ctx, res: GoalResult, full: bool) -> dict:
     if reason == "skipped":
         p = first["node"]
         opts.append(edit_option(ctx, g, f"unskip {p}", {f"skip.{p}": None}))
-        if x not in res.graph.terminal:
+        if x not in res.graph.terminal and res.graph.skippable(x):
             opts.append(edit_option(ctx, g, f"skip {x} too", {f"skip.{x}": "<reason>"}))
     elif reason in ("output_absent", "no_record"):
         opts.append({"label": f"reopen {first['node']}",

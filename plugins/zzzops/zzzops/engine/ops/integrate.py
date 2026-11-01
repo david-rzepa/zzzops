@@ -263,10 +263,41 @@ def _run(ctx):
                 summary=f"PR #{pr['number']}: checks passed")
 
 
+def one_line(text) -> str:
+    for line in str(text or "").splitlines():
+        if line.strip():
+            return line.strip()[:300]
+    return ""
+
+
+def reviews_section(ctx) -> str:
+    """`## Reviews`: the filter summaries, one line per input produced by a review node, and every skip with its reason
+    and the open findings recorded on the skipped node. It names no node: the graph says which inputs are reviews."""
+    graph, doc = ctx.graph, ctx.doc or {}
+    lines = ["## Reviews"]
+    if graph is not None:
+        ins = [(k, ctx.producers.get(k)) for k in sorted(ctx.inputs) if ctx.producers.get(k) in graph.nodes]
+        order = {n: i for i, n in enumerate(graph.topo)}
+        ins.sort(key=lambda kp: (order.get(kp[1], 0), kp[0]))
+        for k, p in ins:
+            if graph.is_filter(p) and ctx.inputs.get(k) is not None:
+                lines.append(one_line(ctx.inputs[k]))
+        for k, p in ins:
+            if graph.is_review(p) and ctx.inputs.get(k) is not None:
+                lines.append(f"- **{p}**: {one_line(ctx.inputs[k])}")
+    records = doc.get("records") or {}
+    for n, reason in sorted((doc.get("skip") or {}).items()):
+        lines.append(f"- **{n}**: skipped: {one_line(reason)}")
+        for f in (records.get(n) or {}).get("findings") or []:
+            if f["status"] == "open":
+                lines.append(f"  - open finding {f['id']} (on a skipped node): {one_line(f['text'])}")
+    return "\n".join(lines)
+
+
 def pr_body(ctx, g, stack, target, I) -> str:
     summary = ctx.inputs.get("summary") or ""
-    review = ctx.inputs.get("review") or ""
-    body = f"{summary}\n\n## Review\n{review}\n\nZzzOps goal G{g}. Built from zzzops/work/g{g} without docs(review) commits."
+    body = (f"{summary}\n\n{reviews_section(ctx)}\n\n"
+            f"ZzzOps goal G{g}. Built from zzzops/work/g{g} without docs(review) commits.")
     if target != I:
         body += "\n\n" + " ".join(f"Stacked on #{e['pr']} (G{e['goal']}), not merged yet." for e in stack)
     return body

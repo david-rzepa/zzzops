@@ -46,7 +46,19 @@ def node_def_fp(nd: dict) -> str:
     return V + "sha256:" + H(d)
 
 
-def fp_parts(graph: Graph, node: str, vals: dict, subject_record: dict | None, settings: dict) -> dict:
+def candidates(graph: Graph, f: str, records: dict) -> list:
+    """A filter's `candidates` part: the sorted [id, material] pairs of the open findings on its lenses' latest records
+    (`records`: the goal's non-skipped records). A finding without `material` counts as material."""
+    out = []
+    for lens in graph.lenses(f):
+        for x in (records.get(lens) or {}).get("findings") or []:
+            if x["status"] == "open":
+                out.append([x["id"], x.get("material", True) is not False])
+    return sorted(out)
+
+
+def fp_parts(graph: Graph, node: str, vals: dict, subject_record: dict | None, settings: dict,
+             records: dict | None = None) -> dict:
     nd = graph.nodes[node]
     p = {"def": node_def_fp(nd),
          "inputs": {k: fp_selected(graph, node, k, vals.get(k)) for k, s in sorted((nd.get("inputs") or {}).items())
@@ -55,6 +67,8 @@ def fp_parts(graph: Graph, node: str, vals: dict, subject_record: dict | None, s
     subject = graph.subject(node)
     if subject:
         p["subject"] = out_fp(graph, subject, subject_record or {}, drop={"responses"})
+    if graph.is_filter(node):
+        p["candidates"] = candidates(graph, node, records or {})
     return p
 
 
@@ -75,6 +89,8 @@ def stale_keys(old: dict | None, new: dict) -> list:
             keys.append(f"policy.{k}")
     if old.get("subject") != new.get("subject"):
         keys.append("subject")
+    if old.get("candidates") != new.get("candidates"):
+        keys.append("candidates")
     return sorted(keys)
 
 
