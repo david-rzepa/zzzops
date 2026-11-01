@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-01T04:47:11Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [],
   "graph": "default",
   "id": 1014,
@@ -196,6 +201,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T04:47:11Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:a15d0f242cdf1af2ccf0c9a06a28c76265f3ea913367391f5c4a5c11fd4a4e30"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:f1d40720bd5586517834fe76128c3ae930ce52d33070ecaa6a3427119b2aa5bd",
+      "ok": true,
+      "output": {
+        "merge_commit": "1c1387afe76164f714bbd34e77ed303053be8682",
+        "merged_at": "2026-11-01T04:47:09Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -424,6 +451,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Found while dogfooding Release 1. `zzzops edit` that changes a goal field consumed by a phase that is currently running (live lease) reports `stale_agent_phases: 0` and gives no warning. Example: `start 1000 design`, then `edit 1000 --set spec=... --base C`. The running worker then submits work that is stale on arrival, and the phase silently re-runs.\n\nOutcome:\n- Both edit's dry-run preview and its applied result list every live lease whose node's inputs the edit changes: goal, node, attempt, holder, expires_at.\n- Each comes with the commands to act on it: `abandon G X --attempt N`, then a fresh `start`. Or say to let it finish and re-run.\n- `stale_agent_phases` counts these phases too, or a separate `live_leases_on_changed_nodes` field is added, matching `validate --policy` impact.\n- The task card of a phase whose inputs changed after its start says so on `renew`: the renew result carries `inputs_changed: true` with the restart commands, so the worker learns before it submits.\n\nAcceptance:\n- Engine tests: an edit of spec during a running design lists the live lease in the preview and the result; renew of that lease reports inputs_changed; an edit that touches no consumed input lists nothing; a held or closed goal's edits are unaffected.\n- CLI_USAGE and the execute skill describe the flow.\n- No extra fetch: the computation uses the already-fetched snapshot.",
-  "state": "open",
+  "state": "closed",
   "title": "Warn when edit changes the inputs of a running phase"
 }
