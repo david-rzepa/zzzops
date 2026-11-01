@@ -118,6 +118,56 @@
       "reason": "new",
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_tests:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:df03e9cde065a6a24d237a49ab7dc4aacb04ea6fe23f2564debea91ddd75bd85",
+          "text": "The ordering the design review required (head-not-seen wait before the GitHub CONFLICTING check) is not pinned. test_head_not_yet_seen_waits_... moves dev with a non-conflicting other.txt, so the stale H1 also reads MERGEABLE. A probe with the conflict check placed before the head check passes all 8 tests. Add a test with head_lag=1: H1 = CONFLICT_CODE is shown, dev gets DEV_CODE, base is reopened and blocks, it is resolved by hand to content compatible with dev, then implement/run_tests. integrate must wait with 'has not seen the PR head' and return no conflict finding, then finish ok once the checks pass on H2. Verified: it passes with the right order and fails with the wrong one.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T07:42:19Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:64ae69193ad33c5260fa233cf68c4815659a6c02",
+          "tests": "v1:sha256:31047c4fbc57da023d37f75f4c51a5c482b56d0ea175d0aef04f4cc3f3c74be1"
+        },
+        "policy": {},
+        "subject": "v1:sha256:df03e9cde065a6a24d237a49ab7dc4aacb04ea6fe23f2564debea91ddd75bd85"
+      },
+      "holder": "claude:e6ad/review_tests-1021-1",
+      "input_fp": "v1:sha256:fe9b23b17e2691e7cfac2559077da7ab7117ef37745be4b9f3fba9e7167fcef5",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "1736e535e5576cea4e92e9c8e250e68cd8f6046b",
+          "commit": "6a8fe3327c59c0906a7848bb1d4431faba697e6b",
+          "path": ".zzzops/reviews/1021/review_tests.md"
+        },
+        "summary": "The faults are off by default and match GitHub's behaviour. The incident regression, the no-checks timing (human at t=15) and the two-goal journey are sound. 6/8 tests fail before the implementation, for the right reasons, and the 2 that pass guard unchanged behaviour. One gap: the head-not-seen-before-GitHub-conflict ordering is not pinned. An implementation with the order reversed passes all 8 tests. Add a test with a stale head that conflicts and a rebased head that is clean (recipe in the artifact)."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "6747a5ea3c91aedd39089d1811a415680521bfed",
+          "change": "cf883b8d33d5a4588db30959a9502d3f5a674aab",
+          "commit": "1b17cc9bd38ec832f4c8749b1f9a71bd9918872e",
+          "tree": "d761227d3e9d5448c0a371bb7a38ddaae8f05fde"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
