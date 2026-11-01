@@ -200,6 +200,61 @@
       },
       "status": "done"
     },
+    "run_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T05:20:25Z",
+      "fp_parts": {
+        "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
+        "inputs": {
+          "code": "v1:sha256:778f0367f362f123721b1ee7db166891a9b1f5caa2cec8ee8ba81e325c6c8a1a",
+          "commands": "v1:sha256:42bd472028f02eb0449e9b3b2d48b4df3ff9e27165b9d4b3a7766a5919183cac"
+        },
+        "policy": {
+          "verification.commands": [
+            "python3 -m unittest discover -s .agents"
+          ]
+        }
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:444387505dfc29b8a4e2c60e101fdaf898b699cb1aab78ed559cea69638e0b99",
+      "ok": true,
+      "output": {
+        "result": {
+          "details": [
+            {
+              "cmd": "python3 -m unittest discover -s .agents -p test_engine_card_budget.py -v",
+              "exit": 0,
+              "seconds": 36,
+              "tail": "checkpoint_without_tree) ... ok\ntest_deps_sub_field_selector_renders_the_view (test_engine_card_budget.ValueOfTests.test_deps_sub_field_selector_renders_the_view) ... ok\ntest_mismatched_producer_falls_back_to_the_bare_value (test_engine_card_budget.ValueOfTests.test_mismatched_producer_falls_back_to_the_bare_value) ... ok\ntest_missing_or_skipped_producer_falls_back_to_the_bare_value (test_engine_card_budget.ValueOfTests.test_missing_or_skipped_producer_falls_back_to_the_bare_value) ... ok\ntest_producer_from_the_recorded_output_when_not_current (test_engine_card_budget.ValueOfTests.test_producer_from_the_recorded_output_when_not_current) ... ok\ntest_tree_selector_renders_the_checkpoint_with_tree (test_engine_card_budget.ValueOfTests.test_tree_selector_renders_the_checkpoint_with_tree) ... ok\ntest_whole_checkpoint_view_gains_base (test_engine_card_budget.ValueOfTests.test_whole_checkpoint_view_gains_base) ... ok\n\n----------------------------------------------------------------------\nRan 35 tests in 36.249s\n\nOK\n"
+            },
+            {
+              "cmd": "python3 -m unittest discover -s .agents -p test_engine_lifecycle.py",
+              "exit": 0,
+              "seconds": 36,
+              "tail": "...........................\n----------------------------------------------------------------------\nRan 27 tests in 36.807s\n\nOK\n"
+            },
+            {
+              "cmd": "python3 -m unittest discover -s .agents",
+              "exit": 0,
+              "seconds": 291,
+              "tail": "ourceWarning: subprocess 43592 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...................................................................................................................\n----------------------------------------------------------------------\nRan 412 tests in 291.357s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmppidm0kxi\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
+            },
+            {
+              "cmd": "python3 -m unittest discover -s .agents",
+              "exit": 0,
+              "seconds": 306,
+              "tail": "urceWarning: subprocess 441758 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...................................................................................................................\n----------------------------------------------------------------------\nRan 412 tests in 306.539s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmp6c8jgdyy\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
+            }
+          ],
+          "passed": true,
+          "tree": "2a23d345031f0b1fedb07f16dabf735694a67ad9"
+        }
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
