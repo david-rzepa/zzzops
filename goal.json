@@ -356,10 +356,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 5,
-      "correction_runs": 4,
+      "attempt": 6,
+      "correction_runs": 5,
       "findings": [],
-      "finished_at": "2026-11-01T17:19:35Z",
+      "finished_at": "2026-11-01T17:31:00Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -392,14 +392,17 @@
           "python3 -m unittest discover -s .agents -t .agents -p 'test_*.py'",
           "python3 .agents/prompt_stats.py --check"
         ],
+        "responses": {
+          "review_tests:5:1": "fixed: 6ecbeb0 copies dev a05fb97 templates/default/prompts/test_design.md and implement.md into .agents/fixtures/graph12/prompts; no other graph12 prompt differs from dev. test_engine_card_ux passes (incl. test_prompts_name_full_shas); the full engine suite had only this failure before the fix."
+        },
         "tests": {
           "base": "a05fb9714f105b4b6da43deafde535ea6eed8a88",
-          "change": "8f9154ba5965f5bea3156676d8aa66d064914e9c",
-          "commit": "6119eac973d80ebc298693c7dc11b43101a995ad",
-          "tree": "86a3d60fcefa69cc0099009615864ee2cd114a8f"
+          "change": "97c185d5cf500b2a1e8f64e4bceef8ab4c51f73e",
+          "commit": "6ecbeb0fee9ed6f4cff3d03d9c1a3b9fdf7de7f1",
+          "tree": "c23c5d333a09d2e6ba12370e4ecf9595769ac40a"
         }
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     }
   },
