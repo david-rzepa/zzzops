@@ -13,10 +13,10 @@
   "priority": "P2",
   "records": {
     "design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T19:29:14Z",
+      "finished_at": "2026-11-01T19:31:49Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -30,13 +30,16 @@
       "ok": true,
       "output": {
         "doc": {
-          "blob": "986411028655122974717619f320f8d976021a78",
-          "commit": "400510c63e84c360e6cd6bfce9b83acc714d725c",
+          "blob": "aa20a8744d00fc0bc034094524e90fcb9076c9d2",
+          "commit": "bb70672da27ee145730061dec26fbd642b9ed618",
           "path": ".zzzops/reviews/1031/design.md"
         },
-        "summary": "Bootstrap SKILL step 7, SETUP, REPAIR and MIGRATING now say: GitHub's 'Automatically delete head branches' on without settings.branching, off with it (GitHub's deletion races the engine's G1025 retargeting of stacked and release PRs). validate gains a non-gating warning kind auto_delete_head_branches, from one best-effort gh api read (new gh.head_branch_auto_delete returning True/False/None), only when branching is configured and gh is usable. An unreadable setting (read-only token omits the field) stays silent, which SETUP documents. Builds after G1025; tested with the fake gh in five cases; no owner choices."
+        "responses": {
+          "review_design:1:1": "fixed: stated as the primary reason in SKILL step 7, SETUP, MIGRATING and the warning message; REPAIR entry restores release/N or hotfix/x via git push <R> <recorded tip>:refs/heads/<branch>; a test asserts the warning names release/ and hotfix/ branches; the probe gets a 10 s timeout (Gh.run optional timeout)."
+        },
+        "summary": "Revision 2. Adds the stronger reason for turning auto-delete off with settings.branching: merging G1025's finish PR (head release/N or hotfix/x itself) deletes the kept line branch and can break hotfix back-merges mid-finish. The reason now appears in SKILL/SETUP/MIGRATING and in the validate warning text; REPAIR gains an entry restoring the branch from the line goal's recorded tip. The probe uses a 10 s timeout instead of 60 s, and tests cover the warning text and the timeout case."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
