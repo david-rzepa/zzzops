@@ -291,8 +291,9 @@ class FrontierTests(unittest.TestCase):
 
 # golden digest of every node's input_fp and fp_parts over a fixed journey on the frozen 12-node graph, computed on
 # b452cd7, before G1025 (§13 item 9). The shipped graph is not pinned: G1022 rewrites it. After a goal legitimately
-# changes these fingerprints and this branch is restacked onto it, regenerate the digest AT THE NEW BASE COMMIT (never
-# at this branch's head, which would pin G1025's own changes): check out the base, then run
+# changes these fingerprints and this branch is restacked onto it, regenerate the digest with the NEW BASE COMMIT's
+# engine (never this branch's head, which would pin G1025's own changes): in a detached worktree of the base, copy this
+# file into .agents/ and run, from that worktree's root,
 #   python -c "import sys; sys.path.insert(0, '.agents'); import engine_fixtures as fx, test_engine_branching as t; \
 #              print(t.journey_fps(fx.load_template('workflow.json')))"
 GOLDEN_FP = {"graph12": "1f5dada7505f698b5ff2dca604c2d2aedffce4b11b0e9f67e287bd643ccfb128"}
