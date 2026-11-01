@@ -1,0 +1,20 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [
+    1017
+  ],
+  "graph": "default",
+  "id": 1026,
+  "links": {
+    "issue": null
+  },
+  "priority": "P1",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "The owner's feedback (2026-11-01): \"I noticed you haven't asked me for much input on design... for this release branching goal I would have expected to be grilled.\" Approvals may stay delegated (\"I did delegate my approval to you, I don't think we need machinery around that\"); what is missing is the interview. Today `design` goes straight from the spec to a document: neither the graph nor design.md tells the designer to question the owner, and an agent told not to wait makes the owner's choices itself. G1025 (release branching) was designed that way until the root interviewed the owner by hand, and four of its decisions changed.\n\n1. The design prompt (and the add-goal skill at capture) separate the owner's choices (product behaviour, scope, workflow, names others will depend on) from technical ones, and put the owner's choices to the owner before the design is written: a short list of questions with options and a recommendation.\n2. Engine shape, decided in the design: a human `questions` step before `design` that the designer opens with --blocked (existing human-item machinery), or a design output `questions` that the engine turns into a human item and feeds back as the design's input. The answers are recorded verbatim with the owner's words and become a design input, so a later change re-runs the design.\n3. A spec with no open owner choices skips the interview with no cost (no extra round, no extra node run).\n4. The execute skill tells the root to batch interview questions across goals so the owner answers several in one sitting, like design approvals today.\n5. Delegation of approvals is unchanged.\n\nAcceptance:\n- A card snapshot shows the design prompt's owner-questions instruction.\n- An engine test shows a design that raises questions producing a human item, the answers reaching the re-run design card, and a design with none proceeding as today.\n- The execute skill documents batching the interview.\n- This PR edits docs/design for its contract changes and adds a HISTORY §4 row (G1017's rule).",
+  "state": "open",
+  "title": "Design starts by grilling the owner when the spec leaves real choices open"
+}
