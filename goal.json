@@ -146,6 +146,41 @@
       },
       "reason": "stale",
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T08:00:11Z",
+      "fp_parts": {
+        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "inputs": {
+          "base": "v1:sha256:e2e24e462d70f331ee1b6844c51d09411d56c576ee09ef40ebadf1bcfa5fe8ad",
+          "doc": "v1:blob:137369030420987f7ff4f2f87e69612b97276be0"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        ".agents/test_engine_lens_polish.py"
+      ],
+      "holder": "claude:e6ad/test_design-1020-1",
+      "input_fp": "v1:sha256:396f119f7a5470ca424df82dbf8adf6e901cfc35226fda327b966f03bc0b3842",
+      "ok": true,
+      "output": {
+        "commands": [
+          "python3 -m unittest discover -s .agents -p test_engine_lens_polish.py",
+          "python3 -m unittest discover -s .agents -p test_engine_lenses.py",
+          "python3 .agents/prompt_stats.py --check"
+        ],
+        "tests": {
+          "base": "6d4715a1164fd913115f28c8b3bc2df39761be73",
+          "change": "8e36337825aa4f74c151cae5c7a741f215a0033c",
+          "commit": "5ae4e84d4c316f53ff27a4bb1ed6665f25056652",
+          "tree": "82389710e6e51cde19c877bb8b3cae69207ac590"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
