@@ -1,0 +1,18 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [],
+  "graph": "default",
+  "id": 1021,
+  "links": {
+    "issue": null
+  },
+  "priority": "P1",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Bug found while dogfooding Release 1. After G1014, G1018, G1001 and G1015 merged into dev, the PRs for G1016 (#747) and G1000 (#748) conflicted with dev (GitHub mergeable CONFLICTING, mergeStateStatus DIRTY). GitHub runs no pull_request workflows on a conflicting PR, so no checks ever appear, and git.integrate kept answering 'required checks pending: dev-required-tests' with a retry. It would have waited forever, and nothing pointed at the real problem. github.merge already handles CONFLICTING/DIRTY by raising a conflict finding on the base input; integrate does not.\n\nOutcome:\n- After pushing or updating the PR, git.integrate reads `mergeable` and `mergeStateStatus` from the `pr view` call it already makes.\n- On CONFLICTING or DIRTY it finishes not-ok with a `conflict` finding on its `base` input, as github.merge does, so `base` re-runs and rebases onto the current integration tip, or asks for a conflict resolution through its existing retry path.\n- On UNKNOWN it waits briefly, as merge does.\n- A 'checks pending' wait that has seen no check at all after a bounded time, and whose PR is not mergeable, never just waits again.\n- Also check whether `base` should already be stale when the integration branch moves while integrate is waiting. It was not offered in this incident. Explain why, and fix it if the design intends it.\n\nAcceptance:\n- Fake-gh tests: a conflicting PR gives a conflict finding and base ready; UNKNOWN then MERGEABLE proceeds; a mergeable PR with pending checks still waits.\n- A journey: two goals both touch one file; the first merges; the second's integrate sends it back to base, and it then integrates cleanly after the rebase.\n- No extra GitHub calls in the common case: reuse the pr view fields.\n- Docs: REPAIR.md mentions the case.",
+  "state": "open",
+  "title": "integrate must detect a conflicting PR instead of waiting for checks forever"
+}
