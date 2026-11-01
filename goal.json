@@ -187,6 +187,55 @@
       },
       "status": "done"
     },
+    "run_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T05:34:39Z",
+      "fp_parts": {
+        "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
+        "inputs": {
+          "code": "v1:sha256:7818a8b7c3d001fb7340e806b59de3f5b81a30aeb9a0816df5e595d0a8a88d20",
+          "commands": "v1:sha256:9e98bc44659441e89c38978ea8600798fbc4e09a2995b34548de0daaa832d9ec"
+        },
+        "policy": {
+          "verification.commands": [
+            "python3 -m unittest discover -s .agents"
+          ]
+        }
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:0d8b8efd26a7803be1e26c688007ddb245943286914d34c1531b7bfce3f5a001",
+      "ok": true,
+      "output": {
+        "result": {
+          "details": [
+            {
+              "cmd": "cd .agents && python3 -m unittest test_engine_card_ux test_engine_lifecycle test_engine_schemas test_engine_journeys test_engine_docs",
+              "exit": 0,
+              "seconds": 93,
+              "tail": "....................................................................................................\n----------------------------------------------------------------------\nRan 100 tests in 93.896s\n\nOK\n"
+            },
+            {
+              "cmd": "python3 .agents/prompt_stats.py --check",
+              "exit": 0,
+              "seconds": 0,
+              "tail": "# Enforced prompt budgets\n\nOnly always-loaded context and frequent routed workflows are blocking. Other workflows and total inventory are advisory.\n\n| Context | Bytes | Est. tokens | Limit | Status |\n| --- | ---: | ---: | ---: | --- |\n| always-loaded/codex | 0 | 0 | 700 | PASS |\n| capture/codex | 6719 | 1680 | 3700 | PASS |\n| execution/codex | 9215 | 2304 | 8800 | PASS |\n\nAdvisory total inventory: 20 prompts, 39576 bytes, ~9901 tokens.\n\n## Policy context boundary\n\nPublic documentation is excluded. Static prompts, the current project policy, and cold default/review context are counted separately.\n\n| Context class | Bytes | Est. tokens |\n| --- | ---: | ---: |\n| static-hot-prompts | 30918 | 7730 |\n| current-project-policy | 7536 | 1884 |\n| cold-default-review | 16753 | 4189 |\nPASS: all enforced prompt contexts are within their committed limits.\n"
+            },
+            {
+              "cmd": "python3 -m unittest discover -s .agents",
+              "exit": 0,
+              "seconds": 278,
+              "tail": " traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 1043467 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1016/plugins/zzzops/zzzops/engine/worktree.py:31: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpmweq0jsy/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/home/dave/Work/dev/zzzops/.zzzops/worktrees/g1016/plugins/zzzops/zzzops/engine/worktree.py:31: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpmweq0jsy/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 1046744 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...................................................................................................................\n----------------------------------------------------------------------\nRan 407 tests in 278.401s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmpq7kdtnlx\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
+            }
+          ],
+          "passed": true,
+          "tree": "f56d75480bd332815ae0ba3688d4fbe765d5265d"
+        }
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "test_design": {
       "attempt": 4,
       "correction_runs": 3,
