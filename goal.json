@@ -37,6 +37,54 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:65aea1189755d4441772298bc3609fd097f5f21fc8aeaa51c901e50c94c5daea",
+          "text": "The planned assertion `environment == []` also checks gh, so it would fail in CI. validate's environment is check_environment(git) + gh_problems(s) + package_check() (cli.py:194-202), and gh_problems reports 'gh is not installed' or 'gh is not authenticated: run `gh auth login`, or set GH_TOKEN' (gh.py:72-81). The validate-linux and validate-claude jobs export no GitHub token, and dev machines may lack gh. So the new test_marketplace_bundle test and the claude_plugin_acceptance checks would fail even with the fix. The design's local reproduction passed only because gh is authenticated on this machine. Fix: assert that no environment entry starts with 'plugin package:' and that 'skill discovery metadata' is absent (simplest, and works on every platform), or put a fake gh (.agents/engine_fake_gh.py) on PATH. Keep the SKILL.md channel and policy-entry assertions.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T19:37:31Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:2adddada44fe4f179b53e2f1dfaf589a0cfc0cf3",
+          "spec": "v1:sha256:8b64570e05d92537c5291643a3706f35bffd605782d3d9c867408925aa7b4aec"
+        },
+        "policy": {},
+        "subject": "v1:sha256:65aea1189755d4441772298bc3609fd097f5f21fc8aeaa51c901e50c94c5daea"
+      },
+      "holder": "claude:e6ad/rd1017",
+      "input_fp": "v1:sha256:01c65d8edc4930225f60937eb2bf720be9e95f0e3e068a473a9243efce8d00b9",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "8d675e0037d717ae6cf0f10a2eae476f855c12f7",
+          "commit": "a917a55ee83d1cdf2c2198d67aff282070ee2dda",
+          "path": ".zzzops/reviews/1033/review_design.md"
+        },
+        "summary": "The cause and fix are right. I reproduced at 8d8437a that a 0.0.0-dev Claude build fails package_status with the reported detail, and that making only the rendered channel follow the version gives ok:true. The shared channel_for_version rule, the harness detection order (cachebuster, Claude base, Codex base, generated-marketplace layout, None) and the neutral fallback are sound, and they match the real install layouts. One finding: the planned tests assert environment == [], but validate's environment also includes gh_problems (gh missing or unauthenticated). CI exports no GH_TOKEN, so the new marketplace test and the acceptance checks would fail even with the fix. Assert on the plugin-package entry instead, or put a fake gh on PATH."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "2adddada44fe4f179b53e2f1dfaf589a0cfc0cf3",
+          "commit": "b49df20abb3e715cb28f427f1533e8f8356035b7"
+        }
+      },
+      "status": "done"
     }
   },
   "release": 1,
