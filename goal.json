@@ -198,10 +198,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T04:17:54Z",
+      "finished_at": "2026-11-01T04:25:00Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -213,21 +213,24 @@
       "frozen": [
         ".agents/test_engine_live_input_changes.py"
       ],
-      "holder": "claude:e6ad/test_design-1014-1",
+      "holder": "claude:e6ad/test_design-1014-2",
       "input_fp": "v1:sha256:150697383950e390150b2b04204b5d06804b0aece04cdf883c93eae7c9ebbd55",
       "ok": true,
       "output": {
         "commands": [
-          "python3 -m unittest discover -s .agents -t .agents -p test_engine_live_input_changes.py"
+          "cd .agents && python3 -m unittest test_engine_live_input_changes -v"
         ],
+        "responses": {
+          "review_tests:1:1": "fixed: added PolicyLiveLeaseTests.test_validate_policy_ref_lists_a_running_node_the_policy_removes. review_design is running (B's lease) when a policy branch deletes the node and every input that references it (approve_design.design_review, base.design_review, design.dep_reviews). validate --policy-ref must report policy == [] and must not crash. It must give exactly one live_leases_on_changed_nodes entry for (goal, review_design), which checks de-duplication of the state and fingerprint rules. That entry carries attempt/holder/expires_at from the card, stale_because == [], and the exact abandon/restart argv and command. Before implementation it fails with KeyError 'attempt': today's state rule finds the node, but the entry lacks the new fields."
+        },
         "tests": {
           "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "3a1bf34f49e3fb2704b01a350d9d7ccb9cd5daeb",
-          "commit": "10079a83aa5a0de5b92eb037c1ca4e559d220ac7",
-          "tree": "4d306a451d8ad9883c39c2a2672b556a1c3186c8"
+          "change": "db5819d57aed050b2b1c3d51de3ea7f493689af9",
+          "commit": "8e057f75b5a9df97ea14ed17c7caae061f85ba31",
+          "tree": "434d66049795dcb5f8b1c7c4ec079e11bb543266"
         }
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     }
   },
