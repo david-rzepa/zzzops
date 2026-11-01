@@ -206,39 +206,39 @@
       "status": "done"
     },
     "review_impl": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T06:55:51Z",
+      "finished_at": "2026-11-01T07:44:34Z",
       "fp_parts": {
         "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
         "inputs": {
-          "code": "v1:sha256:e65850d0065f9360cd8333fbf7dc1af79ba122e8333228e28efb42fdf5f040f4",
+          "code": "v1:sha256:2c0574165b3d1b73286cfd17f2b9fdf6f92587b44fbace7c285d20cf2ab637c6",
           "doc": "v1:blob:5ed045be21817ba93e467355960e3c37a4cb091f",
-          "tests": "v1:sha256:e65850d0065f9360cd8333fbf7dc1af79ba122e8333228e28efb42fdf5f040f4"
+          "tests": "v1:sha256:2c0574165b3d1b73286cfd17f2b9fdf6f92587b44fbace7c285d20cf2ab637c6"
         },
         "policy": {},
-        "subject": "v1:sha256:7b179d2f1dc264d46819cc92ccc98b8655a173ab27263572897505dacef4613d"
+        "subject": "v1:sha256:9d155ce2c36c4a8a65003ad87d666618fe2ae602713189d787aedb3bc447ac92"
       },
-      "holder": "claude:e6ad/review_impl-1000-1",
-      "input_fp": "v1:sha256:9ee34d3534d634b4b737a2df0c71944ab16931ad85328358905493ecb8d9efc7",
+      "holder": "claude:e6ad/review_impl-1000-2",
+      "input_fp": "v1:sha256:cfafb14a274bf89c23fe9b69f481a80d33113482cf7b6b54d49d63172f690386",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "1bf4dd0ff845fa723b746657ecdfa4a20185f3e7",
-          "commit": "fd32b9e500564d8317f0cffdee4b39e09950c184",
+          "blob": "29d6faeeb709cd974da7883293e410c15a198b58",
+          "commit": "9631dd41e3a19e9e4d9380490e20510733e6131a",
           "path": ".zzzops/reviews/1000/review_impl.md"
         },
-        "summary": "Approved: the lens graph, the filter-as-join, promote-never-demote verdicts, candidates freshness, skip refusals, intent and previous.changed all match design rev 4 and the delegate's skipped-node-findings directive. The tests are not weakened, the fixture freeze is exact, the 12->26 count is mechanical and no .zzzops policy file changed. Root follow-up: record the implementer's extra filter validation rules for G1017."
+        "summary": "Rebase conflict resolution onto dev 6747a5e is sound. range-diff 54d7e83..e270a25 vs 6747a5e..6476249: only commits 11 (engine) and 13 (docs) differ, and only in how G1000's hunks sit on the new base. frontier.py: the running state keeps G1014's rparts/parts and passes R to fp_parts, so a running filter's parts include `candidates` and live_input_changes/stale_keys report `candidates` correctly. card.py: G1000's `policy` section and long candidates/notes are expressed as G1018 _steps/_apply steps; views are still skipped (_is_view), every step is measured by shrink_candidates before use (never grows), and `full` stops re-blobbing (fixed point). A probe with long policy, candidates and notes confirmed the checkpoint view stays the same, the card shrinks, and shrink(shrink(c)) == shrink(c). Docs: G1000's hunks are unchanged and dev's new text (legacy state, Edits, request_key, MIGRATING housekeeping) is kept. No material findings."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "code": {
-          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "15eadcd5876053bb888c6f6b3b3e7f35489b21ff",
-          "commit": "e270a250a2337fce3729f80f4bf8711cff0222c0",
-          "tree": "221f1d882da4495d02645fd77b743d6374ebec74"
+          "base": "6747a5ea3c91aedd39089d1811a415680521bfed",
+          "change": "2ff7c35411997dbfcdb07e167588638466848d7d",
+          "commit": "6476249c590625ad6628f56f728f7c8eea02b9f2",
+          "tree": "81c1446cce52a31639b51ff756252d040e81f62f"
         }
       },
       "status": "done"
