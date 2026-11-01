@@ -81,6 +81,7 @@ loop:
   - `cmd_new` treats `up_to_date` as a recovery. The remote ref already holds this exact oid, so the goal is the request's goal. It refetches for `next` and returns `recovered: true`, without the contents check: the bytes are identical.
   - Result: exactly one call in any identical race reports `recovered: false`, whatever the clocks.
 - **Writes**: the scan runs before `require_writable`, because recovering writes nothing. An exact retry therefore succeeds even while a policy branch pauses writes, as long as the snapshot is current. An offline snapshot skips the scan and falls through to `require_writable`, which refuses exactly as it does today.
+  - **`--policy-ref` stays refused first**: `cmd_new` must keep calling `session(a)` (cli.py:328) before `s.open()` and the scan. `session()` refuses `--policy-ref` with `usage` for every non-preview verb before a Session exists (cli.py:97-100), so a retry with `--policy-ref` is refused and never reaches the scan. Implementers must not move the scan ahead of that call or rely on `require_writable` for this refusal.
 - **Conflict**: if the key matches but the contents differ, `cmd_new` refuses with `Refused("validation", "request_key <k> already created G<n> with different contents: <fields>", details={"goal": n, "fields": [...]}, hint="use a different request_key, or `zzzops edit G<n>`")`. Using the existing `validation` code avoids a new entry in the error-code list (SPEC §3.17).
 - **Several matches**: if more than one goal matches (see Risks), return the lowest id and add a `warnings` entry of kind `duplicate_request_key` that lists all of them.
 
@@ -129,6 +130,9 @@ Every `new` pushes `max(known)+1` with a create-only lease. In the usual race, b
 7. **Schema.** `validate_new_file` accepts a valid `request_key`. It rejects a key containing `:`, an empty key, and a key of 129 characters or more.
 8. **Same-clone fetch race.** `test_a_goal_whose_local_ref_outran_this_fetch_is_recovered_not_duplicated`: patch `engine.store.build_snapshot` so the first snapshot moves `g1000` into `deleted`. The call must refetch, recover G1000 and push nothing. Also cover a goal that really was deleted from the remote: the call refetches once, still finds no match, and allocates a new id.
 9. **Up-to-date push.** Two in-process calls with the same file and the same `ZZZOPS_NOW`, where the second call's pre-allocation scan is patched to miss. The second push is `up_to_date`, and the second call returns `recovered: true` with the same `goal_commit`. `push_atomic` without the keyword still returns `ok` for an up-to-date push.
+10. **`--policy-ref` on a retry.** Keep `test_policy_ref_is_refused_even_for_a_retry`: after a successful `new`, rerunning it with `--policy-ref` exits 1 with `usage`. This pins the refusal ahead of the scan.
+
+Tests 3 (shared-`ZZZOPS_NOW` variant) and 9 are not yet in the written tests; implement and test_design must add them.
 
 ## Out of scope
 
@@ -140,5 +144,7 @@ Issue-based discovery, lock release and capture checkpoints (dropped by the spec
 - **Conflicts are reported as `validation`** rather than a new error code.
 - **Same-clone fetch race (attempt 2)**: refetch once and rescan when nothing matched and `snap.deleted` is not empty. This is the fix the test writer validated (10 of 10 threaded runs). The alternative was to scan deleted tips and confirm a match with a refetch. It needs the same refetch and adds scope rules, so it was not chosen.
 - **Up-to-date push counts as a recovery (attempt 2)**: this was handled rather than disputed. The fix is a scoped `push_atomic` keyword. It keeps `recovered` honest and lets the race test assert exactly one fresh create without varying the clock.
+
+- **`--policy-ref` ordering (attempt 3)**: review_design:2:1 was disputed. `session(a)` already refuses `--policy-ref` before the scan (cli.py:97-100, called at cli.py:328), so the scan cannot run with it. The ordering is now stated in §4 so it is kept.
 
 Neither needs a human decision.
