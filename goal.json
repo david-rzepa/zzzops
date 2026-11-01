@@ -35,6 +35,48 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:2fadddd1bcbc1f49362b4302368f6ea0da00cf19ce4ce6dbd08f3bc32909d4b9",
+          "text": "Reclaim cards would wrongly downgrade capability. card.build sets cap='routine' when stale_because == ['inputs.base'] (card.py:79-80), a rule meant for record-stale rebases. The design puts lease-since-claim staleness on reclaim cards and says existing stale_because rules apply unchanged, so a reclaimed no-record implement or test_design (both consume inputs.base, and base re-runs whenever integration moves) gets capability 'routine' and is routed to the cheapest models for a full first run; same for a reclaimed reopened run. Fix: key the routine downgrade on staleness against a done record only (e.g. the record-stale set, not the union), or only when the abandoned lease's reason was 'stale'; add a test that a no-record implement reclaimed after base moved keeps its own capability. While editing output_schema, also consider: non-review finding_effect should say the phase re-runs 'if that ancestor's output changes' (a dispute leaves it current), and the artifact text should say --artifact takes the local file while artifact.path is where submit stores it.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T04:27:13Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:fc9eeed94fdd507fbd89c7622c5b98f05e126148",
+          "spec": "v1:sha256:b91ef8783852765cb0c4fc07987d6f0e11f2526f36d7527bcee615c0d6da1b6b"
+        },
+        "policy": {},
+        "subject": "v1:sha256:2fadddd1bcbc1f49362b4302368f6ea0da00cf19ce4ce6dbd08f3bc32909d4b9"
+      },
+      "holder": "claude:e6ad/review_design-1016-1",
+      "input_fp": "v1:sha256:cd804ef2b5ae0f0bbe2be56cc6392024c999c048c6f9b3105442e58b3aea8eab",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "e1aaae55ac30202916455627988e5bb45afb10a1",
+          "commit": "700cc0f16106a53b1d696a438e1b782612422a82",
+          "path": ".zzzops/reviews/1016/review_design.md"
+        },
+        "summary": "Sound design covering all six items, no-fetch and merge-clean with G1014/G1000/G1018; one material fix: the union stale_because on reclaim cards triggers the existing inputs.base -> routine capability downgrade for first-time (no-record) phases such as implement/test_design after base moves. Notes: non-review finding_effect wording, and fold in the artifact --artifact vs artifact.path wording."
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
