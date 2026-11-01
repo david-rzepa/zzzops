@@ -204,10 +204,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T21:35:43Z",
+      "finished_at": "2026-11-01T21:39:25Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -230,16 +230,19 @@
       "output": {
         "commands": [
           "cd .agents && python -m unittest test_marketplace_bundle test_agent_plugin test_plugin_cachebuster test_claude_plugin_acceptance test_ci_selection test_release_validation",
-          "python .github/scripts/run_product_validation.py --platform linux"
+          "python -c \"import runpy; m=runpy.run_path('.github/scripts/run_product_validation.py'); m['select_native_tests'](m['discover_native_tests']())\""
         ],
+        "responses": {
+          "review_tests:1:1": "fixed: dropped `run_product_validation.py --platform linux`; replaced it with the offline native-selection check `select_native_tests(discover_native_tests())` (about 0.1s; fails on a missing id). Also took the non-blocking note: test_claude_plugin_acceptance now asserts main()'s source calls require_no_package_check( at least twice (generated and installed runtimes)."
+        },
         "tests": {
           "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "daff743d26c169d1fe2acdf1898a0302143d40e3",
-          "commit": "47a033380d7476f736e40a47b38f344da76ffc0c",
-          "tree": "9fbe10437925ffff633039758a8ad70b611a4c11"
+          "change": "305bf91cc16ed066378d212fa03d01eecf766628",
+          "commit": "48a9617a8c8d39a643ad07469575e748be548531",
+          "tree": "e647ef1a68afc394c93623a277554d138fdee8a1"
         }
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     }
   },
