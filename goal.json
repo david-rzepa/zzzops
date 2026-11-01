@@ -167,6 +167,68 @@
       "reason": "stale",
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_tests:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:3bc8406b0ad10476f39da066d465acd780a7ac242f5ee6fd75e812d5916b174e",
+          "text": "Nothing checks that SPEC and DESIGN were actually amended. Every test passes when HISTORY §4 has one row per goal in MERGED_AMENDMENTS and SPEC and DESIGN stay at rev 6.3 apart from the scrub and the status lines. That is the cheapest wrong implementation, and its failure is the contract drift this goal removes. Fix: add one sentinel per applied amendment, a contract term the amendment introduces that rev 6.3 lacks, and assert it appears in SPEC.md (or DESIGN.md). I grepped these and all are absent from rev 6.3: #742 `--policy-ref`; G1001 `request_key` or `Request-Key:`; G1014 `inputs_changed`; G1015 `legacy_policy` and `settings.legacy`; G1016 `no_longer_live` or `respond_to`; G1000 `filter_design`; G1020 the 'approved with' notes outcome; G1023's footnote `<full 40-hex sha>`. For G1018 and G1021 pick a term the designer is sure of; `4,096`, `merge-tree` and `CONFLICTING` already appear. Use terms that G1022, G1024, G1025 and G1027 will not remove (no node counts, no engine.min), keyed by goal so a later rename edits one entry.",
+          "upheld": false
+        },
+        {
+          "id": "review_tests:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:3bc8406b0ad10476f39da066d465acd780a7ac242f5ee6fd75e812d5916b174e",
+          "text": "Nothing checks that the case-3 pending rows exist. Design revision 3 gives G1022 (`plugins/zzzops/zzzops/templates/default/workflow.json lacks \"\\\"truth_design\\\"\"`) and G1024 (`plugins/zzzops/zzzops/engine contains \"policy_update\"`) pending rows, but the tests accept an empty table. An implementation that leaves them out passes, and those goals can then land without the guard ever running on them. Fix: for each of G1022 and G1024, assert that either a pending row exists or HISTORY §4 has a row naming that goal. The second branch keeps the test green after the goal lands and deletes its row. Optionally also assert the row's marker path.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T18:37:20Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:42144d61b58520a0b331e1b3995235d9ec279a05",
+          "tests": "v1:sha256:01e181eb76c6accd537174d18e236f4ef81eb35ff5a56a37c94550dd0601009d"
+        },
+        "policy": {},
+        "subject": "v1:sha256:3bc8406b0ad10476f39da066d465acd780a7ac242f5ee6fd75e812d5916b174e"
+      },
+      "holder": "claude:e6ad/rd1017",
+      "input_fp": "v1:sha256:baf2524084b4ed99b363c32423307d63a7ba142a6024bba4cde001d7a0874df8",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "106e6c8107ccfdaeadb1d137d9bb40c4d4570621",
+          "commit": "2b80bf3e3eaada68825aee7b2820903ce9e4f88e",
+          "path": ".zzzops/reviews/1017/review_tests.md"
+        },
+        "summary": "The guard and its parser are tested thoroughly. This covers contains and lacks markers, directory markers (recursion, every-file lacks, untracked files ignored, prefix safety, trailing slash), missing paths and 14 malformed rows. Pending rows must belong to open goals that depend on 1017. The scrub, links and anchors, citations and HISTORY-log tests match design revision 3. In a simulated naive move (rev 6.3 docs copied unchanged into docs/design), the citation and heading tests already pass, and 12 tests correctly fail. The tests are not brittle against later goals. Two gaps would let plausible wrong implementations pass. F1: nothing checks that SPEC and DESIGN were actually amended; HISTORY rows alone satisfy every test. F2: nothing checks that the G1022 and G1024 case-3 pending rows exist, so an empty table passes."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "8d8437af244f85c4dd6cb20c1ed502140cb9ff77",
+          "change": "67527b52b49a21f4012394337a3590d7412edfdb",
+          "commit": "559bbb6a5b9af71adc06c01fbde2b75b732654ff",
+          "tree": "d4018f21cef227a4910e39eb8b4d02e2138a519d"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
