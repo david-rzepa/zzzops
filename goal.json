@@ -41,15 +41,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:cd155536270d85fc05ace2430a5ba66b23aef29e2345ee4b435d3247916b1e12",
@@ -61,7 +61,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:cd155536270d85fc05ace2430a5ba66b23aef29e2345ee4b435d3247916b1e12",
@@ -73,7 +73,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:cd155536270d85fc05ace2430a5ba66b23aef29e2345ee4b435d3247916b1e12",
@@ -85,7 +85,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:cd155536270d85fc05ace2430a5ba66b23aef29e2345ee4b435d3247916b1e12",
@@ -93,29 +93,29 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T17:48:42Z",
+      "finished_at": "2026-11-01T17:56:50Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:0424a9a0a2592feab90f62d7d1357560a0492f5c",
-          "spec": "v1:sha256:af94133f2c4c82135155cab3d35c4bb3c6f008f2d589a6ffaf8ce5df843a9015"
+          "doc": "v1:blob:496ddd5a4af997072a6592b0a8c591ece5625b54",
+          "spec": "v1:sha256:7996e438ac16c3ab40362c13b86fdf78a5eb86835232fc4aa002f6f29c54b257"
         },
         "policy": {},
-        "subject": "v1:sha256:cd155536270d85fc05ace2430a5ba66b23aef29e2345ee4b435d3247916b1e12"
+        "subject": "v1:sha256:2652e06fa9c391f6569c538263aa908167bf9cc3d1fc9fa685cc4eaf33f851d5"
       },
       "holder": "claude:e6ad/rd1022",
-      "input_fp": "v1:sha256:eacd78a89a394619080aa70340b0ff4bf12b6bbe484e51ee24434f50a68b2c86",
-      "ok": false,
+      "input_fp": "v1:sha256:3e5177063fe02f91e654be434adb61b8c1acc68b3768f8a6876dc050fe2631fb",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "234522a1e58e91420bde88b10764584d61bf42cb",
-          "commit": "0f8c34d5aa6a1967f15403c5fec6e65f34d7272e",
+          "blob": "706c972fda67f792d23a03491ea8f62e1ce04883",
+          "commit": "581d911bcb6f8244474e3dadeadc4ade5340f3d6",
           "path": ".zzzops/reviews/1022/review_design.md"
         },
-        "summary": "Sound consolidation that matches the spec and the owner's direction, with code claims verified against G1020. Four changes needed: point the Missing lens at the subject's own commit, not read_dev; adopt G1017's case-3 dependency and edit docs/design in this PR; add the G1024 notice path and version coordination to the rollout; correct the migration stale keys and budget charge for review_impl."
+        "summary": "Revision 2 resolves all four prior findings. The Missing lens searches code.commit; G1017 case 3 is adopted with in-PR docs/design edits; the G1024 notice path and version rule are added; the migration stale keys are corrected and review_impl's spec input is dropped. §8a matches G1025's spec. No new findings and no owner questions: the remaining choices are bounded or have a clear winner."
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     }
   },
