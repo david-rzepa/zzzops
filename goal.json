@@ -165,6 +165,44 @@
       "reason": "stale",
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T17:45:26Z",
+      "fp_parts": {
+        "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
+        "inputs": {
+          "code": "v1:sha256:0bd0456d963ff1c9ec69c0b4aef93296de6e4d49bc486aea06823c68efe14998",
+          "doc": "v1:blob:2794f7a54f63df0ccfa953d213abcdd40891d690",
+          "tests": "v1:sha256:97e1408bb6cc91a46d9957da946d20d392917482562d32caaac4dc903f331f75"
+        },
+        "policy": {},
+        "subject": "v1:sha256:3d9e10be2b76ea5c0546fa48f3a692965bfb86cec6909288275846dbf6da47fd"
+      },
+      "holder": "claude:e6ad/rd1023",
+      "input_fp": "v1:sha256:e12266a2a16afd4342cad260d5cd78731d88563b6e2d9d81c3e9f7413acf67e4",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "759558286e85238f460c1f6330c2b2d874825083",
+          "commit": "6e5b49b92c2e0781f6041fc13fc636ffac1719c8",
+          "path": ".zzzops/reviews/1023/review_impl.md"
+        },
+        "summary": "Implementation is exactly the two designed edits; tests cover them; no other short-sha override found except the out-of-scope policy prompt copy (needs a policy branch). schemas.py:951 says <40-hex sha> (no \"full\"), optional tidy."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "a05fb9714f105b4b6da43deafde535ea6eed8a88",
+          "change": "8c9cee6da7570e0b95c54680db3ecb09140a7299",
+          "commit": "92e8eff0e2ffa8683fc156ccbbd5c677f6961b6c",
+          "tree": "82343a15cf504568f2fde4de45302a9825daf728"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 1,
       "correction_runs": 0,
