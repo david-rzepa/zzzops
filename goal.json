@@ -1,7 +1,9 @@
 {
   "budget": null,
   "closed": null,
-  "depends_on": [],
+  "depends_on": [
+    1017
+  ],
   "graph": "default",
   "id": 1011,
   "links": {
@@ -12,7 +14,7 @@
   "release": 2,
   "schema": 1,
   "skip": {},
-  "spec": "Add an optional dispatcher that takes next's actions and runs each as a non-interactive local codex or claude CLI process in the goal worktree, minting the holder label, running start/renew/submit, and capturing logs. Support routing.tiers preferences such as 'review nodes prefer a different provider than the subject holder', with explicit behaviour when a provider is unavailable. Reuse each CLI's existing auth, never copy credentials, and keep human items on the root conversation. Independence remains holder-label inequality; provider difference is a preference, not proof. Changed vs old wording: no new lease/ownership machinery; it drives the existing verbs.\n\nMigrated from GitHub issue #550 after the engine reset (#740).",
+  "spec": "Add an optional dispatcher that takes next's actions and runs each as a non-interactive local codex or claude CLI process in the goal worktree, minting the holder label, running start/renew/submit, and capturing logs. Support routing.tiers preferences such as 'review nodes prefer a different provider than the subject holder', with explicit behaviour when a provider is unavailable. Reuse each CLI's existing auth, never copy credentials, and keep human items on the root conversation. Independence remains holder-label inequality; provider difference is a preference, not proof. Changed vs old wording: no new lease/ownership machinery; it drives the existing verbs.\n\nMigrated from GitHub issue #550 after the engine reset (#740).\n- This PR edits docs/design/SPEC.md and DESIGN.md for every contract change it makes and adds a HISTORY §4 row.",
   "state": "open",
   "title": "Launch and supervise local Codex and Claude workers for frontier actions"
 }
