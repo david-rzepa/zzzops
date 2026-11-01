@@ -1,5 +1,7 @@
 # G1020 design: polish the shipped lens prompts
 
+**Revision 2.** One correction: a finding without `material` counts as material (§3, test 3). The `test_design` sentence moves after the filter sentence (§1).
+
 **Builds on:** G1000 design revision 4 and its code at `zzzops/work/g1000` (fd32b9e, not yet merged). G1020 stacks on G1000; nothing here changes G1000's mechanism.
 
 ## Outcome
@@ -12,7 +14,7 @@ This repository's own `.zzzops/` policy and prompts are not touched (spec item 4
 
 ## 1. Targeting `test_design`: put it in the `review` instruction
 
-**Change.** Add one sentence to `instructions.review` in `plugins/zzzops/zzzops/templates/default/POLICY.json`. Put it after "Raise a finding only when …":
+**Change.** Add one sentence to `instructions.review` in `plugins/zzzops/zzzops/templates/default/POLICY.json`. Put it after "An independent filter may promote a note; it never demotes a material finding." (before "On a re-review"), so the `impact`/`material`/filter text stays together:
 
 > On code, target `test_design` for a problem in the tests; `implement` cannot change them.
 
@@ -49,8 +51,8 @@ The other six lens prompts keep their single "On code:" line unchanged.
 - Labelling approval items "notes only". It adds rendering code in three places, keeps a misleading decision, and leaves the lens's summary saying "changes requested".
 - Making `decision` strictly derived, so `changes_requested` with only notes is refused. That breaks in-flight goals and existing tests (`test_engine_lenses.py` line 345 submits `changes_requested` for any open finding) for no gain.
 
-**Changes (engine, about 10 lines):**
-- `engine/records.py` `review_findings`. For a filtered lens (`graph.filter_of(X)`), `approved` requires no open **material** finding (`f.get("material")` is true). A lens with any material finding open must still say `changes_requested`. `changes_requested` still requires some open finding. Non-filtered reviews (`review_tests`, the human approvals) keep "approved requires no open findings" unchanged.
+**Changes (engine, about 15 lines):**
+- `engine/records.py` `review_findings`. For a filtered lens (`graph.filter_of(X)`), `approved` requires no open **material** finding. A finding is material unless it says `material: false`: one shared helper, `is_material(f) = f.get("material", True) is not False`, the rule `card.candidates`, `fingerprint` and `frontier` already use. So an open prior finding with no `material` key (recorded before a filter was attached, or by an in-flight goal) blocks `approved`. `candidates`, `fingerprint` and `frontier` call the same helper instead of repeating the expression. A lens with any material finding open must still say `changes_requested`. `changes_requested` still requires some open finding. Non-filtered reviews (`review_tests`, the human approvals) keep "approved requires no open findings" unchanged.
   - Refusal text: "approved requires no open material finding". A lens may approve with notes (`material: false`).
 - `engine/card.py` `output_schema`. A filtered lens's `decision` hint becomes "approved | changes_requested (changes_requested only with a material finding open; approve with notes)". Other review nodes keep the current text.
 - `engine/verbs.py` `outcome_of`. When `decision == "approved"` and findings are open, the head reads `approved with N note(s) → <targets>`, not `failed: …`. Today that label is unreachable for reviews; with this change it would be wrong.
@@ -73,7 +75,7 @@ The other six lens prompts keep their single "On code:" line unchanged.
 
 1. **Card snapshot.** In `test_engine_lenses.py`, take the `truth_impl` card. Its `instructions.review` (inline `text`, or the blob it references) contains "target `test_design`". Do the same for `intent_impl`, to cover a non-skippable lens.
 2. **Notes-only approval is accepted.** A filtered lens submits `approved` with one `material: false` finding. The submit is accepted, the finding is an open candidate on the filter card, and the outcome text starts "approved with 1 note".
-3. **Material approval is refused.** `approved` with a `material: true` finding is refused with the new message.
+3. **Material approval is refused.** `approved` with a `material: true` finding is refused with the new message. So is `approved` while an open prior finding of that lens has no `material` key: it counts as material.
 4. **Approval-item rendering for a notes-only lens.** This is the spec's acceptance. Lens approves with one note, the filter answers `note`, and the item reaches `approve_design`. The item's `notes` holds the finding under that lens, and the lens's `context` summary is the lens's own approved text. Then the filter answers `keep` and the subject reopens (promotion still works).
 5. **Unfiltered reviews are unchanged.** `review_tests` answering `approved` with an open finding is still refused.
 6. **`prompt_stats --check` passes.** Also check that `lens_truth.md` contains "On code:" exactly once.
