@@ -105,6 +105,35 @@
       "reason": "reopened",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T21:26:26Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:8a2e8ac0217a3e46b72c1e3ce2d2c6f98e60949f5743134ece85574f6cb677e3",
+          "doc": "v1:blob:f4c441999a3da82b48323c1b35d7f55058578cc7",
+          "tests": "v1:sha256:17960be0d86d77405c1f82798717b2a22198c9e78fefe75abe836c3400d157d5"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/td1029",
+      "input_fp": "v1:sha256:b22006b97cbdd91e403a32b284ccc2949c20ff8cde725dfac32b9e6388e0f505",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "81132b9260e383b58b42fe702ace5b44fc2d56a1",
+          "commit": "80d446871f81edfa6948520ef3fa8d8aca54a777",
+          "tree": "72807734f4a0a6beb0ade3003798ee9ddfa6defb"
+        },
+        "summary": "The add-goal skill now has a step 2 that compares the goal with settings.intent before `new` and offers change the goal, amend the intent (policy branch) or proceed, recorded as a closing `Project intent:` spec paragraph with the owner's dated quote; it never offers an approve_design skip for such a goal. The Intent lens honours the paragraph only with the owner's dated words (otherwise it accepts nothing), and approve_design shows the paragraph, noting that under delegation the owner sees it only when they answer or read it, so the guard is the owner's own words. Capture signals were added to prompt_stats; DESIGN §3.12 and HISTORY §4 are updated. The engine is unchanged."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 2,
       "correction_runs": 1,
