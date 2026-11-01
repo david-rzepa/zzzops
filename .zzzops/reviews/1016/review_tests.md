@@ -1,56 +1,34 @@
-# G1016 review_tests (attempt 1)
+# G1016 review_tests (attempt 2)
 
-Reviewed tests commit 802c016 (base 54d7e83): new `.agents/test_engine_card_ux.py`, and `test_engine_lifecycle.py` drops `renew` from the card key list. Design: attempt 3.
+I re-reviewed tests commit 6234405 (base 54d7e83) against design attempt 3 and the engine at read_dev 1c1387a. Interdiff: one test commit on top of 802c016 plus the review commit.
 
-## Evidence
+## Prior findings
 
-I ran `python3 -m unittest test_engine_card_ux` in a temporary detached worktree at 802c016. There is no implementation at that commit. The worktree has since been removed. Result: 29 tests ran, 10 failed and 16 errored, all on the missing feature: `KeyError: 'restart'`, `'stale_because'`, `'changed'`, `'respond_to'` and `'no_longer_live'`, the old output_schema text, the old CLI_USAGE rows, the missing schema 40-hex check, and `edit` accepting `{"commit":"HEAD"}`. The implement override case fails today with `test_freeze` instead of `validation`. That is the F2 bug in action ("HEAD" resolves in the main repository), so it fails for the right reason.
+- **review_tests:1:1: resolved.** `DocsTests.test_prompts_name_full_shas` now loops over `fx.TEMPLATES / "prompts"` only, so implement no longer has to touch `.zzzops/prompts`.
+- **review_tests:1:2: resolved.** The test now runs on `test_design`, which has `inputs.base`. Steps: through_design, submit, review_tests changes_requested, start (asserts `reopened` and no `stale_because`), restack_base, abandon, `start --reclaim`. It asserts `stale_because == ["inputs.base"]` and capability `reasoning`. It is no longer vacuous. Its expectation, however, depends on a rule the design does not state; see F2.
 
-Three tests pass before implementation:
-- `test_reclaim_with_no_edit_has_no_staleness`, twice (once also via RenamedCardTests). These are controls, so passing is correct.
-- `test_reclaimed_reopened_correction_keeps_its_capability`. This one is vacuous; see F2 below.
+## New findings
 
-## Coverage against the design
+**F1 (material, target test_design): the submitted `commands` were narrowed.**
+- Attempt 1 submitted `["cd .agents && python3 -m unittest test_engine_card_ux test_engine_lifecycle test_engine_schemas test_engine_journeys test_engine_docs", "python3 .agents/prompt_stats.py --check"]`.
+- `goal.json` `records.test_design.output.commands` for attempt 2 is now only `["cd .agents && python3 -m unittest test_engine_card_ux test_engine_lifecycle"]`.
+- Consequence: run_tests would skip `test_engine_schemas`, `test_engine_journeys` and `test_engine_docs`, plus the prompt budget check. That matters because the design changes `schemas.py` (the 40-hex override check), says the journey tests must pass unchanged, and edits the template prompts, which the budget check covers.
+- Fix: restore the full attempt-1 list.
 
-Everything the design promises is covered with meaningful assertions:
-- abandon restart, both plain and `--force`
-- reclaim after a spec edit, including running the `changed` diff, plus the no-edit control
-- union staleness on attempt 3
-- crash-loop reclaim (`--force --reclaim`)
-- the artifact blob-diff pointer, and the missing-blob note with no work-branch fetch in the trace
-- submit refusal: `respond_to` with from, target, text and upheld; `no_longer_live`; clipping with `full`
-- card text for review, non-review and checkpoint cards, and the single renew entry
-- schema full-sha check: HEAD, a branch, a short sha, uppercase, 39 and 41 characters, and omitting the key
-- submit end to end: refused overrides record nothing; outside-branch and nonexistent shas are still refused; a full sha succeeds
-- `edit` record completion
-- CLI_USAGE lines
-
-**F1 adaptation (implement to test_design): acceptable.** The design's intent is that staleness on the lease side only (base re-ran while a first attempt with no record was running) must not downgrade capability to `routine`. `test_design` has `inputs.base`, and its own capability (`reasoning`) differs from `routine`. A base restack would also make `test_design`'s record stale and stall `implement`, so this is the cleaner fixture. The test checks `stale_because == ["inputs.base"]` and `capability == "reasoning"`, so it covers that intent. The control (`record_stale == ["inputs.base"]` gives `routine` on start and after reclaim) is also on test_design. That is consistent.
-
-## Findings
-
-**F1 (material, target test_design): the docs test makes the goal edit this repo's `.zzzops/prompts`.**
-`DocsTests.test_prompts_name_full_shas` loops over both `fx.TEMPLATES / "prompts"` and `fx.ROOT / ".zzzops" / "prompts"`. It asserts that `.zzzops/prompts/test_design.md` and `.zzzops/prompts/implement.md` carry the new wording. To pass, `implement` would have to change `.zzzops/prompts/*`, and integrate refuses goal diffs that touch policy files (`.zzzops/POLICY.json`, `workflow.json`, `prompts`). The goal could never integrate.
-Fix: assert only the template prompts (`plugins/zzzops/zzzops/templates/default/prompts`). The `.zzzops/prompts` copies follow through a separate policy change after the release. If a parity check is wanted, it belongs in that policy PR, not in this goal's tests.
-Design note: design §4a's "Prompts" bullet names `.zzzops/prompts/...` paths. The implementer should edit the template copies only.
-
-**F2 (material, target test_design): `test_reclaimed_reopened_correction_keeps_its_capability` cannot fail.**
-The test runs on `design`, but in the default graph `design` has no `inputs.base` (its inputs are spec, dep_designs and dep_reviews). The test also only calls `push_dev` and never re-runs `base`. So the reclaimed card has no lease-side staleness at all, and the capability check (`architectural`) passes before and after any implementation, including one that wrongly keys the downgrade on the lease/record union.
-This is the second F1 case in the design: a reopened correction, where the record is current and `record_stale` is empty, but base moved during the attempt. It has no teeth as written.
-Fix: use a node with `inputs.base`, for example `test_design`. Steps:
-1. Run `through_tests`.
-2. Have review_tests raise a finding with `changes_requested`.
-3. Start `test_design`. Its reason is `reopened`.
-4. Call `restack_base`.
-5. Abandon, then `start --reclaim`.
-6. Assert `stale_because == ["inputs.base"]` and `run.capability == "reasoning"`, not `routine`.
+**F2 (material, target design): §2's capability rule does not achieve its stated intent for a reopened correction on a node with `inputs.base`.**
+- Design §2 says: "A reclaimed `reopened` correction (record current, so `record_stale` is empty) keeps the node's own capability". The rule it states is `record_stale == ["inputs.base"]` gives `routine`.
+- The premise "record current" is false whenever base moves during the reopened attempt. In the engine (frontier.py:207-239), live corrections are not part of `fp_parts`. `reopened` requires `r["input_fp"] == f`.
+- After `base` re-runs, the record's `fp_parts` differ on `inputs.base`. The design's own claim() code (`rec_sb = stale_keys(r["fp_parts"], parts) if r["input_fp"] != fp`) therefore gives `record_stale == ["inputs.base"]`, and the stated rule yields `routine`.
+- Base moving whenever dev moves is exactly the case the design calls common for `implement` and `test_design`. The design's verification case for this scenario (line 158) uses `design`, which has no `inputs.base`, so it never exercises the contradiction.
+- The test writer noticed this. The rewritten test asserts `reasoning` and tells implement to add a condition the design does not contain ("routine only if record_stale == ["inputs.base"] and no live corrections"). Tests must not silently require behaviour the approved design does not state.
+- Fix: state in §2 the rule that actually achieves the intent. For example: `routine` only when `record_stale == ["inputs.base"]` and the node has no live corrections (claim's state carries `corrections` for reclaimable and crash-loop states).
+- Also decide the no-lease case explicitly. Today the frontier checks staleness before corrections, so a plain `start` of a reopened node whose base has since moved is `ready`/`stale` with `["inputs.base"]` and gets `routine` while carrying corrections. The design should say whether that case also keeps its own capability. Then update the verification bullet to use `test_design` or `implement`, matching the test.
 
 ## Not findings
 
-- The lifecycle edit only drops `renew` from the key list. That is correct per design §5.
-- `assert_renew` checks the argv and that the interval and timeout appear in `when`. That is enough without being brittle.
-- The `at()` minute offsets give the goal-commit pointer distinct commit times, which handles the design's committer-date risk.
+- The rewritten test's comment "lease-side only: not routine" is inaccurate, since the record side is also stale. It can be corrected when test_design re-runs for F1, but on its own it is not material.
+- The control test (record stale only on base, no corrections, gives `routine`) is unchanged and consistent with either wording of the rule.
 
 ## Verdict
 
-changes_requested: two material findings, both on test_design. Everything else is sound.
+changes_requested: both prior findings are resolved. There are two new material findings: F1 on test_design (restore the full commands list) and F2 on design (state the corrections condition).
