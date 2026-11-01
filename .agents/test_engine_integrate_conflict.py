@@ -212,6 +212,35 @@ class SameFileJourney(ConflictBase):
         self.assertEqual("done", self.op(b, "merge")["closed"]["reason"])
         self.assertEqual("def app():\n    return 23", self.w.remote_git("show", "refs/heads/dev:src/app.py"))
 
+    def test_stale_conflicting_head_waits_for_the_rebased_head_instead_of_a_finding(self):
+        """GitHub still shows the old head H1, which conflicts with dev; the hand-rebased H2 does not. Integrate must
+        wait for H2 (head-not-seen before GitHub's CONFLICTING), not send an already-rebased goal back to `base`."""
+        g = self.goal()
+        self.fault(head_lag=1)
+        wtd = self.deliver(g, code=CONFLICT_CODE)
+        self.op(g, "integrate")                                     # the PR exists; GitHub has shown head H1
+        h1 = self.pr_head(g)
+        self.w.push_dev(DEV_CODE)                                   # H1 now conflicts with dev
+        self.w.ok("a", "reopen", str(g), "base", "--note", "dev moved")
+        out = self.op(g, "base")
+        self.assertEqual("blocked", out["ran"]["outcome"], out["ran"])
+        self.resolve(wtd, {"src/app.py": "def app():\n    return 7\n\n\ndef extra():\n    return 9\n"})
+        self.assertEqual("done", self.op(g, "base")["ran"]["outcome"])
+        c = self.A.start(g, "implement")
+        self.A.submit(g, "implement", c, {"summary": "Built."})
+        self.assertTrue(self.op(g, "run_tests")["ran"]["ok"])
+        if self.states(g)["review_impl"] != "current":
+            self.review(self.B, g, "review_impl")
+        out = self.op(g, "integrate")                               # GitHub still shows the conflicting H1
+        h2 = self.pr_head(g)
+        self.assertNotEqual(h1, h2)
+        self.assertFalse(out["ran"].get("findings"), out["ran"])
+        self.assert_waits_not_on_checks(out, "has not seen the PR head")
+        self.gh.set_checks(h2, ci=["pass"])
+        out = self.op(g, "integrate")                               # now GitHub shows H2, which is mergeable
+        self.assertTrue(out["ran"]["ok"], out["ran"])
+        self.assertEqual(h2, out["ran"]["output"]["pr"]["head"])
+
 
 if __name__ == "__main__":
     unittest.main()
