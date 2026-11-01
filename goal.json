@@ -135,40 +135,15 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 1,
-      "correction_runs": 0,
-      "findings": [
-        {
-          "id": "test_design:1:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:8210b2dc24481fb3e31ad7857c7ec8a6c3b31889b92da5107fb324393458c44d",
-          "text": "Concurrency hole in the scan scope (reproduced, not hypothetical). When several `new` calls run in the same clone, call X's fetch can write refs/zzzops/goal/origin/g1000 after call Y's fetch listed the remote. build_snapshot then puts G1000 in Y's snap.deleted (a local ref the fetch did not list). The design excludes snap.deleted from the scan, so Y allocates G1001 and its push succeeds: a duplicate. A throwaway prototype of the design as written failed the 10-thread identical-new test about 1 run in 4 with ids {1000, 1001}. test_a_goal_whose_local_ref_outran_this_fetch_is_recovered_not_duplicated reproduces it deterministically by patching engine.store.build_snapshot so the first snapshot omits g1000. A fix that passed all tests and 10 of 10 threaded runs: when the scan finds no match and snap.deleted is not empty, refetch once and scan again before allocating an id. The implementer may choose another fix, for example scanning deleted tips and confirming a deleted-only match with a refetch.",
-          "upheld": false
-        },
-        {
-          "id": "test_design:1:2",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:8210b2dc24481fb3e31ad7857c7ec8a6c3b31889b92da5107fb324393458c44d",
-          "text": "Root commits are deterministic: the same document, message, committer and ZZZOPS_NOW give the same oid. Two identical calls in the same second build the same commit. The second create-only push is then 'up to date' and returns ok, so both calls report recovered:false for the same single goal. There is still only one goal, so this does no harm. The race tests use a different clock per call so the assertion of exactly one recovered:false stays meaningful.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-01T04:14:49Z",
+      "attempt": 2,
+      "correction_runs": 1,
+      "findings": [],
+      "finished_at": "2026-11-01T04:34:14Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
           "base": "v1:sha256:f0f86e3e5d7131680049bfd289e2d0b91b2df6ab0e5273c2ec770b60152ca61d",
-          "doc": "v1:blob:b2dfc5b37cd06d95a957280500d9d0948a426de2"
+          "doc": "v1:blob:e13cc44f710cd45197460ce8524bb85d19eb21e7"
         },
         "policy": {}
       },
@@ -176,8 +151,8 @@
         ".agents/engine_fixtures.py",
         ".agents/test_engine_store.py"
       ],
-      "holder": "claude:e6ad/test_design-1001-1",
-      "input_fp": "v1:sha256:719e727e46a3d30ab17e5ac62e4db972e232e0c16fa9c755a8d32fee8d02b1c2",
+      "holder": "claude:e6ad/test_design-1001-2",
+      "input_fp": "v1:sha256:31e5dba5c955b78db876206e93e77007edb621c69a0132e9c7d8231fe2c52afd",
       "ok": true,
       "output": {
         "commands": [
@@ -186,12 +161,12 @@
         ],
         "tests": {
           "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "6d8e07840ec7659c1772b82f7f8dc5eeb6c19861",
-          "commit": "e760a1435ba9132c8a7cf6a9c8e3d0d89abde94b",
-          "tree": "80cfb08c48556df3f6423d40176b02dc0799e899"
+          "change": "a20de5c4ca725e92ef5f5cc5c2471b915fe437cf",
+          "commit": "c2a6bccc01516d736e7c90ddf9f290f0ac362ad5",
+          "tree": "09083e301a6f38166b7457423e39a999912715f8"
         }
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     }
   },
