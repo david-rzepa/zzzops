@@ -111,14 +111,19 @@ def process_findings(graph: Graph, doc: dict, X: str, r0: dict | None, given: li
         if not T or T == X or T not in anc or T in skip:
             raise Refused("validation", f"finding target {T!r} must be a non-skipped ancestor of {X}")
         tf, ta = fence(T)
-        result.append({"id": f"{X}:{attempt}:{k}", "target": T, "target_fp": tf, "target_attempt": ta,
-                       "text": f["text"], "status": "open", "response": None, "rounds": 1, "upheld": False, "note": None})
+        nf = {"id": f"{X}:{attempt}:{k}", "target": T, "target_fp": tf, "target_attempt": ta,
+              "text": f["text"], "status": "open", "response": None, "rounds": 1, "upheld": False, "note": None}
+        if graph.filter_of(X):
+            nf.update(impact=f["impact"], material=f["material"])
+        result.append(nf)
     if graph.is_review(X):
         ok = decision == "approved"
         if ok and any(f["status"] == "open" for f in result):
             raise Refused("validation", "approved requires no open findings")
         if not ok and not any(f["status"] == "open" for f in result):
             raise Refused("validation", "changes_requested requires an open finding")
+        if graph.filter_of(X):
+            ok = True                      # a filtered lens's findings are candidates: the subject reopens instead
     else:
         ok = True
     return result, ok
@@ -195,10 +200,11 @@ def record(status: str, ok: bool, attempt: int, holder: str, reason: str, r0: di
     return rec
 
 
-def reviewed(graph: Graph, doc: dict, X: str) -> dict | None:
-    """A review record's `reviewed`: the subject's checkpoints at review time."""
+def reviewed(graph: Graph, doc: dict, X: str, fresh: bool = True) -> dict | None:
+    """A review record's `reviewed`: the subject's checkpoints and artifacts at review time. Nothing for a stale
+    submit (`fresh` false): the subject may have moved past the version the reviewer read."""
     subj = graph.subject(X)
-    if not subj:
+    if not subj or not fresh:
         return None
     r = (doc.get("records") or {}).get(subj)
     if not r or r["status"] != "done":
@@ -208,6 +214,10 @@ def reviewed(graph: Graph, doc: dict, X: str) -> dict | None:
         v = (r["output"] or {}).get(k)
         if isinstance(v, dict):
             out[k] = {"commit": v["commit"], "base": v["base"], "tree": v["tree"], "change": v["change"]}
+    for k in graph.artifact_outputs(subj):
+        v = (r["output"] or {}).get(k)
+        if isinstance(v, dict) and v.get("blob"):
+            out[k] = {"blob": v["blob"], "commit": v.get("commit")}
     return out or None
 
 

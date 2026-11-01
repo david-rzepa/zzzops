@@ -271,7 +271,8 @@ def validate_policy_dir(a) -> int:
     if workflow is not None:
         errors += list(schemas.validate_workflow(workflow, policy if policy is not None and not errors else None,
                                                  lambda f: (d / "prompts" / f).is_file(), OPS))
-    out = {"ok": not errors, "coordinator": {}, "goals": {}, "policy": errors, "environment": [], "warnings": []}
+    out = {"ok": not errors, "coordinator": {}, "goals": {}, "policy": errors, "environment": [],
+           "warnings": schemas.intent_warnings((policy or {}).get("settings")) if not errors else []}
     if not errors:
         try:
             out.update(policy_impact(a, policy, workflow))

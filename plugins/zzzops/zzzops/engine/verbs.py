@@ -171,7 +171,7 @@ def start(s, g: int, X: str, label: str, reclaim=False, force=False) -> dict:
     if nd["kind"] == "agent" and res.budget.get("over"):
         raise Refused("budget_exceeded", f"G{g} has used {res.budget['used']} correction runs (limit {res.budget['limit']})",
                       hint="answer the budget item first")
-    subj = res.graph.subject(X)
+    subj = res.graph.subject(X) or res.graph.filter_subject(X)       # a filter's subject comes from its lenses
     if subj and nd["kind"] == "agent":
         sr = (res.doc.get("records") or {}).get(subj)
         if sr and sr.get("holder") == label:
@@ -499,14 +499,42 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
     elif artifact is not None:
         raise Refused("validation", f"{X} has no artifact output")
     work["new_tip"] = new_tip
+    if graph.is_filter(X):
+        check_verdicts(out.get("verdicts"), (L.fp_parts or {}).get("candidates") or [])
     given = out.pop("findings", [])
-    fence = rec.make_fence(graph, doc, x_fp(res, X), L.input_fp, claimed_at(s, L.tip))
+    xfp = x_fp(res, X)
+    fence = rec.make_fence(graph, doc, xfp, L.input_fp, claimed_at(s, L.tip))
     findings, ok = rec.process_findings(graph, doc, X, r0, given, L.attempt, fence, out.get("decision"))
-    extra = {"reviewed": rec.reviewed(graph, doc, X)} if graph.is_review(X) else {}
+    fresh = L.input_fp is not None and L.input_fp == xfp
+    extra = {"reviewed": rec.reviewed(graph, doc, X, fresh)} if graph.is_review(X) else {}
     if frozen is not None:
         extra["frozen"] = frozen
     return rec.record("done", ok, L.attempt, L.holder, L.reason, r0, L.input_fp, L.fp_parts, out, findings, s.now,
                       prompt=L.prompt, **extra)
+
+
+def check_verdicts(verdicts, candidates: list):
+    """A filter's verdicts: `keep` or `note`, with a reason, for exactly the non-material candidates on its card (the
+    lease's `candidates` part), so nothing is dropped silently."""
+    want = sorted(i for i, material in candidates if not material)
+    if not isinstance(verdicts, dict):
+        raise Refused("validation", "verdicts must be an object")
+    missing, extra = sorted(set(want) - set(verdicts)), sorted(set(verdicts) - set(want))
+    if missing or extra:
+        msg = []
+        if missing:
+            msg.append("give a verdict for: " + ", ".join(missing))
+        if extra:
+            msg.append("not a note on your card (material findings reopen the work whatever you decide): "
+                       + ", ".join(extra))
+        raise Refused("validation", "; ".join(msg),
+                      hint="verdicts: {\"<id>\": {\"verdict\": \"keep\" | \"note\", \"reason\": \"…\"}} for every "
+                           "non-material candidate")
+    for i in want:
+        v = verdicts[i]
+        if (not isinstance(v, dict) or set(v) != {"verdict", "reason"} or v.get("verdict") not in ("keep", "note")
+                or not isinstance(v.get("reason"), str) or not v["reason"].strip()):
+            raise Refused("validation", f"verdicts.{i} must be {{\"verdict\": \"keep\" | \"note\", \"reason\": \"<text>\"}}")
 
 
 def diff_paths(git, a_tree, b_tree) -> set:
@@ -871,6 +899,7 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
             d = copy.deepcopy(doc_files[g]) if doc_files else apply_sets(copy.deepcopy(old), set_entries)
             d = fill_close_fields(sess, old or {}, d)
             d = fill_current_records(sess, d)
+            skip_refusal(sess, g, old or {}, d)
             new[g] = d
         return new
 
@@ -918,6 +947,30 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
     if follow:
         out["follow_up"] = follow
     return out
+
+
+def skip_refusal(s, g: int, old: dict, new: dict):
+    """A new skip of a node is refused while its latest record has any open finding that is not a note (live, waiting
+    for its filter, or waiting for re-review): waive the findings first, visibly (SPEC §4.18 as amended by G1000).
+    Non-skippable nodes are refused by goal validation."""
+    added = [n for n in (new.get("skip") or {}) if n not in (old.get("skip") or {})]
+    res = s.portfolio().goals.get(g)
+    if not added or res is None:
+        return
+    notes = {(c, f["id"]) for lst in res.notes.values() for c, f, _ in lst}
+    for n in added:
+        if n not in res.graph.nodes:
+            continue
+        r = (old.get("records") or {}).get(n) or {}
+        blocking = [f for f in r.get("findings") or [] if f["status"] == "open" and (n, f["id"]) not in notes]
+        if blocking:
+            ids = [f["id"] for f in blocking]
+            sets = " ".join(f"--set 'records.{n}.findings[{i}].status=\"waived\"' "
+                            f"--set 'records.{n}.findings[{i}].note=\"<who waived it, and why>\"'" for i in ids)
+            raise Refused("validation", f"G{g}: {n} has open findings that are not notes: " + ", ".join(ids)
+                          + "; skipping it would drop them unseen",
+                          hint=f"waive them first, visibly: zzzops edit {g} {sets} --base <C>; then add the skip",
+                          details={"node": n, "findings": [{"id": f["id"], "text": f["text"][:200]} for f in blocking]})
 
 
 def changed_paths(old: dict, new: dict, prefix="") -> list:
