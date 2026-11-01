@@ -36,6 +36,40 @@
       "reason": "new",
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T05:41:48Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:ccaac5e9f7ba9e6d7966226da95c3a48e7d75b201a1909389a5d7cd781270a23"
+        },
+        "policy": {},
+        "subject": "v1:sha256:15b2f22c4278d9e8e90578e1d64ec5b6d128860c16779d9808584d3d0ad7095c"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:e69d4e3ea9d591fc24027c7b01db863c3447162044205bb64747986383a36c3a",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T05:41:48Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Do not wait for my approval",
+        "summary": "Approved merging PR #744 (G1018) at head 8ed9834 into dev. Cards render the full checkpoint (commit, base, change, diff) for inputs selected by .change/.tree, guarded against mismatches, with fingerprints untouched; approve items name commit and base. shrink never grows a card and never blobs a checkpoint view, and blobbed dicts get key summaries. Code review approved with no findings; required CI passed (20/20). Decision made by Claude (root agent) under the owner's standing delegation for Release 1; merged with --admin because of the dev ruleset's last-push approval rule."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
+          "change": "0d88fac2bd23a69d10b6ee615f0b5c6608c5888e",
+          "commit": "a18ca9aaf90157a0f341fa567473dcaa25743f30",
+          "tree": "2a23d345031f0b1fedb07f16dabf735694a67ad9"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 1,
       "correction_runs": 0,
