@@ -1,0 +1,18 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [],
+  "graph": "default",
+  "id": 1001,
+  "links": {
+    "issue": null
+  },
+  "priority": "P1",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Give each `new` request a stable identity: an optional client `request_key` in the new-goal file, defaulting to a hash of the canonical title+spec+depends_on. Record it in the goal document or as a goal-commit trailer. Before allocating an id, and after any non-ok push, scan the fetched goal tips for that key; if found, return the existing goal with `created.recovered: true` instead of allocating another id. Reject a request whose key matches a goal with different contents. Deliberately distinct goals with the same title stay allowed because the key covers the spec. Acceptance: unit tests for an exact retry, a push that lands but reports failure, concurrent identical `new` calls (one goal), a key reused with different contents (refused) and same-title distinct specs (two goals). Dropped versus the old wording: issue-based discovery, lock release and capture checkpoints (R1, R12).\n\nMigrated from GitHub issue #542 after the engine reset (#740).",
+  "state": "open",
+  "title": "Make `zzzops new` idempotent across retries and uncertain pushes"
+}
