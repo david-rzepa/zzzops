@@ -151,15 +151,15 @@
       "status": "done"
     },
     "review_impl": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_impl:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "implement",
           "target_attempt": 2,
           "target_fp": "v1:sha256:52aa0c52745c3965c3c432e941eae2fa4b9714610c28e19e107192fa85b55d6c",
@@ -167,36 +167,36 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T05:44:06Z",
+      "finished_at": "2026-11-01T06:17:38Z",
       "fp_parts": {
         "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
         "inputs": {
-          "code": "v1:sha256:140a73fbeb6b9e0d0f69b0b14d6f1603a5b2b85b370d27c55d76f254b0bf87c3",
+          "code": "v1:sha256:69cae951ed16e0c3015005bd6ecf778e33a7df62f2149b7a9b6b4a4e2b0c4dc0",
           "doc": "v1:blob:2c1af88e84734bdd997eceba5000279525be0586",
-          "tests": "v1:sha256:140a73fbeb6b9e0d0f69b0b14d6f1603a5b2b85b370d27c55d76f254b0bf87c3"
+          "tests": "v1:sha256:69cae951ed16e0c3015005bd6ecf778e33a7df62f2149b7a9b6b4a4e2b0c4dc0"
         },
         "policy": {},
-        "subject": "v1:sha256:52aa0c52745c3965c3c432e941eae2fa4b9714610c28e19e107192fa85b55d6c"
+        "subject": "v1:sha256:59249486d3206bbc510e5658bf7b47c13f671885c637b6d8f2fda5df9ca5b1ba"
       },
-      "holder": "claude:e6ad/review_impl-1016-1",
-      "input_fp": "v1:sha256:98ce2e48f034df210d12333055cd83267f875150311c5bed578a00f4c9d32a24",
-      "ok": false,
+      "holder": "claude:e6ad/review_impl-1016-2",
+      "input_fp": "v1:sha256:1590e516c81dac78ee421af45ffb2baf00332ca004a86a47e03f1bc73666729b",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "a83026fea8bc805d2e6087b7cd9a34a5103f4c3d",
-          "commit": "7921d86fef2ed3257046731c3a593e9489e8caf5",
+          "blob": "9d4f3c547abf04c95e0a3f9e8436b57a54bd8a0e",
+          "commit": "8fda633702785628d7e3d09d51c6e609107aa6ed",
           "path": ".zzzops/reviews/1016/review_impl.md"
         },
-        "summary": "Implementation matches design attempt 4 on abandon restart, claim staleness (union vs record_stale), changed pointers (no fetch), card capability, previous.output, check_responses details, output_schema wording, renew move, full-sha checkpoint enforcement, docs and template prompts; nothing under .zzzops/ changed outside reviews. One material gap: render.capability (next actions) still gives routine for a reopened node stale only on inputs.base with live corrections, contradicting the card (reasoning) and defeating the attempt-4 routing change for anyone routing from next. Note: G1014 has landed on dev and conflicts in verbs.py/CLI_USAGE (expected; apply the restart_command merge rule at rebase)."
+        "summary": "f9117d0 shares one capability rule (render.run_capability) between next actions and task cards. The card's behavior is unchanged, and next no longer downgrades correction runs to routine. 521d78b checks next's capability in all three capability scenarios. Since 8da55ca only card.py, render.py and the card UX test changed. run_tests passed. The reclaim mismatch, where next over-provisions, is a known follow-up."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "code": {
           "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "ec2f744ee88addec9468a3e2cf86c99fa517fcdd",
-          "commit": "601a958d761ad09d706b29a4bca621d7bd338a35",
-          "tree": "f56d75480bd332815ae0ba3688d4fbe765d5265d"
+          "change": "dfe70799cbc9f250188033c8d353c1f1075a6683",
+          "commit": "cc26f29fcdc1ee5b8c289ec2f8df6e415c7a67a8",
+          "tree": "5b016358250323c1276ed81145ad1c782d23e507"
         }
       },
       "status": "done"
