@@ -17,10 +17,10 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-01T17:37:34Z",
+      "finished_at": "2026-11-01T17:44:23Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -34,16 +34,17 @@
       "ok": true,
       "output": {
         "doc": {
-          "blob": "7597f57f53d0021a1e234d31b497da04a1aa2b0f",
-          "commit": "4ef22c88aac94f8565cd81b4f10628c746711b58",
+          "blob": "42144d61b58520a0b331e1b3995235d9ec279a05",
+          "commit": "c9b0777618076e0b3f3abef14ba7d87101f9f3c0",
           "path": ".zzzops/reviews/1017/design.md"
         },
         "responses": {
-          "review_design:1:1": "fixed: 'Contract amendments' is rewritten. (1) Every implement run, which re-runs whenever base moves, lists the goals merged into its base and applies each contract change. A CI guard in .agents/test_design_docs.py runs on the PR merge ref (dev-required-tests) and fails if a goal whose tree marker has landed still has a pending row, so a goal merging between G1017's implement and its merge sends G1017 back to implement. (2) The same guard makes a pending row for a merged goal impossible in any tree. (3) Every remaining row names an owner goal, which is told by zzzops edit before its implement (G1022: depends_on gains 1017 and its acceptance line gains the docs/design edit; the root runs it right after approval, and implement verifies it). Goals already past implement (G1020) are covered by the re-check if they merge first, and by the guard plus a reopen-base recipe if they merge second. At a05fb97, G1001, G1014, G1015, G1016, G1018 and G1021 have merged and are in the applied list. G1000 is applied through G1017's dependency on it."
+          "review_design:2:1": "fixed: new subsection 'What CI can and cannot see here' states that strict status checks are off and pull_request-only CI never re-runs on dev moves, and withdraws revision 2's 'sees the integration tip' and 'CI catches anything that merges later'. The rule now orders every contract-changing goal against G1017 by a dependency. (a) A pending row is allowed only for a goal with 1017 in depends_on, so its own PR is the first tree that holds its code and its row, and the guard trips there and nowhere else. Test 5 checks depends_on when goal refs are local, and implement checks it with zzzops show. (b) A goal past implement and unmerged gets no row; G1017 takes the dependency instead (G1020: zzzops edit 1017 adding 1020 before approve_design if it is still unmerged). (c) docs/design/README.md has a Repair line for a red dev: one PR that applies the named goal's amendments and deletes its row, never the row alone. It is kept out of the shipped REPAIR.md because the guard is a repository test. Also corrected: Linux shards use fetch-depth 0 (git-log detection is still rejected, because subjects vary and history does not show contract impact), and marker paths may be directories, matched recursively over tracked files, with a unit case.",
+          "review_design:2:2": "fixed: G1024 is added under 'Case 3 with a pending row'. Sections: SPEC §3.2, §2.3, §3.15/§3.16 (policy_update, the decline and the missing-record item), §8.3; DESIGN §3.10. Marker: plugins/zzzops/zzzops/engine contains \"policy_update\". Root action after approval: zzzops edit 1024 to set depends_on [1017] and add the docs/design acceptance line. The keyword search is replaced by a behavioural classification: CLI verbs, flags or exit codes; next, validate, card or approval-item content; workflow, POLICY, goal, record or finding schemas; the template graph or prompt-set structure; engine algorithms; op behaviour; bootstrap or policy-change steps. It is applied now to every open goal. G1004, G1005, G1007, G1008, G1009, G1010, G1011, G1012 and G1019 get depends_on 1017 and the acceptance line, but no row (their sections are unknown until designed). G1006 and G1013 are classified as not changing the contract, and G1002 already depends on G1017. The G1022 edit is to run right after approval, noting that its live design lease will go stale as intended."
         },
-        "summary": "Revision 2. The layout is unchanged: scrubbed rev 6.3 DESIGN.md, SPEC.md and IMPLEMENTATION_PLAN move to docs/design/ with numbering intact, plus HISTORY.md (review summary, amendment index, post-approval amendment log) and a README (SPEC is the contract, DESIGN the rationale). New rule: a goal's contract change is applied exactly when its code is in the tree. G1017's implement applies #742, G1014, G1018, G1001, G1015, G1016, G1021 and G1000 (its §17 list) from their merged diffs and designs, and re-checks on every base move. A CI guard (test_no_landed_goal_is_pending) fails any tree where a landed goal still has a README pending row, so neither G1017 nor the pending goal can merge with drift. Each pending row has an owner goal: G1022 gets depends_on 1017 and a docs/design acceptance line by zzzops edit before its design; G1020 is covered by the re-check and the guard; G1023's wording is folded under G1016's row."
+        "summary": "Revision 3. The layout is unchanged: scrubbed rev 6.3 DESIGN, SPEC and IMPLEMENTATION_PLAN move to docs/design/ with HISTORY.md and a README (SPEC is the contract, DESIGN the rationale). A contract change is applied when its goal's code is in the tree. Because dev does not use strict status checks, ordering against G1017 now always comes from a dependency. Merged goals and G1000 are applied by G1017. A past-implement goal (G1020, if unmerged at approval) becomes a G1017 dependency. A pending README row, guarded by a tree-marker test, is allowed only for a goal that depends on G1017 (G1022, G1024). Open goals are classified by what they change; the contract-changing backlog goals gain depends_on 1017 and a docs/design acceptance line, and the README carries a repair line for a red dev."
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
