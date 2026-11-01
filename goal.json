@@ -36,6 +36,40 @@
       "reason": "stale",
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T17:16:40Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:7d6aabd65086f2eaddfac778b8ef7fb5ed24c2649d0cd2ca7f51db87974607d8"
+        },
+        "policy": {},
+        "subject": "v1:sha256:101614d1d339dba0ea5d59a29fdffb014dd728d8d639b3d154d05b6396d1fb03"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:78e9fccab2422cd36830247ab30051e0d9c64def983a620f6ebb75cfd6c641bd",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T17:16:40Z",
+        "decided_by": "Dave (owner), recorded by Claude (root agent)",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approved merging PR #747 (G1016) at head ab10d77 into dev: abandon prints the restart command; reclaim cards carry stale_because and changed pointers; one shared capability rule for next and cards; submit refusals list the findings to answer; output_schema states finding consequences; checkpoint overrides must be full 40-hex shas; one renew command. Code review approved; required CI passed (20/20). The owner asked to merge everything on the Release 1 stack; merged with --admin because of the dev ruleset's last-push rule."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "6747a5ea3c91aedd39089d1811a415680521bfed",
+          "change": "e9897fba51c65ed87b6dd2cf979538266d890a77",
+          "commit": "6c99d60448bbab84c1941ccadac68137595d7ee4",
+          "tree": "d66b359f132c5e93c967e5cfa3c563c01b5b96ee"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 3,
       "correction_runs": 2,
