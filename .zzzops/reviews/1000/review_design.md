@@ -1,75 +1,62 @@
-# G1000 review_design: independent review
+# G1000 review_design, round 2: independent re-review of design revision 3
 
-**Verdict: changes requested, with two findings.** The design delivers the spec. The lens set, the filter, `skippable`, `settings.intent` and the re-review pointer each serve a stated requirement, and the experiment's conclusions hold on its own data. Two gaps would change the design:
-
-- **F1:** the filter's freshness does not cover the findings it judges, so a note can avoid the filter without anyone seeing it.
-- **F2:** rollout steps 2 and 3 have no owner and no trigger. G1000's merge would unblock its dependents while this repository still runs the old graph. Step 2 also conflicts with a pin the owner has set.
+**Verdict: approved.** Both prior findings are resolved. The new `candidates` fingerprint part cannot loop, and it cannot be used to dodge the budget. "A note with no verdict counts as kept" holds on every path that reads findings. The coverage and demotion figures now agree throughout, and I re-derived them from Appendix C. I have no new material findings. Three small notes for implement follow at the end.
 
 I checked the claims against `read_dev` 54d7e83.
 
-## Claims checked against the code
+## Prior findings
 
-- **Context inputs gate readiness.** `frontier.resolve` resolves every input, including context inputs. So `base` waits for `filter_design`, as §11 says. The draft's Concurrency finding cc2 was rightly judged false.
-- **Fingerprints.** `node_def_fp` is an allowlist (`fingerprint.py:38`). Adding `skippable` changes no fingerprint. `review` is hashed, so `review.filter` only affects new nodes.
-- **Policy validation.** Rule 6 already reports `settings has no key` for a declared policy key (`schemas.py:411`). A missing `settings.intent` therefore fails `validate --policy` as D4 claims.
-- **Optional intent key.** `_check_shape` requires every key in a shape dict. Making `intent` optional, with extra keys allowed, needs a small new shape kind. §6 implies this; implement should know.
-- **Budget.** The limit is `3 × agent nodes`, so 6 → 20 agents gives 18 → 60 (`frontier.py:452`). Skipped agent nodes still count toward the limit.
-- **Old-engine safety.** `reviewed` is not shape-validated, and 1.0's `card.previous` skips entries without a `change`. A 1.0 clone can read 1.1 records from an old graph. It rejects the new finding keys (`FINDING_KEYS`), workflow fields and settings keys as unknown, so it fails closed. The engine.min raise in step 2 is a safe extra layer, not the only protection.
-- **Independence.** `start` checks independence only through `graph.subject(X)` (`verbs.py:174`). A filter is not a review, so implement needs the filter's subject from the lenses' `review.filter`. §7 implies this.
+| id | status | basis |
+|---|---|---|
+| review_design:1:1 (F1, the filter's freshness does not cover candidates) | **resolved** | §7 adds the `candidates` part ([id, material] of open findings on the lenses' latest records) and the fail-safe liveness default. §13 tests both the herd case and the rev-bump case, plus a hand-built record that has no verdict. |
+| review_design:1:2 (F2, the rollout has no owner or trigger) | **resolved** | D8 and §12 make steps 2–3 root follow-ups, recorded on `approve_merge`. Step 2 needs the owner's explicit yes, which matches OWNER.md item 1. G1003 is held before the merge and unheld after step 3, and G1002's exemption is reasoned. The design does not take the Codex repoint as an `approve_merge` go-ahead, which is correct under the owner's constraint. My suggestion there is withdrawn. |
 
-## Findings
+## F1: the checks you asked for
 
-### F1 (design): filter freshness does not cover the lens findings it judges
+**It cannot loop.** `candidates` is computed only from lens records. Finding `status`, `id` and the material flag are stored in the record (`records.process_findings`). A filter submit writes only the filter's own record. Nothing the filter does changes its own `candidates`.
 
-§7 says a filtered lens's finding is live only if the filter's latest record is fresh, and the finding is `material` or has the verdict `keep`. The filter's fingerprint comes from its inputs: `spec`, `doc` and each lens's `summary` (`fp_parts` hashes input values only). A lens's findings are not part of the filter's fingerprint.
+The only things that change it are:
+- a lens submit;
+- a human `edit` or waive;
+- a skip, since `R` excludes skipped nodes (`frontier.py:150`).
 
-So a lens can re-run without the design changing and produce the same one-line summary with a new non-material finding. The filter then stays fresh. The new note has no verdict, so under the §7 rule it is neither live nor judged.
+Each of these is an external event, so a filter re-run happens at most once per such event. Carrying a note forward keeps the same id and refreshes only `target_fp`, which is not in the part. So a lens that re-confirms the same notes leaves the filter fresh, and the prior verdicts still apply. That is the right behaviour. A filter lease overtaken by a lens submit lands stale and re-runs once.
 
-The design itself names the cases where a lens re-runs alone:
+**It cannot be gamed to dodge the budget.** The exemption applies only when `stale_keys == ["candidates"]`, which extends `frontier.counts` (`frontier.py:461`) in the same way as `def` and `policy.*`.
 
-- the intent herd (a `settings.intent` change stales only `intent_*`);
-- a lens prompt `rev` bump;
-- the def-stale card, which says "If it still holds, resubmit it".
+A candidates-only stale happens only after a lens run. That lens run is counted by `counts`, unless it was itself a `def` or `policy` stale. Those are driven by policy or a human and are already exempt today. Any other reason the filter goes stale (`inputs.doc`, a lens summary) still counts. `retry` and `not_ok` still count.
 
-**Consequence.** A finding the reviewer labelled a note bypasses the independent filter without any record. The experiment shows these are exactly the harmful cases that matter: I32, GT3 and GT8 were all labelled notes and recovered only by the filter's `keep`. This breaks the spec's "never let the filter silently drop a material finding" and "errs toward keeping".
+So no worker can create unlimited free runs: each free filter run follows a lens run that was counted or was already exempt.
 
-**Fix.** Choose one of these:
+**"No verdict counts as kept" holds on every path that reads findings:**
+- **Frontier pass 1** (`frontier.py:156–171`): §7 adds the condition on the filter being fresh and on the finding not being `note`. An unverdicted note passes, so it is live.
+- **The target's corrections, re-open and `previous`**: derived from `live`, so an unverdicted note is a correction.
+- **The `notes` card section and approval items**: they list only findings whose verdict is `note` ("A note is an open finding whose verdict is `note`"), so an unverdicted note never shows as a note.
+- **`edit`'s refusal to skip a node with live findings**: uses `live`, so an unverdicted note blocks the skip.
+- **Budget**: counted per record, not per finding, so a note's status cannot change it.
+- **Material findings while the filter is stale**: they wait, and consumers wait too. `approve_design` has `filter` as a required input. `base`, `integrate` and `approve_merge` take the filter as a context input, and context inputs gate readiness (`frontier.resolve`). So nothing advances past a stale filter, as the §13 test requires.
+- **1.0 engines**: a 1.0 engine reading lens records fails closed. `FINDING_KEYS` is unchanged there, and record validation allows only `{def, inputs, policy, subject}` in `fp_parts` (`schemas.py:754`). Lens records exist only after step 3, which comes after the engine.min raise.
 
-- Put the candidate set (ids and `material` of open lens findings) into the filter's `fp_parts`, so a changed candidate set makes the filter stale.
-- Or make the liveness rule fail safe: an open non-material finding with no verdict from the filter's latest record is live, as if kept.
+## Numbers
 
-Add a test: a lens re-runs on a policy change with an unchanged summary and a new note, and the target is not left current without a filter verdict.
+I re-derived coverage from C.1 (S/A issues) and C.2 (ground-truth defects found):
 
-### F2 (design): rollout steps 2–3 have no owner and no trigger, and step 2 conflicts with an owner pin
+| Set | Issues | Harmful |
+|---|---|---|
+| Seven as run | 28/32 | 23/24 |
+| Seven as run, without Experience | 25/32 | 22/24 |
+| Merged seven | 31/32 | 23/24 |
+| Merged seven, without Experience | 29/32 | 23/24 |
+| Spec hypothesis | 17/32 | 12/24 |
 
-§12 lists the steps but not who runs steps 2 and 3, or when. G1000 closes when its PR merges in step 1. That unblocks G1002 (the whitepaper) and G1003 (the dogfood run), which depend on G1000. This repository would still be on the 12-node graph. Nothing in the graph or the design makes steps 2–3 happen first.
+- Only Experience covers I4, I11 and I13.
+- The seven miss I12, I21a, I41 and GT6.
+- Every figure matches §1, the §11 table and the §11 text.
+- The demotion count is "11 of 13" in its one place (§11), and no "10 of 13" remains.
+- §14 now states the budget in rounds.
 
-The spec's "adopt it in this repository's .zzzops/" and "this repository's own intent is written … with the owner" could then lapse silently. G1003 would dogfood the old graph.
+## Notes (non-blocking; for implement)
 
-Step 2 also says "refresh the Codex and Claude Code plugins". The owner has said Codex must stay on the 15b59a5 plugin copies until they say otherwise, because another agent is using them. Raising `engine.min` to 1.1.0 makes that agent's 1.0 engine report `engine_too_old` part-way through its work.
-
-**Fix.** In D8 and §12:
-
-- State that the root opens `zzzops/policy/engine-1.1.0` right after G1000 merges. An open policy branch already blocks all workflow work, so dependents cannot start on the old graph.
-- Make the Codex repoint an explicit owner go-ahead, listed on the `approve_merge` item.
-- Then open `zzzops/policy/lenses`, where the owner approves the intent text.
-
-This is a few lines; no mechanism is needed.
-
-## Notes (non-blocking)
-
-- **The experiment's conclusions follow from its data.** I recomputed from C.1–C.3:
-  - claim-only rule: 29 blocking, loses I25 and I32;
-  - blind filter: loses 9;
-  - D2: 37 blocking, 11% not harmful, loses I25;
-  - replay: claim-only loses GT3, GT6 and GT8; D2 loses GT6;
-  - filter promotions: 8/8 correct;
-  - prompt control: 41% vs 37%.
-
-  One slip: the filter's demotions of material claims were wrong in **11** of 13 cases (in3, tr5, re2, co2, ne1, ad2, ad3, mi2, mi3, mi4, ux1), not 10. The conclusion is unchanged.
-- **Coverage is extrapolated, not measured.** The "merged seven 31/32" figure is the union of 15 separately prompted lenses; the merged §4 prompts were never run. The seven base lenses as actually run (intent, simplicity, truth, adversary, concurrency, migration, experience) cover **28/32**, with harmful coverage still **23/24**. Only I12, I21a and I41 (adopt-only) depend on merging. D1 holds on measured data; reporting it that way would be more honest.
-- **The filter node is worth its cost.** The spec requires the filter to be independent of the reviewer, which an engine rule alone cannot provide. The data shows it recovers three harmful issues that self-labelling loses, for about 1/8 of a round's cost. D2's "promote, never demote" rule keeps it from repeating R2's failure. The node is justified.
-- **26 nodes is the simplest form on this engine.** One node per lens is the only way to get parallel, independent, separately skippable reviewers. The two subjects mirror each other, as the spec asks.
-  - With skips, the floor is two lenses plus the filter per subject: about 10 agent runs per goal, against 6 today. Small projects are served, provided add-goal actually proposes skips.
-  - The code-lens set is unmeasured, and §16 is honest that it is.
-- **Budget, in rounds.** One design round now costs up to 9 correction runs (design + 7 lenses + filter) instead of 2. So 60 allows about 6–7 full rounds per subject where 18 allowed 9. §14's "grows from 18 to 60" reads more generous than it is; one sentence would fix that.
+1. **D1's alternatives cell is stale.** It still rejects all sixteen lenses "for one more low-severity issue". That was true against the extrapolated merged seven. Against the measured seven, D1's stated basis, sixteen adds four issues: GT6 (harmful, low severity) plus the adopt-only I12, I21a and I41, which merging recovers. One clause would fix it. The decision itself is unaffected.
+2. **Two code paths need updating.** `schemas.py:754` must allow `candidates` in `fp_parts`. `fp_parts(graph, node, vals, subject_record, settings)` must also receive the lens records, or the candidate list, both in pass 1 and in pass 2's running-lease fingerprint (`frontier.py:197`). If pass 2 is missed, every filter submit lands stale once. That does not loop, but it wastes a run per round. The §10 row already lists both files.
+3. **A naming clash.** Finding records already have a `note` key (`records.py:98`), and the verdict value is also `note`. Implement should keep the verdict only in the filter's `verdicts` output, as §7 says, so the two are not confused in displays.
