@@ -10,7 +10,35 @@
     "issue": null
   },
   "priority": "P2",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T06:59:36Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:1c53ea3f4ac26c032e44130f00cfe8650d6e8987a505fccbd6ccb8f6868c4d1c",
+          "spec": "v1:sha256:004fd393eae15aa7caaa55c0bef6ff7cddf67af06e809c5ff86993ded391c014"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/design-1020-1",
+      "input_fp": "v1:sha256:09d8743878502bbfec0381fbff849ef920765dedf47697366de24458d921cc7b",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "394e1e533c33985f3c243fadf37d1ad7030b9568",
+          "commit": "ef2857bac788f62498cc80f3f6135ac619d588b6",
+          "path": ".zzzops/reviews/1020/design.md"
+        },
+        "summary": "Adds one sentence to the shared review instruction (\"On code, target test_design for a problem in the tests; implement cannot change them.\"). It goes there rather than in the seven lens prompts because the per-card cost is equal but the static hot-prompt cost is 7x. Merges lens_truth.md's two On code: sentences into one. Decides that a notes-only filtered lens answers approved: for filtered lenses decision is already a pure label (ok is forced True, frontier never reads it), so records.py allows approved with only non-material findings, the card hint changes and outcome_of says \"approved with N notes\". The rejected alternative is a render-side notes only label. SPEC §4.14 exception handed to G1017."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
