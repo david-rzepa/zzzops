@@ -8,7 +8,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T07:07:57Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "spec": "v1:sha256:59b21707a9ad7d1333482f37241425b94daa5e4157032ea162e0e06ae852effa"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/design-1021-1",
+      "input_fp": "v1:sha256:91b19a3590ac565fceb1eb4d9a7e1cb711cacdfb17a67c609839dd7c9169f85a",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "64ae69193ad33c5260fa233cf68c4815659a6c02",
+          "commit": "20eec0c502fe13db3042afb4f8c66b5cd5ee2293",
+          "path": ".zzzops/reviews/1021/design.md"
+        },
+        "summary": "Integrate already handles CONFLICTING/DIRTY; the incident came from GitHub's lazy mergeability: the pr view straight after creating #747/#748 returned UNKNOWN, which fell through to 'required checks pending'. The design adds a deterministic local merge-tree conflict check against the fetched integration tip, explicit short waits for UNKNOWN and an unseen head, a 15-minute 'no checks at all' human escalation, and a REPAIR.md recipe. Decision: base stays non-stale when dev moves (the integration tip is not a base input, by design, to avoid cascading re-runs); conflicts reach base through integrate/merge findings."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
