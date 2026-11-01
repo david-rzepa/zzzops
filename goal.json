@@ -12,10 +12,10 @@
   "priority": "P3",
   "records": {
     "design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T17:32:17Z",
+      "finished_at": "2026-11-01T17:34:15Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -29,13 +29,16 @@
       "ok": true,
       "output": {
         "doc": {
-          "blob": "8ec96cfda5e325b6bcb2cd67280c3a408b4e2c34",
-          "commit": "7017b8dd12db1034b3fe0526a804fb7a4959f0e1",
+          "blob": "2794f7a54f63df0ccfa953d213abcdd40891d690",
+          "commit": "e14773581e7e492c257f42c2acab640dc5b74f73",
           "path": ".zzzops/reviews/1023/design.md"
         },
-        "summary": "Three text edits make every shown checkpoint override say `<full 40-hex sha>`: the checkpoint_required hint in records.py:244, MIGRATING.md:26, and the repo's own .zzzops/prompts/test_design.md:8 (the template copy is already right). Tests assert the hint, check MIGRATING.md, and grep for leftover `\"commit\": \"<sha>\"`. To avoid conflicts with G1000 (#748), touch only that one MIGRATING.md fragment, leave CLI_USAGE alone, and re-grep at the new tip if #748 lands first."
+        "responses": {
+          "review_design:1:1": "fixed: removed the .zzzops/prompts edit and its grep scope; the grep test now covers engine, references, skills and templates only; the repo prompt copy is listed under Out of scope as a follow-up for a human policy branch; the sync-check risk note is dropped; the checkpoint_required test now names .agents/test_engine_checkpoint.py."
+        },
+        "summary": "Two text edits make every shown checkpoint override say `<full 40-hex sha>`: the checkpoint_required hint in records.py:244 and MIGRATING.md:26. Tests extend .agents/test_engine_checkpoint.py, check MIGRATING.md, and grep engine, references, skills and templates. The repo's .zzzops/prompts copy is policy and listed as a follow-up for a policy branch. To avoid conflicts with G1000 (#748), touch only that MIGRATING.md fragment and leave CLI_USAGE alone."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
