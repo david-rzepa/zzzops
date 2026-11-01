@@ -336,14 +336,14 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-01T06:27:53Z",
+      "finished_at": "2026-11-01T07:16:11Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
-          "base": "v1:sha256:f0f86e3e5d7131680049bfd289e2d0b91b2df6ab0e5273c2ec770b60152ca61d",
+          "base": "v1:sha256:bdd8faa768559c4b8a65bd74f02c7fcb133d59b44c4c97504864a4c68afc3ad5",
           "doc": "v1:blob:5ed045be21817ba93e467355960e3c37a4cb091f"
         },
         "policy": {}
@@ -363,8 +363,8 @@
         ".agents/test_engine_docs.py",
         ".agents/test_engine_lenses.py"
       ],
-      "holder": "claude:e6ad/test_design-1000-3",
-      "input_fp": "v1:sha256:688433e7e005438cd35b4ccb231dd0c38f222d8d12e119eabb2138f0cb32f2b8",
+      "holder": "claude:e6ad/test_design-1000-4",
+      "input_fp": "v1:sha256:3159eee9f2b211c7212d5432e953c680dc5d709f6f0e19a733d2ee4e8abcd024",
       "ok": true,
       "output": {
         "commands": [
@@ -372,18 +372,14 @@
           "python3 -m unittest discover -s .agents -t .agents -p 'test_*.py'",
           "python3 .agents/prompt_stats.py --check"
         ],
-        "responses": {
-          "implement:1:1": "fixed: the design (§5 Liveness) defines 'fresh' as the filter record's input fingerprint matching, not the frontier state; once design reopens, filter_design is legitimately blocked on its subject. test_a_fresh_filter_record_without_a_verdict_keeps_the_note now captures filter_design's input_fp before the hand edit and asserts it is unchanged afterwards and that filter_design is not `ready (stale...)`; the assertions that design is `ready (reopened)` with corrections == [the unjudged note] are kept.",
-          "implement:1:2": "fixed: design §3 (base takes context filter_design.summary) and §17 (context inputs gate readiness) make base and everything downstream wait for the re-run intent lens. The test now re-runs intent_design after the intent change (and filter_design if it is no longer current) before reading states, then asserts intent_impl is `ready (stale: policy.intent)`, no other node besides the intent lenses is stale, and implement plus the six other impl lenses are `current`."
-        },
         "tests": {
-          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "15eadcd5876053bb888c6f6b3b3e7f35489b21ff",
-          "commit": "12e8d294774894fd488b77f8ee3f1d39e639d260",
-          "tree": "221f1d882da4495d02645fd77b743d6374ebec74"
+          "base": "6747a5ea3c91aedd39089d1811a415680521bfed",
+          "change": "2ff7c35411997dbfcdb07e167588638466848d7d",
+          "commit": "4087d8dfccdc23f95c22852061f7f8ac291ca5fb",
+          "tree": "81c1446cce52a31639b51ff756252d040e81f62f"
         }
       },
-      "reason": "reopened",
+      "reason": "stale",
       "status": "done"
     }
   },
