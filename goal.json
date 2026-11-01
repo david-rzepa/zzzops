@@ -11,6 +11,39 @@
   },
   "priority": "P1",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T18:27:31Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:0c556c21045dcada61dcaab09a6d222e0cdd7d4f",
+          "summary": "v1:sha256:c612567a633c55aa2b2528abc46e44a1e2e59c3e11ba2cb873675a16c5a951c5"
+        },
+        "policy": {},
+        "subject": "v1:sha256:1dda7688b68aa7d1ede80b2304ac49d2200587e64dd04458c2c4536ebccec859"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:40ea1fe10c7edc14f1a02d50466beb4ef8747cc9d5e29b604e2eeb82431c96b2",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T18:27:31Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "1. Yes",
+        "summary": "Approved G1027 design revision 2: capabilities replace ENGINE_VERSION and engine.min. One file per capability under engine/capabilities/ (no merge conflicts between goals); POLICY settings.engine.requires; engine_too_old names the missing capabilities; engine.min kept as a deprecated, mapped floor (1.0.0 none, 1.1.0 lens_findings); ENGINE_VERSION removed in favour of a build id from package provenance; the legacy cache key hashes the detector sources. SPEC §4.5's bump list is restated as what ships with a new capability. G1022 takes `lenses`, G1025 `release_lines`, both merge orders covered. Review approved after one round of two findings."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "0c556c21045dcada61dcaab09a6d222e0cdd7d4f",
+          "commit": "200afabcf5448a9fb64e9cd860e81d554150c245"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 2,
       "correction_runs": 1,
