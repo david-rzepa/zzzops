@@ -11,6 +11,33 @@
   },
   "priority": "P2",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T07:51:23Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:137369030420987f7ff4f2f87e69612b97276be0",
+          "summary": "v1:sha256:f4c984f384cbe224354c39d71081665d57f288833059686914f629db2dac00ce"
+        },
+        "policy": {},
+        "subject": "v1:sha256:d3c39bcbb318afd36448b6f786325ccc6ea8f8b724851f6a1185a77f318820d8"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:6921c6b4e6896ef51a75e632d60558efa014624fe04fc54ee4912e73868a3c98",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T07:51:23Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Do not wait for my approval",
+        "summary": "Approved the G1020 design (revision 2). One sentence in the shared review instruction tells code reviewers to target test_design for test problems. lens_truth.md's duplicate 'On code:' line is merged. A filtered lens may answer approved with notes when it has no open material finding, where a finding counts as material unless it says material: false, through one shared is_material helper. Unfiltered reviews are unchanged. Reviewer notes for implement: the function is process_findings, and is_material goes in a module both records and frontier import, to avoid a cycle. Decision made by Claude (root agent) under the owner's standing delegation for Release 1."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "design": {
       "attempt": 2,
       "correction_runs": 1,
