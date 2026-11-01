@@ -113,30 +113,30 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-01T07:21:17Z",
+      "finished_at": "2026-11-01T17:32:11Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
-          "base": "v1:sha256:bdd8faa768559c4b8a65bd74f02c7fcb133d59b44c4c97504864a4c68afc3ad5",
+          "base": "v1:sha256:7630d1d2d0fd6997163e780cd14c0370efe0911b93515170876f562a37cf36f9",
           "doc": "v1:blob:5ed045be21817ba93e467355960e3c37a4cb091f",
-          "tests": "v1:sha256:2c0574165b3d1b73286cfd17f2b9fdf6f92587b44fbace7c285d20cf2ab637c6"
+          "tests": "v1:sha256:a06cb57d8598146667540a9fe8819f3afd5b4f241a5f85a4876c3e5b723e6687"
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/implement-1000-3",
-      "input_fp": "v1:sha256:e970ea3922feddaa47b4b564cd041778ee6d8714460edcb3701baeb1ed043545",
+      "holder": "claude:e6ad/root",
+      "input_fp": "v1:sha256:c8f77c4214a7803e73dcd555926b9d0d6fa624068f2792112ab912e821588c39",
       "ok": true,
       "output": {
         "code": {
-          "base": "6747a5ea3c91aedd39089d1811a415680521bfed",
-          "change": "2ff7c35411997dbfcdb07e167588638466848d7d",
-          "commit": "6476249c590625ad6628f56f728f7c8eea02b9f2",
-          "tree": "81c1446cce52a31639b51ff756252d040e81f62f"
+          "base": "a05fb9714f105b4b6da43deafde535ea6eed8a88",
+          "change": "97c185d5cf500b2a1e8f64e4bceef8ab4c51f73e",
+          "commit": "d417d47a911ed1d0b2bbbe5af77828ef8a8ba956",
+          "tree": "c23c5d333a09d2e6ba12370e4ecf9595769ac40a"
         },
-        "summary": "Resubmit after base rebased G1000 onto dev 6747a5e. The conflict resolution (by the base worker) keeps both sides: frontier.py keeps G1014's running-state parts with G1000's candidates part via fp_parts(..., R); card.py routes G1000's policy section and long candidates/notes through G1018's _steps/_apply shrink mechanism (views never blobbed, never grows); docs merged. Full suite in the worktree: 584 tests OK; prompt_stats --check passes."
+        "summary": "Resubmit after base rebased G1000 onto dev a05fb97 (G1016 and G1021 merged). Conflicts resolved keeping both sides: card.build adds G1000's notes and filter candidates, then calls previous() with G1016's record_stale; the CLI_USAGE Outputs paragraph keeps G1000's lens/filter sentence and G1016's optional-checkpoint, full 40-hex sha wording. test_design 6ecbeb0 synced the graph12 fixture prompts with dev. No other code change. Full engine suite before the fixture fix: 525 tests, 1 failure (the fixture test), now passing; prompt_stats --check passes."
       },
       "reason": "stale",
       "status": "done"
