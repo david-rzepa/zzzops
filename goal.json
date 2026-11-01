@@ -134,6 +134,68 @@
       "reason": "stale",
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_tests:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:b835ecb553bf590c4fdd16ea2802bb74459267235ebe53fb1d1fd2e6427e151f",
+          "text": "DocsTests.test_prompts_name_full_shas asserts the new wording in fx.ROOT/.zzzops/prompts/{test_design,implement}.md as well as in the templates. Passing would require the goal to edit this repo's .zzzops/prompts, and integrate refuses goal diffs touching policy files, so the goal could not integrate. Assert only plugins/zzzops/zzzops/templates/default/prompts; the .zzzops copies follow through a separate policy change (the design's 4a 'Prompts' bullet should be read as the template copies).",
+          "upheld": false
+        },
+        {
+          "id": "review_tests:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:b835ecb553bf590c4fdd16ea2802bb74459267235ebe53fb1d1fd2e6427e151f",
+          "text": "CapabilityTests.test_reclaimed_reopened_correction_keeps_its_capability is vacuous. It uses design, which has no inputs.base in the default graph, and only calls push_dev without re-running base, so the reclaimed card has no lease-side staleness and 'architectural' holds with or without the F1 fix (it passes at 802c016). Rewrite on a node with inputs.base: through_tests, a review_tests changes_requested finding, start test_design (reason reopened), restack_base, abandon, start --reclaim; assert stale_because == ['inputs.base'] and run.capability == 'reasoning' (not routine).",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T04:50:09Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:9008e0101ebef0dff6bcfb3075aae0f32f1a20d1",
+          "tests": "v1:sha256:1f428adb15d3a03ec6fdfd1788e08e303e11654139e18e1440bc907f90755e00"
+        },
+        "policy": {},
+        "subject": "v1:sha256:b835ecb553bf590c4fdd16ea2802bb74459267235ebe53fb1d1fd2e6427e151f"
+      },
+      "holder": "claude:e6ad/review_tests-1016-1",
+      "input_fp": "v1:sha256:3592cc26732100080b0639b5389c2f5abffb3fa2c8ff26c8f14b3eb77eed145f",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "e24d066e3ac452546d3abd10bbb8b80b409233cd",
+          "commit": "77e7f8ab322f0ffc1bfa3fbead199814868b02e4",
+          "path": ".zzzops/reviews/1016/review_tests.md"
+        },
+        "summary": "The tests cover the design well and fail before implementation for the right reasons (26 of 29). The F1 adaptation from implement to test_design keeps the design's intent. Two material issues: (1) test_prompts_name_full_shas also asserts this repo's .zzzops/prompts, which forces a policy-file edit that integrate refuses; assert only the template prompts. (2) test_reclaimed_reopened_correction_keeps_its_capability runs on design, which has no inputs.base, and never re-runs base, so it passes both before and after implementation; redo it on a reopened test_design with restack_base, and assert stale_because == [inputs.base] and capability == reasoning."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
+          "change": "cd2d9ad289da99ee0b739d4d78e6a8eee95b105d",
+          "commit": "802c01608eff84423c0c885ec904b652b9b594f8",
+          "tree": "fdd05d60402a5464346adb752f4a65a135d2c0fa"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
