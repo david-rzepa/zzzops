@@ -1,0 +1,18 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [],
+  "graph": "default",
+  "id": 1017,
+  "links": {
+    "issue": null
+  },
+  "priority": "P1",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Dogfooding Release 1 found that DESIGN.md and SPEC.md, the contract that prompts, reviews and goals cite (for example the DESIGN §10 bounded-cost rules and the §5 removal list R1–R15), exist only at /home/dave/Work/dev/zzzops-design-reset/, outside the repository. Workers given only a task card cannot read them through read_dev, and design changes to the contract (G1000, G1015) cannot be reviewed in their PRs.\n\nOutcome:\n- The approved revision 6.3 DESIGN.md and SPEC.md move into the repository under docs/design/ (or a path the design chooses), with their review history summarised rather than copied. The passes/ and reviews/ folders stay outside unless the design argues otherwise.\n- Every in-repo reference (prompts, skills, references, the implementation plan) points at the in-repo path.\n- The documents are updated to the current engine at dev: the --policy-ref flag, and whatever G1001, G1014, G1015, G1016 and G1000 have landed by then, or a short 'pending amendments' list naming those goals.\n- A short README section explains which document is normative for what: SPEC is the contract, DESIGN is the rationale.\n- Remove anything private: absolute local paths and session names.\n\nAcceptance:\n- The documents render on GitHub, and no reference to the external folder remains in shipped files or prompts.\n- A card's read_dev can show them.\n- The whitepaper goal (G1002) can cite them.\n- prompt_stats budgets are unaffected, because these are repository docs and are not shipped in the plugin unless the design decides otherwise.",
+  "state": "open",
+  "title": "Bring the engine design and spec into the repository as reviewable docs"
+}
