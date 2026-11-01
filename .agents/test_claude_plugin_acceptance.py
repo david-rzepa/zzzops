@@ -96,6 +96,24 @@ class ClaudePluginAcceptanceTests(unittest.TestCase):
         with mock.patch.object(self.harness.subprocess, "run", return_value=extra):
             with self.assertRaisesRegex(self.harness.AcceptanceError, "beyond"):
                 self.harness.validate_versionless(Path("marketplace"), env={})
+    def test_full_validate_must_report_no_package_check_entry(self) -> None:
+        """G1033: acceptance runs the full validate and ignores git/gh entries (CI has no token) but not the package's."""
+        require = self.harness.require_no_package_check
+        require({"ok": False, "environment": ["gh is not authenticated: run gh auth login"], "policy": ["none"]})
+        require({"ok": True, "environment": [], "policy": []})
+        for entry in (
+            "plugin package: skill discovery metadata does not match the plugin build: skills/a/SKILL.md; hint",
+            "plugin package check failed: boom",
+            "something about skill discovery metadata",
+        ):
+            with self.subTest(entry=entry):
+                with self.assertRaisesRegex(self.harness.AcceptanceError, "package"):
+                    require({"ok": False, "environment": ["gh is not installed", entry], "policy": []})
+        for malformed in (None, [], {"ok": True}, {"environment": "plugin package: x"}):
+            with self.subTest(malformed=malformed):
+                with self.assertRaises(self.harness.AcceptanceError):
+                    require(malformed)
+
 
 if __name__ == "__main__":
     unittest.main()

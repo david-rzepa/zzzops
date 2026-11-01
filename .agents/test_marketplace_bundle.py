@@ -5,7 +5,10 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
+import runpy
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -24,6 +27,39 @@ SKILL_UI = {
     "migrate-zzzops-repository": ("Migrate Repository", "Move a pre-reset ZzzOps repository to the new engine"),
 }
 SHIPPED_SKILLS = set(SKILL_UI)
+CANONICAL_VERSION = json.loads((ROOT / "plugins" / "zzzops" / "plugin.json").read_text(encoding="utf-8"))["version"]
+NO_POLICY = "this repository has no ZzzOps policy on `main`; run the bootstrap skill"
+
+
+def package_check_entries(environment: list[str]) -> list[str]:
+    """validate's environment also carries git and gh checks (no token in CI); select only the package check's."""
+    return [entry for entry in environment
+            if entry.startswith("plugin package") or "skill discovery metadata" in entry]
+
+
+def run_full_validate(plugin: Path, workspace: Path) -> dict:
+    """Run the full `validate` of a built plugin from a pushed one-commit repository, through zzzops.py (any OS)."""
+    import engine_fixtures as fx
+    home = workspace / "home"
+    home.mkdir()
+    env = fx.isolated_env(str(home))
+    repo, origin = workspace / "repo", workspace / "origin.git"
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", *args], check=True, capture_output=True, env=env)
+
+    git("init", "-q", "-b", "main", str(repo))
+    git("-C", str(repo), "commit", "-q", "--allow-empty", "-m", "initial")
+    git("init", "-q", "--bare", str(origin))
+    git("-C", str(repo), "remote", "add", "origin", str(origin))
+    git("-C", str(repo), "push", "-q", "origin", "main")
+    git("-C", str(repo), "config", "zzzops.integrationBranch", "main")
+    result = subprocess.run([sys.executable, str(plugin / "zzzops" / "zzzops.py"), "validate"],
+                            cwd=repo, env=env, capture_output=True, text=True)
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise AssertionError(f"validate printed no JSON: {result.stderr}{result.stdout}") from exc
 
 
 def quoted_yaml_value(data: bytes, field: str) -> str:
@@ -280,6 +316,40 @@ class MarketplaceBundleTests(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(self.builder.BundleError, "unsafe generated path"):
                     self.claude_builder.write_marketplace(ROOT, Path(directory) / "unsafe", "2.0.0")
+
+    def test_generated_claude_marketplace_passes_the_full_package_check(self) -> None:
+        """G1033: a Claude marketplace built for the canonical or a release version passes its own self-check."""
+        for version, channel in ((CANONICAL_VERSION, "development"), ("2.0.0", "official")):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as directory:
+                workspace = Path(directory)
+                out = self.claude_builder.write_marketplace(ROOT, workspace / "out", version)
+                for skill in SHIPPED_SKILLS:
+                    description = quoted_yaml_value(
+                        (out / "zzzops" / "skills" / skill / "SKILL.md").read_bytes(), "description")
+                    self.assertTrue(description.startswith(f"ZzzOps v{version} — {channel} plugin. "),
+                                    (skill, description))
+                report = run_full_validate(out / "zzzops", workspace)
+                self.assertEqual([], package_check_entries(report["environment"]), report)
+                self.assertEqual([NO_POLICY], report["policy"], report)
+
+    def test_package_check_assertion_fails_on_a_wrong_channel_build_with_a_claude_hint(self) -> None:
+        """The negative case: a SKILL.md rendered with the wrong channel is reported, with a Claude Code hint."""
+        package = runpy.run_path(str(ROOT / "plugins" / "zzzops" / "zzzops" / "package.py"))
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            out = self.claude_builder.write_marketplace(ROOT, workspace / "out", CANONICAL_VERSION)
+            relative = "skills/add-zzzops-goal/SKILL.md"
+            skill = out / "zzzops" / relative
+            skill.write_bytes(package["render_skill_metadata"](
+                relative, skill.read_bytes(), CANONICAL_VERSION, "official"))
+            report = run_full_validate(out / "zzzops", workspace)
+            entries = package_check_entries(report["environment"])
+            self.assertEqual(1, len(entries), report)
+            self.assertIn("skill discovery metadata", entries[0])
+            self.assertIn(relative, entries[0])
+            self.assertIn("Claude Code", entries[0])
+            self.assertIn("claude plugin update zzzops@zzzops", entries[0])
+            self.assertNotIn("Codex", entries[0])
 
 
 if __name__ == "__main__":
