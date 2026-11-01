@@ -153,6 +153,56 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_tests:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:878b5fa8ff495a60d450e4f9eaf92c405c41f874761a1149842c9be663628990",
+          "text": "The second recorded command runs all of CI's Linux validation, not what proves this goal. With no shard arguments, `python .github/scripts/run_product_validation.py --platform linux` takes linux_validation(): (1) `unittest discover -s .agents` over the entire suite (about 600 test methods, more than 1,300 ids), serially in one process, where CI uses 8 shards x 2 workers; (2) `npm run test:plugin` and `npm run test:release`, which need Node and node_modules from `npm ci`, so network on a fresh worktree; (3) prompt_stats --check and compileall. run_tests runs every recorded command, so this makes it slow and environment-dependent, and a failure anywhere in the repository fails this goal. Command 1 already covers the changed modules, and test_ci_selection checks the new native ids against NATIVE_COVERAGE. The full suite is dev-required-tests' job. Fix: drop the second command. If a selection-wiring cross-check is wanted, add a fast offline one such as `python -c \"import runpy; m=runpy.run_path('.github/scripts/run_product_validation.py'); m['select_native_tests'](m['discover_native_tests']())\"`.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T21:38:26Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:606311b216268f9b2f2f2495e94b654838796672",
+          "tests": "v1:sha256:9f47196988e4f69be65460469b30796bce73808f28aaa28d8e3ae910ceec9ce1"
+        },
+        "policy": {},
+        "subject": "v1:sha256:878b5fa8ff495a60d450e4f9eaf92c405c41f874761a1149842c9be663628990"
+      },
+      "holder": "claude:e6ad/rd1017",
+      "input_fp": "v1:sha256:8ff98c972fb702fe19a246a17671f05bc35808e57b40ffcfe6a207cc64c6a4dc",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "f721ac730ba1eb05343c9b2534328d2f396d4a92",
+          "commit": "8585e118ea6e2c810b953b211fc2ec3753282935",
+          "path": ".zzzops/reviews/1033/review_tests.md"
+        },
+        "summary": "The tests match design revision 2 and fail before the fix. The full-validate positive case (canonical and 2.0.0, channel prefix and policy entry) and the wrong-channel negative case check only the package's own entries. Every install layout gets a hint test with HOME and USERPROFILE isolated, and the cachebuster case names Codex. The require_no_package_check helper is pinned, malformed reports included. NATIVE_COVERAGE and REQUIRED_NATIVE_IDS are kept in sync. One finding: the second recorded command, run_product_validation.py --platform linux, runs the entire suite serially plus npm test:plugin and test:release (Node and npm ci, so network on a fresh worktree), prompt_stats and compileall. That is CI's job. Command 1 already proves this goal. Drop the second command, or replace it with a fast offline native-selection check."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "daff743d26c169d1fe2acdf1898a0302143d40e3",
+          "commit": "47a033380d7476f736e40a47b38f344da76ffc0c",
+          "tree": "9fbe10437925ffff633039758a8ad70b611a4c11"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
