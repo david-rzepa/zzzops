@@ -8,7 +8,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T04:13:12Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "spec": "v1:sha256:1a59bf0875532ae3cbd0ab5f05c996c09517c5a4a0ea2a7676b92880c655732e"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/design-1015-1",
+      "input_fp": "v1:sha256:9123e9670cae514646d7aa0725eb29d241f784e2d2cda7c2b65d73051debe6a0",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "444f6181edf79a6f19f6fd9a16d51f558487d7aa",
+          "commit": "4e6236fcc17188c653c51f13dec20fd45b1b4889",
+          "path": ".zzzops/reviews/1015/design.md"
+        },
+        "summary": "Adds engine/legacy.py: free local signals (old-format POLICY.json, PROJECT_AUDIT/BOOTSTRAP/rules files, old ignore blocks, cleanup_legacy's retired install roots) plus, only when a cached key of (engine version, remote, signals) changes, one ls-remote for old ref namespaces and one gh GraphQL search for open legacy-labelled or envelope-marked issues, cached in <git-common>/zzzops/legacy.json; validate always re-checks so migration is detected, not remembered. `next`/`validate` gain a top-level `legacy` item with counts and the new shipped skill `migrate-zzzops-repository` (a triage checklist with this repo's 115-issue audit as its worked example); an old-format policy becomes the `legacy_policy` blocker (exit 4) naming that skill; dismissal is an optional `settings.legacy.ignore`. It restores R11's lost version-keyed detection without its gate, and amends DESIGN §10 item 10 with one bounded GitHub-call exception."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
