@@ -922,13 +922,17 @@ class FilterTests(LensWorld):
         nid = self.lens_finding_ids(g, "simplicity_design")[0]
         self.p.run(g, "filter_design", verdicts={nid: verdict("note", "a preference")})
         self.assertEqual("current", self.p.states(g)["design"])
+        fp = self.p.record(g, "filter_design")["input_fp"]
         tip = self.p.tip(g)
         self.w.seed.git("fetch", "-q", "origin", f"refs/heads/zzzops/goal/g{g}")
         doc = json.loads(self.w.seed.git("show", "FETCH_HEAD:goal.json"))
         doc["records"][self.n("filter_design")]["output"]["verdicts"] = {}
         push_goal_doc(self.w, doc, tip)
         st = self.p.states(g)
-        self.assertEqual("current", st["filter_design"])                     # still fresh
+        # still fresh: no stale state, and its record's input fingerprint is untouched by the hand edit
+        # (its state is `blocked` because its subject, design, has reopened)
+        self.assertFalse(st["filter_design"].startswith("ready (stale"), st)
+        self.assertEqual(fp, self.p.record(g, "filter_design")["input_fp"])
         self.assertEqual("ready (reopened)", st["design"])                   # the unjudged note is live
         ag, dcard = self.p.start(g, "design")
         self.assertEqual([nid], [c["id"] for c in dcard["corrections"]])
@@ -967,6 +971,11 @@ class IntentTests(LensWorld):
         self.p.drive(g, lambda st: all(st[l] == "current" for l in lens_ids("impl")), limit=200)
         self.assertIsNotNone(self.p.record(g, "intent_impl"))
         self.set_intent(dict(INTENT, serves="Operators too."))
+        # base waits for filter_design (context input), so re-run intent_design first (same summary,
+        # so filter_design stays current) before reading the impl-stage states
+        self.p.run(g, "intent_design")
+        if self.p.states(g)["filter_design"] != "current":
+            self.p.run(g, "filter_design")
         st = self.p.states(g)
         self.assertEqual("ready (stale: policy.intent)", st["intent_impl"])
         stale = {n for n, s in st.items() if s.startswith("ready (stale")}
