@@ -226,10 +226,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-01T05:26:17Z",
+      "finished_at": "2026-11-01T06:27:53Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -253,7 +253,7 @@
         ".agents/test_engine_docs.py",
         ".agents/test_engine_lenses.py"
       ],
-      "holder": "claude:e6ad/test_design-1000-2",
+      "holder": "claude:e6ad/test_design-1000-3",
       "input_fp": "v1:sha256:688433e7e005438cd35b4ccb231dd0c38f222d8d12e119eabb2138f0cb32f2b8",
       "ok": true,
       "output": {
@@ -262,14 +262,18 @@
           "python3 -m unittest discover -s .agents -t .agents -p 'test_*.py'",
           "python3 .agents/prompt_stats.py --check"
         ],
+        "responses": {
+          "implement:1:1": "fixed: the design (§5 Liveness) defines 'fresh' as the filter record's input fingerprint matching, not the frontier state; once design reopens, filter_design is legitimately blocked on its subject. test_a_fresh_filter_record_without_a_verdict_keeps_the_note now captures filter_design's input_fp before the hand edit and asserts it is unchanged afterwards and that filter_design is not `ready (stale...)`; the assertions that design is `ready (reopened)` with corrections == [the unjudged note] are kept.",
+          "implement:1:2": "fixed: design §3 (base takes context filter_design.summary) and §17 (context inputs gate readiness) make base and everything downstream wait for the re-run intent lens. The test now re-runs intent_design after the intent change (and filter_design if it is no longer current) before reading states, then asserts intent_impl is `ready (stale: policy.intent)`, no other node besides the intent lenses is stale, and implement plus the six other impl lenses are `current`."
+        },
         "tests": {
           "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "813390138d87f194b2c7102ccade7e068a285a62",
-          "commit": "d5e46d1972ced6a2a3f08ced98b8a81bc7742888",
-          "tree": "b7fbdcc97810f38e987088cca88055662537b5c4"
+          "change": "15eadcd5876053bb888c6f6b3b3e7f35489b21ff",
+          "commit": "12e8d294774894fd488b77f8ee3f1d39e639d260",
+          "tree": "221f1d882da4495d02645fd77b743d6374ebec74"
         }
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     }
   },
