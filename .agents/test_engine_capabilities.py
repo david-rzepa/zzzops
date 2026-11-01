@@ -383,12 +383,14 @@ class TemplateTests(unittest.TestCase):
 
 class NoStaleReferenceTests(unittest.TestCase):
     def test_old_names_are_gone(self):
-        """Over plugins/, docs/design/ and the shared .agents helpers. Test modules are left out: other goals' tests may
+        """Over plugins/, docs/design/ and the shared .agents helpers. docs/design/HISTORY.md and
+        docs/design/IMPLEMENTATION_PLAN.md are historical records and keep the old names (review_tests:2:1). Test modules are left out: other goals' tests may
         name the old constant behind getattr or a lazy import to work in either merge order (review_tests:1:1), and an
         unguarded import of a removed name fails on its own."""
         pattern = "ENGINE_" + "VERSION|REQUIRES_" + "MIN|requires_" + "min|engine_too_" + "new|engine\\.min " + "bump"
         p = subprocess.run(["git", "grep", "-nE", pattern, "--", "plugins/", ".agents/", "docs/design/",
-                            ":(exclude)docs/design/HISTORY.md", ":(exclude,glob).agents/test_*.py"],
+                            ":(exclude)docs/design/HISTORY.md", ":(exclude)docs/design/IMPLEMENTATION_PLAN.md",
+                            ":(exclude,glob).agents/test_*.py"],
                            cwd=fx.ROOT, capture_output=True, text=True)
         self.assertIn(p.returncode, (0, 1), p.stderr)
         self.assertEqual("", p.stdout)
