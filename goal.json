@@ -49,15 +49,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:a9f3ce03f3a5532016ae8faaea1d6c170cbf11bb077c9f1dec2f0adb5065ac23",
@@ -69,7 +69,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:a9f3ce03f3a5532016ae8faaea1d6c170cbf11bb077c9f1dec2f0adb5065ac23",
@@ -81,7 +81,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:a9f3ce03f3a5532016ae8faaea1d6c170cbf11bb077c9f1dec2f0adb5065ac23",
@@ -93,7 +93,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:a9f3ce03f3a5532016ae8faaea1d6c170cbf11bb077c9f1dec2f0adb5065ac23",
@@ -105,7 +105,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:a9f3ce03f3a5532016ae8faaea1d6c170cbf11bb077c9f1dec2f0adb5065ac23",
@@ -117,7 +117,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:a9f3ce03f3a5532016ae8faaea1d6c170cbf11bb077c9f1dec2f0adb5065ac23",
@@ -129,7 +129,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:a9f3ce03f3a5532016ae8faaea1d6c170cbf11bb077c9f1dec2f0adb5065ac23",
@@ -141,41 +141,89 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:a9f3ce03f3a5532016ae8faaea1d6c170cbf11bb077c9f1dec2f0adb5065ac23",
           "text": "F8 (minor): G1017's case 3 gives a pending README row to a goal whose contract sections are known, and §15 now names them, so §10's 'no pending row' is out of date. Fix: as G1022 §12 does, send §15's list for a row, and have this PR delete the G1025 pending row, so test_no_landed_goal_is_pending passes.",
           "upheld": false
+        },
+        {
+          "id": "review_design:2:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:3a352241961dec729184d3dd1ce5bb7c5e4c228717ec5c0a4e297c5cc482a777",
+          "text": "New 1 (major): the release_sync (§8) and line_members_open (§6) waits are recorded waiting_for: dependency blocks. frontier.py:243 keeps such a node waiting until its input_fp changes, and nothing changes it here. base's inputs exclude the target tip (G1021), so the sync landing never wakes the dependent, and pass 3 needs st[base] current. finish's inputs are unchanged when a late member is cancelled, a case the design itself names. Both hang forever. Fix: make both frontier-computed waits: base waits while some merges[d] is not an ancestor of the target tip, using the upstream input; finish waits from the ledger, like line_complete. Add tests: sync lands, then base runs; a late member is cancelled, then finish runs on the existing approval.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:2:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:3a352241961dec729184d3dd1ce5bb7c5e4c228717ec5c0a4e297c5cc482a777",
+          "text": "New 2: hotfix lines have no tip binding. With sync skipped (§7), approve_finish's only input sync.merged is the skipped placeholder, so the approval is not tied to hotfix/x's tip, and finish step 1's tip check is undefined. A member merged into hotfix/x after the approval goes to production unapproved, which is the attempt-1 problem (review_design:1:5) on hotfix lines. Fix: bind both line kinds to the line tip, e.g. sync in record-only mode on hotfix lines (merged = hotfix tip) or a small git.line_tip op that approve_finish and finish read. Test it.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:2:3",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:3a352241961dec729184d3dd1ce5bb7c5e4c228717ec5c0a4e297c5cc482a777",
+          "text": "New 3: a hotfix name cannot be reused after its line finishes. The hotfix-start key {line: hotfix, name: x} matches the closed line goal, so the verb returns it as recovered and never creates an open line. The kept hotfix/x (D14) remains, and a new member marked flow.hotfix = x waits forever on a repeating hotfix_start item. Fix: new/edit refuse a flow.hotfix that names a finished hotfix line (from the ledger's Line trailer) with a 'choose a new name' hint, or add a generation to the key and branch. Test it.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:2:4",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:3a352241961dec729184d3dd1ce5bb7c5e4c228717ec5c0a4e297c5cc482a777",
+          "text": "New 4 (minor): §3.1 writes 'Closed: done|cancelled', but closed.reason also allows superseded. Cut completeness must classify superseded goals from the trailer alone, or each one falls back to a document read or is miscounted. Fix: write Closed: <reason> for all three reasons, have D6 count superseded like cancelled, and add a superseded goal to test 2a.",
+          "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T18:11:20Z",
+      "finished_at": "2026-11-01T18:18:30Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:5dad4c9519b8761d5d285c6feb4660cccfeb970a",
+          "doc": "v1:blob:2cc794e3db1c84558b8d76bb6f5784ea771da028",
           "spec": "v1:sha256:1d314cf8bf1b01e23f5fc28018d6afa358a2f5c5c29969a978f16676fab30e45"
         },
         "policy": {},
-        "subject": "v1:sha256:a9f3ce03f3a5532016ae8faaea1d6c170cbf11bb077c9f1dec2f0adb5065ac23"
+        "subject": "v1:sha256:665858e9598ac2b0ef310336827345bd63e55de9d1b7a037dcd36f22f9914c6b"
       },
       "holder": "claude:e6ad/rd1025",
-      "input_fp": "v1:sha256:3dfe7d910dcd6b8b1698122e0ba0af4ecb05fcf0e6e46d96aed24e1fd6625765",
+      "input_fp": "v1:sha256:841dc7e5e22b7e4d2ed6ae678144bf4fc5a2ad645e339b9320f428cc95ce61a4",
       "ok": false,
       "output": {
         "decision": "changes_requested",
         "report": {
-          "blob": "fba05f98170510645a9f31710bd5001745438577",
-          "commit": "a28e2895500a7c0fbf1cee13064e8a49e0100aa4",
+          "blob": "dd03df6f2a6be075187baf17dfa27fc7c3d5d000",
+          "commit": "3d17926172ab5e1c7d72015e06f5fad64eb02873",
           "path": ".zzzops/reviews/1025/review_design.md"
         },
-        "summary": "Changes requested. The design follows O1-O4 and the spec's quoted direction, and most of its engine claims hold at a05fb97. But the effective release gate and cut completeness rely on closed goals' documents, which the engine never reads (dev would re-freeze after finish) (F1). There are races on line ownership: two open release lines (F2), duplicate cuts (F3), and a member created after finish approval (F5). Cross-target stacks are retargeted to the wrong branch (F4). The scheduled restack lacks a frontier mechanism and a bound (F6), the line goal's sync branch and fetch are undefined (F7), and G1017's pending-row rule applies (F8). No owner question."
+        "summary": "Changes requested. All 8 attempt-1 findings are resolved; for review_design:1:5 this holds for release lines, and its hotfix gap is new 2. The new mechanisms are well specified: the trailer ledger, one open line, the line-derived request key with duplicate_line, retargeting to target(d), the bounded pass 3, the sync branches and the second fetch. Four new holes: the recorded release_sync and line_members_open waits are never re-evaluated and hang forever (new 1); hotfix lines have no tip binding for approve_finish (new 2); a finished hotfix name cannot be reused (new 3); and the Closed trailer omits superseded (new 4). No owner question; the capability requirement matches the owner's G1027 decision."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "5dad4c9519b8761d5d285c6feb4660cccfeb970a",
-          "commit": "b37c664fcc982367adcc9e2cdb6e6539d13380b8"
+          "blob": "2cc794e3db1c84558b8d76bb6f5784ea771da028",
+          "commit": "da690e409fa5ef5c60c51db1375b30bf35004888"
         }
       },
       "status": "done"
