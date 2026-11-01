@@ -10,7 +10,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T18:37:06Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:38bd2bb7e360625c8d4fd7863ee482fb7080b82f31a6acb087c3ad8deb301589",
+          "spec": "v1:sha256:e89bcb65bb0501e53489428c547173e3252be41e17065753656056ba4f1cbb48"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1028",
+      "input_fp": "v1:sha256:52309d9b2b734dd19daaa7552deb8c6dbfaa19637a14b14a0c5688451912c511",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "2a9c17dfd4287092b93db268e7569bee3a14a74c",
+          "commit": "2b55072115d9c87236c0751570998f76e1cf39be",
+          "path": ".zzzops/reviews/1028/design.md"
+        },
+        "summary": "Open findings stay live when their review goes stale (spec or depends_on edit, sibling reopen), as long as the target's output is unchanged. They are marked stale_review on the target's card, and the edit preview lists them with waive lines. Op findings are not carried. Review cards list resolved findings separately under previous.resolved. A restated resolved is a no-op, and restating open gives 'already resolved'. New findings may carry follows: <prior id>, which inherits rounds and upheld so a dispute cannot be reset, and is shown on cards and approve-item facts. A global --repo flag is printed on every worker-facing command, and the not-in-repository error names the directory and the flag."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
