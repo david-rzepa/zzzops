@@ -281,14 +281,14 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T06:33:18Z",
+      "finished_at": "2026-11-01T07:21:22Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:4494c4b20d0026d5df2f1ddbaaa8d8dc32441f8dabef159f35ae7da0e0775144",
+          "code": "v1:sha256:af3b0368ff9b9e16651a4a035578501d987e2f2a6bbe585f8bc6dab1eb2faece",
           "commands": "v1:sha256:cb3e70d3ad64395928bbbb0e6599a56cb52066c3b274c7c876b01f7e5b286f31"
         },
         "policy": {
@@ -298,7 +298,7 @@
         }
       },
       "holder": "claude:e6ad/op",
-      "input_fp": "v1:sha256:5ba5a4944e74aaaa47af018864e2b04d1f4998eb05d1fa7839c0942f9fc0a757",
+      "input_fp": "v1:sha256:c04e843468771d75bf5e7d5f8085a33f97f0d0d2aec4a895d3d92542ee086c7a",
       "ok": true,
       "output": {
         "result": {
@@ -306,33 +306,33 @@
             {
               "cmd": "python3 -m unittest discover -s .agents -t .agents -p test_engine_lenses.py",
               "exit": 0,
-              "seconds": 189,
-              "tail": "rning: Enable tracemalloc to get the object allocation traceback\n...../home/dave/Work/dev/zzzops/.zzzops/worktrees/g1000/.agents/test_engine_lenses.py:116: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpjsr3_2pw/tpl/POLICY.json' mode='r' encoding='UTF-8'>\n  p = json.loads(open(os.path.join(d, \"POLICY.json\")).read())\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 61 tests in 189.793s\n\nOK\n"
+              "seconds": 214,
+              "tail": "rning: Enable tracemalloc to get the object allocation traceback\n...../home/dave/Work/dev/zzzops/.zzzops/worktrees/g1000/.agents/test_engine_lenses.py:116: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp_1o739ap/tpl/POLICY.json' mode='r' encoding='UTF-8'>\n  p = json.loads(open(os.path.join(d, \"POLICY.json\")).read())\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 61 tests in 214.846s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -t .agents -p 'test_*.py'",
               "exit": 0,
-              "seconds": 430,
-              "tail": "rceWarning: subprocess 3094268 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...................................................................................................................\n----------------------------------------------------------------------\nRan 438 tests in 430.673s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmpz5icbbpa\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
+              "seconds": 551,
+              "tail": ":0: ResourceWarning: unclosed file <_io.BufferedReader name=23>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=20>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=21>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=14>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=15>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=12>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=13>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
             },
             {
               "cmd": "python3 .agents/prompt_stats.py --check",
               "exit": 0,
               "seconds": 0,
-              "tail": "# Enforced prompt budgets\n\nOnly always-loaded context and frequent routed workflows are blocking. Other workflows and total inventory are advisory.\n\n| Context | Bytes | Est. tokens | Limit | Status |\n| --- | ---: | ---: | ---: | --- |\n| always-loaded/codex | 0 | 0 | 700 | PASS |\n| capture/codex | 6914 | 1729 | 3700 | PASS |\n| execution/codex | 9576 | 2394 | 8800 | PASS |\n\nAdvisory total inventory: 26 prompts, 46347 bytes, ~11597 tokens.\n\n## Policy context boundary\n\nPublic documentation is excluded. Static prompts, the current project policy, and cold default/review context are counted separately.\n\n| Context class | Bytes | Est. tokens |\n| --- | ---: | ---: |\n| static-hot-prompts | 35195 | 8799 |\n| current-project-policy | 7536 | 1884 |\n| cold-default-review | 33875 | 8469 |\nPASS: all enforced prompt contexts are within their committed limits.\n"
+              "tail": "# Enforced prompt budgets\n\nOnly always-loaded context and frequent routed workflows are blocking. Other workflows and total inventory are advisory.\n\n| Context | Bytes | Est. tokens | Limit | Status |\n| --- | ---: | ---: | ---: | --- |\n| always-loaded/codex | 0 | 0 | 700 | PASS |\n| capture/codex | 9060 | 2265 | 3700 | PASS |\n| execution/codex | 12120 | 3030 | 8800 | PASS |\n\nAdvisory total inventory: 29 prompts, 62890 bytes, ~15733 tokens.\n\n## Policy context boundary\n\nPublic documentation is excluded. Static prompts, the current project policy, and cold default/review context are counted separately.\n\n| Context class | Bytes | Est. tokens |\n| --- | ---: | ---: |\n| static-hot-prompts | 51128 | 12782 |\n| current-project-policy | 7536 | 1884 |\n| cold-default-review | 34043 | 8511 |\nPASS: all enforced prompt contexts are within their committed limits.\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents",
               "exit": 0,
-              "seconds": 425,
-              "tail": "rceWarning: subprocess 3256399 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...................................................................................................................\n----------------------------------------------------------------------\nRan 438 tests in 425.572s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmpazsi9m34\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
+              "seconds": 547,
+              "tail": ":0: ResourceWarning: unclosed file <_io.BufferedReader name=23>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=20>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=21>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=14>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=15>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=12>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=13>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
             }
           ],
           "passed": true,
-          "tree": "221f1d882da4495d02645fd77b743d6374ebec74"
+          "tree": "81c1446cce52a31639b51ff756252d040e81f62f"
         }
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "test_design": {
