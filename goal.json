@@ -12,10 +12,10 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T18:03:38Z",
+      "finished_at": "2026-11-01T18:15:48Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -29,13 +29,23 @@
       "ok": true,
       "output": {
         "doc": {
-          "blob": "5dad4c9519b8761d5d285c6feb4660cccfeb970a",
-          "commit": "b37c664fcc982367adcc9e2cdb6e6539d13380b8",
+          "blob": "2cc794e3db1c84558b8d76bb6f5784ea771da028",
+          "commit": "da690e409fa5ef5c60c51db1375b30bf35004888",
           "path": ".zzzops/reviews/1025/design.md"
         },
-        "summary": "Git-flow branching behind an optional settings.branching block (production, release_prefix, hotfix_prefix); without it the engine is unchanged. Each release or hotfix line is owned by a line goal on a new 'release' graph (approve_start, sync, approve_finish, finish; goal schema 2 adds an optional 'flow' key). Approving the release_cut item, shown when every release N goal is closed done, creates release/N from the dev tip, and the effective release gate then opens dev to N+1. Release-N goals base, integrate and merge on release/N; the sync op merges release/N into dev through merge-commit PRs, with conflicts going to an agent and then to an approval; finish merges into production, back-merges into dev and keeps the branch; hotfix/<x> lines go from main into main, dev and any open release branch. For item 4, merging into goal work branches was compared with rebasing them and dropped (owner O1). Goal branches keep today's rebase and identity rules, and in branching mode the restack is scheduled just before an agent phase starts, which costs no extra CI or review."
+        "responses": {
+          "review_design:1:1": "fixed: §3.1. In branching mode, goal commits carry Release/Closed/Line/Hotfix trailers. read_state builds a closed-goal ledger from them, with no document read, and reads legacy trailerless closed goals in one cat-file --batch call. Effective release counts closed line goals too, so it never falls back after finish. Tests 2a cover finish-then-gate and counting from trailers alone.",
+          "review_design:1:2": "fixed: §3.2/D16. The cut also requires that no release line is open; a complete later release shows as waiting in next.releases. D9's 'open release branch' is now unique. Test 2b.",
+          "review_design:1:3": "fixed: §3.3/D17. The request key is derived from (line kind, name), never from F. A rejected push re-runs the full check, including the request-key scan, so the loser returns the winner's goal and never adopts. Adoption happens only when no line goal exists. Two open line goals on one branch give a duplicate_line human item. hotfix start uses the same steps. A racing-cuts test is added.",
+          "review_design:1:4": "fixed: §4/§8. merge retargets each dependent PR to the dependent's own target(d). The engine never deletes the dependency's PR branch itself; a PR GitHub already retargeted is moved on by the dependent's next base/integrate run; rollout recommends turning off auto head-branch deletion. A dev dependent waits with release_sync until the sync lands. Tests in 8.",
+          "review_design:1:5": "fixed: §6. approve_finish is bound to the synced release tip (sync.merged), so any later merge into release/N makes it stale and needs re-approval. finish re-checks members from the ledger and waits with line_members_open, merging nothing. new/edit warn release_finishing. finish checks the release tip equals the approved one. A test is added.",
+          "review_design:1:6": "fixed: §5.3/D18. The restack is an explicit pass 3 after pass 2: base becomes ready (upstream) while cur[base] is kept, and every ready or reclaimable workspace node downstream of base (agents and ops) is blocked on restack. Running nodes are untouched. Bound: one scheduled restack per agent attempt, through an unfingerprinted scheduled_for output, so no starvation. Tests for the override, the blocked op and the bound.",
+          "review_design:1:7": "fixed: §5.4/§4/D19. Line goals have no work branch; back-merges use zzzops/sync/g<line>/<into>. Line ops are self_sync and bypass wt.sync, unpushed_replay, salvage_lines, check_i1_i2 and worktree.ensure (detached worktree). The resume accepts the hand merge by its saved parents, and start never resets it. A DIRTY/BEHIND sync PR merges the new I tip into the sync branch, keeping the approval if clean and needing a new agent item and approval if not. Line branches come from a second explicit fetch round, only in branching mode.",
+          "review_design:1:8": "fixed: §10/§15. As in G1022 §12, the root sends §15's list to G1017 for a pending row (marker: plugins/zzzops/zzzops/engine contains \"git.line_sync\"), and this PR deletes the G1025 row along with its docs/design edits and HISTORY row. Test 11."
+        },
+        "summary": "Revision 2 of the git-flow branching design, answering all eight review findings. The shape is unchanged: an optional settings.branching block; line goals on a 'release' graph; goal branches keep rebasing (owner O1), with a restack scheduled before agent phases; release→dev merge-commit sync; finish into production and dev with release/N kept; hotfix lines. New: goal-commit trailers (branching mode only) let the effective release and the cut be computed without reading closed documents; one open release line at a time; a race-safe cut keyed on the line; dependents retargeted to their own target; finish re-checks members and binds to the approved tip; the scheduled restack is a bounded frontier post-pass that blocks every workspace node; line ops use zzzops/sync/g<line>/<into> with a second fetch round; a G1017 pending row that this PR deletes. Older engines are kept away by requiring capability 'branching', which works under engine.min or declared capabilities."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
