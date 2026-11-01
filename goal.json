@@ -1,0 +1,18 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [],
+  "graph": "default",
+  "id": 1015,
+  "links": {
+    "issue": null
+  },
+  "priority": "P1",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Release 1 must migrate existing users without them knowing to look for MIGRATING.md. When the CLI runs in a repository that still has pre-reset ZzzOps state, it detects that and presents migration as the next step, the way `next` presents any other action.\n\nDetection, which must be cheap and must not break the bounded-cost rule that normal reads touch no issues or comments:\n- Local and integration-branch signals, free: a schema-1 or old-format .zzzops/POLICY.json or workflow, PROJECT_AUDIT.md, BOOTSTRAP.json, old marker blocks, and old ref namespaces on the remote (for example zzzops/attempts/*, zzzops/native-candidates/*), from the fetch the CLI already does or a one-time ls-remote.\n- GitHub signal, one call: open issues with the `zzzops` label or the old goal envelope marker.\n- The GitHub check runs once per engine version per clone, or when the local signals fire, never on every `next`. The result is cached under the Git directory (for example .git/zzzops/), keyed by engine version, so a version change re-checks. This restores the old engine's 'version changed' detection in a bounded form. Investigate whether the old engine's equivalent was lost in the reset (R11, the installation-validation and legacy-cleanup gate) and reuse what makes sense.\n\nDisclosure:\n- When legacy state is found, `next` and `validate` report a `legacy` item, not a hard blocker, unless the policy itself is old-format, in which case it is the blocker. The item carries counts (open legacy goal issues, legacy refs, legacy files) and the exact next step.\n- The next step is a shipped migrate skill (new, or MIGRATING.md promoted to a skill) that walks the agent through it: bootstrap the new policy if needed; triage the open legacy goals (close what is obsolete or delivered with a comment, recreate what still matters with `zzzops new`, linking the old issue); optionally run the cleanup tool for legacy files; and report.\n- The skill follows progressive disclosure: the CLI points to it only when needed.\n- Once migration is done, which is detected rather than remembered, the item disappears. Dismissal is explicit, through a policy setting such as `legacy.ignore: true` for repositories that deliberately keep old issues.\n\nAcceptance:\n- Engine tests with fake gh: a repository with legacy issues shows the legacy item once per engine version, with exactly one gh call, cached; a clean repository makes no gh call after the first check; an old-format policy is a blocker that names the migrate skill; the item disappears after migration.\n- The migrate skill exists and is listed in package.py.\n- The audit performed by hand on this repository (115 issues triaged on 2026-10-31) serves as the worked example in the skill.\n- MIGRATING.md, CLI_USAGE, PRIVACY (if a new GitHub read is added) and SETUP are updated.",
+  "state": "open",
+  "title": "Detect old-style ZzzOps installations and disclose migration as the next step"
+}
