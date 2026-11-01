@@ -135,6 +135,40 @@
       },
       "reason": "stale",
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T17:36:18Z",
+      "fp_parts": {
+        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "inputs": {
+          "base": "v1:sha256:7630d1d2d0fd6997163e780cd14c0370efe0911b93515170876f562a37cf36f9",
+          "doc": "v1:blob:2794f7a54f63df0ccfa953d213abcdd40891d690"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        ".agents/test_engine_card_ux.py",
+        ".agents/test_engine_checkpoint.py"
+      ],
+      "holder": "claude:e6ad/td1023",
+      "input_fp": "v1:sha256:aa5d0dd6b727ef437549b34c34a0fbe38646810ed2ab47d568ec44c0fee4edc1",
+      "ok": true,
+      "output": {
+        "commands": [
+          "cd .agents && python3 -m unittest test_engine_checkpoint test_engine_card_ux.DocsTests"
+        ],
+        "tests": {
+          "base": "a05fb9714f105b4b6da43deafde535ea6eed8a88",
+          "change": "6ec262557380a468ad9d3dde1876895a49816bd5",
+          "commit": "92576c975f94636b366fb40ceb409508bf41ccc5",
+          "tree": "2c8cd37bf4de0494c474f8cbc34a7aec39ddc31b"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
