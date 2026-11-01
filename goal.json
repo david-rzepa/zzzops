@@ -11,6 +11,39 @@
   },
   "priority": "P2",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T19:31:27Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:3c035f648197f2c9da42ad22607e39d4fc319f2c",
+          "summary": "v1:sha256:3f4794d481482af473033b8a9e4eb273aab5ec6a884364936af747bbcc5003ff"
+        },
+        "policy": {},
+        "subject": "v1:sha256:9f53282ab58dfafb329b81dc65d2469faec7587e1b9e1eeb4487b47affd52b87"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:828cd787881108387c3ebff0702aa58d4eab6d7319688e26e80787ead7536704",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T19:31:27Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approved G1032 design revision 2 (skill and docs only, no engine change; integrate and merge never read branch protection): when rulesets/rules/protection reads return 403, bootstrap from step 2 asks the owner for required check names (or proposes them from recent PR check runs) and records them in verification.required_ci before validate and landing; step 7 skips the rules probes and uses the repo endpoint; a declined CI gate is recorded in the bootstrap commit or PR message, and the owner is told an empty required_ci means no CI gate. docs/BRANCH_PROTECTION.md and INITIALIZATION.md gain the fallback. A guard test fails on any rules/rulesets/protection api call. Review approved after one round; implementer: update the Outcome and Finding sections to mention step 2."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "3c035f648197f2c9da42ad22607e39d4fc319f2c",
+          "commit": "099bd1fbabd4fd19005b285c1a6289073b8759bc"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 2,
       "correction_runs": 1,
