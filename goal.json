@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-01T21:45:07Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [
     1017
   ],
@@ -205,6 +210,28 @@
       "reason": "retry",
       "status": "done"
     },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T21:45:07Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:a0bcbd2ac835c2aa5f26d5eadf03166c13235d930b2ae2e1e7c79a191caca13a"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:6f62a95d88c44733f014039bc2e4e3bed2589fc13a01393c5162f56b5b7bf670",
+      "ok": true,
+      "output": {
+        "merge_commit": "fddfbe4ba58f826d501875e26a0c71f75d91ba78",
+        "merged_at": "2026-11-01T21:45:06Z"
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 1,
       "correction_runs": 0,
@@ -397,6 +424,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Found while designing G1003 (2026-11-01). The owner: \"All goals are in scope - as part of the migration releases should be assigned\". Today the migrate-zzzops-repository skill's triage (step 4) has no release field, step 5's `zzzops new` defaults every goal to settings.releases.current, and MIGRATING.md's \"#695, all release 1\" line is specific to this repository.\n\n1. The triage table gains a release column; the skill proposes a release per goal (from the old issue's milestone or labels, its dependencies and priority) and the owner confirms or changes it.\n2. `new` receives the release explicitly; dependencies are checked against release order (a goal may not depend on a later release) before any goal is created, and conflicts are shown in the triage.\n3. MIGRATING.md's repository-specific line becomes general guidance.\n\nAcceptance: the skill and MIGRATING document the release column and the confirmation; a skill test (or prompt_stats signal) checks it; if `new` or validation changes, engine tests cover it; this PR edits docs/design for contract changes and adds a HISTORY §4 row (G1017's rule).\n\nReplaces G1030, whose branches were deleted to remove private details of the owner's dogfood app (owner decision, 2026-11-01).",
-  "state": "open",
+  "state": "closed",
   "title": "Migration assigns each migrated goal a release"
 }
