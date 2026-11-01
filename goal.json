@@ -10,7 +10,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T19:39:07Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:38bd2bb7e360625c8d4fd7863ee482fb7080b82f31a6acb087c3ad8deb301589",
+          "spec": "v1:sha256:7b783336f72e8d5bd10e9b0585cc79e2c22a7c9710dcf68cc883678f88f2bfa4"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/root",
+      "input_fp": "v1:sha256:b83858fb8d5d04e4f2b8f58892929475ad64bf9ec757df4db188eea71ef56401",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "41fa9a84fd500cf41af800b3fa7393c26f40724c",
+          "commit": "8e4beb230c0287573562725820f7df4f201fd40b",
+          "path": ".zzzops/reviews/1034/design.md"
+        },
+        "summary": "Migration gives every migrated goal an owner-confirmed release with no engine change. The migrate skill reads the milestone, its triage proposes a release (plus priority and dependencies) per MIGRATE goal and MERGE group from milestones, labels, the old release-plan body, dependencies and priority, checks release order and cycles over the whole set before any write, and step 5 passes release explicitly and creates dependencies first; `new`'s existing validation stays the backstop. MIGRATING's #695 line becomes general guidance (the fact moves to EXAMPLE.md), DESIGN §7's bullet is updated with a HISTORY §4 row, and tests add a skill-text check plus a CLI-level test pinning that `new` refuses a later-release dependency without writing a goal ref. A one-sentence handoff to G1025 (effective release, line targets) and a seam note for G1029 are included; a batch/dry-run `new` verb was rejected as disproportionate. (Resubmitted by the root under the new goal id after the original goal was deleted to remove private details; content unchanged apart from anonymisation and goal ids.)"
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
