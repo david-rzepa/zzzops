@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 
 from engine.canon import canonical, iso, parse_iso
 from engine.frontier import PRI, GoalResult, Portfolio, order_key
+from engine.schemas import lens_label
 
 NEXT_LIMIT = 8192
 LABEL = "<LABEL>"
@@ -275,6 +276,9 @@ def approve_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:
     notes = notes_by_lens(res, n)
     if notes:
         item["notes"] = notes
+    lenses = lenses_applied(res, n)
+    if lenses:
+        item["lenses"] = lenses
     skipped = skips(res)
     if skipped:
         item["skipped"] = skipped
@@ -303,14 +307,21 @@ def approve_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:
 def notes_by_lens(res: GoalResult, n: str) -> dict:
     """The filter-judged notes of the lenses behind the filters that node n reads, grouped by lens."""
     filters = {p for p in res.graph.producers(n) if res.graph.is_filter(p)}
-    lenses = {x for f in filters for x in res.graph.lenses(f)}
+    lenses = {x for f in filters for x in res.graph.reviewers(f)}
     out = {}
     for t in res.graph.topo:
         for c, f, reason in sorted(res.notes.get(t, []), key=lambda x: x[1]["id"]):
             if c in lenses:
-                out.setdefault(c, []).append({"id": f["id"], "target": t, "text": clip(f["text"], 300),
+                out.setdefault(lens_label(c, f), []).append({"id": f["id"], "target": t, "text": clip(f["text"], 300),
                                               "impact": clip(f.get("impact") or "", 200), "reason": reason})
     return out
+
+
+def lenses_applied(res: GoalResult, n: str) -> dict:
+    """For each multi-lens reviewer that node n reads: the lenses it applies and those the goal skipped (G1022)."""
+    skip = res.doc.get("skip") or {}
+    return {p: {"apply": res.graph.applied_lenses(p, skip), "skipped": res.graph.skipped_lenses(p, skip)}
+            for p in res.graph.producers(n) if res.graph.lens_defs(p)}
 
 
 def skips(res: GoalResult) -> list:

@@ -145,6 +145,8 @@ def process_findings(graph: Graph, doc: dict, X: str, r0: dict | None, given: li
             nf["follows"] = followed["id"]
         if graph.filter_of(X):
             nf.update(impact=f["impact"], material=f["material"])
+        if graph.lens_defs(X):
+            nf["lens"] = f["lens"]
         result.append(nf)
     if graph.is_review(X):
         ok = decision == "approved"
