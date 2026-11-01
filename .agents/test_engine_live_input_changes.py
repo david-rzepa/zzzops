@@ -258,6 +258,29 @@ class PolicyLiveLeaseTests(LiveInputChangeBase):
         self.assertEqual([(g, self.n("design"))], self.keys(live), out["impact"])
         self.assert_entry(live[0], g, "design", card, self.A.label, ["def"])
 
+    # ---- design section 5: the state-change rule stays in the union (a removed running node)
+    def test_validate_policy_ref_lists_a_running_node_the_policy_removes(self):
+        g = self.goal()
+        c = self.A.start(g, self.n("design"))
+        self.A.submit(g, self.n("design"), c, {"summary": "D"}, artifact="# D\n")
+        card = self.B.start(g, self.n("review_design"))
+        wf = copy.deepcopy(self.w.workflow)
+        nodes = wf["graphs"]["default"]["nodes"]
+        rd = self.n("review_design")
+        del nodes[rd]
+        for nd in nodes.values():                       # drop every input that references the removed node
+            ins = nd.get("inputs") or {}
+            for k in [k for k, spec in ins.items() if rd in spec["from"].split(".")[:2]]:
+                del ins[k]
+        self.assertNotIn(rd, json.dumps(wf["graphs"]["default"]))
+        self.policy_branch({".zzzops/workflow.json": json.dumps(wf, indent=2) + "\n"}, topic="drop")
+        _, out = self.w.run("b", "validate", "--policy-ref", "drop")  # must not crash on the missing after-side node
+        self.assertEqual([], out["policy"], out)
+        live = out["impact"]["live_leases_on_changed_nodes"]
+        # exactly one entry: the state rule (running -> removed) and the fingerprint rule are de-duplicated
+        self.assertEqual([(g, rd)], self.keys(live), out["impact"])
+        self.assert_entry(live[0], g, "review_design", card, self.B.label, [])
+
     def test_unchanged_policy_lists_no_live_lease(self):
         g = self.goal()
         self.A.start(g, self.n("design"))
