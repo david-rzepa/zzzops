@@ -1,0 +1,20 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [
+    1017
+  ],
+  "graph": "default",
+  "id": 1028,
+  "links": {
+    "issue": null
+  },
+  "priority": "P1",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Found by several workers while dogfooding Release 1 (2026-11-01):\n1. Findings vanish after a goal edit (dogfood 29, 47). Editing G1022's spec after review_design raised 4 findings made the review stale; the reopened design card had `corrections: []`, so the designer saw the findings only because the root relayed them, and the engine has no `fixed:`/`disputed:` response for them. A spec or depends_on edit must not silently drop open findings: keep them live as corrections (marked as from a stale review), or require them to be waived in the edit, and show them on the next card.\n2. Restating an already-resolved finding is refused (dogfood 46, hit twice). The reviewer card's `previous.findings` lists resolved findings next to open ones with no flag, `output_schema` says to give a status for \"every prior open finding\", and submitting a status for a resolved id fails with `unknown finding ids`. Mark resolved ones on the card (or leave them out), accept a restated `resolved`, and say \"already resolved\" in the refusal.\n3. A partly fixed finding has no status (dogfood 44): only open or resolved exist, so a reviewer resolves it and raises a new finding with no link back. Add a link (e.g. `follows: <id>` on a new finding), shown on cards and approval items.\n4. Commands need a working directory (dogfood 42, hit by four workers): `submit` and `renew` fail with \"not inside a Git repository\" outside the repository, and cards' commands carry no cwd. Add `cwd` to card commands, or let the CLI locate the repository from the lease, and make the error say which directory to use.\n\nAcceptance: engine tests for each item (an edit after a changes_requested review keeps the findings on the next card; a restated resolved id is accepted or refused with \"already resolved\"; `follows` round-trips; a card command runs from outside the repository or the error names the directory). This PR edits docs/design for its contract changes and adds a HISTORY §4 row (G1017's rule).",
+  "state": "open",
+  "title": "Keep findings and their status straight across review rounds and goal edits"
+}
