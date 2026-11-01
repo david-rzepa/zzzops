@@ -1,41 +1,55 @@
-# G1017 review_design: independent review
+# G1017 review_design, attempt 2: re-review of design revision 2
 
-**Verdict: changes requested, for one finding.** The pending-amendment mechanism leaves a window in which a parallel goal's contract change lands on dev and no one is responsible for writing it into `docs/design/`. Everything else is sound and checks out against read_dev (54d7e83) and the source folder: the layout, the scrub, how citations are kept, what stays outside, and the claim that nothing ships.
+**Verdict: changes requested, for two new findings.** Revision 2 fixes the structure of the earlier finding: every implement re-checks merged goals, each pending row has an owner and a tree marker, and a test guards the table. But the guard rests on a claim about CI that is false for this repository: required checks are not re-run when dev moves. So two PRs can both pass and both merge, and dev is left red for every PR after them. The inventory also misses G1024, which changes the contract and which the design's implement-time keyword search would not find.
 
-## What I checked
+Checked against read_dev `a05fb97`, the goal state branches, the PR branches `zzzops/pr/g1000` and `zzzops/pr/g1020`, `.github/workflows/validate.yml`, and the live `dev` ruleset.
 
-- **Privacy scrub.** I grepped DESIGN.md, SPEC.md and IMPLEMENTATION_PLAN.md for `/home/`, `/Users/`, `/tmp/`, `~/`, `zzzops-design-reset`, `Rzepa`, `David`, `dave`, `claude-1000`, email domains, `localhost`, `.local`, UUIDs, holder labels and long hex ids.
-  - Every absolute path is in the plan: §0.1, §0.3, §0.4, the step 0 and step 11 records, and §5. The design's §0/§5 rewrite covers all of them.
-  - The owner's name appears at DESIGN 644 and 655 and at SPEC 465, 484 and **532**. The design's inventory leaves out SPEC 532, the `policy_branches[].author` example. It does not matter: the gate regex (`Rzepa|\bDavid\b`) catches it.
-  - The holder labels are `7f3e9a10`, `9c1d4e7a`, `9c1d`, `c90b` and `77e0`. That is the complete set, and the synthetic map covers it.
-  - The remaining matches are not private: `zzzops@localhost` is the engine default, the nonces are synthetic examples, the commit ids are public repository commits, and `~/.codex/rules` is a generic install path.
-  - The relative `scratchpad/review4/…` and `scratchpad/review5/…` citations (DESIGN 1284 and 1296) are covered by the `review<n>/…` rewrite row.
-  - I found no hostnames, no emails and no session UUIDs.
-- **Citations stay resolvable.** The four bare file-name hits and the roughly 44 files with `§`/`Step`/`REV` citations match what the design says. Keeping the heading numbers, moving the plan (the `Step N` and `IMPLEMENTATION_PLAN §1.2` targets), and listing every cited REV5/REV6 id in HISTORY keep them valid. The heading-diff check and test 3 enforce this. Review-finding tags such as `R7 M5` and `harn:M6` resolve only to a report-level line in HISTORY. That is an acceptable, stated loss.
-- **Nothing private or oversized ships.** Both marketplaces (`.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json`) source `./plugins/zzzops`, so `docs/design/` (about 560 KB) is not bundled. `prompt_stats.py` reads only plugin and agent prompt surfaces. `concept_inventory` scans `docs/**`, but the sources contain no "reversible" or "revertible", and adding hits only raises the positive scores that test_concepts asserts. The 16 MB `passes/` folder and the HTML renders stay outside. The only shipped change is the two docstrings.
+## Prior finding
 
-## Finding F1 (target: design): the pending-amendment rule has an unowned window, and three goals are heading into it
+- **review_design:1:1: resolved.** All three parts have an answer. (1) Every implement run re-checks the goals merged into its base and applies them. (2) A guard test fails a tree where a landed goal still has a pending row. (3) Each row names an owner goal, and goals before implement get a `zzzops edit`. The rule is the right one: apply a change exactly when its code is in the tree. The tree marker is also a better detector than commit subjects. One gap remains in how part 2 is enforced. It has its own cause and fix, so it is raised below as F2 instead of keeping this finding open.
 
-The design checks the five goals once, at G1017's implement time. A goal merged by then is applied; one not merged is listed as pending, and "its own PR edits docs/design/ once G1017 has merged".
+## What checks out
 
-The current state makes that hand-off unreliable:
+- **Inventory of merged goals.** At `a05fb97` the merged goals are #742, G1014, G1018, G1001, G1015, G1016 and G1021. G1017's `depends_on` is `[1000, 1001, 1014, 1015, 1016, 1018]`, so G1000 enters through the base, as the design says. G1000 and G1020 now have `integrate: done` on their state branches.
+- **Markers.** `"truth_design"` is in `templates/default/workflow.json` on `zzzops/pr/g1000` and not on `a05fb97`. Because G1017 depends on G1000, G1022's `lacks` marker does not match in G1017's tree, which is correct. `def is_material(` is in `engine/schemas.py` on `zzzops/pr/g1020` and nowhere on dev or G1000, so the G1020 fallback marker is sound. Note that the marker names a directory (`plugins/zzzops/zzzops/engine`), so the marker format must allow directory paths, or the marker should name `engine/schemas.py`.
+- **The guard's placement.** `dev-required-tests` is the only required check (ruleset 19287297), and `run_product_validation.py` discovers `test_*.py` automatically. The new test runs on every PR with no extra wiring.
+- **G1023 under G1016's row.** G1023 only aligns `records.py:244` and MIGRATING.md with G1016's full-sha rule. Writing `<full 40-hex sha>` into SPEC under G1016's row is correct, and G1023 needs no row.
+- The layout, scrub, HISTORY plan and normativity rules are unchanged from revision 1, which I reviewed and found sound.
 
-- G1001, G1014 and G1015 are already past `approve_design` and `base` and are in `test_design`. Their bases have no `docs/design/`. G1017 has not reached `approve_design`.
-- Any of them that merges **after G1017's implement but before G1017 merges** is listed as pending by G1017. Its own PR was built without `docs/design/` and will not edit it.
-- A goal whose implement is already done when G1017 merges cannot edit `docs/design/` "in its own PR" either. Nothing in its card tells it to.
-- Nobody owns clearing the pending row.
+## F2 (target: design): the guard does not see the integration tip, so two PRs can both pass and leave dev red
 
-**Consequence.** SPEC §3.16, §4.1, §4.17 and §4.19 and DESIGN §10 (G1015's own spec names a DESIGN §10 amendment) silently disagree with the engine on dev. The pending table records that, but nothing closes it. This is the contract drift the goal exists to remove, and workers reading SPEC through read_dev would act on stale text.
+The design says the guard "runs in `dev-required-tests` on every PR's merge ref, so it sees the integration tip that the PR would merge into", and that "CI catches anything that merges later." In this repository, neither is true:
 
-**Fix.** Reconcile at the last point G1017 controls, and give every remaining row an owner:
+- The `dev` ruleset has `strict_required_status_checks_policy: false`. GitHub does not require a PR to be up to date before merging, and it does not re-run checks when the base moves.
+- `validate.yml` triggers only on `pull_request`, which runs on a push to the PR, not on a push to dev.
+- `ops/merge.py` merges on a green rollup. `BEHIND` only stops a merge under strict protection. G1021's `merge-tree` check catches textual conflicts only. An owner goal built on a base without `docs/design/` never touches it, so there is no conflict to find.
 
-1. **Re-check before merge.** Re-run the five-goal check against the dev tip at G1017's integrate step (or as an implement re-check whenever `base` moves). Apply every goal that has merged by then from its merged diff and its approved design artifact. These are approved and merged, so this is consistent with the design's own rule.
-2. **No pending row for a merged goal.** Test or gate this: a goal can stay in the pending table only if it is still unmerged when G1017 merges.
-3. **Name an owner for each remaining row.** One way: G1017 creates a small follow-up goal, "apply pending contract amendments", that depends on the still-pending goals. The other: for a goal that has not reached `implement`, it uses `zzzops edit` to add "update docs/design/ and add a HISTORY §4 row" to that goal's spec. Record which applies in the README's pending table.
+**Failure case.** G1017 and an owner goal X that does not depend on G1017 (the design's own G1020 fallback, or any past-implement goal found at implement) both have green checks, each computed against a dev that lacks the other. Either one merges, then the other. Neither PR ever ran the guard on a tree that has X's code and X's pending row together. After both merge, dev has the landed code and the pending row. From then on, `test_no_landed_goal_is_pending` fails on every PR's merge ref. Unrelated goals (G1022, G1023, G1024, G1002) get a failing required check that their implement cannot fix. They lose correction rounds until someone edits docs/design by hand. Part 2 of the original finding ("no pending row for a merged goal") is still not guaranteed, and the failure now lands on everyone else instead of on G1017.
 
-The coordination note's two options for G1000 and G1015 can then be dropped or kept as preferences. They are no longer needed for correctness.
+**Fix.** Allow a pending row only for a goal that cannot merge before G1017 and whose PR base already contains G1017:
+1. Every pending row's owner must have `1017` in `depends_on`. Its base then contains docs/design and its own row, so its own PR's CI is the first tree with both its code and its row. The guard trips in that goal's PR and nowhere else. This already holds for G1022 and the proposed G1024 edit.
+2. A contract-changing goal that is past implement and cannot take the dependency (the G1020 fallback) gets no pending row. G1017 takes the dependency instead: `zzzops edit 1017` adds that goal to G1017's `depends_on`, and case 1 applies. G1020 has already passed integrate, so this costs almost nothing. The "Block G1017 until every listed goal merges" rejection still holds for goals that have not started, which is what it argued against.
+3. Say what to do if dev goes red anyway: one REPAIR line naming the fix PR (apply the row's amendments and delete the row).
+4. Correct the statement that the guard "sees the integration tip".
+
+With (1) and (2), case 2's "CI catches anything that merges later" is no longer needed. The implement re-check stays as the main path.
+
+## F3 (target: design): G1024 changes the contract but has no row, and the implement-time search would miss it
+
+G1024 (default-policy update notices) is a new Release 1 goal. It is open, has no records, and has no dependencies. Its spec changes the contract:
+- a bootstrap provenance record in POLICY.json settings or a new `.zzzops/TEMPLATE.json` (SPEC §3.2 policy files and settings, and the bootstrap description);
+- a new non-blocking `policy_update` item in the output of `next` and `validate --policy` (SPEC §3.16, and the item/approval rendering sections), with its diff command;
+- a recorded decline that suppresses the item, and the one-time "record missing" item;
+- the reviewed policy-branch update path (DESIGN's policy-change rationale).
+
+The design's inventory does not mention G1024. Its fallback, "look for any other open goal whose spec or approved design names DESIGN, SPEC, 'contract' or 'G1017'", does not match G1024's spec, which contains none of those words (checked). The design's own marker scheme does not help either: `policy_update` appears nowhere in `plugins/` on dev, so a row is cheap to add, but nothing would create one. G1024 would merge on its own base and the SPEC would silently drift, which is the failure this goal exists to remove.
+
+**Fix.**
+- Add G1024 to "Pending, owner assigned now", the same way as G1022. The root runs `zzzops edit 1024` right after approval: `depends_on` gains 1017, and the acceptance line becomes "This PR edits docs/design/SPEC.md (§3.2, §3.16 and the bootstrap and approval-item sections it changes) and DESIGN.md where policy provenance is argued, adds a HISTORY §4 row and deletes the G1024 pending row." The pending row gets a marker such as `plugins/zzzops/zzzops/engine contains "policy_update"`, with G1024 as owner.
+- Replace the keyword search with a behavioural test. At implement, every open goal that changes CLI output, card or approval-item content, policy or settings schema, the template graph, or engine algorithms gets a row and an owner, whatever words its spec uses.
 
 ## Non-blocking notes
 
-- Test 1 guards against the external path and absolute paths only. Adding the name pattern and the hex holder-label pattern (`(claude|codex):[0-9a-f]{4,8}` other than the `0a0a…` map) would make the scrub a regression test rather than a one-time grep. This is cheap, but optional.
-- Five goals each append a row to HISTORY §4 and touch the README pending table. Expect trivial rebase conflicts. The design already names this risk.
+- **G1022's design has already started.** `zzzops/lease/g1022/design` exists, so "before its design starts" no longer holds. Edit G1022 as soon as this design is approved. The edit will show `live_leases_on_changed_nodes` and make the running design stale, which is the intended effect. Anything sooner (an edit now, before approval) would be the root's call.
+- **Shallow-clone claim.** `validate.yml`'s Linux shards use `fetch-depth: 0`, and only the Windows job is shallow. The rejection of `git log` detection still stands on its other reason (subject formats vary), so only the sentence needs correcting.
+- If the marker format allows a directory path (G1020 `engine`, G1024 `engine`), test 5's "a path that exists" should say whether a directory counts. Unit test 4 should include a directory case.
