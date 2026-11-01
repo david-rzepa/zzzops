@@ -148,6 +148,12 @@ class CapabilityTests(CardJourney):
         self.assertEqual("reasoning", c["run"]["capability"])          # test_design's own, not routine
         self.assertNotIn("inputs.base", c.get("changed") or {})        # plain node outputs get no pointer
 
+    def next_action(self, agent, k, g, node):
+        """The `next --goal g` action for `node` at NOW + k minutes (implement:3:1: next and the card share one rule)."""
+        acts = [a for a in self.at(agent, k, "next", "--goal", str(g))["actions"] if a["node"] == self.n(node)]
+        self.assertEqual(1, len(acts), acts)
+        return acts[0]
+
     def _reopen_test_design(self, g):
         """Submit test_design, then have review_tests request a change on it (a live correction)."""
         self.through_design(g)
@@ -167,6 +173,8 @@ class CapabilityTests(CardJourney):
         self.assertNotIn("stale_because", c)
         self.restack_base(g, 2)
         self.abandon_at(self.A, 5, g, "test_design", c["lease"]["attempt"])
+        a = self.next_action(self.A, 6, g, "test_design")
+        self.assertEqual(("reasoning", 1), (a["capability"], a.get("corrections")))
         c = self.start_at(self.A, 6, g, "test_design", "--reclaim")
         self.assertEqual("reclaim", c["reason"])
         self.assertEqual(["inputs.base"], c["stale_because"])
@@ -179,6 +187,8 @@ class CapabilityTests(CardJourney):
         g = self.goal()
         self._reopen_test_design(g)
         self.restack_base(g, 1)
+        a = self.next_action(self.A, 4, g, "test_design")
+        self.assertEqual(("reasoning", 1), (a["capability"], a.get("corrections")))
         c = self.start_at(self.A, 4, g, "test_design")
         self.assertEqual("stale", c["reason"])
         self.assertEqual(["inputs.base"], c["stale_because"])
@@ -190,6 +200,9 @@ class CapabilityTests(CardJourney):
         g = self.goal()
         self.through_tests(g)
         self.restack_base(g, 1)
+        a = self.next_action(self.A, 4, g, "test_design")
+        self.assertEqual("routine", a["capability"])
+        self.assertNotIn("corrections", a)
         c = self.start_at(self.A, 4, g, "test_design")
         self.assertEqual(["inputs.base"], c["stale_because"])
         self.assertFalse(c.get("corrections"))
