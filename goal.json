@@ -61,15 +61,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:cf8b5dd737e82b2010608510e1a054de6371054f0a7c6840d4f4c1b162d36bc7",
@@ -77,33 +77,33 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T19:56:04Z",
+      "finished_at": "2026-11-01T20:00:26Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:dc8a15a2871910b58492a6270b37dcea8a1295fc",
+          "doc": "v1:blob:c495b1136ee90fc5ed28882069ea22a47a8ffa15",
           "spec": "v1:sha256:823d48ed52cd1df7b523d919e6d60db3c09ec821c9eef5cafaf03f569246a9b5"
         },
         "policy": {},
-        "subject": "v1:sha256:cf8b5dd737e82b2010608510e1a054de6371054f0a7c6840d4f4c1b162d36bc7"
+        "subject": "v1:sha256:bd2492dc657b7ef27858b18b7132b4d129738ee3761d22886e7eb9d5f10ee5e8"
       },
       "holder": "claude:e6ad/rd1022",
-      "input_fp": "v1:sha256:4eace442073f9f10ede94736da1764222d823e425f45397b5d681c64239c9888",
-      "ok": false,
+      "input_fp": "v1:sha256:b02d06fef099664bf3748248e8ab8c1aca30605a106c99a09731f4522d2f0e34",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "6d72c41ff00de8f2317bc581e59b9df3d6ccda81",
-          "commit": "06e571498494570c931c819756fb4dedb7b47bab",
+          "blob": "7c6900aae5f8434d6300300fd341171cb563e9af",
+          "commit": "0f9c0e4938b3a9233fc9f4a2522fe4c07d6a9dee",
           "path": ".zzzops/reviews/1037/review_design.md"
         },
-        "summary": "The public design is generic and faithful to the private plan. It covers redaction of every public write, a generic design and held later-release goals. One fix: A15 scans the full history of work and PR branches, which is all of dev, and the deny list today matches about 700 lines of dev history (all false positives: digit fragments inside hashes, common code words) and one public defect goal. Scope A15 to the run's own commits, tune the list, and make 'no hit on the integration tip' a precondition. Deny-list gaps were sent to the root privately."
+        "summary": "Attempt 3 applies OD8. Privacy is now a naming convention, plus an A15 name and slug check of the report and this goal's artifacts. The run plan is otherwise unchanged and sound. review_design:1:1 is resolved, superseded by OD8. Non-blocking notes: the goal spec's last paragraph still requires a per-write deny-pattern scan and should be edited to match OD8, and the review_tests row should also cite OD8."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "dc8a15a2871910b58492a6270b37dcea8a1295fc",
-          "commit": "7267819525efa96d660944c99f419ced6fa5f97f"
+          "blob": "c495b1136ee90fc5ed28882069ea22a47a8ffa15",
+          "commit": "02aac7d7ff10826643d0499ee566bc37ea960fee"
         }
       },
       "status": "done"
