@@ -43,15 +43,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:ed396c2cc57b4b6a12dfb3db856e11722d574abde7fc09c7562fbb4e5e392db4",
@@ -63,7 +63,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:ed396c2cc57b4b6a12dfb3db856e11722d574abde7fc09c7562fbb4e5e392db4",
@@ -71,33 +71,33 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T18:23:55Z",
+      "finished_at": "2026-11-01T18:27:02Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:47298bfc949e6fd28d0b87f8f199dfc60b07dbe0",
+          "doc": "v1:blob:0c556c21045dcada61dcaab09a6d222e0cdd7d4f",
           "spec": "v1:sha256:16f454d18ffa4e5e45bca2195b94e0af94ae14c9a6fb8d44ce2d4d83d7b4c63f"
         },
         "policy": {},
-        "subject": "v1:sha256:ed396c2cc57b4b6a12dfb3db856e11722d574abde7fc09c7562fbb4e5e392db4"
+        "subject": "v1:sha256:1dda7688b68aa7d1ede80b2304ac49d2200587e64dd04458c2c4536ebccec859"
       },
       "holder": "claude:e6ad/rd1017",
-      "input_fp": "v1:sha256:d6d2ad8c440165530125b70264d1b42ff4b67aa5d25c5a5690024a25dd1d943b",
-      "ok": false,
+      "input_fp": "v1:sha256:6a6022502e6db4ee7f31cddfad200e16faf41677049b07ff4349e2f14ce7b3a2",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "604067a7a28d093c580416fdbbd0fcef25d2a7e6",
-          "commit": "cf9707234fbd23273637e68d6a2ab09e2690ebd5",
+          "blob": "d54a8e014fea347b3181bf1b8100ff87b0067d18",
+          "commit": "8fc0b88e577447bf84107d90a9afa8d7406e4c28",
           "path": ".zzzops/reviews/1027/review_design.md"
         },
-        "summary": "The core is sound and answers the owner's question. Capability names replace a shared version counter, one file per capability removes the merge race, and the plugin-version-plus-package-revision build id separates dev builds. I checked these claims against c3791a0: the floor check, policy_floor, SETTINGS_SHAPE, package_provenance (which skips pycache), the bundle's version rewrite, the legacy cache key and the REPAIR trailer greps. Both G1022 merge orders are covered, G1024 already depends on 1027, and G1027 depending on 1017 is the right shape under G1017's rule. Two findings, no owner questions. F1: G1025's capability is named release_lines here but branching in G1025's current design, which also requires it for goal schema 2. F2: the new capability rule is narrower than the list in SPEC §4.5 (fingerprint and canonical semantics, op versions, lease format, workflow keys and ops), and the docs/design edit list and stale-reference test miss several places where SPEC and DESIGN define the floor and ceiling."
+        "summary": "Approved. Both findings are resolved. 1:1: release_lines is now an agreed name, recorded verbatim in G1025's approve_design (the policy block stays settings.branching). The schema-2 gating is reconciled with G1025, the stale line references are gone, and both merge orders are covered without a dependency edge (the root's decision). 1:2: SPEC §4.5's full list is restated as 'what ships with a new capability', and §4.8, the op-version sentence, D4, schemas.py and CLI_USAGE match it. §4 lists every SPEC and DESIGN location by section. Test 10's grep now covers docs/design (excluding HISTORY.md). All three notes were taken (evo:H4 text, DETECTOR over both legacy files, store.py:321). No new findings."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "47298bfc949e6fd28d0b87f8f199dfc60b07dbe0",
-          "commit": "270fca67f513adf76e7a5a8d1f64fbaba33b2ed0"
+          "blob": "0c556c21045dcada61dcaab09a6d222e0cdd7d4f",
+          "commit": "200afabcf5448a9fb64e9cd860e81d554150c245"
         }
       },
       "status": "done"
