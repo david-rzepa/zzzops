@@ -63,10 +63,10 @@
       "status": "done"
     },
     "design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T03:54:11Z",
+      "finished_at": "2026-11-01T04:17:17Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -75,18 +75,22 @@
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/design-1001-1",
+      "holder": "claude:e6ad/design-1001-2",
       "input_fp": "v1:sha256:c55fb519a87f4d94fac37c9d78127b3d8a682dab721d0fc756eb26ca0fb6c775",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "b2dfc5b37cd06d95a957280500d9d0948a426de2",
-          "commit": "fedcd62d7dc9c63397e6d48aaf3c40daaffcd296",
+          "blob": "a0d48e89496f478cd2dad0f211397455a20592b4",
+          "commit": "c43331177b5af89ad438d10fe01d684fca943654",
           "path": ".zzzops/reviews/1001/design.md"
         },
-        "summary": "Each `new` request gets a key: an explicit `request_key`, or by default sha256 over the canonical title, spec and sorted depends_on. The key is recorded as a `Request-Key:` trailer on the goal's immutable root commit. Before allocating an id, and again after any push that is rejected or reports a remote failure, `new` scans the goal roots with one `git log --max-parents=0` and returns the existing goal with `created.recovered: true`. A key match with different contents is refused with a `validation` error. No goal-schema or error-code change; tests cover exact retry, a push that lands but reports failure, concurrent identical calls, key conflicts, same-title distinct specs and recovery after edit."
+        "responses": {
+          "test_design:1:1": "fixed: adopted the validated fix. The scan is wrapped in `scan(s, key)`: when nothing matches and `snap.deleted` is not empty, it refetches once and rescans before any id is allocated, both before allocation and after a failed push. One refetch is enough because the matching goal's local ref came from a fetch that saw it on the remote, and `new` never deletes goal refs, so the second listing includes it. Test 8 covers it, plus a goal that really was deleted, which is still allocated after one refetch.",
+          "test_design:1:2": "fixed: handled rather than disputed. `push_atomic` gains an opt-in `report_up_to_date` keyword, which returns `up_to_date` when the push exits 0 and every porcelain ref line is `=`. Only `cmd_new` passes it, and it treats that result as a recovery: the remote already holds this exact root oid. Other callers are unchanged. The race test now asserts exactly one `recovered: false`, with both per-call and shared clocks, and test 9 covers the path directly. Also fixed: the test plan now says `fx.env_of(...)` instead of `fx.EnvScope`."
+        },
+        "summary": "Revised design (attempt 2). Unchanged core: a request key (explicit `request_key` or sha256 of title, spec and sorted depends_on) recorded as a `Request-Key:` trailer on the goal's immutable root commit, scanned before allocation and after any failed push. New: the scan refetches once and rescans when it finds nothing and `snap.deleted` is not empty, which closes the same-clone fetch race. `push_atomic` gains a `report_up_to_date` keyword, used only by `new`, so an identical root already on the remote is reported as `recovered: true`. The test plan uses `fx.env_of` and adds tests for both cases."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
