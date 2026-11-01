@@ -3,8 +3,8 @@
   "closed": null,
   "depends_on": [
     1000,
-    1035,
-    1017
+    1017,
+    1037
   ],
   "graph": "default",
   "id": 1036,
@@ -16,7 +16,7 @@
   "release": 1,
   "schema": 1,
   "skip": {},
-  "spec": "Publish a long-form, linkable, print-friendly whitepaper on the repository's GitHub-hosted docs path, linked from README, that coins deterministic progressive disclosure: a pure frontier derives each agent's next action and a per-node task card disclosing only that node's prompt, selected policy instructions and inputs from Git state. Explain the mechanism as the reset built it: goal documents on per-goal branches with CAS writes, lease branches, the declarative workflow.json graph with review and human approve nodes, findings and corrections, tree/change identities and fingerprint staleness, stacked PRs with carry-forward, policy branches that pause work, and releases. Include one synthetic end-to-end trace and accessible diagrams, and state limitations candidly (advisory routing, no comprehension proof, what R1-R15 gave up). Claims bind to an explicit engine version and are checked against it. Changed from the old wording: drop heartbeats, receipts, storage locks, linear stacks and model-effort binding, and describe the Release 1 lens-based default graph.\n\nMigrated from GitHub issue #490 after the engine reset (#740).\n\nOrder (owner, 2026-11-01): \"whitepaper should be after dogfood run\". Write it after G1035, from the engine as released and the private-app dogfood run notes (real goals, a real release, measured costs), and include the git-flow release branching (G1025), capabilities (G1027) and owner-question interviews (G1026).\n\nReplaces G1002 (its branch was deleted to remove a private name, owner decision 2026-11-01).",
+  "spec": "Publish a long-form, linkable, print-friendly whitepaper on the repository's GitHub-hosted docs path, linked from README, that coins deterministic progressive disclosure: a pure frontier derives each agent's next action and a per-node task card disclosing only that node's prompt, selected policy instructions and inputs from Git state. Explain the mechanism as the reset built it: goal documents on per-goal branches with CAS writes, lease branches, the declarative workflow.json graph with review and human approve nodes, findings and corrections, tree/change identities and fingerprint staleness, stacked PRs with carry-forward, policy branches that pause work, and releases. Include one synthetic end-to-end trace and accessible diagrams, and state limitations candidly (advisory routing, no comprehension proof, what R1-R15 gave up). Claims bind to an explicit engine version and are checked against it. Changed from the old wording: drop heartbeats, receipts, storage locks, linear stacks and model-effort binding, and describe the Release 1 lens-based default graph.\n\nMigrated from GitHub issue #490 after the engine reset (#740).\n\nOrder (owner, 2026-11-01): \"whitepaper should be after dogfood run\". Write it after G1037, from the engine as released and the private-app dogfood run notes (real goals, a real release, measured costs), and include the git-flow release branching (G1025), capabilities (G1027) and owner-question interviews (G1026).\n\nReplaces G1002 (its branch was deleted to remove a private name, owner decision 2026-11-01).",
   "state": "open",
   "title": "Write and publish the ZzzOps whitepaper on deterministic progressive disclosure"
 }
