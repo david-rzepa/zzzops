@@ -13,10 +13,10 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-01T18:38:58Z",
+      "finished_at": "2026-11-01T18:42:59Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -30,13 +30,16 @@
       "ok": true,
       "output": {
         "doc": {
-          "blob": "1173b49844869e460b025ea30851b774f6c2be91",
-          "commit": "06e536be9ae6e5323dce2b7cdbd5346d1cfb7253",
+          "blob": "2fcca3d21d6b7059b44539abd4251f728aaee98e",
+          "commit": "ecc2dfd2383353e0518303b0b3f35d3cbab815ea",
           "path": ".zzzops/reviews/1024/design.md"
         },
-        "summary": "Revision 2 (only change: G1017's docs/design acceptance line is folded into §5 and test 10). Repositories get a capability-free record, .zzzops/TEMPLATE.json, mapping each policy file to the git blob id of the shipped default last reviewed; a content-addressed templates/history/ store in the plugin lets the engine diff and three-way merge from the old default and infer provenance for earlier repositories. next (compact) and validate (full) show a non-blocking top-level policy_update item with per-file upstream/local state, diff and apply steps and the exact record to write (reviewed or inferred); the engine stays read-only, and the bootstrap skill's policy-branch procedure covers update and decline."
+        "responses": {
+          "review_design:1:1": "fixed: §3.3 adds a row checked first: a non-null base not in the running engine's store is upstream 'unknown_base' (local 'unknown'), note 'recorded by a newer or unreleased plugin: upgrade the plugin to compare', no diff and no apply; null keeps the manual compare. §3.5: record.reviewed copies such bases unchanged and is omitted when every listed file is unknown_base. §9's unmerged-build risk degrades the same way. Test 11 covers skew: no downgrade offer, base kept, and no ping-pong when the newer engine reads the result."
+        },
+        "summary": "Revision 3 answers review_design:1:1: a non-null base that the running engine's history store lacks is reported as upstream unknown_base ('recorded by a newer or unreleased plugin: upgrade'), with no diff or apply, and record.reviewed keeps such bases unchanged (omitted when all listed files are in that state), so installs on different plugin versions cannot downgrade or ping-pong the record; test 11 covers it. It also takes the notes: the execute skill forbids editing TEMPLATE.json in a goal, prompts' copy/delete follow the workflow.json decision, and G1025 gets the same history-store note as G1022. The rest of the design (TEMPLATE.json record, content-addressed history store, non-blocking policy_update item in next/validate, read-only engine with a bootstrap-skill policy-branch update and decline) is unchanged."
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
