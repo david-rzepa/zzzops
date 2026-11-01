@@ -44,6 +44,35 @@
       },
       "status": "done"
     },
+    "base": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T20:39:21Z",
+      "fp_parts": {
+        "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
+        "inputs": {
+          "heads": "v1:sha256:5889a64f6993c9f17d15edafdb949406c867429336db1525bb81f68512bf74f2",
+          "merges": "v1:sha256:ebc0b8b884e8537abb7898f415c9eaa7b830fc0212dada931891d02e556ef199"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:d9ef292a6b05a9ee73c1996b6fdc61e05c28301ce8f94d7c5aad2424acad7e3d",
+      "ok": true,
+      "output": {
+        "base_commit": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+        "branch": "zzzops/work/g1034",
+        "replay_map": {
+          "8e4beb230c0287573562725820f7df4f201fd40b": "b822a48036d756a62eefc9911a48f3c9ea11d023",
+          "a845380f2745bb645d0b8766bf7c5ee0641164fc": "f5efbe10dcd787f4bd141c77a730beb69169f8b1"
+        },
+        "replay_pos": {},
+        "stack": []
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "design": {
       "attempt": 1,
       "correction_runs": 0,
