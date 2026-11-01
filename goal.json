@@ -349,14 +349,14 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 5,
-      "correction_runs": 4,
+      "attempt": 6,
+      "correction_runs": 5,
       "findings": [],
-      "finished_at": "2026-11-01T06:05:19Z",
+      "finished_at": "2026-11-01T07:12:49Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
-          "base": "v1:sha256:f0f86e3e5d7131680049bfd289e2d0b91b2df6ab0e5273c2ec770b60152ca61d",
+          "base": "v1:sha256:bdd8faa768559c4b8a65bd74f02c7fcb133d59b44c4c97504864a4c68afc3ad5",
           "doc": "v1:blob:2c1af88e84734bdd997eceba5000279525be0586"
         },
         "policy": {}
@@ -365,25 +365,22 @@
         ".agents/test_engine_card_ux.py",
         ".agents/test_engine_lifecycle.py"
       ],
-      "holder": "claude:e6ad/test_design-1016-5",
-      "input_fp": "v1:sha256:9cb599f56e17cea33174e11f7bdc12d6bb0b616a6907ae6d3e1fd82be550510b",
+      "holder": "claude:e6ad/test_design-1016-6",
+      "input_fp": "v1:sha256:1d54ff86b43c042b32f8bccd491e8affb6bd1f59c247b64d5c154c56c7585d43",
       "ok": true,
       "output": {
         "commands": [
           "cd .agents && python3 -m unittest test_engine_card_ux test_engine_lifecycle test_engine_schemas test_engine_journeys test_engine_docs",
           "python3 .agents/prompt_stats.py --check"
         ],
-        "responses": {
-          "implement:3:1": "fixed: 521d78b adds a next_action helper to CapabilityTests and asserts the `next --goal G` test_design action's capability before each start. Reopened plain start (test_plain_start_of_reopened_node_after_base_moved_keeps_its_capability) asserts ('reasoning', corrections 1). Reopened reclaim (test_reclaimed_reopened_correction_keeps_its_capability) asserts the same after the abandon. The base-only control asserts 'routine' and no corrections. With 8da55ca's capability body put back into render.py, the plain-start assertion fails ('routine' != 'reasoning'). The reclaim and control assertions pass under both old and new code, so they pin the behaviour but do not tell the two apart. render.py was restored and the full commands pass (100 tests OK, prompt_stats PASS)."
-        },
         "tests": {
-          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "dfe70799cbc9f250188033c8d353c1f1075a6683",
-          "commit": "521d78b4392378258b843d3ce1fa02113f2bb46a",
-          "tree": "5b016358250323c1276ed81145ad1c782d23e507"
+          "base": "6747a5ea3c91aedd39089d1811a415680521bfed",
+          "change": "e9897fba51c65ed87b6dd2cf979538266d890a77",
+          "commit": "e46d1d17c032cee22d29000ea0b7404c70926662",
+          "tree": "d66b359f132c5e93c967e5cfa3c563c01b5b96ee"
         }
       },
-      "reason": "reopened",
+      "reason": "stale",
       "status": "done"
     }
   },
