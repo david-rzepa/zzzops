@@ -532,8 +532,9 @@ def _unlock(fh):
 ENGINE_REFS = ("refs/heads/zzzops/goal/", "refs/heads/zzzops/lease/", "refs/heads/zzzops/stack/")
 
 
-def push_atomic(git: Git, R: str, updates) -> tuple:
-    """('ok'|'rejected'|'remote', stderr). updates: [(ref, expected or None, new or None)]."""
+def push_atomic(git: Git, R: str, updates, report_up_to_date: bool = False) -> tuple:
+    """('ok'|'rejected'|'remote', stderr). updates: [(ref, expected or None, new or None)].
+    With report_up_to_date, a push that changed no ref (every ref already held its new value) is 'up_to_date'."""
     updates = [(ref, exp, new) for ref, exp, new in updates if (exp or None) != (new or None)]
     if not updates:
         return "ok", ""
@@ -550,16 +551,18 @@ def push_atomic(git: Git, R: str, updates) -> tuple:
         p = git.run(*args, check=False, hooks=not engine_only, timeout=300)
     except GitError as exc:
         return "remote", str(exc)
-    if p.returncode == 0:
-        return "ok", p.stderr
     ref_lines = [l for l in p.stdout.splitlines() if "\t" in l and l[:1] in " +-*=!"]
+    if p.returncode == 0:
+        if report_up_to_date and ref_lines and all(l.startswith("=") for l in ref_lines):
+            return "up_to_date", p.stderr
+        return "ok", p.stderr
     if any(l.startswith("!") for l in ref_lines):
         return "rejected", p.stderr
     return "remote", p.stderr
 
 
 def goal_message(verb: str, g: int, outcome: str, state: str, node: str | None = None, attempt: int | None = None,
-                 holder: str | None = None, note: str | None = None) -> str:
+                 holder: str | None = None, note: str | None = None, request_key: str | None = None) -> str:
     head = f"zzzops: {verb} G{g}"
     if node:
         head += f" {node}"
@@ -568,7 +571,39 @@ def goal_message(verb: str, g: int, outcome: str, state: str, node: str | None =
     if holder:
         head += f" by {holder}"
     body = f"{note.strip()}\n\n" if note else ""
-    return f"{head}\n\n{body}Outcome: {outcome}\nState: {state}\nEngine: {ENGINE_VERSION}\n"
+    key = f"Request-Key: {request_key}\n" if request_key else ""
+    return f"{head}\n\n{body}Outcome: {outcome}\nState: {state}\n{key}Engine: {ENGINE_VERSION}\n"
+
+
+NEW_HEAD = re.compile(r"^zzzops: new G(\d+)$")
+
+
+def find_request_key(git: Git, snap: Snapshot, key: str) -> list:
+    """G1001: the goals whose root (`new`) commit carries `Request-Key: <key>`, as [(gid, root oid, root goal.json)]
+    sorted by id. Scans the accepted tips of goals present on the remote (not `deleted`) in one `git log`."""
+    tips = {g: tip for g, tip in snap.goals.items() if g not in snap.deleted}
+    if not tips:
+        return []
+    p = git.run("log", "--stdin", "--max-parents=0", "--format=%H%x1f%B%x1e",
+                input="".join(f"{t}\n" for t in sorted(set(tips.values()))), check=False)
+    if p.returncode != 0:
+        return []
+    hits = []
+    for rec in p.stdout.split("\x1e"):
+        oid, sep, body = rec.strip("\n").partition("\x1f")
+        if not sep:
+            continue
+        lines = body.splitlines()
+        m = NEW_HEAD.match(lines[0]) if lines else None
+        if not m or f"Request-Key: {key}" not in lines[1:]:
+            continue
+        g = int(m.group(1))
+        if g not in tips or not git.is_ancestor(oid, tips[g]):
+            continue
+        doc, _ = read_goal_json(git, oid)
+        if isinstance(doc, dict) and doc.get("id") == g:
+            hits.append((g, oid, doc))
+    return sorted(hits, key=lambda h: h[0])
 
 
 def goal_commit(git: Git, doc: dict, parent: str | None, message: str) -> str:
