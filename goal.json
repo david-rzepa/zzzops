@@ -257,10 +257,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T21:32:46Z",
+      "finished_at": "2026-11-01T21:38:58Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -281,14 +281,18 @@
           "python -m unittest discover -s .agents -t .agents -p test_engine_branching.py",
           "python -m unittest discover -s .agents -t .agents -p test_design_docs.py"
         ],
+        "responses": {
+          "review_tests:1:1": "fixed: require_release_lines now imports only `schemas` and reads `engine.ENGINE_VERSION` lazily inside the engine.min branch, so the file imports under G1027-first; when `requires` is used it always pops `min`.",
+          "review_tests:1:2": "fixed: test_trailers_are_written_with_branching closes a release-1 goal as superseded and asserts `Closed: superseded`; new CutItemTests.test_superseded_goal_neither_blocks_the_cut_nor_completes_the_release_alone. Also added the GOLDEN_FP regeneration rule (regenerate with the new base commit's engine, never the head)."
+        },
         "tests": {
           "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "04c56922675f8fef9f9a15050c0417a99f0c6213",
-          "commit": "e4e9334e6e48682763b4df19d7966c3af5ce4347",
-          "tree": "7cefe13bfd92e692a8a29f16a2e4465c68249b7d"
+          "change": "694386e8b1b39a1524103fe5755e62f538bd4da3",
+          "commit": "d863ad01d9e448096aa61a8313afb8f47477a7cb",
+          "tree": "1fcf4f1b2ce78cdfd8644d6d334805c2b933114e"
         }
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     }
   },
