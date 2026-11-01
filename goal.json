@@ -35,6 +35,72 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:7dc60838a1c5ff79e09f6e36928b55119afea9deda23795846610ba762469e06",
+          "text": "F1: The contract amendment covers only §10 item 10. §10 item 2 binds to the §3.15 counts (next = 1 fetch, 0 GitHub), and a cache miss adds 1 ls-remote and 1 gh; validate always pays both. The existing CostBudgetTests (next == (1,0,['fetch']); journeys: exactly one trace line) run on a cold cache and would fail, and the 'filter on pr calls' option would hollow out the no-GitHub guard. Fix: amend the §3.15 next row and add a validate row; seed a matching clean cache with legacy's key function and keep the totals assertions unchanged (no filtering, no off switch); add a cold-cache budget test of exactly fetch+ls-remote and 1 api graphql; say where the DESIGN.md amendment is recorded (it is not in the repo).",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:7dc60838a1c5ff79e09f6e36928b55119afea9deda23795846610ba762469e06",
+          "text": "F2: Any gh failure is cached as 'unavailable' until the key changes. With no local signals (the policy already bootstrapped but old issues still open, a half-migrated repo), one transient 502, timeout or rate limit on the first next hides all legacy issues in that clone until the engine version changes. Fix: cache only permanent failures (not installed, not authenticated); for GhError.transient store a retry_after (e.g. 24 h), and extend test 8 to cover both cases.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:3",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:7dc60838a1c5ff79e09f6e36928b55119afea9deda23795846610ba762469e06",
+          "text": "F3: The migrate skill is not usable by an agent new to ZzzOps. (a) The triage classes and OBSOLETE comments depend on 'DESIGN §5 R1-R15', which is not shipped (DESIGN.md is not in the plugin or repo, and MIGRATING.md has no removal list): ship a self-contained removal table (old feature/label family -> R id -> replacement or removed) in the skill references. (b) The inventory (gh issue list --label zzzops plus an unspecified marker search) differs from the detector's set (zzzops OR zzzops:schema:v1/v2, marker on unlabelled issues, minus linked), so the item may never disappear after triage: have validate's legacy output include the counted issue numbers (already cached, first 100) or the exact queries, and give exact gh commands that use the same query. (c) The MIGRATING.md carry-forward uses the tag zzzops-pre-reset, which exists only in the ZzzOps repo: say to clone david-rzepa/zzzops at that tag.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T04:18:39Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:444f6181edf79a6f19f6fd9a16d51f558487d7aa",
+          "spec": "v1:sha256:1a59bf0875532ae3cbd0ab5f05c996c09517c5a4a0ea2a7676b92880c655732e"
+        },
+        "policy": {},
+        "subject": "v1:sha256:7dc60838a1c5ff79e09f6e36928b55119afea9deda23795846610ba762469e06"
+      },
+      "holder": "claude:e6ad/review_design-1015-1",
+      "input_fp": "v1:sha256:93af5c715dd30835e7e8e8907b51d464192abf89bf0abb68eb6dc60948f34aae",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "d660ad5075e2cc69d74c0128195be96b628ef79d",
+          "commit": "849e1c600acf1f8d6a92babddf658c5cd666735d",
+          "path": ".zzzops/reviews/1015/review_design.md"
+        },
+        "summary": "Sound approach: bounded R11-style version detection, the right disclosure shape, and an old-format policy blocker. Three changes needed: (F1) amend DESIGN §3.15 next/validate counts as well as §10 item 10, and keep cost tests strict by seeding the cache rather than filtering, plus a cold-cache budget test; (F2) do not cache transient gh failures for the whole engine version; (F3) make the migrate skill self-contained: ship the R1-R15 removal table, have the CLI expose the counted issue set or the exact queries for inventory, and fix the pre-reset tag reference."
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
