@@ -1,51 +1,36 @@
-# G1016 review_design (attempt 1)
+# G1016 review_design (attempt 2)
 
-Reviewed `.zzzops/reviews/1016/design.md` (blob fc9eeed) against the spec and integration commit 54d7e83 (`card.py`, `render.py`, `verbs.py` start/claim/abandon/submit/renew, `frontier.py`, `fingerprint.py`, `records.py`). I also checked it against G1014's approved design (attempt 2) and G1000's design.
+Reviewed `.zzzops/reviews/1016/design.md` (attempt 2, blob 41058bb) against the spec and integration commit 54d7e83 (`card.py`, `verbs.py` claim/done_record, `frontier.py`, `records.py`, `schemas.py`, `gitrun.py`, `render.py`).
 
-**Verdict: changes requested. There is one material finding, and the fix is small.** The rest of the design is sound, covers all six spec items, keeps to the no-fetch rule, and merges cleanly with G1014 and G1000.
+**Verdict: changes requested.** F1 is resolved. One new material finding (F2) is in the checkpoint wording that this design now owns.
 
-## Finding
+## Prior finding
 
-### F1. A reclaim card's new `stale_because` can downgrade a first-time phase to the `routine` tier (target: design)
+### F1 (review_design:1:1): resolved
 
-`card.build` sets `cap = "routine"` whenever `s.get("stale_because") == ["inputs.base"]` (card.py:79-80). That rule was written for record-stale starts: a done record exists and only the base moved, so the work is effectively a rebase. The design now also puts the lease-since-claim staleness on reclaim cards, and says "the existing card rules keyed on `stale_because` … apply unchanged".
+§2 now keeps two sets. `stale_because` (the union) is shown. `record_stale` (staleness against the done record only) drives both `card.build` rules. Checked against the engine:
 
-In the default graph, `test_design` (reasoning) and `implement` (bounded) both consume `inputs.base`. `base` re-runs whenever the integration branch moves, which happens often while other goals land. So the following is a common sequence:
+- The two rules that read `stale_because` in `card.build` are card.py:79 (`== ["inputs.base"]` gives `routine`) and card.py:191 (`== ["def"]` gives `previous.output`). Both move to `record_stale`.
+- `rec_sb` is computed only when `r and r["input_fp"] != fp`. A no-record `new` attempt and a `reopened` run (record current) therefore get an empty `record_stale`, and keep the node's own capability. The ready-stale path sets `record_stale = stale_because`, which is the same set frontier.py:219 computes against `r["fp_parts"]`, so today's rebase downgrade is kept.
+- `render.capability` (render.py:86) reads frontier states. A `reclaimable` state has no `stale_because` there, so status output already shows the node's own capability, which matches the new card.
+- The tests cover the F1 case (a reclaimed `new` implement and a reopened design after base moved) plus the control.
 
-1. `implement` attempt 1 starts with reason `new`.
-2. The integration branch advances, and `base` re-runs.
-3. The lease expires or is abandoned.
-4. `start --reclaim` runs.
+Minor point, not blocking: the design writes `"def" in record_stale` where the code says `== ["def"]`. That widens `previous.output` to cases where `def` and other keys moved together. Pick one on purpose and say so in §2. Either is defensible.
 
-Attempt 2's card then has `stale_because == ["inputs.base"]`, with no record at all, and `run.capability` becomes `routine`. The root routes a full first implementation, or a test design, to the cheapest model tier. The same happens for a reclaimed `reopened` correction run whose only lease-side change is base.
+## New finding
 
-**Consequence:** reclaimed substantive phases silently run on a weaker model. That is a quality regression this goal would introduce.
+### F2. A checkpoint override can name a ref, which resolves in the wrong repository and silently records the wrong commit (target: design)
 
-**Fix (pick one, and state it in §2):**
-- Apply the routine downgrade only to staleness against a done record. The simplest way is to key it on the record-stale set rather than the union.
-- Or apply it only when the abandoned lease's own reason was `stale`.
+At 54d7e83 the override's only check is the shape: `schemas.py:933` accepts `{"commit": <any str>}`. `done_record` (verbs.py:459) then runs `s.git.rev_parse(c)`. `GitRun.run` uses `cwd or self.primary` (gitrun.py:79), so the name is resolved in the **main repository**, not the goal worktree. The only check after that is `c == head or is_ancestor(c, head)`.
 
-Add a test: reclaim a no-record `implement` after base moved, and check that `run.capability` is the node's own.
+So `{"commit": "HEAD"}` resolves to whatever the main checkout has checked out, usually an integration commit. That commit is normally an **ancestor** of the goal's work branch, so the check passes. The record then stores the base, or an older commit, as the phase's checkpoint, and nothing refuses it. Other ref names (`main`, `dev`, a branch only in the worktree) behave the same way, or resolve to unrelated commits.
 
-## Non-blocking notes (no change required for approval)
+The design's new wording says "the literal "HEAD" is refused". That is not true at read_dev. The engine refuses `HEAD` only when the main checkout's HEAD happens not to be an ancestor. As written, the card would promise a safety check that does not exist.
 
-- **N1. Non-review `finding_effect` wording.** "a finding reopens that ancestor, and this phase re-runs after it" is true only when the ancestor's output changes. Liveness (frontier.py pass 1) ends when the target's `out_fp` changes, and that includes `responses`. A `disputed:` answer, or a fix that leaves the output unchanged, leaves this phase current, so it does not re-run. Suggested wording: "…; this phase re-runs if that ancestor's output changes." This fits the goal's purpose: cards should not mislead.
-- **N2. Dogfood item worth folding in (cheap, same function).** `output_schema`'s artifact text is "artifact: write the file and pass it with --artifact". Workers confuse `card.artifact.path` with the file to pass. Suggested wording: "artifact: write it to a local file and pass that file with --artifact; `artifact.path` is where submit stores it". This is a one-string change in `card.output_schema`, which §4 already edits. It does not touch `value_of`.
-- **N3.** `check_responses` lives in records.py and has no reader. Clipping with `"full": reader.blob_view(text)` means `done_record` either passes the reader in or builds `details` itself. This is an implementation detail, not a design change.
-- **N4.** A crash-loop reclaim (`needs_human`, cap `lease`, with `--force --reclaim`) also carries a lease, but it is not in the `reclaimable`/`running` condition, so its card gets no lease-side `stale_because`. This is acceptable as a known gap. It could be included at no extra cost.
+**Consequence:** a worker who follows the old habit (or any ref name) records a wrong checkpoint silently. Downstream review and integration then work from the wrong code.
 
-## Claims verified
+**Fix:** make `submit` accept only a full 40-hex commit sha for a checkpoint override. In `validate_submit_output` (schemas.py:933), reuse `SHA`, with the message `a checkpoint override is {"commit": "<40-hex sha>"}; omit the key to use the default`. Keep the existing `rev_parse`/ancestry checks for existence and membership. Change the card text to "give {"commit": "<full 40-hex sha>"}; ref names such as HEAD are refused". Add a test: an override of `"HEAD"`, of a branch name and of a short sha each get `validation`, and a full sha is accepted. Optionally, also apply the full-sha rule to the reconstruction path at verbs.py:917, which runs `rev_parse(cp["commit"])` on a `{"commit"}`-only record in the same way.
 
-- **Reclaimable state.** It has no `stale_because` (frontier.py:214), and `claim()` copies the state into `kind_state` with `stale_because=None` (verbs.py:285). The root cause is stated correctly.
-- **Lease fingerprint parts.** Leases carry claim-time `Fp-Parts` (leases.py), and neither current `renew` nor G1014's `renew` rewrites them. So `stale_keys(L_old.fp_parts, parts)` is exactly "since the abandoned attempt started", and `claimed_at` (the lease chain's root commit) is the matching `since`.
-- **Artifact parts.** Artifact parts are `<V>blob:<sha>` (fingerprint.py:16). Checkpoint parts are `change:` and map parts are `sha256:`, which correctly get no pointer.
-- **Local fetch only.** Goal branches are fetched without depth or filter (store.py:108). The goal-commit diff is therefore local, and `git.exists` makes no network call.
-- **No refusal regression.** `check_responses` is called only from `done_record` (verbs.py:442), inside `submit`'s `mutate` over freshly fetched state. The refusal code stays `validation`.
-- **Renew key.** The top-level `renew` key is used only by card.py:89 and the shape test (test_engine_lifecycle.py:309). No doc depends on the key name.
-- **Trace.** `NETWORK = {fetch, push, ls-remote}` (gitrun.py:16, :109) matches the proposed ZZZOPS_TRACE line.
+## Everything else
 
-## Merge check
-
-- **G1014.** The `restart` argv matches `live_lease_entry`. The `render.restart_command` merge rule is fine. The design adds no second staleness helper, and that decision is recorded. G1014 adds `parts` to running states, which nothing here depends on: forced reclaim goes through `lease_state`, which re-evaluates without the lease. The CLI_USAGE `abandon` row is rebased on G1014's text.
-- **G1000.** The top-level `changed` key skips `subject`, and G1000 D7 owns `previous.changed`. The filtered-lens sentence for `finding_effect` matches G1000 D2 (material claims reopen the work, and notes reopen only if the filter keeps them).
-- **G1018.** The design does not touch `card.value_of` or checkpoint rendering, and checkpoint keys get no `changed` pointer.
+Sections 1 and 3 to 6 are unchanged from attempt 1 apart from the N1, N2 and N4 wording. They still hold against read_dev, as verified in attempt 1: the reclaimable state shape, lease `Fp-Parts`, local-only artifact and goal pointers, `check_responses`' single caller, the renew key, and `NETWORK` for the trace line. For N4, the crash-loop state (frontier.py:211) carries `lease`, so `st0["lease"]` exists and the new `claim()` code covers it.
