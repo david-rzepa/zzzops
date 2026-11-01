@@ -43,27 +43,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [
-        {
-          "id": "review_design:1:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:af8f6994c739eaeb9994bc78579e22d33e93628fd70b02908b031643b7ec953e",
-          "text": "F1: an older plugin treats a newer recorded base as 'upstream changed', and its reviewed record downgrades the base. §3.3's last row lists a base that is null or not in the running engine's history store as upstream changed / local unknown, with a manual compare against the running template; record.reviewed resets every base to the running S. Plugin version skew is normal here (two marketplace caches, 6747a5e and c3791a0, plus the Codex engine on 15b59a5). An older plugin seeing B = S_new would offer its older template as 'the new default'. Writing its reviewed record sets B back to S_old, and the newer plugin then lists the file again: a ping-pong. Fix: a non-null base absent from the running store is reported as upstream: unknown_base ('recorded by a newer or unreleased plugin: upgrade to compare'), with no diff to the running template and no apply. record.reviewed keeps such bases unchanged, or is omitted when every listed file is in that state. null keeps the manual compare. Test: a record written with a larger store gives no downgrade direction, and its reviewed record leaves that base as it was.",
-          "upheld": false
-        },
         {
           "id": "review_design:2:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 3,
           "target_fp": "v1:sha256:7713cc127484f64fda30b01799f6fd08cc727203e467a0c0e2e4bf64c35d72d2",
@@ -71,33 +59,33 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T18:44:18Z",
+      "finished_at": "2026-11-01T18:46:51Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:2fcca3d21d6b7059b44539abd4251f728aaee98e",
+          "doc": "v1:blob:891e284f14d6d39fa3bd3d0854b643b5c887b5a6",
           "spec": "v1:sha256:5391c2d2289d1f818238efa5e7e169590aeef7c208341471c4f6ae9097278744"
         },
         "policy": {},
-        "subject": "v1:sha256:9fab07cc2890d1ded9c6b3f4d7e13e490e4c3375cdbe7e6185ae16762230aebf"
+        "subject": "v1:sha256:b9ad9e9acd6fee476fc734eaa8c49ad1528fabc1a6cf18897101e800dc94021f"
       },
       "holder": "claude:e6ad/rd1025",
-      "input_fp": "v1:sha256:a801e20672b923e2570aacbdda5d8beb01417c1cd6c32c817c97167807a5d893",
-      "ok": false,
+      "input_fp": "v1:sha256:7ed4bf8ceed8acbf8169bffddacbe56609252bb23a7b42b3b8a6dbdcd099dba3",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "cdb57cfd8f5e55cf2ce19bf0724363eedf6c4708",
-          "commit": "47bb6a64e62c150366ab4394ce387914614127e2",
+          "blob": "2fae1ff7cf3ad45e3b94103a87022eb5a085ae96",
+          "commit": "6c85e7eecc6460361a988cb8b25cd51c15b2167d",
           "path": ".zzzops/reviews/1024/review_design.md"
         },
-        "summary": "Changes requested (one new finding). review_design:1:1 is resolved for files both plugin versions ship: unknown_base has no diff or apply, reviewed keeps the base, and test 11 covers it. The three notes are taken (TEMPLATE.json goal-edit ban, workflow.json-first prompt decisions, G1025 history note). New 2:1: files that only one version ships still ping-pong, because reviewed drops entries for files no longer shipped and the older plugin re-adds them. Fix: keep tombstones in the record. Also, an unmerged-build base stays unknown_base forever; the skill should give a way to reset it to null. No owner question."
+        "summary": "Approved. Revision 4 resolves review_design:2:1: TEMPLATE.json gains a removed map of tombstones, reviewed keeps the tombstones, and an engine that still ships the file lists nothing when it recognises the tombstoned id, or reports unknown_base. Test 11 alternates both engines until the record is byte-stable. The secondary point (reset a still-unknown base to null) is taken. Note for the implementer: reviewed must not add a tombstoned path to files; test 11 already pins this."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "2fcca3d21d6b7059b44539abd4251f728aaee98e",
-          "commit": "ecc2dfd2383353e0518303b0b3f35d3cbab815ea"
+          "blob": "891e284f14d6d39fa3bd3d0854b643b5c887b5a6",
+          "commit": "11c38f55fd6009c58e76a81774c34c737898fb1c"
         }
       },
       "status": "done"
