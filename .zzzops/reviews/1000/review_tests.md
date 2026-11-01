@@ -1,20 +1,10 @@
-# review_tests for G1000 (attempt 4, after rebase onto dev 6747a5e)
+# review_tests G1000 (attempt 5): changes requested
 
-**Decision: approved.** No findings.
+Range-diff: test commits unchanged by the rebase. Run at 6119eac: test_engine_lenses, test_engine_docs and test_marketplace_bundle pass (75 tests). test_engine_card_ux/card_budget: 65 run, 1 failure.
 
-## Scope
-The tests were approved at 12e8d29 (base 54d7e83). G1000 was rebased onto dev 6747a5e; the test checkpoint is now 4087d8d. This review checks that the rebase left the tests unchanged and that they still pass.
+## Finding (target test_design)
+`test_engine_card_ux.DocsTests.test_prompts_name_full_shas` (dev, G1016) reads `fx.TEMPLATES`, which G1000 repointed to the frozen fixture `.agents/fixtures/graph12`. The fixture copies of `prompts/test_design.md` and `prompts/implement.md` predate G1016:
+- test_design.md: needs `else your work branch's HEAD. Name {"tests": {"commit": "<full 40-hex sha>"}}` wording.
+- implement.md: needs `else your work branch's HEAD; omit the key unless you override.`
 
-## Rebase check
-`git range-diff 54d7e83..12e8d29 6747a5e..4087d8d`:
-- Test commits: `63c757e` (freeze the 12-node graph, lens tests), `91aec68` (rev 4 skip refusals, per-lens independence, impl intent staleness, skipped-node findings) and `4087d8d` (filter freshness without the state string; re-run intent_design) are all `=`, so they are byte-identical patches.
-- Review/design doc commits: all `=`.
-- Adapted commits: only `28ee9a2` (engine) and `f455c98` (skills and references docs). The engine changes are merge adaptations to dev's refactors: card shrink moved to `_steps`/`_apply` (G1018), and the `fp_parts(..., R)` call moved into the new `rparts` form in `frontier.py` (G1014). The docs changes keep dev's new text (G1001 idempotent `new`, G1014 edit/live-lease guidance, G1015 legacy item, migrate skill) next to the G1000 additions. None of this touches test code or test fixtures.
-
-## Execution (on a `git archive` of 4087d8d)
-- `.agents/test_engine_lenses.py`: 61 tests, OK (218 s). The only output is a harmless ResourceWarning from an unclosed file in a test helper.
-- `.agents/test_engine_docs.py`: 3 tests, OK.
-- `.agents/test_marketplace_bundle.py`: 10 tests, OK.
-
-## Prior findings
-None open.
+Fix: re-sync these from dev's `templates/default/prompts`. The other graph12 files I compared (workflow.json, POLICY.json) match dev's template; re-check the remaining prompts.
