@@ -60,6 +60,7 @@ When you remember “one last thing,” add a goal instead of opening six files 
 
 - [How execution works](docs/EXECUTION.md) — goals, phases, corrections, stacked delivery, human decisions and recovery.
 - [Skills](docs/SKILLS.md) and the [CLI reference](plugins/zzzops/zzzops/references/CLI_USAGE.md).
+- [Design and specification](docs/design/README.md) — the engine contract (SPEC) and its rationale (DESIGN).
 - [Maintaining ZzzOps](docs/MAINTAINING.md) — repository architecture, releases, CI, validation commands, file ownership, and prompt budgets.
 - [Privacy policy](PRIVACY.md) and [OpenAI compliance review](docs/OPENAI_COMPLIANCE.md).
 - [Apache-2.0 license](LICENSE).

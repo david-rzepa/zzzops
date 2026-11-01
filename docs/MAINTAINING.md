@@ -6,7 +6,7 @@ This guide holds repository-development details intentionally kept out of the ne
 
 The distributable Agent Plugin lives in `plugins/zzzops`; `.agents/plugins/marketplace.json` publishes it to Codex. Codex and Claude Code distributions are generated from shared canonical sources rather than maintained as divergent implementations.
 
-`plugins/zzzops/zzzops/zzzops.py` is the stable installed executable; it only calls `engine.cli.main`. The engine is the package `plugins/zzzops/zzzops/engine/` (standard library only, Python 3.10+), designed in the reset's DESIGN.md and SPEC.md:
+`plugins/zzzops/zzzops/zzzops.py` is the stable installed executable; it only calls `engine.cli.main`. The engine is the package `plugins/zzzops/zzzops/engine/` (standard library only, Python 3.10+), designed in [DESIGN.md](design/DESIGN.md) and specified in [SPEC.md](design/SPEC.md). The `DESIGN §`, `SPEC §`, `REV6 H<n>` and `Step <n>` citations in engine code and tests resolve to the documents in `docs/design/` (see its [README](design/README.md)). The modules:
 
 | Module | Owns |
 | --- | --- |

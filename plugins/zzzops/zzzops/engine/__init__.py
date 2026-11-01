@@ -1,4 +1,4 @@
-"""ZzzOps engine: per-goal state branches, a pure frontier and four operations (DESIGN.md, SPEC.md)."""
+"""ZzzOps engine: per-goal state branches, a pure frontier and four operations (docs/design/DESIGN.md, docs/design/SPEC.md)."""
 
 ENGINE_VERSION = "1.1.0"
 REQUIRES_MIN = "0.0.0"          # SPEC §4.5: the oldest engine whose semantics this one coexists with
