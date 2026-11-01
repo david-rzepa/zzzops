@@ -93,15 +93,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [
         {
           "id": "review_design:2:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:d0e03d0e3d72684dbdd169d485c0222e7c5c6cd180addca36fac29239b3d16ad",
@@ -109,27 +109,27 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T04:20:17Z",
+      "finished_at": "2026-11-01T04:24:34Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:a0d48e89496f478cd2dad0f211397455a20592b4",
+          "doc": "v1:blob:e13cc44f710cd45197460ce8524bb85d19eb21e7",
           "spec": "v1:sha256:73f53b686ecd3713354c33c165401c3a3eb920fcb017163664b0557c71a2d297"
         },
         "policy": {},
-        "subject": "v1:sha256:dccc09b3add447557473840d98c169a392437f20ae4e21a9a7f14ffa3c84cc4e"
+        "subject": "v1:sha256:358ff0f8675e6ed03ea0ce73324b9a5458bc889c760840231ec6b65b9da4ecd2"
       },
-      "holder": "claude:e6ad/review_design-1001-2",
-      "input_fp": "v1:sha256:b902da456b96c95407d880cc54e3a5b6c98b47d932aa08bb26cee0cda92f7842",
-      "ok": false,
+      "holder": "claude:e6ad/review_design-1001-3",
+      "input_fp": "v1:sha256:9f296117fc0029b95b5c697eafdd2cce9d7964dd2e8ba93b0ce9264a76fda13b",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "efc2c9ec62c2a86a20fb945c9a15f8e137e8a926",
-          "commit": "073f849eae6c3007223a326fb7442366b6485b20",
+          "blob": "5f2ea61a3cb7ed20798533cd27fdbf80ed319559",
+          "commit": "2148073ca68b7a9e520146a89e10a8cb5aefe286",
           "path": ".zzzops/reviews/1001/review_design.md"
         },
-        "summary": "Core design is sound. Both attempt-2 fixes check out against 54d7e83 and real git: the deleted-ref refetch closes the same-clone fetch race, and a create-only lease push of an identical oid exits 0 as up to date, so report_up_to_date is needed and correctly scoped. One small fix: the 'scan before require_writable' ordering also bypasses the --policy-ref usage refusal, which contradicts the written test test_policy_ref_is_refused_even_for_a_retry. Refuse --policy-ref before the scan. Non-blocking: the tests lack design test 9 and the shared-clock variant of the concurrency test, and a compound same-clone race remains (a repeat-while-deleted-grows hardening is optional)."
+        "summary": "Approved. The dispute of review_design:2:1 holds: at 54d7e83, cli.session() (cli.py:97-100) refuses --policy-ref with usage for every non-preview verb before a Session is built, and cmd_new calls session(a) at cli.py:328, ahead of s.open() and therefore ahead of the planned key scan. session.py:186-187 is a second guard that new never reaches. The design now says in section 4 that this ordering must be kept, and test 10 pins it. No new material findings."
       },
       "reason": "stale",
       "status": "done"
