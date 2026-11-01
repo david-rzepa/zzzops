@@ -1,96 +1,68 @@
-# G1025 review_design (attempt 1): git-flow release branching
+# G1025 review_design (attempt 2): git-flow release branching, revision 2
 
-Reviewer: claude:e6ad/rd1025. Design revision 1, checked against read_dev a05fb97. Lenses: correctness, Adversary, Concurrency, Rollout.
+Reviewer: claude:e6ad/rd1025. Checked against read_dev c3791a0. Lenses: correctness, Adversary, Concurrency, Rollout.
 
 ## Verdict
 
-**Changes requested.** The design follows the owner's answers O1–O4 and the spec's quoted direction, and its shape is right: an optional `settings.branching` block; line goals on a separate `release` graph; goal branches that keep rebasing; merges only between long-lived branches; and nothing added to the default graph. Most of its claims about the engine hold at a05fb97. One claim does not: the effective release gate and the cut-completeness rule are said to be computed "from the documents", and the engine does not read closed goals' documents. Left as is, finishing a release would freeze dev again. There are also three ownership races (two open release lines, a duplicate cut, a member created after finish was approved) and a wrong retarget rule for cross-target stacks. All eight findings are fixable inside the design. None needs the owner.
+**Changes requested.** All eight attempt-1 findings are answered, and seven are fully resolved. The new mechanisms are well specified: the closed-goal trailer ledger, the one-open-line rule, the request key derived from the line, `duplicate_line`, retargeting to `target(d)`, the frontier's pass 3 with a per-attempt bound, the `zzzops/sync/g<line>/<into>` branches, and the second fetch round. Revision 2 still has four holes, all fixable inside the design:
+- two new waits (`release_sync`, `line_members_open`) are recorded blocks that nothing ever re-evaluates, so they hang forever;
+- hotfix lines have no tip binding for `approve_finish`;
+- a hotfix name cannot be reused after its line finishes;
+- the `Closed` trailer omits `superseded`.
 
-## Owner decisions and the spec's direction
+None of the four is an owner question.
 
-| Source | Honoured? | Notes |
+The capability requirement (`branching`, under `engine.min` or under G1027's declared capabilities) is consistent with the owner's G1027 decision and fails closed on both schemes.
+
+## Prior findings
+
+| id | status | why |
 |---|---|---|
-| Spec: "branch off of that tip, not dev" | yes | §4 targets; `base`, `integrate`, `merge`, worktree and first artifact all use `target(g)`. |
-| Spec: "scheduled downstream merges", "before starting work on a tip … upstream tips are checked" | yes, as O1 narrows it | release→dev is a scheduled merge (§5.4). Goal branches get a scheduled rebase (§5.3). |
-| Spec: "deploy/CI/actual release flow agnostic" | yes | §14. |
-| O1 "Merge for release→dev only" | yes | Goal branches keep rebasing. Identity, carry, `change` and the integrate rebuild are untouched (§9). The scheduled restack is the designer's call that O1 allowed ("say which": D1 says yes). |
-| O2 "dev moves on" | yes, but see F1 | The effective release becomes N+1 at the cut. F1 shows it falls back to N after finish. |
-| O3 finish into main and dev, hotfix branches too, release branch kept | yes | D9 adds the open release branch as a third back-merge target. That is a superset of O3 and follows git flow, so it needs no owner question. Its stated reason is weaker than written, though: merging release/N into main keeps a hotfix already on main. The real gain is that release/N is *stabilised* with the fix. |
-| O4 "All merged to dev" | yes | D6's exclusion of cancelled goals is a fair reading, since a cancelled goal has nothing to merge. |
-| Spec item 1, "decide releases.current vs branch existing" | decided (D3) | It is the line's existence. F1 is about how that existence is read. |
+| review_design:1:1 (closed goals) | resolved | §3.1 ledger: `Release`/`Closed`/`Line`/`Hotfix` trailers, written only in branching mode (byte-identical commits otherwise). Legacy closed goals are read in one batch. `effective` counts closed lines. Test 2a covers it. One gap in the trailer values is raised separately (new 4). |
+| review_design:1:2 (two open lines) | resolved | §3.2/D16. The cut waits while any release line is open. D9's target is unique. |
+| review_design:1:3 (racing cuts) | resolved | §3.3/D17. The key comes from (kind, name). A rejected push re-runs the scan, adoption happens only when no line goal exists, and `duplicate_line` covers the rest. The same steps apply to hotfix start (a consequence for hotfix names is new 3). |
+| review_design:1:4 (retarget) | resolved | §4/§8. Each dependent is retargeted to `target(d)`. Confirmed at c3791a0: merge.py never deletes the dependency's PR branch, and it retargets only after observing the merge. A PR that GitHub has already moved is corrected by the dependent's next run. |
+| review_design:1:5 (late members) | resolved for release lines | §6. `approve_finish` is bound to `sync.merged`, `finish` re-checks members and the approved tip, and `new`/`edit` warn. The two holes this fix opens (a hang on a cancelled member, and hotfix lines) are new 1 and new 2. |
+| review_design:1:6 (scheduled restack) | resolved | §5.3/D18. An explicit pass 3 keeps `cur[base]`, blocks every ready or reclaimable workspace node downstream of `base`, and fires once per agent attempt through the unfingerprinted `scheduled_for`. |
+| review_design:1:7 (sync branch, fetch) | resolved | §5.4/D19. There is no work branch. A detached worktree, self_sync, and an explicit bypass list. DIRTY/BEHIND is handled by merging the new I tip and keeping an approved resolution. A second fetch round runs only in branching mode. |
+| review_design:1:8 (G1017 row) | resolved | §10. The row text and marker are given, and this PR deletes the row. |
 
-## Claims checked at a05fb97
+## New findings
 
-Confirmed:
-- `frontier.py:204` is the release gate.
-- `cli.py:352` defaults `release` to `releases.current`.
-- `OPTIONAL_SETTINGS` holds only `legacy`, with the ENGINE_VERSION rule (`schemas.py:488-490`).
-- `GOAL_SCHEMAS = (1,)`, and `GOAL_KEYS` is strict.
-- `store.py:394` treats a newer schema as `newer`.
-- `base`'s inputs are `heads, prs, merges, design_review, approval`, with no integration tip, so dev moves do not restack. The design's correction of the spec premise is right.
-- `snap.I` / `snap.integration` appear in base.py:19/48/72/78, integrate.py:77-198, merge.py:29-69, worktree.py:59, identity.py:146 and card.py:176.
-- `check_i1_i2` is used at base, integrate and submit.
-- Required checks come from `verification.required_ci`, not from the branch, so "checks enforced on PRs into release/N" is a one-condition change at integrate.py:182.
-- The only workspace agents are `test_design` and `implement`, so D1's "the agent re-runs CI anyway" holds.
-- `merge.method` is `merge`, `releases.current` is 1, origin/main is an ancestor of origin/dev, and no `release/*` branch exists.
+**New 1 (major, design): the `release_sync` and `line_members_open` waits are recorded `waiting_for: dependency` blocks, and nothing re-evaluates them.**
+- In the frontier (frontier.py:243 at c3791a0), a blocked record whose `waiting_for` is `dependency` stays `waiting` until the node's `input_fp` changes. `ready (stale)` is checked first; nothing else moves the node.
+- **`release_sync`** (§8). The dependent's `base` blocks once the dependency has merged into `release/N`. Its inputs (heads, prs, merges, approvals, plus the `target` name) are already final at that point, and G1021 keeps the integration tip out of `base`'s fingerprint. The sync landing on dev therefore changes nothing `base` sees, so the dependent waits forever. Pass 3 does not rescue it, because it requires `st[base]` to be `current`.
+- **`line_members_open`** (§6). If the late member is merged, the release tip moves, `sync` re-runs and the approval goes stale, so `finish`'s inputs change and the wait ends. But the design states that a cancelled late member "leaves the approval valid". In that case nothing in `finish`'s inputs changes, and `finish` waits forever.
+- **Fix:** make both conditions frontier-computed waits, not recorded blocks:
+  - `base` is `waiting (release_sync)` while some `merges[d]` is not an ancestor of the target tip. That fact comes from the `upstream` input that pass 3 already receives.
+  - `finish` is `waiting (line_members_open)` from the ledger, as `line_complete` already is for `approve_finish`.
+  - Alternatively, give each block a re-check hook that `portfolio` evaluates.
+- **Tests:** "sync lands, then the dependent's `base` runs without any other change", and "a late member is cancelled, then `finish` runs on the existing approval".
 
-Not true: "computed in `portfolio` from the documents" (F1).
+**New 2 (design): hotfix lines have no tip binding.**
+- §7 puts a hotfix line's `sync` in `skip`. `approve_finish`'s only input, `sync.merged`, then resolves to the skipped placeholder, so the approval is not bound to `hotfix/x`'s tip.
+- Step 1 of `finish` ("release tip equals the approved `sync.merged`") is undefined for hotfix lines.
+- A member that merges into `hotfix/x` after the approval (late-created, as in the attempt-1 finding review_design:1:5) is merged into production without a new approval. That is exactly what the attempt-1 fix closed for release lines.
+- **Fix:** bind the approval to the line tip for both kinds. For example:
+  - run `sync` on hotfix lines in "record only" mode, so that `merged` is the `hotfix/x` tip and nothing is merged;
+  - or add a small `git.line_tip` op that both `approve_finish` and `finish` read.
+- **Test:** a hotfix member merged after the approval makes `approve_finish` stale.
 
-## Findings
+**New 3 (design): a hotfix name cannot be reused after its line finishes.**
+- §3.3's key for `hotfix start` is `{"line": "hotfix", "name": x}`, and the scan returns any goal with that key, closed included.
+- D14 keeps `hotfix/x`.
+- Suppose a later goal is marked `flow.hotfix = x` (a recurring "login-crash", say). Its target is "no line yet", and `next` offers `hotfix_start`. The verb then finds the finished line and returns it as `recovered`, so no branch or open line is ever created. The member's `base` waits for ever ("hotfix x not started"), and the item repeats.
+- **Fix:** refuse `flow.hotfix` naming a hotfix line that has finished (`new`/`edit` validation via the ledger's `Line: hotfix:x`, with the hint "choose a new name"). Alternatively, include a generation in the key and branch name. The refusal is simpler, and it matches release numbers, which are never reused.
+- **Test:** marking a goal with a finished hotfix name is refused.
 
-**F1 (major, design): the effective release and the cut-completeness rule need closed goals, and the engine does not read closed goals' documents.**
-- `store.read_state` (store.py:379) reads a document only when the goal is named, or `all_goals`, or its commit trailer `State` is not `closed`.
-- `effective = max(current, 1 + highest N with a release line goal)`. Once `finish` closes the line goal for N, its document is no longer read. `effective` falls back to `releases.current` (1 here), and every release N+1 goal's `merge` returns to `waiting: release`. Dev would freeze right after Release 1 finishes.
-- The cut condition "every goal with release == N is closed, at least one closed done" needs the `release` and `closed.reason` of closed goals. Neither is in the trailers (`goal_message` writes Outcome, State, Request-Key and Engine only).
-- Fix: make line existence and release membership cheap to read. For example, add `Release: <n>`, `Closed: <reason>` and `Line: release/<n>` trailers to the goal commits this engine writes, and fall back to reading the document only for closed goals that lack them, only when branching is on. Or always load every line goal and closed goal when branching is on, and state the cost.
-- Add tests: after `finish` of release 1, a release 2 goal still passes its merge gate; the cut item counts closed done and cancelled goals correctly in a fresh `next` that reads no document by name.
-
-**F2 (concurrency, design): two release lines can be open at once, and nothing defines that state.**
-- §3 offers the cut for N = effective without requiring line N−1 to be finished. Release N+1 can complete on dev and be cut while release/N is still stabilising.
-- Then release/N's syncs reach dev but never release/N+1. The finish order into production is undefined. D9's "the open release branch" is ambiguous.
-- git flow, and the git-flow tool, refuse to start a release while another release branch exists, so one open release line at a time is the clear winner.
-- Fix: add "no open release line goal" to the cut conditions, and show the cut item as waiting ("waiting: release N not finished"). Say that D9's target is then unique.
-- Add tests: the cut for N+1 is absent while line N is open, and present after it finishes.
-
-**F3 (concurrency, design): concurrent `release cut` (and `hotfix start`) can create two line goals for one branch.**
-- §3 step 3 adopts an existing `release/N` that is an ancestor of the I tip. A second cutter whose push lost the race refetches and sees `release/N`, created moments ago at the same tip and so an ancestor. It then adopts the branch and creates a second "Release N" goal. The adopt path does not re-check "no line goal exists for N" after the rejection.
-- Idempotency "through G1001's request key" helps only if the key depends on the line alone, not on the answer file F (two delegates write different F).
-- Fix:
-  - The request key is a function of (line kind, name), for example `sha256({"line":"release","name":"1"})`.
-  - After a rejected push, re-run the whole condition check, including line existence, before the adopt path.
-  - The portfolio treats two open line goals with the same `flow.branch` as a human item ("duplicate line"), never as two owners.
-  - The same rules apply to `hotfix start`.
-- Add a test with two racing cuts.
-
-**F4 (correctness, design): cross-target stacks are retargeted to the wrong branch.**
-- §4 says "dependents are retargeted to the merged goal's target" (today merge.py:51 retargets them to `I`). For §8's case, a dev goal stacked on a release-N goal, that puts a release N+1 PR's base on `release/N`. The PR then shows every dev commit since the cut, and if a person merges it, N+1 work lands in the release branch.
-- GitHub does the same on its own when the dependency's PR branch is deleted: it retargets dependent PRs to the merged PR's base.
-- Fix: retarget each dependent to its own `target(d)`, and do so before the dependency's PR branch is deleted. Until the sync lands, the dependent's PR diff still includes the dependency's change. That is acceptable, because its `base` waits on `release_sync` and nothing integrates in the meantime.
-- Add a test: after the release-N dependency merges, the dependent's PR base is dev and its `base` waits with `release_sync`.
-
-**F5 (concurrency, design): a release-N member created after `approve_finish` is approved escapes the release.**
-- `line_complete` gates the human node only, and `finish`'s inputs do not include it.
-- A goal created with `release: N` (or edited onto N) between the approval and the end of `finish` starts on `release/N`. After `finish` closes the line, that goal silently retargets to dev (the `target` fp part goes away and `base` restacks), so it misses release N.
-- Fix: `finish` re-checks completeness when it runs. If a member is open, it blocks and returns the line to `approve_finish`. `new` and `edit` warn (`release_finishing`) once `approve_finish` is current.
-- Add a test.
-
-**F6 (correctness and liveness, design): the scheduled-restack rule needs a defined frontier mechanism and a bound.**
-- The frontier is a single topological pass (frontier.py, pass 2). `base` is decided before its consumers, so "base is ready if some workspace agent *would be* ready" needs a second pass that overrides already-computed states. Say so, and say which nodes it rewrites.
-- Only agents are blocked, so a `ready` workspace op such as `run_tests` (stale on the same history) can be dispatched beside `base` on the pre-restack tree. Block every workspace node downstream of `base`, not only agents.
-- In a busy repository, dev can move between `base` finishing and the agent's `start`, which re-triggers the restack. State the bound, for example "at most one scheduled restack per agent ready-epoch", or "behind is measured against the target tip at the agent's ready transition". Otherwise name the starvation risk in §12.
-- Add tests for the second-pass override and for an op that is not dispatched while the restack is pending.
-
-**F7 (correctness, design): the line goal's branches and fetch need defining against the work-branch machinery.**
-- `sync` resets `zzzops/work/g<line>` and puts merge commits on it. The generic workspace paths assume a linear review/code history: `wt.sync` and `unpushed_replay` use `patch_ids --no-merges`, there is `salvage_lines`, the worktree is born at `snap.integration`, and `verbs.py:476` calls `check_i1_i2`. Name the sync's branch (for example a dedicated `zzzops/sync/g<line>`, never pushed as `work`), and say which of those paths line ops bypass. The hand-resolved merge commit must survive `start`'s resume.
-- Say what happens when dev moves after a hand resolution and the sync PR turns DIRTY or BEHIND. For example: merge again on the new I tip, and require the resolution approval again if a new conflict appears.
-- §4's snapshot says it fetches the production branch and the open line branches with explicit refspecs. The policy, and so `branching`, is read from the I tip fetched in that same round, and line goals come from the goal refs of that round. That needs a second fetch round, or a prefix wildcard taken from the last-seen policy. Say which, and that it applies only when branching is on.
-
-**F8 (minor, design): G1017's rule.**
-- G1017's design (case 3) gives a pending README row to a case-3 goal "when its contract sections are already known". §15 now names them, so §10's "no pending row" is out of date.
-- Fix: as G1022 §12 does, send §15's list to G1017 or the root for a row, and add "this PR deletes the G1025 pending row" to the PR's docs edits. Otherwise `test_no_landed_goal_is_pending` fails on the PR if a row was added.
+**New 4 (minor, design): the `Closed` trailer omits `superseded`.**
+- §3.1 writes `Closed: done|cancelled`, but `closed.reason` is `done | cancelled | superseded` (schemas.py `validate_goal`).
+- Cut completeness (D6: closed, at least one done; a cancelled goal does not block) must classify superseded goals from the trailer alone. Otherwise every superseded release-N goal falls back to a document read, or is miscounted.
+- **Fix:** write `Closed: <reason>` for all three reasons, and say in D6 that `superseded` counts like `cancelled`.
+- **Test:** add a superseded goal to test 2a.
 
 ## Notes (not findings)
 
-- Validation could refuse `settings.branching` without a valid `graphs.release` up front, instead of only at `release cut` and `hotfix start`. That is the designer's call.
-- §11 rollout order is sound. G1025 is itself Release 1, so its own close is part of the cut's completeness. The cut also waits on the owner-gated engine floor and on G1003 being unheld or moved. G1022 §8a's three points are met.
-- G1024: the shipped `POLICY.json` is unchanged and `graphs.release` is inert without `branching`. Agreed.
+- Pass 3 also blocks `reclaimable` workspace nodes. A reclaim then meets a rebased worktree: `base` refuses a dirty tree with an agent item, so the outcome is safe, but the design could say so.
+- D9's reason ("otherwise release/N would ship without the fix") is still overstated: merging release/N into main keeps a hotfix that is already on main. The real gain is that release/N is stabilised with the fix. The decision stands.
+- G1022 §8a, G1024 and G1017 are consistent with this revision. The §11 rollout is sound, with the capability step gated as the owner decided in G1027.
