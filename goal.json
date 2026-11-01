@@ -211,10 +211,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T04:40:52Z",
+      "finished_at": "2026-11-01T05:02:58Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -228,22 +228,26 @@
         ".agents/engine_fixtures.py",
         ".agents/test_engine_legacy.py"
       ],
-      "holder": "claude:e6ad/test_design-1015-1",
+      "holder": "claude:e6ad/test_design-1015-2",
       "input_fp": "v1:sha256:7e0617126496c8c0054419ce21c1f20e704d4171a33c5613adfd3986dd184249",
       "ok": true,
       "output": {
         "commands": [
-          "python3 -m unittest discover -s .agents -p test_engine_legacy.py",
-          "python3 -m unittest discover -s .agents"
+          "cd .agents && python3 -m unittest test_engine_legacy.FakeGhGraphqlTests test_engine_legacy.IsolatedEnvTests  # 9 tests, OK",
+          "cd .agents && python3 -m unittest test_engine_legacy  # 49 tests: 17 pass, 17 failures + 15 errors, all the missing engine.legacy feature (same 32 as attempt 1)",
+          "cd .agents && python3 -m unittest discover -p 'test_*.py'  # 426 tests; the only failures are those 32"
         ],
+        "responses": {
+          "review_tests:1:1": "fixed: engine_fake_gh.graphql now parses each search alias's arguments and selection set (gql_document/gql_errors/gql_connection). It rejects, before executing anything and without recording a search: a search without `type` (\"Field 'search' is missing required arguments: type\"), a direct field other than __typename inside nodes{} (\"Selections can't be made directly on unions (see selections on SearchResultItem)\"), and a search with no selection set (\"Field must have selections (...)\"); one bad alias rejects the whole document. It returns only the selected fields (issueCount absent unless selected; nodes items carry only what `... on Issue{}` selects; pageInfo only selected subfields), refuses a non-ISSUE type and any field it does not model (including comments) as 'not supported by the fake'. Error format: I re-checked live with gh 2.100.0 today; current gh prints the errors JSON on stdout and `gh: <message>` on stderr with exit 1 (the `GraphQL: ...` prefix is older gh), so the fake reproduces that and the tests assert it with GitHub's exact messages and paths. Direct tests: FakeGhGraphqlTests (well-formed two-alias document via -f and via --input -, counts 150/2 with nodes capped at 100, first:10 cap with hasNextPage, the three malformed forms, a bad second alias, issueCount omitted when unselected, comments not served). Notes taken: isolated_env now drops GH_TOKEN/GITHUB_TOKEN/GH_ENTERPRISE_TOKEN/GITHUB_ENTERPRISE_TOKEN/GH_HOST/GH_CONFIG_DIR so no World can authenticate a real gh (IsolatedEnvTests); test 14 additionally asserts the received GraphQL documents (argv or stdin) select no comments and that both runs end with the same check result (github ok, issues [1,2,3], issue_count 3). Commit cb8e7ba."
+        },
         "tests": {
           "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "c65da4ce473fbda18509f562fe3fda77608eeb1b",
-          "commit": "a19c52f6ea00d573287840c86b6580171b2b81df",
-          "tree": "be59f1af4a3805f66465c346d189d693d2a4d3dc"
+          "change": "1a122e6a125f599ab1b1f478b8d7eb3f749cf154",
+          "commit": "cb8e7ba08322aea37457b561304f8880ebc7c7c0",
+          "tree": "5ee04387f851410191dbb4df44166a7ba02dc75d"
         }
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     }
   },
