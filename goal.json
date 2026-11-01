@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-01T18:04:44Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [],
   "graph": "default",
   "id": 1000,
@@ -215,6 +220,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T18:04:44Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:14206fd31cad178ccedeb05f5ad93ec19ac1797c7d9597ac166c3120c1216978"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:b37854635550c1ab2c1a560288dcf6811fc17476c2a56bfe465d8dc6c2c695bc",
+      "ok": true,
+      "output": {
+        "merge_commit": "7e075c5b280e42e245a1c65056e4fc18eb01ead3",
+        "merged_at": "2026-11-01T18:04:43Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -444,6 +471,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Replace the default graph's single design review and single code review with independent, parallel review lenses that judge the work through abstract, philosophical questions rather than technical checklists. Ship it in plugins/zzzops/zzzops/templates/default/ and adopt it in this repository's .zzzops/ through a zzzops/policy/* branch.\n\nProposed lenses, each a review node with its own prompt, reviewing `design` and again reviewing `implement`:\n- Intent (fidelity, not skippable): two questions. (1) Goal intent: does this solve the problem that was actually asked, faithfully to the goal's original statement and the approved design? (2) Project intent: does it serve the project's original purpose, or pull the project away from it? Look for drift, scope creep, quiet redefinition of the problem, silently dropped requirements, and goals that are locally sensible but move the project off course. This lens exists because ZzzOps itself nearly died of drift from its original intent.\n- Simplicity (elegance and entropy, not skippable): is this the simplest thing that fully works? Separate essential from accidental complexity, and find what can be deleted. Check cohesion, multi-responsibility files and over-fragmentation, and whether the change leaves the codebase simpler or more tangled than it found it.\n- Safety (skippable): what could this harm, and who? Security, privacy, data loss, irreversible or destructive actions, trust boundaries and abuse.\n- Scale (skippable): does it hold as load, data, concurrency, users and time grow? Include performance pathologies and long-term maintenance cost.\n- Experience (skippable): what is it like for the person on the other end, whether user, operator or future reader? Clarity, failure and recovery, accessibility, error messages and docs.\nThese five are a starting hypothesis, not the answer. Choose the final set by experiment.\n\nLens experiment (part of design, before approve_design):\n- Write the design first. Then review it with many candidate lenses as independent reviewers, each with only its own lens prompt. Candidates: the five above, plus at least Truth/evidence (is every claim verifiable, and does it fail honestly?), Reversibility (what is hard to undo?), Coherence (does it fit the system's existing concepts?), Necessity (should this exist at all?), Adversary (how would someone break or game it?) and the old technical lenses (architecture, security, performance, concurrency, migration, UX) as a control.\n- Where cheap, also replay the candidates on one or two past designs or diffs with known defects, for example reset-era review findings in the design-reset reviews/ folder, to measure recall against real misses.\n- Score each lens on: material findings (ones that changed the design); findings unique to it, not raised by any other lens; false or noise findings; and cost (tokens and time). Report a table and recommend the smallest set with the best unique-material yield. Lenses that mostly duplicate others merge or drop.\n- The experiment's lenses run as ad hoc reviews outside the graph (the engine does not need to support them). Its report is an artifact of design, so review_design and the owner see the evidence.\nThe final node list and lens set is approved at approve_design.\n\nMechanics, on the current engine:\n- Lenses fan out from their subject and join for free: approve_design (and base) list each design lens's summary as a context input; integrate and approve_merge do the same for the code lenses.\n- A finding from any lens reopens its target through the findings rule.\n- review_tests stays a single general review.\n- Lenses are user-configurable: a goal can skip an optional lens through `skip: {<lens node>: reason}`. The add-goal skill proposes skips at capture from the goal's risks, and any phase can raise an unforeseen risk as a blocked question so a skipped lens is unskipped. A project can also change the lens set in its own workflow.json.\n- Folds in old #501 (risks choose lenses) and #380/#384 (entropy review as a lens).\n\nNitpick filter (owner request): reviewers tend to find something because they feel obliged to, so every review, design and code alike, passes through a filter before its findings reopen work.\n- Each finding carries a materiality claim: what goes wrong if it is ignored.\n- The filter separates material findings, which reopen the target, from nitpicks and preferences, which are recorded as non-blocking notes. Notes are shown to the next attempt and to approvers, but they never reopen work or count against the correction budget.\n- The filter is independent of the reviewer and errs toward keeping a finding when unsure.\n- Lens prompts state explicitly that approving with no findings is a good outcome.\n- Options for the design to choose between: an engine rule (severity or material flag on findings; non-material findings do not reopen), a separate filter agent node per review fan-in, or both. Weigh this against R2, the removed admission gate: keep it cheap, and never let the filter silently drop a material finding.\n- The lens experiment measures nit rate per lens with and without the filter.\n\nProject intent must be defined, not inferred:\n- Bootstrap must capture the project's original intent with the owner: what the project is for, who it serves, what it deliberately is not, and the principles that must survive change. It lives in a dedicated, reviewed policy artifact (for example an `intent` section of .zzzops/PROJECT.md, or a policy instruction the Intent lens declares as an input). The design decides the exact form.\n- The bootstrap skill and template require it, and `validate --policy` reports it missing.\n- Changing it is a policy change (a zzzops/policy/* branch, previewable with --policy-ref), never a side effect of a goal. Because the Intent lens declares it as an input, changing it stales Intent reviews on open goals.\n- This repository's own intent is written in the same change, with the owner.\n\nSmall engine change in scope: re-reviews of a design document get a \"what changed\" pointer (records.reviewed and card.previous today only record code checkpoints), so each lens does not re-read the whole design every round. The integrate PR body should list every lens summary.\n\nAcceptance:\n- validate --policy passes for the template and this repo.\n- A journey test shows lenses running in parallel; one lens's finding reopening design and the other lenses re-reviewing the new design; a skipped optional lens; a refused skip of a non-skippable lens; and approve_design presenting every lens summary.\n- Every lens has a focused prompt. Reviewer independence holds per lens. Prompt budgets pass.\n- The nitpick filter is tested: a nit-only review leaves its target current; a material finding still reopens it; a borderline finding is kept.\n- Engine tests no longer depend on the shipped graph's node names: freeze the current 12-node graph as a test fixture.\n- Bootstrap captures project intent; a missing project intent fails validate --policy; the Intent lens reads it as a declared input.\n- SPEC §7, DESIGN §4.1/§10, MIGRATING.md, package.py and the bootstrap, add-goal and execute skills are updated.\n\nOut of scope (post-MVP): lens applicability predicates in the engine, a durable requirements Q&A phase, findings targeting goal.spec, red-before-green verification (#457), PR-comment interpretation, and decomposition.\n\nMigrated from GitHub issue #499 (plus #501, #380 and #384) after the engine reset (#740).\n",
-  "state": "open",
+  "state": "closed",
   "title": "Default DAG: parallel review lenses (intent, simplicity, safety, scale, experience)"
 }
