@@ -9,4 +9,4 @@ ZzzOps writes only under `zzzops/` on your remote, plus the merges it performs t
 | `zzzops/policy/**` | created by humans for policy changes | none; landing one on the integration branch unblocks work |
 | the integration branch | your normal protection | whatever you require; `settings.merge.method` must be allowed (use `squash` under signed-commit rules) |
 
-A push refused by a rule is reported as `push_refused`, never retried. Check the rules that apply with `gh api repos/{owner}/{repo}/rules/branches/zzzops/lease/g0/x` (it should list none).
+A push refused by a rule is reported as `push_refused`, never retried. Check the rules that apply with `gh api repos/{owner}/{repo}/rules/branches/zzzops/lease/g0/x` (it should list none). Where rulesets are unavailable (a private repository on GitHub's free plan) this returns 403: see [When rules are unreadable](INITIALIZATION.md#when-rules-are-unreadable).

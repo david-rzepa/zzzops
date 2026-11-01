@@ -12,6 +12,10 @@ Bootstrap is a checklist, run by the `$bootstrap-zzzops-repository` skill over t
 8. Optionally skip CI on `zzzops/**` pushes and add `.zzzops/worktrees/` to tool ignore files.
 9. `zzzops validate`, then capture the first goals with `$add-zzzops-goal`.
 
+## When rules are unreadable
+
+On a private repository on GitHub's free plan, rulesets and branch protection answer 403 and cannot be set. The engine never reads them, so it still works; the bootstrap skill (step 2) does not retry, and gets `required_ci` from the owner or from the check names of recent PRs, so it is filled before validation. An empty `required_ci` means integrate merges with no CI gate. Merges are then guarded only by the required-check gate and `--match-head-commit`; the `zzzops/goal/**` rule is unavailable unless the repository goes public or the plan is upgraded. Step 7 then checks only the repository settings (`delete_branch_on_merge`, the allowed merge methods).
+
 A repository without `.zzzops/workflow.json` on its integration branch reports `not_bootstrapped`.
 
 Goals created by the pre-reset engine are not migrated automatically: see [MIGRATING.md](../plugins/zzzops/zzzops/references/MIGRATING.md).
