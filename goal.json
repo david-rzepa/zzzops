@@ -31,10 +31,10 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T19:52:46Z",
+      "finished_at": "2026-11-01T19:58:13Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -48,13 +48,16 @@
       "ok": true,
       "output": {
         "doc": {
-          "blob": "dc8a15a2871910b58492a6270b37dcea8a1295fc",
-          "commit": "7267819525efa96d660944c99f419ced6fa5f97f",
+          "blob": "e872fd9a5b3a7d74385a749b6a4663171decf7d8",
+          "commit": "f7be8230a3e555c49c03f31c04683ca7b80a134e",
           "path": ".zzzops/reviews/1037/design.md"
         },
-        "summary": "Generic public plan for the private-app dogfood run (detailed plan kept in the root's private journal): the default graph with the root holding implement, nine phases from install to an engine-driven release whose deploying steps stay outside the engine with separate owner approvals, acceptance checks A1-A17, and owner decisions OD1-OD7 with identifying words redacted. Every public write by root or workers is scanned against a private deny-pattern list; later-release goals are migrated held; G1036 depends on G1037."
+        "responses": {
+          "review_design:1:1": "fixed: A15 now scans only the run's own commits (git log -p <I>..<ref> for each touched ref; goal branches have no shared history so their full history), plus PR text, defect goals and the report tree; new precondition (§4 phase 1, §6) requires a clean scan of the integration tip, existing defect goals and related goal branches, re-run on every list change; the private list was tuned to app-specific compounds and anchored ids (generic spec phrase narrowed in the list, G1032 unchanged) and now scans clean on the integration tip and on goal branches G1031-G1034, G1036, G1037."
+        },
+        "summary": "Attempt 2 scopes A15 to the run's own output (git log -p <I>..<ref> per touched ref, goal branches, PR text, defect goals, report tree) and adds a precondition that the deny list scans clean on the integration tip and existing defect goals, re-checked whenever the list changes; the list is maintained as app-specific compounds and anchored ids. The private plan and deny list were updated accordingly; the plan is otherwise unchanged."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
