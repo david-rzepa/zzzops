@@ -37,6 +37,66 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:81ee91f9c1b85b6854188c3d8281079e59917c7a7a4d1da198c48d7f3506167b",
+          "text": "F1: section 6 rolls out the stored finding key  by raising engine.min, as G1022 D9 did. G1027 (approved, blob 0c556c2) replaces ENGINE_VERSION/engine.min with declared capabilities, and its section 3.6 rule covers new record and finding keys; it has already moved G1022 to capability . 'Only the new engine accepts it in submit' does not protect an old build in another clone. Fix: name a capability (e.g. finding_follows), ship engine/capabilities/<name>.txt in this PR (and add it to G1027's SHIPPED pin), make the rollout push zzzops/policy/requires-<name> before the first follows is written, state both merge orders against G1027 as G1027 section 5 does for G1022, and update the section 4 row and the section 9 contract-edit list (SPEC 4.5).",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:81ee91f9c1b85b6854188c3d8281079e59917c7a7a4d1da198c48d7f3506167b",
+          "text": "F2: section 3.3 makes a new finding with follows inherit  from the followed one. upheld means the human sided with the reviewer on that text: the target cannot dispute it (records.check_responses) and it never escalates (frontier.escalates). Inheriting it lets a reviewer attach freely written new demands that neither the target nor the human can push back on, which weakens the dispute safeguard. Fix: inherit rounds as designed (so resolve-and-follow cannot dodge escalation), but always set upheld false on the new finding, so a dispute at rounds >= 2 escalates to the human. Update section 3.3, D5 and test 9, and add a test that a follow of an upheld finding is disputable and escalates.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T18:40:51Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:2a9c17dfd4287092b93db268e7569bee3a14a74c",
+          "spec": "v1:sha256:e89bcb65bb0501e53489428c547173e3252be41e17065753656056ba4f1cbb48"
+        },
+        "policy": {},
+        "subject": "v1:sha256:81ee91f9c1b85b6854188c3d8281079e59917c7a7a4d1da198c48d7f3506167b"
+      },
+      "holder": "claude:e6ad/rd1022",
+      "input_fp": "v1:sha256:50c0496c5e6de7df63d75bb88f2a27888e02abcf9b3c4e1de1ecda97ed07403c",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "84a887f48646bce6031a0fb44cecfed24e5f2c00",
+          "commit": "22d26ab052fe15c6c32851c0400ffe9e4d543e2d",
+          "path": ".zzzops/reviews/1028/review_design.md"
+        },
+        "summary": "Sound design: the carry rule, previous.resolved, follows and --repo all check out against frontier.py, records.py, card.py and cli.py at 8d8437a. Two fixes needed: ship follows as a G1027 capability (engine/capabilities/<name>.txt plus settings.engine.requires), not an engine.min raise; and do not let follows inherit upheld, which would make reviewer-written text undisputable. No owner questions."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "2a9c17dfd4287092b93db268e7569bee3a14a74c",
+          "commit": "2b55072115d9c87236c0751570998f76e1cf39be"
+        }
+      },
+      "status": "done"
     }
   },
   "release": 1,
