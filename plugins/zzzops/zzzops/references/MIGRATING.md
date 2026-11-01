@@ -15,7 +15,7 @@ The reset builds no automatic migration. Old goals stay on GitHub untouched: iss
 - Never run `zzzops goal inspect` from the old engine: it writes.
 
 ## Create the new goal
-`zzzops new --file goal.json` with the spec, `depends_on`, `release` and `links: {"issue": <old issue number>}`. New ids start at `settings.goals.first_id` (1000 here), so `G1002` never collides with an old `#812`.
+`zzzops new --file goal.json` with the spec, `depends_on`, `release` (confirmed by the owner at triage; see the skill) and `links: {"issue": <old issue number>}`. New ids start at `settings.goals.first_id` (1000 here), so `G1002` never collides with an old `#812`.
 
 ## Carry finished work forward (judgment)
 1. Point the work branch at the accepted checkpoint commit:
@@ -40,7 +40,7 @@ The reset builds no automatic migration. Old goals stay on GitHub untouched: iss
 Publication nodes are not carried: the operations re-observe.
 
 ## Releases and housekeeping
-Release assignments from the old release-plan issue #695 are all release 1. Closing moot or delivered issues is what the `migrate-zzzops-repository` skill does; labels and comments stay as the archive.
+Each migrated goal takes the release the owner confirmed at triage (the skill's step 4: from the old milestone, labels or release plan, its dependencies and priority). Releases are whole numbers; a goal waits only at its `merge` while its release is after `settings.releases.current`. A goal may not depend on a goal of a later release. Closing moot or delivered issues is what the `migrate-zzzops-repository` skill does; labels and comments stay as the archive.
 
 ## Adopting the lens graph (engine 1.1)
 The 1.1 default graph replaces `review_design` and `review_impl` with seven review lenses per subject (`intent`, `simplicity`, `truth`, `adversary`, `concurrency`, `rollout`, `experience`, as `<lens>_design` and `<lens>_impl`) and a filter per subject (`filter_design`, `filter_impl`) that judges each non-material finding `keep` or `note`. A project adopts it through policy branches, in this order:
