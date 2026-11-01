@@ -39,40 +39,39 @@
       "status": "done"
     },
     "base": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T07:51:33Z",
+      "finished_at": "2026-11-01T18:05:20Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
         "inputs": {
-          "heads": "v1:sha256:17c620412908c5a473883222e562cbb4b2e594592a14e2e40b49e057bf037d3b",
-          "merges": "v1:sha256:cea86329da566b62a8090bef8c014fbe45b1b0d1eb0b793c4ecdc7973f19bf6a"
+          "heads": "v1:sha256:aad743d829a86c296c10faa324295b63730c1aa410a86fe6dff18a45f040b116",
+          "merges": "v1:sha256:229e8fb6e7c807ae3a533f86fdb3aaed082e99389b453b7b8a22bd45b8f2f8a5"
         },
         "policy": {}
       },
       "holder": "claude:e6ad/op",
-      "input_fp": "v1:sha256:d737ff7449ae8f82ef916b0a4765109e2f4f055936dc15fc98d11b5560c399d0",
+      "input_fp": "v1:sha256:b5927f005031ba13f37e35cf31e86ea573e33ada9e1eed04ce44ddfd6d49e6b8",
       "ok": true,
       "output": {
-        "base_commit": "6d4715a1164fd913115f28c8b3bc2df39761be73",
+        "base_commit": "7e075c5b280e42e245a1c65056e4fc18eb01ead3",
         "branch": "zzzops/work/g1020",
         "replay_map": {
-          "1b7a9f6a4a7e43d66bd1b9a12fbc22f581ab922a": "78a93879ba9d810e220fafe34e4b1fca40d5c35a",
-          "95b420cd50454c659e0863cddf308e98bfda30cc": "3c1e7bc222d8656b30711730742d837ec99e571d",
-          "ca6438cf6385ae545276320f7e567681f23a4b3c": "cb1683f0594e3179c523f878db022038071600d9",
-          "ef2857bac788f62498cc80f3f6135ac619d588b6": "b2a3d2aa57a3b9f6048d9765caa6883fdf05672a"
+          "04bc75b1150177646f4eeb69568d398727eac80e": "af8d67d2389dacf958f33d0a6ef3919c58596692",
+          "3c1e7bc222d8656b30711730742d837ec99e571d": "77f252805633320227a919f8f8e959ff55102097",
+          "4ebcc8eca42f5250fb2e7602d20574908666fccb": "ad1efb36f5d1b8c6a748ad18096e19b2ecf48ef4",
+          "5ae4e84d4c316f53ff27a4bb1ed6665f25056652": "df94888c5a6199b2c08c9f2758ed402ae3e77bfa",
+          "78a93879ba9d810e220fafe34e4b1fca40d5c35a": "edbc4ec450ffb9106a5ae81f63455960331798f1",
+          "b2a3d2aa57a3b9f6048d9765caa6883fdf05672a": "0fa4be37f0881b84719d91b11efcd4c1e77d0c53",
+          "cb1683f0594e3179c523f878db022038071600d9": "a212f9b25504fb2ce297d2701f5898d76fb4dac7"
         },
-        "replay_pos": {},
-        "stack": [
-          {
-            "goal": 1000,
-            "head": "6d4715a1164fd913115f28c8b3bc2df39761be73",
-            "pr": 748
-          }
-        ]
+        "replay_pos": {
+          "70531e807ab6e086fb9b64b47fe6e25c7ea99070": "ac8ca367f0e64fc01a28d579d690332c4f82b4e4"
+        },
+        "stack": []
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "design": {
@@ -344,13 +343,14 @@
     },
     "test_design": {
       "attempt": 1,
+      "carried_by": "base",
       "correction_runs": 0,
       "findings": [],
       "finished_at": "2026-11-01T08:00:11Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
-          "base": "v1:sha256:e2e24e462d70f331ee1b6844c51d09411d56c576ee09ef40ebadf1bcfa5fe8ad",
+          "base": "v1:sha256:8eef98641d62eb55d51ce6fdc4b83cf4b4e40600b309b29b58f4863b0596e1f2",
           "doc": "v1:blob:137369030420987f7ff4f2f87e69612b97276be0"
         },
         "policy": {}
@@ -359,7 +359,7 @@
         ".agents/test_engine_lens_polish.py"
       ],
       "holder": "claude:e6ad/test_design-1020-1",
-      "input_fp": "v1:sha256:396f119f7a5470ca424df82dbf8adf6e901cfc35226fda327b966f03bc0b3842",
+      "input_fp": "v1:sha256:301b9cfabbb42bc9f209710132bdba8a0f411bea2da8508edaa4483fad4c2d96",
       "ok": true,
       "output": {
         "commands": [
@@ -368,10 +368,10 @@
           "python3 .agents/prompt_stats.py --check"
         ],
         "tests": {
-          "base": "6d4715a1164fd913115f28c8b3bc2df39761be73",
+          "base": "7e075c5b280e42e245a1c65056e4fc18eb01ead3",
           "change": "8e36337825aa4f74c151cae5c7a741f215a0033c",
-          "commit": "5ae4e84d4c316f53ff27a4bb1ed6665f25056652",
-          "tree": "82389710e6e51cde19c877bb8b3cae69207ac590"
+          "commit": "df94888c5a6199b2c08c9f2758ed402ae3e77bfa",
+          "tree": "021669fba246d966dd1f83033fc861af7973af13"
         }
       },
       "reason": "new",
