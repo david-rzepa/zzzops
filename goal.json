@@ -300,14 +300,14 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-01T06:10:05Z",
+      "finished_at": "2026-11-01T07:15:18Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:0bbabdb4ef507eac02aacf38d98d19ab842fa43312c7dc76cc5c094af385a789",
+          "code": "v1:sha256:846db120224b1b6744ae63bbe2a0b478570f2bd141111669af42d207dcb398fe",
           "commands": "v1:sha256:9e98bc44659441e89c38978ea8600798fbc4e09a2995b34548de0daaa832d9ec"
         },
         "policy": {
@@ -317,7 +317,7 @@
         }
       },
       "holder": "claude:e6ad/op",
-      "input_fp": "v1:sha256:02e400f4b17880824ceedf919e105cd7eb26f1ede20e81030e95f090a1266806",
+      "input_fp": "v1:sha256:bf5bc4194dc3d519b2adfba1c67db634bcebae778fea5b5e2d53c9d78257cb31",
       "ok": true,
       "output": {
         "result": {
@@ -325,24 +325,24 @@
             {
               "cmd": "cd .agents && python3 -m unittest test_engine_card_ux test_engine_lifecycle test_engine_schemas test_engine_journeys test_engine_docs",
               "exit": 0,
-              "seconds": 90,
-              "tail": "....................................................................................................\n----------------------------------------------------------------------\nRan 100 tests in 90.587s\n\nOK\n"
+              "seconds": 102,
+              "tail": "....................................................................................................\n----------------------------------------------------------------------\nRan 100 tests in 102.054s\n\nOK\n"
             },
             {
               "cmd": "python3 .agents/prompt_stats.py --check",
               "exit": 0,
               "seconds": 0,
-              "tail": "# Enforced prompt budgets\n\nOnly always-loaded context and frequent routed workflows are blocking. Other workflows and total inventory are advisory.\n\n| Context | Bytes | Est. tokens | Limit | Status |\n| --- | ---: | ---: | ---: | --- |\n| always-loaded/codex | 0 | 0 | 700 | PASS |\n| capture/codex | 6719 | 1680 | 3700 | PASS |\n| execution/codex | 9215 | 2304 | 8800 | PASS |\n\nAdvisory total inventory: 20 prompts, 39576 bytes, ~9901 tokens.\n\n## Policy context boundary\n\nPublic documentation is excluded. Static prompts, the current project policy, and cold default/review context are counted separately.\n\n| Context class | Bytes | Est. tokens |\n| --- | ---: | ---: |\n| static-hot-prompts | 30918 | 7730 |\n| current-project-policy | 7536 | 1884 |\n| cold-default-review | 16753 | 4189 |\nPASS: all enforced prompt contexts are within their committed limits.\n"
+              "tail": "# Enforced prompt budgets\n\nOnly always-loaded context and frequent routed workflows are blocking. Other workflows and total inventory are advisory.\n\n| Context | Bytes | Est. tokens | Limit | Status |\n| --- | ---: | ---: | ---: | --- |\n| always-loaded/codex | 0 | 0 | 700 | PASS |\n| capture/codex | 8865 | 2217 | 3700 | PASS |\n| execution/codex | 11759 | 2940 | 8800 | PASS |\n\nAdvisory total inventory: 23 prompts, 56119 bytes, ~14037 tokens.\n\n## Policy context boundary\n\nPublic documentation is excluded. Static prompts, the current project policy, and cold default/review context are counted separately.\n\n| Context class | Bytes | Est. tokens |\n| --- | ---: | ---: |\n| static-hot-prompts | 46851 | 11713 |\n| current-project-policy | 7536 | 1884 |\n| cold-default-review | 16921 | 4231 |\nPASS: all enforced prompt contexts are within their committed limits.\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents",
               "exit": 0,
-              "seconds": 266,
-              "tail": " traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2555226 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1016/plugins/zzzops/zzzops/engine/worktree.py:31: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpa_1melrr/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/home/dave/Work/dev/zzzops/.zzzops/worktrees/g1016/plugins/zzzops/zzzops/engine/worktree.py:31: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpa_1melrr/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2556443 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...................................................................................................................\n----------------------------------------------------------------------\nRan 407 tests in 266.463s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmp2rfzlh0u\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
+              "seconds": 374,
+              "tail": "tr_normcase_cached = str(self)\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/usr/lib/python3.14/pathlib/__init__.py:205: ResourceWarning: unclosed file <_io.BufferedReader name=17>\n  self._str_normcase_cached = str(self)\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.......................\n----------------------------------------------------------------------\nRan 553 tests in 374.796s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmp8fat15xm\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=26>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=27>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=24>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=25>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=22>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=23>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=20>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=21>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=14>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=15>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=12>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=13>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
             }
           ],
           "passed": true,
-          "tree": "5b016358250323c1276ed81145ad1c782d23e507"
+          "tree": "d66b359f132c5e93c967e5cfa3c563c01b5b96ee"
         }
       },
       "reason": "stale",
