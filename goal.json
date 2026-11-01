@@ -105,32 +105,32 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T08:18:00Z",
+      "finished_at": "2026-11-01T18:05:36Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
-          "base": "v1:sha256:e2e24e462d70f331ee1b6844c51d09411d56c576ee09ef40ebadf1bcfa5fe8ad",
+          "base": "v1:sha256:8eef98641d62eb55d51ce6fdc4b83cf4b4e40600b309b29b58f4863b0596e1f2",
           "doc": "v1:blob:137369030420987f7ff4f2f87e69612b97276be0",
           "tests": "v1:sha256:a6a0a4620efdcc175be03e56aafc65795d80c0c417325e3d988d828ed6f35bf5"
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/implement-1020-1",
-      "input_fp": "v1:sha256:d2af82aa0d249822cdfe9a642727ec099214005892a176d7a53c162e84761bea",
+      "holder": "claude:e6ad/root",
+      "input_fp": "v1:sha256:1bf5361da05b2901a12c01b6000d2da8e06278fac4c306016787751458517614",
       "ok": true,
       "output": {
         "code": {
-          "base": "6d4715a1164fd913115f28c8b3bc2df39761be73",
-          "change": "f0638b3a9e505131819cdfc99896f2551adaabcf",
-          "commit": "70531e807ab6e086fb9b64b47fe6e25c7ea99070",
-          "tree": "54731517588e3e6a42894e3fca7f577d699eac79"
+          "base": "7e075c5b280e42e245a1c65056e4fc18eb01ead3",
+          "change": "aebd58ab1fd2a2b298636396b304b9b9115a09fb",
+          "commit": "ac8ca367f0e64fc01a28d579d690332c4f82b4e4",
+          "tree": "9916ee23345f6fd444a943b1f782d62cb4f78c3f"
         },
-        "summary": "A filtered lens may now answer `approved` when its only open findings are notes (`material: false`); records.process_findings refuses with \"approved requires no open material finding\" otherwise, while unfiltered reviews keep \"approved requires no open findings\". A shared `is_material` helper in engine/schemas.py (imported by records, card, fingerprint and frontier, no cycle) treats a missing key as material. The lens card's decision hint says \"approve with notes\", the submit outcome reads \"approved with N note(s) → targets\", the template review instruction gains the test_design targeting sentence after the filter sentence, and lens_truth.md has one \"On code:\" line. ENGINE_VERSION left at 1.1.0 as G1000 set it (design: bump to 1.1.1 only if G1000 lands first)."
+        "summary": "Resubmit after base rebased G1020 from zzzops/pr/g1000 onto dev 7e075c5 (G1000 merged). The rebase was clean: G1000's commits are now on dev and G1020's own commits replay unchanged. No code change."
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "integrate": {
