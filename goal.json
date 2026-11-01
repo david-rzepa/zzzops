@@ -251,38 +251,51 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 4,
-      "correction_runs": 3,
-      "findings": [],
-      "finished_at": "2026-11-01T07:20:51Z",
+      "attempt": 5,
+      "correction_runs": 4,
+      "findings": [
+        {
+          "id": "review_tests:5:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 5,
+          "target_fp": "v1:sha256:1ba8b9da35875668832f428ea26288f81cada639426c8979f6f01b6c9417c2d5",
+          "text": ".agents/fixtures/graph12/prompts/test_design.md and implement.md are stale against dev a05fb97 (G1016 full-sha checkpoint wording). test_engine_card_ux.DocsTests.test_prompts_name_full_shas fails: test_design.md line 8 must read 'else your work branch's HEAD. Name `{\"tests\": {\"commit\": \"<full 40-hex sha>\"}}` only when your tests end at an earlier commit.' and implement.md line 8 'else your work branch's HEAD; omit the key unless you override.' (copy dev's templates/default/prompts versions; the G1000 lens-specific prompt text, if any, stays). Check the other graph12 prompts, workflow.json and POLICY.json for drift too (these two files are the only ones I found different).",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T17:26:31Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:5ed045be21817ba93e467355960e3c37a4cb091f",
-          "tests": "v1:sha256:2c0574165b3d1b73286cfd17f2b9fdf6f92587b44fbace7c285d20cf2ab637c6"
+          "tests": "v1:sha256:810825203a0ce8391334aa18653e910701f106175e16414e2ae975669a630503"
         },
         "policy": {},
-        "subject": "v1:sha256:3e6be426782b6a302b38b387f60ebd68bdaf1587293c16777b6d537ceecacc45"
+        "subject": "v1:sha256:1ba8b9da35875668832f428ea26288f81cada639426c8979f6f01b6c9417c2d5"
       },
-      "holder": "claude:e6ad/review_tests-1000-4",
-      "input_fp": "v1:sha256:9a6d0ea05b18349c75b953718107752b635d695f6baea8e6e95774b70b160efe",
-      "ok": true,
+      "holder": "claude:e6ad/rt5",
+      "input_fp": "v1:sha256:eb3572434760e7b236fc6a274efbed2a0e9726b3a48c4f398559179c52355247",
+      "ok": false,
       "output": {
-        "decision": "approved",
+        "decision": "changes_requested",
         "report": {
-          "blob": "8b387f0982dfa20b89c77b5c0f1339cdc45ad034",
-          "commit": "96a2d82ae2a9c36ed33d4c0cff3c42ded75bb06b",
+          "blob": "969ad2adc4a38af07afec282431180acba49f7db",
+          "commit": "406e84700d710f57fcd07ccd33d56ae4b284cbbd",
           "path": ".zzzops/reviews/1000/review_tests.md"
         },
-        "summary": "Rebase-only re-review: git range-diff shows all three test commits (63c757e, 91aec68, 4087d8d) identical (=) to the approved 12e8d29 stack; only the engine (28ee9a2) and docs (f455c98) commits were adapted to dev 6747a5e. On an archive of 4087d8d, test_engine_lenses.py passes 61/61, test_engine_docs.py 3/3, test_marketplace_bundle.py 10/10. No test weakened; no findings."
+        "summary": "The range-diff shows no test content change (all test commits identical), and test_engine_lenses/docs/bundle pass (75 tests). But the rebase broke dev's G1016 test test_engine_card_ux.DocsTests.test_prompts_name_full_shas: it reads the frozen fixture copy .agents/fixtures/graph12/prompts (engine_fixtures.TEMPLATES), whose test_design.md and implement.md still carry the pre-G1016 checkpoint wording. Fixture must be re-synced with dev's templates/default/prompts. Everything else in card_ux/card_budget passes (65 run, 1 failure)."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
-          "base": "6747a5ea3c91aedd39089d1811a415680521bfed",
-          "change": "2ff7c35411997dbfcdb07e167588638466848d7d",
-          "commit": "4087d8dfccdc23f95c22852061f7f8ac291ca5fb",
-          "tree": "81c1446cce52a31639b51ff756252d040e81f62f"
+          "base": "a05fb9714f105b4b6da43deafde535ea6eed8a88",
+          "change": "8f9154ba5965f5bea3156676d8aa66d064914e9c",
+          "commit": "6119eac973d80ebc298693c7dc11b43101a995ad",
+          "tree": "86a3d60fcefa69cc0099009615864ee2cd114a8f"
         }
       },
       "status": "done"
