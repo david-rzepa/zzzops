@@ -10,7 +10,35 @@
     "issue": null
   },
   "priority": "P2",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T19:01:24Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:38bd2bb7e360625c8d4fd7863ee482fb7080b82f31a6acb087c3ad8deb301589",
+          "spec": "v1:sha256:f4bc6075ba50b55bdfd75c0a018ddf9ea610b94f5c1579a653dad4d105f49fcc"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1029",
+      "input_fp": "v1:sha256:cdd4aece032108889b005975cc0169ce60bc3f34b1617ff6db1251e04d43ac53",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "829886d7e9ff6dca106c72d3412ad08a6587b4ca",
+          "commit": "4c15904b721870efbacf385a636ebad3e5f8ac75",
+          "path": ".zzzops/reviews/1029/design.md"
+        },
+        "summary": "Skill-only design: the add-goal skill reads settings.intent from the coordinator commit's .zzzops/POLICY.json before `new`, skips with 'intent not captured yet' when it is absent or a TODO: placeholder, and otherwise quotes any conflicting intent sentence and offers change the goal / amend the intent (drafted, owner-worded, on a reviewed zzzops/policy/intent-<topic> branch, previewed with --policy-ref) / proceed. For amend or proceed, the spec ends with a fixed `Project intent:` paragraph, which already reaches the Intent lens through the existing goal.spec input in both the 26-node graph and G1022's review_design; lens_intent.md gains one paragraph honouring it. No engine change (no `new` output, goal field or capability; rejected with reasons), so G1027 is untouched; tests cover the capture signals, label agreement between skill and lens, and that the design-stage intent node has the spec input; docs/design DESIGN §3.12 plus any Intent-lens passage are amended with a HISTORY §4 row."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
