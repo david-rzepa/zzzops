@@ -1,0 +1,21 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [
+    1017,
+    1025
+  ],
+  "graph": "default",
+  "id": 1031,
+  "links": {
+    "issue": null
+  },
+  "priority": "P2",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Found while designing G1003 (2026-11-01). Bootstrap step 7 says to turn GitHub's \"Automatically delete head branches\" on, while G1025 (release branching) recommends it off in branching repositories, because deleting a dependency's branch on merge closes or retargets stacked and release PRs. Make the bootstrap skill and REPAIR/MIGRATING say: on without settings.branching, off with it, and why; validate warns when branching is configured and auto-delete is on (if readable).\n\nAcceptance: skill text and a validate warning test (or a documented reason the setting is unreadable); docs/design edits per G1017's rule.",
+  "state": "open",
+  "title": "Bootstrap's branch-deletion advice must match release branching"
+}
