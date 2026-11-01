@@ -38,6 +38,32 @@
       "reason": "new",
       "status": "done"
     },
+    "base": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T17:35:11Z",
+      "fp_parts": {
+        "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
+        "inputs": {
+          "heads": "v1:sha256:cfcdeb29a67e996cfb1570e72fae012120c1373268c981ab45fae90d3508e8f3",
+          "merges": "v1:sha256:8ead7ac1c3b905ed2ed7fa0d0c1f3ee1c02441fd2c1968b38f72d5cb7e084ee0"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:9770a8337b0d884c7845f1b5b4eec8e193f1736f722f4ae8e5c95f73a7addf9b",
+      "ok": true,
+      "output": {
+        "base_commit": "a05fb9714f105b4b6da43deafde535ea6eed8a88",
+        "branch": "zzzops/work/g1023",
+        "replay_map": {},
+        "replay_pos": {},
+        "stack": []
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "design": {
       "attempt": 2,
       "correction_runs": 1,
