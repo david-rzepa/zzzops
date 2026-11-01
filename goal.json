@@ -166,6 +166,43 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T21:23:04Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:3c035f648197f2c9da42ad22607e39d4fc319f2c",
+          "tests": "v1:sha256:ecff84540aa2a8ccf588e93b82ab783ccc9ae0cd17db4b8e61eb71673b90f9d5"
+        },
+        "policy": {},
+        "subject": "v1:sha256:66742d897b016cc4320cac84ed417bbf8f8d2bee6ec21f3c9038e8c23f40e8f9"
+      },
+      "holder": "claude:e6ad/rt5",
+      "input_fp": "v1:sha256:eac074366e647b780c1297995aa11ff3f2e9d8f2e2575357b23030995635a1b8",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "e8285998daed9fbc1d21b50176e74f4c987836ba",
+          "commit": "d3b37cd7095ccf4ee0063e5da83e303ae30a9eb4",
+          "path": ".zzzops/reviews/1032/review_tests.md"
+        },
+        "summary": "Tests match the approved design (rev with the step-2 fallback). At 52bce92: the 5 skill/doc tests in test_bootstrap_rules_unreadable fail on the current SKILL.md and docs (no 403, no --match-head-commit, no 'When rules are unreadable'), and the 3 engine tests pass by design. The fake-gh guard is effective: I injected a swallowed `gh api .../rules/branches/dev` call into ops/merge.py and test_integrate_and_merge_complete_without_reading_rules failed with the recorded call, so a future coupling is detected even if the engine tolerates the 403. The failing-check case still blocks. Non-blocking: several skill assertions are weak (owner, required_ci and zzzops/goal/** already occur in the current steps; 'match' is loose), the rules path regex does not see a rulesets query inside `gh api graphql`, and the design's 'if the repo read is also 403, ask the owner to confirm in the UI' is untested."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "82d4aa86f5f93ff0b06f55c7d743e4df9e74d458",
+          "commit": "52bce92153a12b24c6bd1903bd8f741747b9f829",
+          "tree": "477a938d9942a9de2af6ce78056b67c0416f0b85"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
