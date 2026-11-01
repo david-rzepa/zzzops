@@ -37,44 +37,10 @@
       "status": "done"
     },
     "base": {
-      "attempt": 2,
-      "blocked": {
-        "category": "conflict",
-        "commands": {
-          "resume": [
-            "start",
-            "1016",
-            "base",
-            "--as",
-            "<LABEL>"
-          ]
-        },
-        "instructions": "In /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1016: resolve the conflicts in .agents/test_engine_lifecycle.py, `git add` them, run `git -c core.editor=true rebase --continue`, then run the resume command. Do not change the meaning of the goal's commits.",
-        "op_state": {
-          "old": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "onto": "6747a5ea3c91aedd39089d1811a415680521bfed",
-          "work": "8fda633702785628d7e3d09d51c6e609107aa6ed"
-        },
-        "reason": "rebase conflict in .agents/test_engine_lifecycle.py",
-        "repeats": 1,
-        "waiting_for": "agent"
-      },
-      "correction_runs": 1,
-      "findings": [
-        {
-          "id": "base:reopen:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "base",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:346bfad8844c1780f78a5b2cbe218d73dc7b4907fee9305e77430a3c152e4d1d",
-          "text": "PR conflicts with dev after G1014/G1018/G1001/G1015 merged (GitHub CONFLICTING/DIRTY, so no CI runs); rebase onto the current dev tip. See G1021.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-01T07:04:08Z",
+      "attempt": 3,
+      "correction_runs": 2,
+      "findings": [],
+      "finished_at": "2026-11-01T07:12:04Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
         "inputs": {
@@ -85,10 +51,40 @@
       },
       "holder": "claude:e6ad/op",
       "input_fp": "v1:sha256:a63dd4f9b663828d20c7af5969db386d8dca78d1dc6caa436946320590be78d6",
-      "ok": false,
-      "output": null,
-      "reason": "reopened",
-      "status": "blocked"
+      "ok": true,
+      "output": {
+        "base_commit": "6747a5ea3c91aedd39089d1811a415680521bfed",
+        "branch": "zzzops/work/g1016",
+        "replay_map": {
+          "0733ee380b882677dff3f98b75cbbb42b443003c": "f2fa517cbb0565b090576760b7a5a60e2e719837",
+          "107c18a794f9574b2bb6bd497789ec1533e3fdf9": "74c86a561d1bf8078a64419951d70f4132dce3ba",
+          "2ac806f706c2f58b1eaa0878d11b6a50066f79f2": "72512c590b20d56e027d9684b37cb311eb4e13e8",
+          "521d78b4392378258b843d3ce1fa02113f2bb46a": "e46d1d17c032cee22d29000ea0b7404c70926662",
+          "601a958d761ad09d706b29a4bca621d7bd338a35": "945563518487b00eed83b2a7b24898d36c531549",
+          "6234405cb1a17a14197472aea43c1735f3908dc0": "f763b69455901915228dc8876a9d8080a769874c",
+          "65987079db82af032fd664742cc6717dc3a26968": "0833f3785e60b3c14f79caec33f31d9113651244",
+          "700cc0f16106a53b1d696a438e1b782612422a82": "5a17ad215515d32dcfbcd92580c4e84f0ae670b8",
+          "77635d50b8b60981c057df0282579d4da55ad8c2": "48405baa9370f0184de4f3685c2be662a4b4ee88",
+          "77e7f8ab322f0ffc1bfa3fbead199814868b02e4": "4ab7ea0798dc4f93dc637031dc8e6d4dfa238141",
+          "7921d86fef2ed3257046731c3a593e9489e8caf5": "6f447d47dcb60fa368a0c040255a5c54354433d0",
+          "8163743fca3fe265bf6bad49311af9095e1531e9": "85eae0191d5685c146970843b9ad8d803a4c7d1d",
+          "8880f272dea3ec0c19eb1e33c86e783d1ef0608e": "a0b7d3f6107f517104f02c41eed3b703eed75b07",
+          "8fda633702785628d7e3d09d51c6e609107aa6ed": "0e8500fd9c7d8f1f23c82e06390dd0b4b295f716",
+          "9ce9e59aff7034bb7391fc889f7c1da121287f27": "e5797f45f0107a41a72c97bbc0bd11b82d4a0b34",
+          "b24da9ffef339e5b38178091db4eff590df09258": "d54fb5a566d9c01a27c07a6d208ef4d56925a59b",
+          "cc26f29fcdc1ee5b8c289ec2f8df6e415c7a67a8": "6c99d60448bbab84c1941ccadac68137595d7ee4",
+          "e0d8f73b6d5b157d6b19a89745655707ac5fa92b": "2452cab2cab7a0c780bbe9fb3c9aedded208a85e",
+          "ff6fb6e8f12d84e4c1348eada23cf6bc827a11e0": "1cbfdfb5e3120b29ae563cf6275f8a7528c15774"
+        },
+        "replay_pos": {
+          "802c01608eff84423c0c885ec904b652b9b594f8": "a3ec211e04f25e1a428b5c12ddea596fa0301460",
+          "8da55ca8a99be7abfed704426e13dd8e38c42127": "70f76424832d836c3474cc3447cc0b4519d72cd8",
+          "f9117d07dcfe30e8c060d024d0f8afadecdefc6b": "2c2e06ccb24d1b6fbef519d24e596d96956f0ec0"
+        },
+        "stack": []
+      },
+      "reason": "retry",
+      "status": "done"
     },
     "design": {
       "attempt": 4,
