@@ -212,52 +212,39 @@
       "status": "done"
     },
     "review_impl": {
-      "attempt": 2,
-      "correction_runs": 1,
-      "findings": [
-        {
-          "id": "review_impl:1:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "implement",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:52aa0c52745c3965c3c432e941eae2fa4b9714610c28e19e107192fa85b55d6c",
-          "text": "render.capability (render.py:82-88) still returns `routine` for `stale_because == [\"inputs.base\"]` regardless of corrections, so `next` advertises routine for a reopened correction run whose base moved, while the card says the node's own tier (probe: test_plain_start_of_reopened_node_after_base_moved_keeps_its_capability setup + `next --goal`: action capability routine, corrections 1; card run.capability reasoning). Consequence: next and card contradict each other on the very case design attempt 4 deliberately changed, and anything routing from next's capability hands correction work to a routine model. Fix: apply the same rule in render.capability (at least `and not state.get(\"corrections\")`), ideally via one shared predicate used by card.build and render.capability, and add a `next` capability assertion beside the capability tests.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-01T06:17:38Z",
+      "attempt": 3,
+      "correction_runs": 2,
+      "findings": [],
+      "finished_at": "2026-11-01T07:24:15Z",
       "fp_parts": {
         "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
         "inputs": {
-          "code": "v1:sha256:69cae951ed16e0c3015005bd6ecf778e33a7df62f2149b7a9b6b4a4e2b0c4dc0",
+          "code": "v1:sha256:7d6aabd65086f2eaddfac778b8ef7fb5ed24c2649d0cd2ca7f51db87974607d8",
           "doc": "v1:blob:2c1af88e84734bdd997eceba5000279525be0586",
-          "tests": "v1:sha256:69cae951ed16e0c3015005bd6ecf778e33a7df62f2149b7a9b6b4a4e2b0c4dc0"
+          "tests": "v1:sha256:7d6aabd65086f2eaddfac778b8ef7fb5ed24c2649d0cd2ca7f51db87974607d8"
         },
         "policy": {},
-        "subject": "v1:sha256:59249486d3206bbc510e5658bf7b47c13f671885c637b6d8f2fda5df9ca5b1ba"
+        "subject": "v1:sha256:101614d1d339dba0ea5d59a29fdffb014dd728d8d639b3d154d05b6396d1fb03"
       },
-      "holder": "claude:e6ad/review_impl-1016-2",
-      "input_fp": "v1:sha256:1590e516c81dac78ee421af45ffb2baf00332ca004a86a47e03f1bc73666729b",
+      "holder": "claude:e6ad/review_impl-1016-3",
+      "input_fp": "v1:sha256:6ea0206b1db7f0a653c98ca8d5eb2deb491a1f2c3e26f44307393d9c5b9cf97b",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "9d4f3c547abf04c95e0a3f9e8436b57a54bd8a0e",
-          "commit": "8fda633702785628d7e3d09d51c6e609107aa6ed",
+          "blob": "ed2f3d2b137078da5d3cd5006b890eb4b061c754",
+          "commit": "37d127f4160f1b409b90abb0199a2acc98731626",
           "path": ".zzzops/reviews/1016/review_impl.md"
         },
-        "summary": "f9117d0 shares one capability rule (render.run_capability) between next actions and task cards. The card's behavior is unchanged, and next no longer downgrades correction runs to routine. 521d78b checks next's capability in all three capability scenarios. Since 8da55ca only card.py, render.py and the card UX test changed. run_tests passed. The reclaim mismatch, where next over-provisions, is a known follow-up."
+        "summary": "Rebase conflict resolution onto 6747a5e is sound. range-diff 54d7e83..cc26f29 vs 6747a5e..6c99d60 shows only expected deltas: card.py imports merged (clip from G1018 + SHA, then run_capability); verbs.py imports merged (live_input_changes from G1014 kept, stale_keys already on dev, restart_command added); render.restart_command extracted and used by both lease_commands and abandon. restart_command yields argv [start, G, X, --as, LABEL, --reclaim] with LABEL == \"<LABEL>\", identical to G1014's lease_commands restart and to G1016's former literal \"<LABEL>\" argv; command() leaves LABEL unquoted in both, so command strings are unchanged. All other G1016 patches (card.py body, records, schemas, tests) are byte-identical in range-diff, so G1018's card views and G1014's live-lease entries in the base are untouched. CLI_USAGE keeps G1014's renew inputs_changed text and live_leases_on_changed_nodes edit text, combines the abandon row (reclaimable, --reclaim needed, plain start refused, prints restart), and keeps G1015's Legacy paragraph. The lifecycle test rebase keeps dev's shrink_candidates size assertion and only drops the top-level renew key as G1016 originally did. run_tests passed on the rebased tree. No material findings."
       },
       "reason": "stale",
       "reviewed": {
         "code": {
-          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "dfe70799cbc9f250188033c8d353c1f1075a6683",
-          "commit": "cc26f29fcdc1ee5b8c289ec2f8df6e415c7a67a8",
-          "tree": "5b016358250323c1276ed81145ad1c782d23e507"
+          "base": "6747a5ea3c91aedd39089d1811a415680521bfed",
+          "change": "e9897fba51c65ed87b6dd2cf979538266d890a77",
+          "commit": "6c99d60448bbab84c1941ccadac68137595d7ee4",
+          "tree": "d66b359f132c5e93c967e5cfa3c563c01b5b96ee"
         }
       },
       "status": "done"
