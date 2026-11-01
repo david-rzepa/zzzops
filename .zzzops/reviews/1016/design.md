@@ -2,17 +2,19 @@
 
 Read at integration commit 54d7e83. Coordinated with G1014 (approved design, attempt 2) and G1000 (design under review).
 
-Attempt 2. It fixes review finding F1 (reclaim cards could downgrade capability to `routine`; see §2, "Capability and `previous.output`"). It also takes notes N1, N2 and N4, and the checkpoint wording fix (dogfood item 17).
+Attempt 3. It fixes review finding F2 (review_design:2:1): a checkpoint override must be a full 40-hex sha, so ref names such as `HEAD` and short shas are refused instead of resolving in the main repository (see §4a). It also settles the `previous.output` rule on purpose (§2: it stays `== ["def"]`).
+
+Attempt 2 fixed F1 (reclaim cards could downgrade capability to `routine`; see §2, "Capability and `previous.output`") and took notes N1, N2 and N4, and the checkpoint wording fix (dogfood item 17).
 
 ## Outcome
 
 - `abandon` prints the command that restarts the phase.
 - A card whose inputs changed since the previous attempt says which inputs changed and how to see the change. This covers reclaim cards too, which today say only `reason: reclaim`.
 - A `submit` refused over `responses` lists the findings to answer, with their text.
-- `output_schema` says what a finding does. It also says checkpoint keys are optional. The card has one clearly labelled renew command.
+- `output_schema` says what a finding does. It also says checkpoint keys are optional and that an override is a full 40-hex sha. `submit` and `edit` refuse ref names and short shas there. The card has one clearly labelled renew command.
 - CLI_USAGE documents what `ZZZOPS_TRACE` records.
 
-No new fetches, records, lease fields or schema changes. FP_VERSION and ENGINE_VERSION do not change.
+No new fetches, records, lease fields or record-schema changes. The only tightened input check is the checkpoint override (§4a). FP_VERSION and ENGINE_VERSION do not change.
 
 ## Ownership with the parallel goals
 
@@ -50,7 +52,7 @@ The union matters for display. On attempt 3, after a stale attempt 2 was abandon
 **Capability and `previous.output` (fix for F1).** Both existing rules that read `stale_because` in `card.build` assume a done record whose inputs moved. They now read `record_stale` instead:
 
 - `record_stale == ["inputs.base"]` gives capability `routine`. Only the base moved since the accepted output, so the work is a rebase.
-- `"def" in record_stale` adds `previous.output`.
+- `record_stale == ["def"]` adds `previous.output`. **Decision:** keep today's exact match, only moving it from `stale_because` to `record_stale`. `previous.output` comes with the hint "If it still holds, resubmit it." (card.py:193). That advice is safe only when the node definition is the only thing that changed. If `def` moved together with `spec` or an upstream output, the previous output answers an older question, and inviting a resubmit would be wrong. Widening to `"def" in record_stale` would also change behaviour outside this goal's scope.
 - `reason == "retry"` still wins and gives `reasoning`, as today.
 
 Lease-since-claim staleness never changes capability. A reclaimed first attempt (`new`, no record) or a reclaimed `reopened` correction (record current, so `record_stale` is empty) keeps the node's own capability, even when its only lease-side change is `inputs.base`. Base re-runs whenever the integration branch moves, so this is the common case for `implement` and `test_design`. Keying the rule on the record set is simpler than looking at the abandoned lease's reason, and it stays correct after several reclaims.
@@ -92,11 +94,24 @@ Add a sentence to the `findings` text, built by a new `card.finding_effect(graph
 **Merge rule with G1000:** G1000 owns the finding shape for reviews that declare `review.filter`. Whichever goal lands second adds to `finding_effect` the filtered branch: "A finding with material: true reopens its target; a note (material: false) reopens it only if the filter keeps it." No other G1016 code reads G1000's fields.
 
 **Checkpoint keys (root's added item, dogfood items 9 and 17).** `submit` accepts an omitted checkpoint key and uses the suggestion or the work-branch HEAD (verbs.done_record). Today's text ("the suggested checkpoint if any, else HEAD") led a worker to submit the literal `"HEAD"`, which is refused. The text becomes:
-`checkpoint (optional): omit the key to default to the suggested checkpoint if any, else your work branch's HEAD (a phase that adds no commit keeps its previous checkpoint). To override, give {"commit": "<sha>"}; the literal "HEAD" is refused. If a restack rewrote the previous checkpoint, submit refuses with checkpoint_required and asks for one.`
+`checkpoint (optional): omit the key to default to the suggested checkpoint if any, else your work branch's HEAD (a phase that adds no commit keeps its previous checkpoint). To override, give {"commit": "<full 40-hex sha>"}; ref names such as HEAD and short shas are refused. If a restack rewrote the previous checkpoint, submit refuses with checkpoint_required and asks for one.`
 
 **Artifact keys (N2).** Workers confused `card.artifact.path` with the file to pass. The text becomes:
 `artifact: write it to a local file and pass that file with --artifact; artifact.path is where submit stores it.`
 It still starts with `checkpoint`, which the journey tests match on (test_engine_journeys.py:43). The CLI_USAGE **Outputs** paragraph gets the same "optional" wording.
+
+### 4a. Checkpoint overrides must be a full sha (fix for F2)
+
+**Root cause.** At 54d7e83, `validate_submit_output` (schemas.py:933) accepts `{"commit": <any str>}`. `done_record` (verbs.py:459) resolves it with `s.git.rev_parse(c)`, and `GitRun.run` defaults to `cwd=self.primary` (gitrun.py:79), so a ref name resolves in the **main repository**, not the goal worktree. `{"commit": "HEAD"}` therefore becomes the main checkout's HEAD, usually an integration commit, which is an ancestor of the work branch and so passes the ancestry check. The base is silently recorded as the checkpoint. Branch names behave the same way or resolve to unrelated commits. A short sha is unambiguous only by luck.
+
+**Change.**
+- schemas.py:933: the override must satisfy `isinstance(v, dict) and set(v) == {"commit"} and isinstance(v["commit"], str) and SHA.match(v["commit"])`, reusing the existing `SHA` (schemas.py:13, lowercase 40-hex). Message: `a checkpoint override is {"commit": "<40-hex sha>"}; omit the key to use the default`. Code `validation`, as today. This is a submit-input check only: record shapes, `RECORD_KEYS`, FP_VERSION and ENGINE_VERSION are unchanged.
+- verbs.py:459-464 stay: `rev_parse` still checks that the sha exists (a full sha that is not a local object is refused with "does not exist"), and the ancestry check still refuses a sha outside the work branch. With a full sha, `rev_parse` is the identity, so the cwd no longer matters.
+- verbs.py:917 (`fill_current_records`, the `{"commit"}`-only completion run by `edit`): before `rev_parse(cp["commit"])`, refuse with `validation`, `records.<n>.<k>.commit must be a full 40-hex sha`, when `SHA.match` fails. Also refuse with `validation`, `records.<n>.<k>.commit <sha> does not exist`, when `rev_parse` returns nothing. Today `rev_parse` returns None there (gitrun.py:131-133), and None is passed on to `ident.code_tree` and stored as the commit. This path has no ancestry check, and adding one is out of scope: there is no lease or work branch at edit time.
+- Prompts: `.zzzops/prompts/test_design.md:8` shows `{"tests": {"commit": "<sha>"}}`. It becomes `"<full 40-hex sha>"`. `implement.md:8` ("else HEAD") becomes "else your work branch's HEAD; omit the key unless you override".
+- CLI_USAGE **Outputs** paragraph: the same wording as the card.
+
+**Why not resolve in the worktree instead.** Running `rev_parse` with `cwd=` the goal worktree would make `HEAD` work. But a worker's session may not be in that worktree, the main checkout's `HEAD` is still a trap for anyone reading the docs, and an omitted key already means "my work branch's HEAD". One spelling per meaning is simpler: omit for the default, a full sha for an override.
 
 ### 5. One renew entry (card.build)
 
@@ -117,6 +132,9 @@ Add one line after the verb table: "`ZZZOPS_TRACE=<file>` appends one JSON line 
 | `output_schema` text | findings consequence sentence; checkpoint "optional" / omit-the-key wording; artifact `--artifact` vs `artifact.path` wording |
 | `card.build` capability | `routine` downgrade and `previous.output` keyed on record staleness only (`kind_state.record_stale`, not printed) |
 | `submit` `validation` refusal on responses | `details.respond_to`, `details.no_longer_live`, new hint |
+| `submit` checkpoint override | must be a full 40-hex sha; ref names and short shas get `validation` (F2) |
+| `edit` `{"commit"}`-only record completion | same full-sha rule; a missing commit is refused instead of stored as null |
+| prompts `implement.md`, `test_design.md` | checkpoint override wording |
 | CLI_USAGE | `abandon` row (+`restart`, on G1014's text), Outputs paragraph, `ZZZOPS_TRACE` line |
 
 ## Alternatives rejected
@@ -141,7 +159,9 @@ Add one line after the verb table: "`ZZZOPS_TRACE=<file>` appends one JSON line 
 - **Crash-loop reclaim (N4):** a `needs_human` crash-loop node with a live lease, taken with `--force --reclaim` after a spec edit, gets `stale_because == ["inputs.spec"]`.
 - **Artifact pointer:** a reclaim after `design` re-ran upstream gives `changed["inputs.doc"].diff == "git diff <old> <new>"`. With the old blob deleted locally, the entry is the "not available" note, and the trace shows no extra fetch (`ZZZOPS_TRACE` line count unchanged).
 - **Submit refusal:** start `design`. A review raises a finding on it while it runs (submitted with a second agent). Then `design` submits without `responses`. The refusal has `details.respond_to[0]` with the finding's id, `from`, `target == "design"` and text. A response to a finding resolved meanwhile appears in `no_longer_live`.
-- **Card snapshot** (4, 5): for a review card, a non-review card and a checkpoint-output card, assert the `findings` text contains "reopens" (and, for the non-review card, "if that ancestor's output changes"), the checkpoint text starts with "checkpoint (optional)" and contains "omit the key", the artifact text contains "artifact.path", there is no top-level `renew`, and `commands.renew.when` mentions the interval. The existing journey tests pass unchanged (prefix matching).
+- **Card snapshot** (4, 5): for a review card, a non-review card and a checkpoint-output card, assert the `findings` text contains "reopens" (and, for the non-review card, "if that ancestor's output changes"), the checkpoint text starts with "checkpoint (optional)" and contains "omit the key" and "full 40-hex sha", the artifact text contains "artifact.path", there is no top-level `renew`, and `commands.renew.when` mentions the interval. The existing journey tests pass unchanged (prefix matching).
+- **Checkpoint override (F2)** (test_engine_schemas.py, next to `test_submit_outputs`): `validate_submit_output(g, "implement", {"summary": "s", "code": {"commit": v}})` returns a non-empty error list containing "40-hex" for `v` in `"HEAD"`, `"main"`, `"zzzops/goal/g1"` and a 12-char short sha, and also for an uppercase 40-hex string. It returns `[]` for `"a" * 40`. End to end (test_engine_lifecycle.py): an `implement` submit with `{"code": {"commit": "HEAD"}}` is refused with `validation` and nothing is recorded. The same submit with the work branch's full HEAD sha succeeds. A full sha of a commit outside the work branch is still refused ("is not in the work branch"), and a well-formed sha that is not an object is still refused ("does not exist").
+- **Record completion (F2):** `edit --set records.implement.output.code={"commit":"HEAD"}` with `input_fp: "current"` is refused with `validation` naming the full-sha rule. A full sha that does not exist is refused with "does not exist". A real full sha is completed to `{commit, base, tree, change}` as today.
 - **Docs:** the CLI_USAGE lines are present, and `prompt_stats.py --check` passes.
 
 ## Out of scope
