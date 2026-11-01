@@ -42,15 +42,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:6e99bbbecb1482e33bb1d21f6efd9a7e6fdd26b52029bdd06b233a0f01ab9448",
@@ -58,29 +58,29 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T07:02:01Z",
+      "finished_at": "2026-11-01T07:51:01Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:394e1e533c33985f3c243fadf37d1ad7030b9568",
+          "doc": "v1:blob:137369030420987f7ff4f2f87e69612b97276be0",
           "spec": "v1:sha256:004fd393eae15aa7caaa55c0bef6ff7cddf67af06e809c5ff86993ded391c014"
         },
         "policy": {},
-        "subject": "v1:sha256:6e99bbbecb1482e33bb1d21f6efd9a7e6fdd26b52029bdd06b233a0f01ab9448"
+        "subject": "v1:sha256:d3c39bcbb318afd36448b6f786325ccc6ea8f8b724851f6a1185a77f318820d8"
       },
-      "holder": "claude:e6ad/review_design-1020-1",
-      "input_fp": "v1:sha256:565be0a29c913f49ce793bd21815e07ba50c8d4836bf9a1df2f166812ca21c02",
-      "ok": false,
+      "holder": "claude:e6ad/review_design-1020-2",
+      "input_fp": "v1:sha256:2d4f39f8300fc75ebd4895cbb7e5fd231f882a8d64dfdc393374bd03bf2f2510",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "1c3292c72d7541b0beb8a5a940ead8c445a8d3c4",
-          "commit": "1b7a9f6a4a7e43d66bd1b9a12fbc22f581ab922a",
+          "blob": "34415fb06c1c3ef083d926b847c3050d888a1573",
+          "commit": "95b420cd50454c659e0863cddf308e98bfda30cc",
           "path": ".zzzops/reviews/1020/review_design.md"
         },
-        "summary": "Sound design; one fix: the filtered-lens approval predicate must treat a finding without `material` as material (f.get(\"material\", True) is not False), matching candidates/fingerprint/frontier, else a lens can approve while holding a finding the engine counts as material."
+        "summary": "Approved. Revision 2 fixes review_design:1:1: a finding with no material key counts as material, through one shared is_material helper that matches card.py, fingerprint.py and frontier.py on g1000, and test 3 covers it. The placement fix is also confirmed. No new material findings; two naming notes are in the artifact."
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     }
   },
