@@ -38,6 +38,54 @@
       },
       "reason": "stale",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:f7dc892aab458149512cfe88e9203aed4bc47b8c6a136c9028a4724c6cfe1906",
+          "text": "Build owner_decisions from goal history instead of adding the `answers` record key (D4). D4 makes every record writer carry a new key that older engines reject (RECORD_KEYS, schemas.py:852). So it needs capability owner_answers and a rule that the capability is required before the first answer. Under D4 every human answer to any blocked item appends to `answers`, including op questions such as integrate's 'Rebase it?'. A repository running G1026's engine therefore cannot answer anything until its policy branch lands, and §7 already has to say 'the root does not answer blocked items with the new engine'. The data already exists: each answer is a goal commit with subject `zzzops: answer G<g> <node>` (store.goal_message), whose goal.json holds records[node].answer and blocked.question. Goal branches only gain commits (rewrites are detected as goal_rewritten), and the engine already reads goal history for cards (card.py:243). Fix: owner_decisions = `git log --grep='^zzzops: answer G<g> '` over the goal ref, keeping the answers of blocked ancestor records in commit order, for approve items, the PR body and the design card. Keep D5's one-line card `answer` change. This removes the record key, its schema and carry-forward, the capability, the G1027 ordering and the do-not-answer rule. If the designer keeps D4, record why the history read is unacceptable and handle the answer-anything hazard. The choice is then a stored format with no clear winner, so it should go to the owner as an owner question, with the history read recommended.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T18:41:50Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:85881a297ecf2d3452f4e66ed5b5205a0919e981",
+          "spec": "v1:sha256:712a82bb1586f8af2e21fa5349d31dbf159031609fe366558e0f4003e9911e57"
+        },
+        "policy": {},
+        "subject": "v1:sha256:f7dc892aab458149512cfe88e9203aed4bc47b8c6a136c9028a4724c6cfe1906"
+      },
+      "holder": "claude:e6ad/rd1017",
+      "input_fp": "v1:sha256:79f6640f41b094d850eae7b86d20041dddc53da08e1ee0dc7ecbe40ba6a76f96",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "eac5d070573db83440027b9bb0366e92110d5833",
+          "commit": "fb32839cce563447d90301fc00620c14cf2f0e4b",
+          "path": ".zzzops/reviews/1026/review_design.md"
+        },
+        "summary": "The mechanism is simple and follows the owner's words: the undo-reach test is written once as a POLICY instruction (instructions are not in node_def_fp, so nothing goes stale); owner questions target the design; the existing blocked, answer and retry loop runs the interview; delegation is unchanged. D3's material:false refusal is the right minimal rule. D5's stale-card fix matches card.py:171. One finding. D4's new `answers` record key is not the minimal change. It needs capability owner_answers and a rule against answering anything until that policy lands, because every human answer to any blocked item, including op questions, would write the key. Older engines also reject the key. The same owner_decisions can be read from the goal's existing answer commits (`zzzops: answer G<g> <node>`, goal.json holding the blocked question and answer), with no format change."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "85881a297ecf2d3452f4e66ed5b5205a0919e981",
+          "commit": "eb45ace1421963948b37a50e7a4a7f6be5fc8215"
+        }
+      },
+      "status": "done"
     }
   },
   "release": 1,
