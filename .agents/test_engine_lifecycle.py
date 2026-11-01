@@ -305,13 +305,18 @@ class SubmitTests(Journey):
         g = self.goal()
         self.through_tests(g)
         c = self.A.start(g, self.n("implement"))
-        self.assertLessEqual(len(json.dumps(c, separators=(",", ":"), sort_keys=True, ensure_ascii=False).encode()), 4096 + 2000)
+        from engine.card import shrink_candidates
+        n = len(json.dumps(c, separators=(",", ":"), sort_keys=True, ensure_ascii=False).encode())
+        self.assertTrue(n <= 4096 or not shrink_candidates(c), n)
         for k in ("lease", "renew", "prompt", "instructions", "inputs", "context", "read_dev", "workspace", "commands",
                   "output_schema"):
             self.assertIn(k, c)
-        self.assertEqual(["submit", str(g), self.n("implement"), "--attempt", "1", "--as", self.A.label, "--output", "<F>"],
-                         c["commands"]["submit"]["argv"])
-        self.assertIn("diff", c["inputs"]["tests"] if isinstance(c["inputs"]["tests"], dict) else {"diff": 1})
+        argv = ["submit", str(g), self.n("implement"), "--attempt", "1", "--as", self.A.label, "--output", "<F>"]
+        self.assertEqual("zzzops " + " ".join(argv), c["commands"]["submit"]["command"])
+        if "argv" in c["commands"]["submit"]:
+            self.assertEqual(argv, c["commands"]["submit"]["argv"])
+        self.assertIsInstance(c["inputs"]["tests"], dict)
+        self.assertIn("diff", c["inputs"]["tests"])
 
 
 class AnswerTests(Journey):
