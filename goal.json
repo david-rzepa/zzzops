@@ -147,6 +147,43 @@
       "reason": "stale",
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T08:02:42Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:137369030420987f7ff4f2f87e69612b97276be0",
+          "tests": "v1:sha256:a6a0a4620efdcc175be03e56aafc65795d80c0c417325e3d988d828ed6f35bf5"
+        },
+        "policy": {},
+        "subject": "v1:sha256:a7ad7cccc46b229d66ae56df1458178a2bbc32daaef91173cf323b3cec3378c9"
+      },
+      "holder": "claude:e6ad/review_tests-1020-1",
+      "input_fp": "v1:sha256:53a09c5faaa117f6e24c2d7507f67487ee3c7e4264b3a260268c44331d7512c1",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "4b1f393462455009ddc082cbab3d6bbbb949ca53",
+          "commit": "04bc75b1150177646f4eeb69568d398727eac80e",
+          "path": ".zzzops/reviews/1020/review_tests.md"
+        },
+        "summary": "Approved: the 12 tests cover all six design tests, pin missing-key-is-material and the unchanged unfiltered rule, and 9 of them fail for the right reason without the implementation (the other 3 are regression guards that pass)."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "6d4715a1164fd913115f28c8b3bc2df39761be73",
+          "change": "8e36337825aa4f74c151cae5c7a741f215a0033c",
+          "commit": "5ae4e84d4c316f53ff27a4bb1ed6665f25056652",
+          "tree": "82389710e6e51cde19c877bb8b3cae69207ac590"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
