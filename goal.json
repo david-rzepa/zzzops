@@ -89,6 +89,35 @@
       "reason": "new",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T07:57:25Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:bdd8faa768559c4b8a65bd74f02c7fcb133d59b44c4c97504864a4c68afc3ad5",
+          "doc": "v1:blob:64ae69193ad33c5260fa233cf68c4815659a6c02",
+          "tests": "v1:sha256:f406c4b0222e63db932d0150461a90c5336aa6806270759a56b9f5a158a62997"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/implement-1021-1",
+      "input_fp": "v1:sha256:a72adf7ca4781d0aa7b0c00249f77d964ed31e0717760f026032693d8bd0967c",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "6747a5ea3c91aedd39089d1811a415680521bfed",
+          "change": "bf978f0d00244715c0c899401f35d7d755fdda98",
+          "commit": "8cc435aeaa7f96905fecf1fb0222cd18b5c6f69d",
+          "tree": "528c24851ed10bd4a5764a64118fc778beed960c"
+        },
+        "summary": "git.integrate step 5b now runs a local `git merge-tree --write-tree --name-only --no-messages` of the PR head into the fetched integration tip and returns the `conflict` finding on `base` (naming the files) on the first run. Otherwise it waits 60s (ctx.wait) when GitHub has not seen the head, raises GitHub's CONFLICTING/DIRTY as the same base finding, and waits 60s while mergeability is UNKNOWN, in that order. The checks wait now names the merge state (`mergeable: M/MS`), and an empty check rollup after min(15, ci_timeout_minutes) asks the human a specific no-checks question. REPAIR.md gains the 'A PR that conflicts with the integration branch' recipe."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 1,
       "correction_runs": 0,
