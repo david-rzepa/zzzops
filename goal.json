@@ -148,15 +148,15 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_tests:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:037f580b47675d4374d065848d81013ae8a14094037d94598d7ca5cc2500cf33",
@@ -164,35 +164,35 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T04:21:47Z",
+      "finished_at": "2026-11-01T04:26:43Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:6133138ad0d302b59d4184b15a459e555b1bdf61",
-          "tests": "v1:sha256:0d94b3d872b19b26a24ed749eb426cf8dfa3be28719b3f1026b36f19031a541e"
+          "tests": "v1:sha256:41d4a5e0bb736b2a3eccf1c7aab3e0d9570061dcd6574b1d23b392aa7a3ae04e"
         },
         "policy": {},
-        "subject": "v1:sha256:037f580b47675d4374d065848d81013ae8a14094037d94598d7ca5cc2500cf33"
+        "subject": "v1:sha256:21eec90ab2c6f4d8f5845621359db44d88e7b40cdc863b16ac0876061804953b"
       },
-      "holder": "claude:e6ad/review_tests-1014-1",
-      "input_fp": "v1:sha256:db998d7244cc7398503d9d33aa0aa56e4da1e90caf13608828c6f5f9ce5b8f14",
-      "ok": false,
+      "holder": "claude:e6ad/review_tests-1014-2",
+      "input_fp": "v1:sha256:bb5899e980345fe97a6815209904d6afda7f6cab80198852ed5afc651b2c5749",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "7feea580484d66a2dda81853f30fce2bd61ef4bf",
-          "commit": "60cc7ce0db944659a44026b426f70748bc6a6ec4",
+          "blob": "f53f6c1dab2be38891d6a2bd87d1981ae5139500",
+          "commit": "99987ba1c6ea4d27ee204ab977c660251837f191",
           "path": ".zzzops/reviews/1014/review_tests.md"
         },
-        "summary": "The tests cover all 7 design test items and every engine acceptance bullet in the spec, with exact assertions. Before implementation, all feature tests fail on the missing new keys (or, for the policy test, the empty list) after their setup succeeds, which is the right reason. One gap: nothing tests the state-only branch of policy_impact (a running node removed by a policy), and the design rewrites that code. The suite would pass an implementation that drops it or crashes on it."
+        "summary": "F1 resolved. The new test test_validate_policy_ref_lists_a_running_node_the_policy_removes removes a running review_design node and every input that references it. It asserts that validate --policy-ref does not crash, gives exactly one entry for the node (de-duplication), and that the entry's attempt, holder, expires_at, stale_because [] and abandon/restart commands are correct. Before implementation it fails for the right reason (KeyError 'attempt'), after the setup and today's state-rule key check have passed. No new findings."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "3a1bf34f49e3fb2704b01a350d9d7ccb9cd5daeb",
-          "commit": "10079a83aa5a0de5b92eb037c1ca4e559d220ac7",
-          "tree": "4d306a451d8ad9883c39c2a2672b556a1c3186c8"
+          "change": "db5819d57aed050b2b1c3d51de3ea7f493689af9",
+          "commit": "8e057f75b5a9df97ea14ed17c7caae061f85ba31",
+          "tree": "434d66049795dcb5f8b1c7c4ec079e11bb543266"
         }
       },
       "status": "done"
