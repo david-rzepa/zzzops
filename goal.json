@@ -1,0 +1,18 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [],
+  "graph": "default",
+  "id": 1008,
+  "links": {
+    "issue": null
+  },
+  "priority": "P3",
+  "records": {},
+  "release": 2,
+  "schema": 1,
+  "skip": {},
+  "spec": "Change the execute-zzzops skill (and `next` action rendering if needed) so root hands a worker only the action's `start` command and its minted label; the worker runs `start`, reads its own card, prompt and inputs, and returns a short outcome or blocked question. Root keeps human interaction and op nodes. Acceptance: in a real harness transcript, root never reads a worker node's prompt or input blobs, and independence and lease handling still hold. Old wording relied on policy receipts, model-effort binding and worker reuse that no longer exist.\n\nMigrated from GitHub issue #481 after the engine reset (#740).",
+  "state": "open",
+  "title": "Let workers claim their own task cards so root context stays small"
+}
