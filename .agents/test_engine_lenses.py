@@ -1,4 +1,4 @@
-"""G1000: parallel review lenses in the shipped default graph (design rev 3, §3-§9 and §13).
+"""G1000: parallel review lenses in the shipped default graph (design rev 4, §3-§9 and §13).
 
 These tests run on the SHIPPED template (`fx.SHIPPED`); the other engine tests run on the frozen 12-node graph
 (`.agents/fixtures/graph12`). They are written before the implementation and define these contracts:
@@ -592,6 +592,52 @@ class LensJourneyTests(LensWorld):
                   "--base", self.p.tip(g))
         self.w.ok("a", "edit", str(g), "--set", f'skip.{lens}="noisy"', "--base", self.p.tip(g))
 
+    def test_6_a_skip_is_refused_while_findings_wait_for_the_filter_and_accepted_after_a_visible_waiver(self):
+        g = self.goal()
+        self.through_design(g)
+        self.p.run(g, "concurrency_design", findings=[lens_finding("lease race", True)])
+        ag, tcard = self.p.start(g, "truth_design")          # another lens is still running: no filter yet
+        st = self.p.states(g)
+        self.assertEqual("running", st["truth_design"])
+        self.assertTrue(st["filter_design"].startswith("blocked"), st["filter_design"])
+        self.assertIsNone(self.p.record(g, "filter_design"))
+        self.assertEqual("current", st["design"])              # the finding is not live yet
+        lens = self.n("concurrency_design")
+        fid = self.lens_finding_ids(g, "concurrency_design")[0]
+        rc, err = self.w.run("a", "edit", str(g), "--set", f'skip.{lens}="noisy"', "--base", self.p.tip(g))
+        self.assertNotEqual(0, rc, err)
+        msg = json.dumps(err)
+        self.assertNotIn("not skippable", msg)
+        self.assertIn(fid, msg)                                # the message names the finding ...
+        self.assertIn("waived", msg)                           # ... and the waiver
+        self.assertNotEqual("skipped", self.p.states(g)["concurrency_design"])
+        # after a visible waiver the same skip is accepted
+        self.w.ok("a", "edit", str(g), "--set", f'records.{lens}.findings[{fid}].status="waived"',
+                  "--set", f'records.{lens}.findings[{fid}].note="waived by Dave: out of scope"',
+                  "--base", self.p.tip(g))
+        self.w.ok("a", "edit", str(g), "--set", f'skip.{lens}="noisy"', "--base", self.p.tip(g))
+        self.assertEqual("skipped", self.p.states(g)["concurrency_design"])
+        ag.submit(g, self.n("truth_design"), tcard, self.p.output(self.n("truth_design"), tcard), artifact="# r\n")
+        self.p.drive(g, lambda st: st["approve_design"] == "needs_human (approve)")
+        item = json.dumps(self.p.item(g, "approve_design"))
+        self.assertIn(fid, item)                               # the waiver shows on the approval ...
+        self.assertIn("waived", item)
+        self.assertIn("noisy", item)                           # ... with the skip and its reason
+
+    def test_6_a_lens_whose_only_open_findings_are_judged_notes_can_be_skipped(self):
+        g = self.goal()
+        self.lenses_done(g, {"truth_design": [{"findings": [lens_finding("a wording nit", False)]}]})
+        lens = self.n("truth_design")
+        nid = self.lens_finding_ids(g, "truth_design")[0]
+        # not yet judged by the filter: not a note, so the skip is refused
+        rc, err = self.w.run("a", "edit", str(g), "--set", f'skip.{lens}="noisy"', "--base", self.p.tip(g))
+        self.assertNotEqual(0, rc, err)
+        self.assertIn(nid, json.dumps(err))
+        self.p.run(g, "filter_design", verdicts={nid: verdict("note", "a nit")})
+        self.assertEqual("current", self.p.states(g)["design"])
+        self.w.ok("a", "edit", str(g), "--set", f'skip.{lens}="noisy"', "--base", self.p.tip(g))
+        self.assertEqual("skipped", self.p.states(g)["truth_design"])
+
 
 class FullLensJourneyTests(LensWorld):
     def test_8_capture_to_merge_and_the_pr_body_lists_every_code_lens_and_the_skips(self):
@@ -616,6 +662,37 @@ class FullLensJourneyTests(LensWorld):
         self.p.drive(g, lambda st: not st)                    # a closed goal has no node states
         self.assertEqual(("closed", "done"), (self.p.show(g)["goal"]["state"], self.p.show(g)["goal"]["closed"]["reason"]))
         self.assertEqual("MERGED", next(iter(self.gh.load()["prs"].values()))["state"])
+
+    def late_finding_on_a_skipped_lens(self, g, lens, text):
+        """Skip `lens` while it runs with no record (edit accepts this), then let it land a material finding."""
+        ag, card = self.p.start(g, lens)
+        self.w.ok("a", "edit", str(g), "--set", f'skip.{self.n(lens)}="skipped while running: Dave said so"',
+                  "--base", self.p.tip(g))
+        out = self.p.output(self.n(lens), card, findings=[lens_finding(text, True)])
+        ag.submit(g, self.n(lens), card, out, artifact="# r\n")
+        self.assertEqual("skipped", self.p.states(g)[lens])
+        self.assertIn(text, [f["text"] for f in self.p.record(g, lens)["findings"] if f["status"] == "open"])
+
+    def test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body(self):
+        """Approval directive (approve_design attempt 4): a late finding on a skipped node is never invisible."""
+        g = self.goal()
+        self.p.drive(g, lambda st: st["truth_design"].startswith("ready"))
+        self.late_finding_on_a_skipped_lens(g, "truth_design", "late design finding")
+        self.p.drive(g, lambda st: st["approve_design"] == "needs_human (approve)")
+        item = json.dumps(self.p.item(g, "approve_design"))
+        self.assertIn("late design finding", item)
+        self.assertIn(self.n("truth_design"), item)
+        self.p.drive(g, lambda st: st["experience_impl"].startswith("ready"), limit=200)
+        self.late_finding_on_a_skipped_lens(g, "experience_impl", "late impl finding")
+        self.p.drive(g, lambda st: st["approve_merge"] == "needs_human (approve)" and st["integrate"] == "current",
+                     limit=200)
+        item = json.dumps(self.p.item(g, "approve_merge"))
+        self.assertIn("late impl finding", item)
+        self.assertIn(self.n("experience_impl"), item)
+        body = next(iter(self.gh.load()["prs"].values()))["body"]
+        self.assertIn("late impl finding", body)
+        self.assertIn(self.n("experience_impl"), body)
+
 
 
 class RenamedFullLensJourneyTests(FullLensJourneyTests):
@@ -757,6 +834,23 @@ class FilterTests(LensWorld):
         self.assertEqual("independence", err["error"]["code"], err)
         self.p.run(g, "filter_design", avoid=(designer,))
 
+    def test_reviewer_independence_holds_per_lens(self):
+        g = self.goal()
+        self.through_design(g)
+        designer = self.p.record(g, "design")["holder"]
+        ag = next(a for a in self.p.agents if a.label == designer)
+        for lens in lens_ids():
+            rc, err = ag.start(g, self.n(lens), ok=False)
+            self.assertNotEqual(0, rc, lens)
+            self.assertEqual("independence", err["error"]["code"], (lens, err))
+        self.p.drive(g, lambda st: st["truth_impl"].startswith("ready"), limit=200)
+        implementer = self.p.record(g, "implement")["holder"]
+        ag = next(a for a in self.p.agents if a.label == implementer)
+        for lens in lens_ids("impl"):
+            rc, err = ag.start(g, self.n(lens), ok=False)
+            self.assertNotEqual(0, rc, lens)
+            self.assertEqual("independence", err["error"]["code"], (lens, err))
+
     def unjudged_note(self, change):
         """F1: a lens re-run that adds a note stales the filter on `candidates` alone."""
         g = self.goal()
@@ -867,6 +961,20 @@ class IntentTests(LensWorld):
         # the intent re-run is exempt from the budget
         self.p.run(g, "intent_design")
         self.assertEqual(0, self.p.record(g, "intent_design")["correction_runs"])
+
+    def test_changing_intent_at_the_impl_stage_stales_only_the_intent_lenses(self):
+        g = self.goal()
+        self.p.drive(g, lambda st: all(st[l] == "current" for l in lens_ids("impl")), limit=200)
+        self.assertIsNotNone(self.p.record(g, "intent_impl"))
+        self.set_intent(dict(INTENT, serves="Operators too."))
+        st = self.p.states(g)
+        self.assertEqual("ready (stale: policy.intent)", st["intent_impl"])
+        stale = {n for n, s in st.items() if s.startswith("ready (stale")}
+        self.assertEqual(set(), stale - {"intent_design", "intent_impl"}, st)
+        for lens in lens_ids("impl"):
+            if lens != "intent_impl":
+                self.assertEqual("current", st[lens], lens)
+        self.assertEqual("current", st["implement"])
 
 
 # --------------------------------------------------------------------------------------------- re-review pointer
