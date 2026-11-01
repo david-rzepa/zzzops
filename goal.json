@@ -161,15 +161,15 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_tests:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:b271a55d8243954f1806ba2711c7e003c51bbe287b528c803d1a623a82956b8c",
@@ -177,35 +177,35 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T04:49:37Z",
+      "finished_at": "2026-11-01T05:20:22Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:fb5b4190ac489d3d95280c8cbf4efc6c4fd1d4d3",
-          "tests": "v1:sha256:9d9f73ca06c049cf5be5da108fe67e9dcd182e0fed007ec0e52f3e8826087ab5"
+          "tests": "v1:sha256:5fe7a70555feae17a1bd3e8df19ae901989939bf5441968e4f8446e7c4760958"
         },
         "policy": {},
-        "subject": "v1:sha256:b271a55d8243954f1806ba2711c7e003c51bbe287b528c803d1a623a82956b8c"
+        "subject": "v1:sha256:eba27a914adfd1041d2d30aee15cb1ac5318d37e387e6affd713797379850026"
       },
-      "holder": "claude:e6ad/review_tests-1015-1",
-      "input_fp": "v1:sha256:d3be21bda1d7e23a6e0940bcd44249fff27a580e08987c6ce1d3f80f6a479d5a",
-      "ok": false,
+      "holder": "claude:e6ad/review_tests-1015-2",
+      "input_fp": "v1:sha256:311134c537d155b4024103a6adeaf5ec3ee8f58d9851fb57574c09eb0c477cbc",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "21c69bf5760705673b2610c5e700d7a418957f7d",
-          "commit": "8a8641cd85af968de019dfb08abaf65781207a9e",
+          "blob": "c276c044c1bb5783bf5c190f75df2421651a7651",
+          "commit": "2040e93575b691a8929c7e561877d981f15aa47b",
           "path": ".zzzops/reviews/1015/review_tests.md"
         },
-        "summary": "Coverage of the design's 14 test items is complete. The pre-seeded cache keeps the existing cost and journey assertions meaningful with no off switch, and drift is guarded by the seed test. The fixture edits are disjoint from G1001's World.new hunk. Before implementation, all 32 failing tests fail for the right reason, and the rest of the 417-test suite passes. One finding: the fake gh's graphql handler accepts documents real GitHub rejects (no type: ISSUE, number selected outside '... on Issue', issueCount returned even when not selected). A malformed engine query would pass every test, then silently degrade to github: retry in production."
+        "summary": "F1 resolved. The fake-gh graphql handler now parses each alias's arguments and selections, rejects a missing type, union field selections and an empty selection set with GitHub's exact messages and paths, and returns only the selected fields. A live read-only check with gh 2.100.0 confirms the writer's error format (errors JSON on stdout, 'gh: <message>' on stderr, exit 1). The prior review's 'GraphQL:' prefix came from older gh. The 9 direct fake and isolated_env tests pass. isolated_env drops gh credentials. Test 14 now checks the received documents and the final cache result. In the full suite (426 tests), the only failures are the expected pre-implementation legacy failures. No new material findings."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "c65da4ce473fbda18509f562fe3fda77608eeb1b",
-          "commit": "a19c52f6ea00d573287840c86b6580171b2b81df",
-          "tree": "be59f1af4a3805f66465c346d189d693d2a4d3dc"
+          "change": "1a122e6a125f599ab1b1f478b8d7eb3f749cf154",
+          "commit": "cb8e7ba08322aea37457b561304f8880ebc7c7c0",
+          "tree": "5ee04387f851410191dbb4df44166a7ba02dc75d"
         }
       },
       "status": "done"
