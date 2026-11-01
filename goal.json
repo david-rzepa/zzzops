@@ -168,15 +168,15 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_tests:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:3bc8406b0ad10476f39da066d465acd780a7ac242f5ee6fd75e812d5916b174e",
@@ -188,7 +188,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:3bc8406b0ad10476f39da066d465acd780a7ac242f5ee6fd75e812d5916b174e",
@@ -196,35 +196,35 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T18:37:20Z",
+      "finished_at": "2026-11-01T18:40:45Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:42144d61b58520a0b331e1b3995235d9ec279a05",
-          "tests": "v1:sha256:01e181eb76c6accd537174d18e236f4ef81eb35ff5a56a37c94550dd0601009d"
+          "tests": "v1:sha256:609d7d743aed8a82f5e086d799b547c0b9d54782a06d1b749db8aa086d6ae22e"
         },
         "policy": {},
-        "subject": "v1:sha256:3bc8406b0ad10476f39da066d465acd780a7ac242f5ee6fd75e812d5916b174e"
+        "subject": "v1:sha256:4f2ec1009504af0c09ed1fe83ea23fdbaede5db4c7d0c0812f09d00b0822a840"
       },
-      "holder": "claude:e6ad/rd1017",
-      "input_fp": "v1:sha256:baf2524084b4ed99b363c32423307d63a7ba142a6024bba4cde001d7a0874df8",
-      "ok": false,
+      "holder": "claude:e6ad/rt1017",
+      "input_fp": "v1:sha256:2b373e5c85cea7c0331adbd9c7dffaf38884d6d32ccbd294a6b786664c52bb99",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "106e6c8107ccfdaeadb1d137d9bb40c4d4570621",
-          "commit": "2b80bf3e3eaada68825aee7b2820903ce9e4f88e",
+          "blob": "68a56ae486665d96d24ece1ffc985d4a0cee0701",
+          "commit": "a2ccc6b45e1981c92b810c2715f7d9e15b7f9e5e",
           "path": ".zzzops/reviews/1017/review_tests.md"
         },
-        "summary": "The guard and its parser are tested thoroughly. This covers contains and lacks markers, directory markers (recursion, every-file lacks, untracked files ignored, prefix safety, trailing slash), missing paths and 14 malformed rows. Pending rows must belong to open goals that depend on 1017. The scrub, links and anchors, citations and HISTORY-log tests match design revision 3. In a simulated naive move (rev 6.3 docs copied unchanged into docs/design), the citation and heading tests already pass, and 12 tests correctly fail. The tests are not brittle against later goals. Two gaps would let plausible wrong implementations pass. F1: nothing checks that SPEC and DESIGN were actually amended; HISTORY rows alone satisfy every test. F2: nothing checks that the G1022 and G1024 case-3 pending rows exist, so an empty table passes."
+        "summary": "Both prior findings resolved in 8e6185a. 1:1: AMENDMENT_SENTINELS has a term per applied amendment (#742, G1001, G1014, G1015, G1016, G1018, G1021, G1000, G1020, G1023); I grepped every term case-sensitively against rev 6.3 SPEC, DESIGN and IMPLEMENTATION_PLAN in zzzops-design-reset and each is absent from the document the test checks, so a copy of rev 6.3 fails. They are stable against later goals: the G1022, G1024 and G1025 designs keep filter_design and shrink and remove none of the others. 1:2: test_known_case_3_goals_are_pending_or_logged requires, for G1022, G1024 and G1025, either a pending row with the expected marker path or a HISTORY section 4 row, and not both, so it stays green after a goal lands and deletes its row. Non-blocking: the in_history test matches any section 4 table line mentioning the goal (\\bG1022\\b), so an unrelated HISTORY row that merely names G1022 or G1024 would make the pending row fail; keep prose references out of those rows."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "8d8437af244f85c4dd6cb20c1ed502140cb9ff77",
-          "change": "67527b52b49a21f4012394337a3590d7412edfdb",
-          "commit": "559bbb6a5b9af71adc06c01fbde2b75b732654ff",
-          "tree": "d4018f21cef227a4910e39eb8b4d02e2138a519d"
+          "change": "1d0cba500e9c899b9546bc886fc391cc857f253d",
+          "commit": "8e6185a8aed9ad4125526dd00adf6a0ac81c1818",
+          "tree": "650b501a8fa647285cb3c52578a29651ef759b6a"
         }
       },
       "status": "done"
