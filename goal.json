@@ -263,38 +263,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 5,
-      "correction_runs": 4,
+      "attempt": 6,
+      "correction_runs": 5,
       "findings": [],
-      "finished_at": "2026-11-01T06:07:53Z",
+      "finished_at": "2026-11-01T07:14:46Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:2c1af88e84734bdd997eceba5000279525be0586",
-          "tests": "v1:sha256:69cae951ed16e0c3015005bd6ecf778e33a7df62f2149b7a9b6b4a4e2b0c4dc0"
+          "tests": "v1:sha256:7d6aabd65086f2eaddfac778b8ef7fb5ed24c2649d0cd2ca7f51db87974607d8"
         },
         "policy": {},
-        "subject": "v1:sha256:34b7483799d4e882039c513490d8c398f5688d7b75aab8fb8ae33fced64aa0a2"
+        "subject": "v1:sha256:7ac4752cdeaf18333d384b7a31b72fc8f3e908e7791b2cb5a068cae4db1daa4d"
       },
-      "holder": "claude:e6ad/review_tests-1016-5",
-      "input_fp": "v1:sha256:4ff00a762ff2bb25f75cfeeac2faf1ce57d11bc96b05b9b61ecfe15f17302f3f",
+      "holder": "claude:e6ad/review_tests-1016-6",
+      "input_fp": "v1:sha256:2393d228cf4ddc93446a12b0ea55e99fab40f3f275037836ed1cfc6cb54d63e4",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "b49cb045893617f79079bc7b303084fd0d045189",
-          "commit": "cc26f29fcdc1ee5b8c289ec2f8df6e415c7a67a8",
+          "blob": "2baf6aa2e3a436a70460f74dc14df75f5e0a7c8f",
+          "commit": "bea6e64504d15829150aa2e19ad67e8b4d5993dd",
           "path": ".zzzops/reviews/1016/review_tests.md"
         },
-        "summary": "Approved. 521d78b's plain-start next assertion fails on the pre-fix render/card (('routine',1)) and passes after; all 30 card_ux tests pass. The reclaim-case next assertion cannot tell old from new code because a reclaimable frontier state has no stale_because/record_stale, so next always shows the node's own tier there. That is not material: the reclaim card assertion already covers the design promise, and the next assertion still guards against regressions. Non-blocking implementation note: for a pure-rebase reclaim, next shows reasoning while the card gives routine (this already happened before the fix, errs safe, and the design promises nothing about it)."
+        "summary": "Rebase is faithful. range-diff 54d7e83..521d78b vs 6747a5e..e46d1d1 shows every test commit identical except a3ec211 (was 802c016), whose only change is the conflict in test_card_shape_and_size. The resolved test is exactly dev's G1018 version (shrink_candidates size rule, command-string match with optional argv, inputs.tests must be a dict with diff) minus `renew` in the expected keys, which is G1016 design §5. Both intents are kept and nothing is weaker: G1018's assertions are unchanged, and the dropped key is positively covered by test_engine_card_ux (assertNotIn top-level renew, commands.renew.when/argv). At e46d1d1 the resolved test and test_engine_card_ux pass (31 tests OK). No findings."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
-          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "dfe70799cbc9f250188033c8d353c1f1075a6683",
-          "commit": "521d78b4392378258b843d3ce1fa02113f2bb46a",
-          "tree": "5b016358250323c1276ed81145ad1c782d23e507"
+          "base": "6747a5ea3c91aedd39089d1811a415680521bfed",
+          "change": "e9897fba51c65ed87b6dd2cf979538266d890a77",
+          "commit": "e46d1d17c032cee22d29000ea0b7404c70926662",
+          "tree": "d66b359f132c5e93c967e5cfa3c563c01b5b96ee"
         }
       },
       "status": "done"
