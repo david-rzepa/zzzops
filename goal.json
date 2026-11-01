@@ -10,7 +10,35 @@
     "issue": null
   },
   "priority": "P3",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T17:32:17Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:d6eb5064c872c44c67d91a488f1ebabd92f5bd73cfb5f16012b7de0d428e557c",
+          "spec": "v1:sha256:4447c6f351b9f9b9f539d665382a9a7329f445d7b114066930a074148976c382"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1023",
+      "input_fp": "v1:sha256:4bc66280f1db7e5af493105853b8de9409014c8c0850b794d1a6f2b6ac16ebb5",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "8ec96cfda5e325b6bcb2cd67280c3a408b4e2c34",
+          "commit": "7017b8dd12db1034b3fe0526a804fb7a4959f0e1",
+          "path": ".zzzops/reviews/1023/design.md"
+        },
+        "summary": "Three text edits make every shown checkpoint override say `<full 40-hex sha>`: the checkpoint_required hint in records.py:244, MIGRATING.md:26, and the repo's own .zzzops/prompts/test_design.md:8 (the template copy is already right). Tests assert the hint, check MIGRATING.md, and grep for leftover `\"commit\": \"<sha>\"`. To avoid conflicts with G1000 (#748), touch only that one MIGRATING.md fragment, leave CLI_USAGE alone, and re-grep at the new tip if #748 lands first."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
