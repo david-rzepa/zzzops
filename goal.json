@@ -152,6 +152,41 @@
         }
       },
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T20:40:52Z",
+      "fp_parts": {
+        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "inputs": {
+          "base": "v1:sha256:8a2e8ac0217a3e46b72c1e3ce2d2c6f98e60949f5743134ece85574f6cb677e3",
+          "doc": "v1:blob:f4c441999a3da82b48323c1b35d7f55058578cc7"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        ".agents/test_agent_plugin.py",
+        ".agents/test_engine_lenses.py",
+        ".agents/test_prompt_stats.py"
+      ],
+      "holder": "claude:e6ad/td1029",
+      "input_fp": "v1:sha256:55ac39a3a535858427f7b86a53348fa66e09ed192b24a6f195cda6a612fce35f",
+      "ok": true,
+      "output": {
+        "commands": [
+          "python3 -m unittest -v test_prompt_stats test_agent_plugin test_engine_lenses.ShippedTemplateTests"
+        ],
+        "tests": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "e92b17b5860edb30eb452104a32b39db006da81d",
+          "commit": "0dffafab215930125098f4321f28c1edca0e98db",
+          "tree": "a71917f28004e46a62f1799ac7fc3d320eb074bf"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
