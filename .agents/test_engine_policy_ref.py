@@ -72,7 +72,8 @@ class PolicyRefTests(unittest.TestCase):
 
     def test_validate_reports_impact_on_current_goals(self):
         self.policy_branch(self.renamed())
-        out = self.w.ok("b", "validate", "--policy-ref", "rename")
+        _, out = self.w.run("b", "validate", "--policy-ref", "rename")   # environment checks (gh) may fail on CI
+        self.assertEqual([], out["policy"])
         self.assertIn("impact", out)
         self.assertIn(f"G{self.g}", out["impact"]["nodes"])
 
