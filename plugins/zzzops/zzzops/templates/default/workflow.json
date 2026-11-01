@@ -21,7 +21,7 @@
               "from": "deps.design.doc"
             },
             "dep_reviews": {
-              "from": "deps.review_design.summary",
+              "from": "deps.filter_design.summary",
               "context": true,
               "optional": true
             }
@@ -36,14 +36,43 @@
             "communication"
           ]
         },
-        "review_design": {
-          "description": "Independent review of the design.",
+        "intent_design": {
+          "description": "Intent lens on the design: does it solve the goal's problem, and serve the project's intent?",
           "kind": "agent",
           "capability": "reasoning",
-          "prompt": "review_design.md",
+          "prompt": "lens_intent.md",
           "stage": "discovery",
+          "skippable": false,
           "review": {
-            "subject": "design"
+            "subject": "design",
+            "filter": "filter_design"
+          },
+          "inputs": {
+            "spec": {
+              "from": "goal.spec"
+            },
+            "doc": {
+              "from": "design.doc"
+            }
+          },
+          "policy": [
+            "intent"
+          ],
+          "instructions": [
+            "review",
+            "communication"
+          ]
+        },
+        "simplicity_design": {
+          "description": "Simplicity lens on the design: is it the simplest thing that fully works?",
+          "kind": "agent",
+          "capability": "reasoning",
+          "prompt": "lens_simplicity.md",
+          "stage": "discovery",
+          "skippable": false,
+          "review": {
+            "subject": "design",
+            "filter": "filter_design"
           },
           "inputs": {
             "spec": {
@@ -54,7 +83,171 @@
             }
           },
           "instructions": [
-            "rigor",
+            "review",
+            "communication"
+          ]
+        },
+        "truth_design": {
+          "description": "Truth lens on the design: is it true, consistent and checkable?",
+          "kind": "agent",
+          "capability": "reasoning",
+          "prompt": "lens_truth.md",
+          "stage": "discovery",
+          "review": {
+            "subject": "design",
+            "filter": "filter_design"
+          },
+          "inputs": {
+            "spec": {
+              "from": "goal.spec"
+            },
+            "doc": {
+              "from": "design.doc"
+            }
+          },
+          "instructions": [
+            "review",
+            "communication"
+          ]
+        },
+        "adversary_design": {
+          "description": "Adversary lens on the design: how could it harm someone, or be broken or gamed?",
+          "kind": "agent",
+          "capability": "reasoning",
+          "prompt": "lens_adversary.md",
+          "stage": "discovery",
+          "review": {
+            "subject": "design",
+            "filter": "filter_design"
+          },
+          "inputs": {
+            "spec": {
+              "from": "goal.spec"
+            },
+            "doc": {
+              "from": "design.doc"
+            }
+          },
+          "instructions": [
+            "review",
+            "communication"
+          ]
+        },
+        "concurrency_design": {
+          "description": "Concurrency lens on the design: what happens under concurrency, partial failure and growth?",
+          "kind": "agent",
+          "capability": "reasoning",
+          "prompt": "lens_concurrency.md",
+          "stage": "discovery",
+          "review": {
+            "subject": "design",
+            "filter": "filter_design"
+          },
+          "inputs": {
+            "spec": {
+              "from": "goal.spec"
+            },
+            "doc": {
+              "from": "design.doc"
+            }
+          },
+          "instructions": [
+            "review",
+            "communication"
+          ]
+        },
+        "rollout_design": {
+          "description": "Rollout lens on the design: how does it reach users, and how is it undone?",
+          "kind": "agent",
+          "capability": "reasoning",
+          "prompt": "lens_rollout.md",
+          "stage": "discovery",
+          "review": {
+            "subject": "design",
+            "filter": "filter_design"
+          },
+          "inputs": {
+            "spec": {
+              "from": "goal.spec"
+            },
+            "doc": {
+              "from": "design.doc"
+            }
+          },
+          "instructions": [
+            "review",
+            "communication"
+          ]
+        },
+        "experience_design": {
+          "description": "Experience lens on the design: what is it like for the people and agents on the other end?",
+          "kind": "agent",
+          "capability": "reasoning",
+          "prompt": "lens_experience.md",
+          "stage": "discovery",
+          "review": {
+            "subject": "design",
+            "filter": "filter_design"
+          },
+          "inputs": {
+            "spec": {
+              "from": "goal.spec"
+            },
+            "doc": {
+              "from": "design.doc"
+            }
+          },
+          "instructions": [
+            "review",
+            "communication"
+          ]
+        },
+        "filter_design": {
+          "description": "Independent filter of the design lenses' findings: judges every note keep or note, and joins the lenses into one reopen per round.",
+          "kind": "agent",
+          "capability": "bounded",
+          "prompt": "filter.md",
+          "stage": "discovery",
+          "skippable": false,
+          "inputs": {
+            "spec": {
+              "from": "goal.spec"
+            },
+            "doc": {
+              "from": "design.doc"
+            },
+            "intent": {
+              "from": "intent_design.summary"
+            },
+            "simplicity": {
+              "from": "simplicity_design.summary"
+            },
+            "truth": {
+              "from": "truth_design.summary",
+              "optional": true
+            },
+            "adversary": {
+              "from": "adversary_design.summary",
+              "optional": true
+            },
+            "concurrency": {
+              "from": "concurrency_design.summary",
+              "optional": true
+            },
+            "rollout": {
+              "from": "rollout_design.summary",
+              "optional": true
+            },
+            "experience": {
+              "from": "experience_design.summary",
+              "optional": true
+            }
+          },
+          "outputs": {
+            "summary": "text",
+            "verdicts": "object"
+          },
+          "instructions": [
             "communication"
           ]
         },
@@ -73,9 +266,41 @@
             "doc": {
               "from": "design.doc"
             },
-            "design_review": {
-              "from": "review_design.summary",
+            "filter": {
+              "from": "filter_design.summary"
+            },
+            "intent": {
+              "from": "intent_design.summary",
               "context": true
+            },
+            "simplicity": {
+              "from": "simplicity_design.summary",
+              "context": true
+            },
+            "truth": {
+              "from": "truth_design.summary",
+              "context": true,
+              "optional": true
+            },
+            "adversary": {
+              "from": "adversary_design.summary",
+              "context": true,
+              "optional": true
+            },
+            "concurrency": {
+              "from": "concurrency_design.summary",
+              "context": true,
+              "optional": true
+            },
+            "rollout": {
+              "from": "rollout_design.summary",
+              "context": true,
+              "optional": true
+            },
+            "experience": {
+              "from": "experience_design.summary",
+              "context": true,
+              "optional": true
             }
           }
         },
@@ -100,8 +325,8 @@
               "optional": true,
               "pending": true
             },
-            "design_review": {
-              "from": "review_design.summary",
+            "filter": {
+              "from": "filter_design.summary",
               "context": true
             },
             "approval": {
@@ -221,14 +446,53 @@
             "result": "object"
           }
         },
-        "review_impl": {
-          "description": "Independent review of the implementation.",
+        "intent_impl": {
+          "description": "Intent lens on the implementation: does it solve the goal's problem, and serve the project's intent?",
           "kind": "agent",
           "capability": "reasoning",
-          "prompt": "review_impl.md",
+          "prompt": "lens_intent.md",
           "stage": "delivery",
+          "skippable": false,
           "review": {
-            "subject": "implement"
+            "subject": "implement",
+            "filter": "filter_impl"
+          },
+          "inputs": {
+            "spec": {
+              "from": "goal.spec"
+            },
+            "doc": {
+              "from": "design.doc"
+            },
+            "tests": {
+              "from": "test_design.tests.change"
+            },
+            "code": {
+              "from": "implement.code.change"
+            },
+            "checks": {
+              "from": "run_tests.result",
+              "context": true
+            }
+          },
+          "policy": [
+            "intent"
+          ],
+          "instructions": [
+            "review",
+            "communication"
+          ]
+        },
+        "simplicity_impl": {
+          "description": "Simplicity lens on the implementation: is it the simplest thing that fully works?",
+          "kind": "agent",
+          "capability": "reasoning",
+          "prompt": "lens_simplicity.md",
+          "stage": "delivery",
+          "skippable": false,
+          "review": {
+            "subject": "implement",
+            "filter": "filter_impl"
           },
           "inputs": {
             "doc": {
@@ -246,9 +510,207 @@
             }
           },
           "instructions": [
-            "code_quality",
-            "security",
-            "verification"
+            "review",
+            "communication"
+          ]
+        },
+        "truth_impl": {
+          "description": "Truth lens on the implementation: is it true, consistent and checkable?",
+          "kind": "agent",
+          "capability": "reasoning",
+          "prompt": "lens_truth.md",
+          "stage": "delivery",
+          "review": {
+            "subject": "implement",
+            "filter": "filter_impl"
+          },
+          "inputs": {
+            "doc": {
+              "from": "design.doc"
+            },
+            "tests": {
+              "from": "test_design.tests.change"
+            },
+            "code": {
+              "from": "implement.code.change"
+            },
+            "checks": {
+              "from": "run_tests.result",
+              "context": true
+            }
+          },
+          "instructions": [
+            "review",
+            "communication"
+          ]
+        },
+        "adversary_impl": {
+          "description": "Adversary lens on the implementation: how could it harm someone, or be broken or gamed?",
+          "kind": "agent",
+          "capability": "reasoning",
+          "prompt": "lens_adversary.md",
+          "stage": "delivery",
+          "review": {
+            "subject": "implement",
+            "filter": "filter_impl"
+          },
+          "inputs": {
+            "doc": {
+              "from": "design.doc"
+            },
+            "tests": {
+              "from": "test_design.tests.change"
+            },
+            "code": {
+              "from": "implement.code.change"
+            },
+            "checks": {
+              "from": "run_tests.result",
+              "context": true
+            }
+          },
+          "instructions": [
+            "review",
+            "communication"
+          ]
+        },
+        "concurrency_impl": {
+          "description": "Concurrency lens on the implementation: what happens under concurrency, partial failure and growth?",
+          "kind": "agent",
+          "capability": "reasoning",
+          "prompt": "lens_concurrency.md",
+          "stage": "delivery",
+          "review": {
+            "subject": "implement",
+            "filter": "filter_impl"
+          },
+          "inputs": {
+            "doc": {
+              "from": "design.doc"
+            },
+            "tests": {
+              "from": "test_design.tests.change"
+            },
+            "code": {
+              "from": "implement.code.change"
+            },
+            "checks": {
+              "from": "run_tests.result",
+              "context": true
+            }
+          },
+          "instructions": [
+            "review",
+            "communication"
+          ]
+        },
+        "rollout_impl": {
+          "description": "Rollout lens on the implementation: how does it reach users, and how is it undone?",
+          "kind": "agent",
+          "capability": "reasoning",
+          "prompt": "lens_rollout.md",
+          "stage": "delivery",
+          "review": {
+            "subject": "implement",
+            "filter": "filter_impl"
+          },
+          "inputs": {
+            "doc": {
+              "from": "design.doc"
+            },
+            "tests": {
+              "from": "test_design.tests.change"
+            },
+            "code": {
+              "from": "implement.code.change"
+            },
+            "checks": {
+              "from": "run_tests.result",
+              "context": true
+            }
+          },
+          "instructions": [
+            "review",
+            "communication"
+          ]
+        },
+        "experience_impl": {
+          "description": "Experience lens on the implementation: what is it like for the people and agents on the other end?",
+          "kind": "agent",
+          "capability": "reasoning",
+          "prompt": "lens_experience.md",
+          "stage": "delivery",
+          "review": {
+            "subject": "implement",
+            "filter": "filter_impl"
+          },
+          "inputs": {
+            "doc": {
+              "from": "design.doc"
+            },
+            "tests": {
+              "from": "test_design.tests.change"
+            },
+            "code": {
+              "from": "implement.code.change"
+            },
+            "checks": {
+              "from": "run_tests.result",
+              "context": true
+            }
+          },
+          "instructions": [
+            "review",
+            "communication"
+          ]
+        },
+        "filter_impl": {
+          "description": "Independent filter of the code lenses' findings: judges every note keep or note, and joins the lenses into one reopen per round.",
+          "kind": "agent",
+          "capability": "bounded",
+          "prompt": "filter.md",
+          "stage": "delivery",
+          "skippable": false,
+          "inputs": {
+            "doc": {
+              "from": "design.doc"
+            },
+            "code": {
+              "from": "implement.code.change"
+            },
+            "intent": {
+              "from": "intent_impl.summary"
+            },
+            "simplicity": {
+              "from": "simplicity_impl.summary"
+            },
+            "truth": {
+              "from": "truth_impl.summary",
+              "optional": true
+            },
+            "adversary": {
+              "from": "adversary_impl.summary",
+              "optional": true
+            },
+            "concurrency": {
+              "from": "concurrency_impl.summary",
+              "optional": true
+            },
+            "rollout": {
+              "from": "rollout_impl.summary",
+              "optional": true
+            },
+            "experience": {
+              "from": "experience_impl.summary",
+              "optional": true
+            }
+          },
+          "outputs": {
+            "summary": "text",
+            "verdicts": "object"
+          },
+          "instructions": [
+            "communication"
           ]
         },
         "integrate": {
@@ -268,9 +730,42 @@
               "from": "base.stack",
               "context": true
             },
-            "review": {
-              "from": "review_impl.summary",
+            "filter": {
+              "from": "filter_impl.summary",
               "context": true
+            },
+            "intent": {
+              "from": "intent_impl.summary",
+              "context": true
+            },
+            "simplicity": {
+              "from": "simplicity_impl.summary",
+              "context": true
+            },
+            "truth": {
+              "from": "truth_impl.summary",
+              "context": true,
+              "optional": true
+            },
+            "adversary": {
+              "from": "adversary_impl.summary",
+              "context": true,
+              "optional": true
+            },
+            "concurrency": {
+              "from": "concurrency_impl.summary",
+              "context": true,
+              "optional": true
+            },
+            "rollout": {
+              "from": "rollout_impl.summary",
+              "context": true,
+              "optional": true
+            },
+            "experience": {
+              "from": "experience_impl.summary",
+              "context": true,
+              "optional": true
             },
             "summary": {
               "from": "design.summary",
@@ -294,6 +789,7 @@
           "kind": "human",
           "prompt": "approve_merge.md",
           "stage": "delivery",
+          "skippable": false,
           "review": {
             "subject": "implement"
           },
@@ -313,9 +809,42 @@
               "from": "review_tests.summary",
               "context": true
             },
-            "impl_review": {
-              "from": "review_impl.summary",
+            "filter": {
+              "from": "filter_impl.summary",
               "context": true
+            },
+            "intent": {
+              "from": "intent_impl.summary",
+              "context": true
+            },
+            "simplicity": {
+              "from": "simplicity_impl.summary",
+              "context": true
+            },
+            "truth": {
+              "from": "truth_impl.summary",
+              "context": true,
+              "optional": true
+            },
+            "adversary": {
+              "from": "adversary_impl.summary",
+              "context": true,
+              "optional": true
+            },
+            "concurrency": {
+              "from": "concurrency_impl.summary",
+              "context": true,
+              "optional": true
+            },
+            "rollout": {
+              "from": "rollout_impl.summary",
+              "context": true,
+              "optional": true
+            },
+            "experience": {
+              "from": "experience_impl.summary",
+              "context": true,
+              "optional": true
             }
           }
         },

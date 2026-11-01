@@ -21,6 +21,8 @@ You are the root agent. ZzzOps tells you what to do; you dispatch it. Read [CLI 
 
 **Blockers.** A worker that needs a decision submits `--blocked` with the question, options and a recommendation; it continues only with a [[bounded commitment]](../../concepts/bounded-commitment.md) that the answer cannot invalidate. `merge` always merges the [[exact head]](../../concepts/exact-head.md) that `integrate` recorded.
 
+**Lenses.** A subject is reviewed by several lenses in parallel, then a filter joins them: dispatch each lens and the filter to a different worker, never the subject's holder. Notes on a card are optional. A worker that meets a risk a skipped lens covers submits `--blocked` with the options `unskip <node ids>` and `continue`; answer an `unskip` choice with `zzzops edit G --file F --base C`, the file setting those `skip.<node>` keys to `null`. A skip of a node with open findings that are not notes is refused until the findings are waived, visibly.
+
 **Corrections.** A worker's card lists `corrections`; it must answer each in `responses` with `fixed: …` or `disputed: …`. If an `implement` card's only corrections are `integrate:check-*`, read `gh run view --log-failed` first; for a flaky check, run `zzzops reopen G integrate --note "<why>"` instead of changing code.
 
 **Edits.** After an `edit`, check `live_leases_on_changed_nodes`. For each entry, either tell the worker to stop, then run the entry's printed `abandon` and then its `restart` command (`zzzops start G X --as <LABEL> --reclaim`; a plain `start` is refused after abandon), or let it finish. A worker whose `renew` reports `inputs_changed` stops and reports back; you decide.

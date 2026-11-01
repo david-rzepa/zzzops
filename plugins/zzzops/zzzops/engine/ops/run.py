@@ -54,6 +54,7 @@ class OpContext:
     now: int
     renew: Callable
     session: object = None
+    graph: object = None
 
     def wait(self, reason: str, delay: int, question: str | None = None) -> Blocked:
         r = self.record
@@ -126,7 +127,7 @@ def make_context(s, res, X, lease) -> OpContext:
                      dep_kinds=dep_kinds, record=r, corrections=corr,
                      answer=(r or {}).get("answer") if r and r["status"] == "blocked" else None,
                      settings=s.settings, snap=s.snap, git=s.git, gh=gh, worktree=lease.get("workspace"), now=s.now,
-                     renew=lambda: None, session=s)
+                     renew=lambda: None, session=s, graph=graph)
 
 
 def start_op(s, res, X, label, state, reclaim, force) -> dict:
