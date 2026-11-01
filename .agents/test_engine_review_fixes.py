@@ -130,7 +130,7 @@ class StoreReviewFixTests(Journey):
         s.git("push", "-q", "origin", "HEAD:refs/heads/zzzops/policy/x")
         s.git("checkout", "-q", "dev")
         p = _json.loads(_json.dumps(self.w.policy))
-        p["settings"]["engine"]["min"] = "99.0.0"
+        p["settings"]["engine"] = {"requires": ["no_such_cap"]}
         self.w.push_dev({".zzzops/POLICY.json": _json.dumps(p)})
         rc, err = self.w.run("a", "start", str(g), self.n("design"), "--as", self.A.label)
         self.assertEqual((4, "policy_branch"), (rc, err["error"]["code"]))
@@ -298,29 +298,29 @@ class RestackRaceTests(BaseJourney):
         self.assertEqual("P1", self.show(g)["goal"]["priority"])   # the concurrent edit survived
 
 
-class NewerEngineReadTests(unittest.TestCase):
-    def test_an_engine_waiting_for_the_floor_still_reads(self):
+class OlderEngineReadTests(unittest.TestCase):
+    def test_an_engine_lacking_a_capability_still_reads(self):
+        """G1027 §3.2: an engine without a required capability reads goals but refuses writes."""
         tmp = _tempfile.mkdtemp()
         self.addCleanup(_shutil.rmtree, tmp, True)
         w = fx.World(tmp)
         w.bootstrap()
         g = w.new(title="t")["created"]["id"]
-        import engine.store as store
+        p = _json.loads(_json.dumps(w.policy))
+        p["settings"]["engine"] = {"requires": ["no_such_cap"]}
+        w.push_dev({".zzzops/POLICY.json": _json.dumps(p)})
         from engine.session import Session
-        old = store.REQUIRES_MIN
-        store.REQUIRES_MIN = "9.0.0"
-        try:
-            with InProcess(w, "a"):
-                s = Session()
-                s.open(readonly=True)
-                out = s.render_next(all_=True)
-                with self.assertRaises(Refused) as e:
-                    s.require_writable([g])
-        finally:
-            store.REQUIRES_MIN = old
-        self.assertEqual("engine_too_new", out["blockers"][0]["kind"])
+        with InProcess(w, "a"):
+            s = Session()
+            s.open(readonly=True)
+            out = s.render_next(all_=True)
+            with self.assertRaises(Refused) as e:
+                s.require_writable([g])
+        self.assertEqual(["engine_too_old"], [b["kind"] for b in out["blockers"]])
+        self.assertEqual(["no_such_cap"], out["blockers"][0]["missing"])
         self.assertEqual([g], [x["id"] for x in out["goals"]])
-        self.assertEqual("engine_too_new", e.exception.code)
+        self.assertEqual("engine_too_old", e.exception.code)
+        self.assertEqual(["no_such_cap"], e.exception.details["missing"])
 
 
 class HousekeepingTests(BaseJourney):
