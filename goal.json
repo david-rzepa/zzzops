@@ -58,49 +58,36 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 2,
-      "correction_runs": 1,
-      "findings": [
-        {
-          "id": "review_design:1:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:cf8b5dd737e82b2010608510e1a054de6371054f0a7c6840d4f4c1b162d36bc7",
-          "text": "F1: A15 scans 'the full history of every zzzops ref the run touched'. Work and PR branches descend from the integration branch, so that is all of dev's history, where the private deny list matches about 700 lines (about 160 at the tip). All are false positives: short digit fragments inside SHA-256 values, common English and programming words used by the engine's own code, and one PRIVACY.md phrase. G1032's public spec also matches one pattern. So A15 fails on its first run, and section 6's gate would block legitimate writes, such as quoting engine code or describing hosting limits generically. Fix: scope A15 to the run's own content (git log -p <I>..<ref> for work, PR and lease branches; full history of goal state branches; PR text; defect goal documents; report and data). Tune the list: anchor numeric ids as whole digit runs, and use app-specific phrases rather than generic words. Make 'git grep -i -E -f <patterns> <I> and the defect-goal scan print nothing' a precondition, rerun whenever the list changes. Decide whether G1032's phrase is rewritten or the pattern narrowed.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-01T20:00:26Z",
+      "attempt": 3,
+      "correction_runs": 2,
+      "findings": [],
+      "finished_at": "2026-11-01T20:02:09Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:c495b1136ee90fc5ed28882069ea22a47a8ffa15",
-          "spec": "v1:sha256:823d48ed52cd1df7b523d919e6d60db3c09ec821c9eef5cafaf03f569246a9b5"
+          "doc": "v1:blob:3d5740027b00e0543fd2d9a6c0eeae3c3447bbac",
+          "spec": "v1:sha256:e2c063ee9322840387685a5c86388a130816b2a8e1960e4e6cdd0d7ede8870e3"
         },
         "policy": {},
-        "subject": "v1:sha256:bd2492dc657b7ef27858b18b7132b4d129738ee3761d22886e7eb9d5f10ee5e8"
+        "subject": "v1:sha256:28d698545ceef92e2400d43b10223bfaef492c762e285a80dec3680ba3f95c87"
       },
       "holder": "claude:e6ad/rd1022",
-      "input_fp": "v1:sha256:b02d06fef099664bf3748248e8ab8c1aca30605a106c99a09731f4522d2f0e34",
+      "input_fp": "v1:sha256:c55a9f108b21e6e0fbb07156b32b50cd37f0b3cfcd6d722b2bee5cca218e2891",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "7c6900aae5f8434d6300300fd341171cb563e9af",
-          "commit": "0f9c0e4938b3a9233fc9f4a2522fe4c07d6a9dee",
+          "blob": "4969424f2aadb7874b0bde610ffb35fe2a7da058",
+          "commit": "be41700af40c3ad05bbcc346f8590d313b8e04fd",
           "path": ".zzzops/reviews/1037/review_design.md"
         },
-        "summary": "Attempt 3 applies OD8. Privacy is now a naming convention, plus an A15 name and slug check of the report and this goal's artifacts. The run plan is otherwise unchanged and sound. review_design:1:1 is resolved, superseded by OD8. Non-blocking notes: the goal spec's last paragraph still requires a per-write deny-pattern scan and should be edited to match OD8, and the review_tests row should also cite OD8."
+        "summary": "Only the revision note and the review_tests row (OD1 to OD8) changed. The spec now states OD8's convention, so spec and design agree. Nothing else moved. Approved."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "c495b1136ee90fc5ed28882069ea22a47a8ffa15",
-          "commit": "02aac7d7ff10826643d0499ee566bc37ea960fee"
+          "blob": "3d5740027b00e0543fd2d9a6c0eeae3c3447bbac",
+          "commit": "4785af5ee640f335ff5637757c5a64f572222e74"
         }
       },
       "status": "done"
