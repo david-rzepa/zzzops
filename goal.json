@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-01T18:28:14Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [
     1000
   ],
@@ -207,6 +212,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T18:28:14Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:098399efc39f75d363b3db0d476641380f74d2d61dba82b543065f5f9981305f"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:bd976c8139fd9f338fa44dce6bf3e2e4b6a6742b36541cf8b5c13457a02388a7",
+      "ok": true,
+      "output": {
+        "merge_commit": "8d8437af244f85c4dd6cb20c1ed502140cb9ff77",
+        "merged_at": "2026-11-01T18:28:12Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -422,6 +449,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Found in G1000's code review, while dogfooding Release 1.\n1. With review_impl.md gone, no lens prompt tells a code reviewer to target `test_design` for test problems. Findings about tests land on `implement`, which cannot change frozen tests, and cost a dispute round. Add one line to every code-stage lens prompt (or the shared `review` instruction): 'On code, target test_design for problems in the tests.'\n2. lens_truth.md has two 'On code:' lines; merge them.\n3. A lens whose only findings are notes must still answer `changes_requested`, so approval items show it as requesting changes although it blocks nothing. Decide and fix: either such a lens answers `approved` with notes, or approval items label notes-only lenses as 'notes only'.\n4. This repo's own .zzzops/prompts are updated through the lenses policy branch (G1000 rollout step 3), not by this goal.\n\nAcceptance:\n- prompt_stats budgets hold.\n- A card snapshot shows the test_design targeting line on code-stage lens cards.\n- Approval-item rendering for a notes-only lens is tested.",
-  "state": "open",
+  "state": "closed",
   "title": "Polish the shipped lens prompts after the first lens-graph review"
 }
