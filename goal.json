@@ -13,6 +13,33 @@
   },
   "priority": "P1",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T17:57:37Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:496ddd5a4af997072a6592b0a8c591ece5625b54",
+          "summary": "v1:sha256:dc1ac7e8624b03745a963e179f2215922635c6a3fbbd690731514d7fcc4ab52b"
+        },
+        "policy": {},
+        "subject": "v1:sha256:2652e06fa9c391f6569c538263aa908167bf9cc3d1fc9fa685cc4eaf33f851d5"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:4ded892feffb6b021752134db5e02dbf6f4603a436d75d726ac5c736a285811f",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T17:57:37Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approved G1022 design revision 2: the default graph goes from 26 to 15 nodes. review_design applies the seven design lenses in one reviewer with adversary_design beside it; review_impl applies compliance, correctness, missing (searching the goal's own commit), tests and craft; both feed G1000's filters. Lenses are declared per node (`lenses`), removed per goal with skip keys `<node>:<lens>`; intent, simplicity, compliance, missing and craft are mandatory. Budget default follows the existing formula (60 -> 27, same rounds per subject). Depends on 1000, 1020, 1017 and edits docs/design in its own PR; rollout via the lens policy branch and G1024's notice; engine version is the next minor at merge. review_design approved after one round of four findings; no owner questions under the owner's undo-reach test."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "design": {
       "attempt": 2,
       "correction_runs": 1,
