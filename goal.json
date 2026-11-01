@@ -166,6 +166,56 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_tests:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:3f5c622df7a1d1eedca67779fb9bee70437abdd8e9a6458da117af6119131c6c",
+          "text": "F1: .agents/test_engine_findings_rounds.py line 39 does `from engine import ENGINE_VERSION` at module level. G1027's approved design deletes ENGINE_VERSION and REQUIRES_MIN from engine/__init__.py, which is exactly when G1027_MERGED is true. So on a dev that holds G1027 the module raises ImportError and all 30 tests error: the G1027_MERGED branches of follows_settings and both 9b tests never run, and design section 6a's 'both merge orders' promise for 9b is untested. Fix: read it only where needed, e.g. `ENGINE_VERSION = getattr(engine, 'ENGINE_VERSION', None)` after `import engine`, used only in the non-G1027 branches (or detect the order with hasattr(engine, 'CAPABILITIES') together with the capabilities directory). Keep the assertGreater(vtuple(ENGINE_VERSION), (1, 1, 0)) check for the G1028-first order.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T21:32:16Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:6f4c7854b055f0ef632f22312336a6e094a53cd5",
+          "tests": "v1:sha256:def3442a061fc7ec7bc51b9a6ed48330e893331533d16c174071bc3f9e7aeb0a"
+        },
+        "policy": {},
+        "subject": "v1:sha256:3f5c622df7a1d1eedca67779fb9bee70437abdd8e9a6458da117af6119131c6c"
+      },
+      "holder": "claude:e6ad/rd1022",
+      "input_fp": "v1:sha256:a19d16bafd2ff29e62e304afb7dc61c43e52bd3eadb1f3f74b9873d14319d7c1",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "4019f52206bb815fd75f8acdc73a6d69f1eb9308",
+          "commit": "983e7c419afee71d56808f2db73873a6d79c59ba",
+          "path": ".zzzops/reviews/1028/review_tests.md"
+        },
+        "summary": "The new file covers design section 7 items 1-13 plus 9a/9b, and run from the worktree root it collects all 30 tests, all failing pre-implementation. The four edited existing tests change only what the design reverses. One fix: the module-level `from engine import ENGINE_VERSION` breaks the whole file in the G1027-first order, because G1027 deletes ENGINE_VERSION, so 9b's G1027 branch is dead code."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "744fe1c34411a09eea0b49e8ed70e19347b6c51c",
+          "commit": "f0048e09efca47fda8251c5ca70a4636b0721a0a",
+          "tree": "ac8a4a869220366457349c7e75632b259fcdee6b"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
