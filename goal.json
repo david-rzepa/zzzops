@@ -2,7 +2,8 @@
   "budget": null,
   "closed": null,
   "depends_on": [
-    1017
+    1017,
+    1022
   ],
   "graph": "default",
   "id": 1026,
