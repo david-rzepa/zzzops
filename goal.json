@@ -37,8 +37,29 @@
       "status": "done"
     },
     "base": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "blocked": {
+        "category": "conflict",
+        "commands": {
+          "resume": [
+            "start",
+            "1016",
+            "base",
+            "--as",
+            "<LABEL>"
+          ]
+        },
+        "instructions": "In /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1016: resolve the conflicts in .agents/test_engine_lifecycle.py, `git add` them, run `git -c core.editor=true rebase --continue`, then run the resume command. Do not change the meaning of the goal's commits.",
+        "op_state": {
+          "old": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
+          "onto": "6747a5ea3c91aedd39089d1811a415680521bfed",
+          "work": "8fda633702785628d7e3d09d51c6e609107aa6ed"
+        },
+        "reason": "rebase conflict in .agents/test_engine_lifecycle.py",
+        "repeats": 1,
+        "waiting_for": "agent"
+      },
+      "correction_runs": 1,
       "findings": [
         {
           "id": "base:reopen:1",
@@ -53,7 +74,7 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T04:40:50Z",
+      "finished_at": "2026-11-01T07:04:08Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
         "inputs": {
@@ -64,16 +85,10 @@
       },
       "holder": "claude:e6ad/op",
       "input_fp": "v1:sha256:a63dd4f9b663828d20c7af5969db386d8dca78d1dc6caa436946320590be78d6",
-      "ok": true,
-      "output": {
-        "base_commit": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-        "branch": "zzzops/work/g1016",
-        "replay_map": {},
-        "replay_pos": {},
-        "stack": []
-      },
-      "reason": "new",
-      "status": "done"
+      "ok": false,
+      "output": null,
+      "reason": "reopened",
+      "status": "blocked"
     },
     "design": {
       "attempt": 4,
