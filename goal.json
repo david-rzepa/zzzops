@@ -9,6 +9,33 @@
   },
   "priority": "P1",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T04:25:53Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:fb5b4190ac489d3d95280c8cbf4efc6c4fd1d4d3",
+          "summary": "v1:sha256:a8d706a7d1e87533816eb17541ac9f5bbecd08582e8c2e458d797ed43d5bb2cd"
+        },
+        "policy": {},
+        "subject": "v1:sha256:b568135a2973a9ce3062825c3cb6894b44ecbfa6d6c8c27b4ce7a75d0761f8ce"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:988ba6d345a4500b4b3ac0b1e9ead4e75625c4b95390df981888f166fe544f4e",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T04:25:53Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Do not wait for my approval",
+        "summary": "Approved the G1015 design (attempt 2): engine/legacy.py detects old installs from free local and integration-branch signals; one ls-remote and one gh GraphQL call only when the cache key (engine version, remote, integration branch, local signals) changes, with permanent failures retried after 7 days and transient ones after 24 hours; a top-level `legacy` item (not a pause) and a `legacy_policy` blocker for an old-format policy; the shipped migrate-zzzops-repository skill with REMOVED.md and the detector's exact queries; contract amendments (§3.15, §10 items 2 and 10, R11) recorded for G1017; settings.legacy.ignore optional. Pushing the zzzops-pre-reset tag stays with the owner. Decision made by Claude (root agent) under the owner's standing delegation for Release 1."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "design": {
       "attempt": 2,
       "correction_runs": 1,
