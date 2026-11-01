@@ -45,15 +45,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:95a3960d3b576475fee69cd5b23bdb717b6bda3ab79c27bb877181d0acb178ca",
@@ -65,7 +65,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:95a3960d3b576475fee69cd5b23bdb717b6bda3ab79c27bb877181d0acb178ca",
@@ -73,33 +73,33 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T20:13:14Z",
+      "finished_at": "2026-11-01T20:15:54Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:96ea4d28a7dd4e0fcd67c9ae0f96495694b9a7e7",
+          "doc": "v1:blob:ac8bbd5390963a971a8790e1fbeb3099837edda7",
           "spec": "v1:sha256:7cacab7d2739a88c2f7c7d9773f294a4064599407fcc553561919fe77916b36c"
         },
         "policy": {},
-        "subject": "v1:sha256:95a3960d3b576475fee69cd5b23bdb717b6bda3ab79c27bb877181d0acb178ca"
+        "subject": "v1:sha256:788b47b9a38c832e3d1eb73b566f3a94491f0488a5c876bcfd11da318ac74f45"
       },
       "holder": "claude:e6ad/rd1017",
-      "input_fp": "v1:sha256:36fe67ca9de797abba23cf05736dc200d4ea275907edf0c143b979d8fa6687ee",
-      "ok": false,
+      "input_fp": "v1:sha256:1d92b2b00980c14fbec8910945dbf4241c6b80350b8caa9cdacc58d624d62517",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "d1f3c05ceba9198e77d39607ea316ab42afada3a",
-          "commit": "9efbcbd81ab0fc76dcaf202e59dfcfc88ebcf5ef",
+          "blob": "7fce57dec3c73c8531d8bedb323f6e9145b88280",
+          "commit": "b4c3db8c668f7df8f2d0e463e571285e4e14f2c6",
           "path": ".zzzops/reviews/1036/review_design.md"
         },
-        "summary": "The design honours WD1-WD8 (practitioner-first halves, claim first, repo page plus a blog draft the owner publishes, related work of at most about 400 words, the coined term contrasted with concept loading and retrieval, the owner's byline, ratios only). Its claims are bound to a ledger, a CLI-generated trace and a ratio rule. The G1037 report dependency is explicit, and the private app is never named. The section citations check out (DESIGN §2.6 F2, SPEC §3.14, §3.15, §4.9, §4.20, D5, D13, R1-R15). Two findings. F1: four DESIGN decision ids are wrong (D2, D3, D4 and D6 should be D1, D12 with §4.1, D14 with §3.4/§3.5, and the release gate plus G1025), and limitation R9 contradicts the G1025 release lines. F2: the binding diff covers only plugins/zzzops/zzzops, so skill and reference changes pass unseen, and its plugin.json exclusion is a no-op."
+        "summary": "Approved. Both findings are resolved. 1:1: the decision ids now match DESIGN §9 (D1/D2, D7, D11, D12 with §4.1 as amended, D14 with §3.4/§3.5), and the new SPEC citations exist on the g1017 docs (§4.4 CAS, §4.7 identities, §4.8 fingerprints, §4.12 leases, §4.21 carry-forward, §3.1 release_gate). The ledger uses 'DESIGN §9 Dn' and 'DESIGN §5 Rn', checked per row (W14), and R9 is reconciled with G1025. 1:2: the binding diff covers all of plugins/zzzops minus the three version manifests, and the header labels the dev build id and limits the tag statement to the source. All three notes were taken (T1 corrected, ratio rule broadened, fallback for any trace step). No new findings."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "96ea4d28a7dd4e0fcd67c9ae0f96495694b9a7e7",
-          "commit": "1e320a5d20f6712dfb2876dfb97966048a94f6d7"
+          "blob": "ac8bbd5390963a971a8790e1fbeb3099837edda7",
+          "commit": "293360ef7b92cb40b6ed96125e4c42c24da1db82"
         }
       },
       "status": "done"
