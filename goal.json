@@ -43,15 +43,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:81ee91f9c1b85b6854188c3d8281079e59917c7a7a4d1da198c48d7f3506167b",
@@ -63,7 +63,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:81ee91f9c1b85b6854188c3d8281079e59917c7a7a4d1da198c48d7f3506167b",
@@ -71,33 +71,33 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T18:40:51Z",
+      "finished_at": "2026-11-01T18:44:00Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:2a9c17dfd4287092b93db268e7569bee3a14a74c",
+          "doc": "v1:blob:6f4c7854b055f0ef632f22312336a6e094a53cd5",
           "spec": "v1:sha256:e89bcb65bb0501e53489428c547173e3252be41e17065753656056ba4f1cbb48"
         },
         "policy": {},
-        "subject": "v1:sha256:81ee91f9c1b85b6854188c3d8281079e59917c7a7a4d1da198c48d7f3506167b"
+        "subject": "v1:sha256:1a43287123b9e3b5f8cdf2f2122ec872a34c8b1f62106579b7cb76018223a05c"
       },
       "holder": "claude:e6ad/rd1022",
-      "input_fp": "v1:sha256:50c0496c5e6de7df63d75bb88f2a27888e02abcf9b3c4e1de1ecda97ed07403c",
-      "ok": false,
+      "input_fp": "v1:sha256:4a35b759e17bb172615adf03e71f94473de220acd0b984e4137bee30319f52ad",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "84a887f48646bce6031a0fb44cecfed24e5f2c00",
-          "commit": "22d26ab052fe15c6c32851c0400ffe9e4d543e2d",
+          "blob": "889ea8173439389d0547cdcc8f7723a19d483a1c",
+          "commit": "caf5d6fd648ba4f786bfcd0bca55b1a698689ad2",
           "path": ".zzzops/reviews/1028/review_design.md"
         },
-        "summary": "Sound design: the carry rule, previous.resolved, follows and --repo all check out against frontier.py, records.py, card.py and cli.py at 8d8437a. Two fixes needed: ship follows as a G1027 capability (engine/capabilities/<name>.txt plus settings.engine.requires), not an engine.min raise; and do not let follows inherit upheld, which would make reviewer-written text undisputable. No owner questions."
+        "summary": "Revision 2 resolves both findings. `follows` ships as G1027 capability `finding_follows`, with a submit gate on the required set and both merge orders covered. `follows` inherits `rounds` only, with `upheld` always false, so a follow-up of an upheld finding goes to the human with its new text. The carried_findings preview now lists every carried finding. No new findings, no owner questions."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "2a9c17dfd4287092b93db268e7569bee3a14a74c",
-          "commit": "2b55072115d9c87236c0751570998f76e1cf39be"
+          "blob": "6f4c7854b055f0ef632f22312336a6e094a53cd5",
+          "commit": "2a7079ded6f3742b6f09547662566ef6c1af3e74"
         }
       },
       "status": "done"
