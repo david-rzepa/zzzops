@@ -226,6 +226,49 @@
       },
       "status": "done"
     },
+    "run_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T04:33:53Z",
+      "fp_parts": {
+        "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
+        "inputs": {
+          "code": "v1:sha256:064c2317cf27d571612ec8fbc9559527c7dbd47acf6839b8ed3014030de548f7",
+          "commands": "v1:sha256:c42b3cbfbc5e2625b40ce5d5baad171f721f241e9adb2382550de6d111f8c119"
+        },
+        "policy": {
+          "verification.commands": [
+            "python3 -m unittest discover -s .agents"
+          ]
+        }
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:a08ece5dacfe4efa1b402bff066c9b0c2f7b4ebdae2b95d7903927ee60d9a0ab",
+      "ok": true,
+      "output": {
+        "result": {
+          "details": [
+            {
+              "cmd": "cd .agents && python3 -m unittest test_engine_live_input_changes -v",
+              "exit": 0,
+              "seconds": 17,
+              "tail": "k\ntest_renew_of_an_expired_lease_reports_inputs_changed (test_engine_live_input_changes.RenewInputsChangedTests.test_renew_of_an_expired_lease_reports_inputs_changed) ... ok\ntest_renew_of_an_expired_lease_without_an_edit_reports_nothing (test_engine_live_input_changes.RenewInputsChangedTests.test_renew_of_an_expired_lease_without_an_edit_reports_nothing) ... ok\ntest_renew_reports_an_upstream_rerun (test_engine_live_input_changes.RenewInputsChangedTests.test_renew_reports_an_upstream_rerun)\nA change since start from a re-run upstream (not an edit of this goal) is reported too. ... ok\ntest_renew_reports_inputs_changed_after_an_edit (test_engine_live_input_changes.RenewInputsChangedTests.test_renew_reports_inputs_changed_after_an_edit) ... ok\ntest_renew_still_extends_the_lease_when_inputs_changed (test_engine_live_input_changes.RenewInputsChangedTests.test_renew_still_extends_the_lease_when_inputs_changed) ... ok\n\n----------------------------------------------------------------------\nRan 26 tests in 16.987s\n\nOK\n"
+            },
+            {
+              "cmd": "python3 -m unittest discover -s .agents",
+              "exit": 0,
+              "seconds": 269,
+              "tail": " traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 1282769 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1014/plugins/zzzops/zzzops/engine/worktree.py:31: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmptbuzj2b6/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/home/dave/Work/dev/zzzops/.zzzops/worktrees/g1014/plugins/zzzops/zzzops/engine/worktree.py:31: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmptbuzj2b6/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 1286073 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...................................................................................................................\n----------------------------------------------------------------------\nRan 403 tests in 268.900s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmpmqzpydok\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
+            }
+          ],
+          "passed": true,
+          "tree": "8769dc8c17f953d97305123187f27904760e21ba"
+        }
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "test_design": {
       "attempt": 2,
       "correction_runs": 1,
