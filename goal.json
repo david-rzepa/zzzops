@@ -106,10 +106,10 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T21:26:26Z",
+      "finished_at": "2026-11-01T21:41:07Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -125,13 +125,16 @@
       "output": {
         "code": {
           "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "81132b9260e383b58b42fe702ace5b44fc2d56a1",
-          "commit": "80d446871f81edfa6948520ef3fa8d8aca54a777",
-          "tree": "72807734f4a0a6beb0ade3003798ee9ddfa6defb"
+          "change": "7691eec337473b830085d04660a83bc35f18e821",
+          "commit": "474e3491b12e4a51fa492f019cd79b68956fab50",
+          "tree": "ac4db69dd4b9eb4f80c248e56e181ca3f63b6473"
         },
-        "summary": "The add-goal skill now has a step 2 that compares the goal with settings.intent before `new` and offers change the goal, amend the intent (policy branch) or proceed, recorded as a closing `Project intent:` spec paragraph with the owner's dated quote; it never offers an approve_design skip for such a goal. The Intent lens honours the paragraph only with the owner's dated words (otherwise it accepts nothing), and approve_design shows the paragraph, noting that under delegation the owner sees it only when they answer or read it, so the guard is the owner's own words. Capture signals were added to prompt_stats; DESIGN §3.12 and HISTORY §4 are updated. The engine is unchanged."
+        "responses": {
+          "review_impl:1:1": "fixed: lens_intent.md now says an `Accepted as is` paragraph with the owner's quoted, dated words counts at once, and only an `Amendment on ...` paragraph waits for policy.intent. 'accepts nothing' kept. DESIGN §3.12 does not repeat the waiting sentence, so no change there."
+        },
+        "summary": "The add-goal skill now checks a new goal against settings.intent before `new` and offers change, amend or proceed, recording a chosen departure as a `Project intent:` spec paragraph with the owner's dated words; it never offers an approve_design skip for such a goal. The Intent lens honours the paragraph only with those words: an `Accepted as is` paragraph counts at once, an `Amendment on ...` paragraph only once policy.intent holds the amendment, and a paragraph without the quote accepts nothing. approve_design shows the paragraph (the guard is the owner's own words under delegation); capture signals, DESIGN §3.12 and HISTORY §4 are updated. The engine is unchanged."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
