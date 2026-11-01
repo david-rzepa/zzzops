@@ -35,6 +35,35 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T03:56:51Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:b2dfc5b37cd06d95a957280500d9d0948a426de2",
+          "spec": "v1:sha256:73f53b686ecd3713354c33c165401c3a3eb920fcb017163664b0557c71a2d297"
+        },
+        "policy": {},
+        "subject": "v1:sha256:8210b2dc24481fb3e31ad7857c7ec8a6c3b31889b92da5107fb324393458c44d"
+      },
+      "holder": "claude:e6ad/review_design-1001-1",
+      "input_fp": "v1:sha256:8671e57cf21f02c429084f8804707ef46757f70e3d14523065deefe12b01a23a",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "1c725ea03447d91e412ec33ea7ff939ee07b71e0",
+          "commit": "e4a9db32af83a931fd7babfcbd044f5941dcf37e",
+          "path": ".zzzops/reviews/1001/review_design.md"
+        },
+        "summary": "Approved. The design meets every acceptance case in the spec. Its claims about cmd_new, push_atomic, the fetch and snapshot semantics and root-commit immutability match 54d7e83, and the concurrency argument holds. There are no material findings. The artifact lists four non-blocking implementation notes: empty-scan HEAD fallback, a unique test-fixture spec, a scoped next for a closed goal, and keeping the policy-ref check ahead of the scan."
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
