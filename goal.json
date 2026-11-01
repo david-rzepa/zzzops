@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-01T05:41:54Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [],
   "graph": "default",
   "id": 1018,
@@ -195,6 +200,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T05:41:54Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:6c0ac7ba683ed74fcdb50674b45ffbe11544ba6c44c0c78a692fb43e277899ee"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:6cfc9fc1598a0f0a1bbfae66e88ad8bf1534063f206918d9fde8f83c2a0feb10",
+      "ok": true,
+      "output": {
+        "merge_commit": "a20682494edcb1ef73886a81b2c0b982a56341ee",
+        "merged_at": "2026-11-01T05:41:52Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -410,6 +437,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Bug found while dogfooding Release 1. The default graph binds code inputs by sub-field so that fingerprints follow the right identity: review_tests, implement and review_impl take `test_design.tests.change`; review_impl and approve_merge take `implement.code.change`; run_tests and integrate take `implement.code.tree`. But card.value_of renders `checkpoint_view` (commit, base, tree, change, diff command) only when the selector has no path. These cards therefore show a bare patch id or tree id, which is not a commit and cannot be diffed. The G1014 review_tests reviewer could not locate the tests and had to dig the commit out of goal.json. Every code review and the merge approval would be equally blind. Approve items (render.py) may have the same gap: check.\n\nOutcome:\n- A card input whose selector names a checkpoint output plus a sub-field (`change` or `tree`) renders the full checkpoint view of that output, so the reviewer gets the commit and the diff command. The fingerprint still uses only the selected sub-field. Rendering must not change any input fingerprint.\n- Human approve items show the same commit and diff.\n- The card size budget (4 KB) still holds.\n\nAcceptance:\n- Engine tests: a review_tests card and a review_impl card each carry commit, base and diff for their tests and code inputs, and the diff command runs and shows the goal's own changes.\n- The approve_merge item shows the code commit.\n- Fingerprints of the affected nodes are unchanged before and after the fix, so no in-flight goal goes stale.\n- The renamed-graph variant passes.\n- A regression test reads each agent card of a full journey and checks that every checkpoint-typed input carries a commit that `git cat-file -t` resolves to a commit.",
-  "state": "open",
+  "state": "closed",
   "title": "Show the full checkpoint on cards for inputs selected by change or tree"
 }
