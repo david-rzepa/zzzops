@@ -63,6 +63,24 @@ def clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+# --------------------------------------------------------------------------------------------- live leases
+
+
+LIVE_LEASE_NOTE = "Either abandon then restart, or let it finish: its submit lands but the phase re-runs as ready (stale)."
+
+
+def lease_commands(ctx: Ctx, g: int, n: str, attempt: int) -> tuple:
+    """(abandon, restart) for a running phase; after abandon the node is reclaimable, so restart uses --reclaim."""
+    return (command(ctx, ["abandon", str(g), n, "--attempt", str(attempt)]),
+            command(ctx, ["start", str(g), n, "--as", LABEL, "--reclaim"]))
+
+
+def live_lease_entry(ctx: Ctx, g: int, n: str, L, stale_because: list) -> dict:
+    abandon, restart = lease_commands(ctx, g, n, L.attempt)
+    return {"goal": g, "node": n, "attempt": L.attempt, "holder": L.holder, "expires_at": iso(L.expires_at),
+            "stale_because": list(stale_because), "abandon": abandon, "restart": restart, "note": LIVE_LEASE_NOTE}
+
+
 # --------------------------------------------------------------------------------------------- edit options
 
 

@@ -278,8 +278,8 @@ def validate_policy_dir(a) -> int:
 
 def policy_impact(a, policy, workflow) -> dict:
     """SPEC §3.16 policy impact, when goals can be read."""
-    from engine.frontier import portfolio
-    from engine.render import state_string
+    from engine.frontier import live_input_changes, portfolio
+    from engine.render import live_lease_entry, state_string
     s = session(a, environment=False)
     st = s.open(readonly=True)
     if st.settings is None:
@@ -303,8 +303,10 @@ def policy_impact(a, policy, workflow) -> dict:
                     staled[n] = staled.get(n, 0) + 1
                 if res.st[n]["name"] == "current" and res2.st.get(n, {}).get("name") == "needs_human":
                     reasked += 1
-    live_changed = [{"goal": g, "node": n, "holder": L.holder} for (g, n), L in sorted(st.leases.items())
-                    if L.live(s.now) and f"G{g}" in nodes and n in nodes[f"G{g}"]]
+    fp_changed = {(g, n): sb for g, n, _, sb in live_input_changes(before, after, s.now)}
+    ctx = s.ctx()
+    live_changed = [live_lease_entry(ctx, g, n, L, fp_changed.get((g, n), [])) for (g, n), L in sorted(st.leases.items())
+                    if L.live(s.now) and ((g, n) in fp_changed or (f"G{g}" in nodes and n in nodes[f"G{g}"]))]
     new_stuck = sorted(g for g, r in after.goals.items() if r.stuck and not (before.goals.get(g) and before.goals[g].stuck))
     return {"impact": {"agent_phases_staled": staled, "human_gates_reasked": reasked,
                        "live_leases_on_changed_nodes": live_changed, "unknown_graph": unknown, "new_stuck": new_stuck,

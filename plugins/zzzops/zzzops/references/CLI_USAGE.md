@@ -9,11 +9,11 @@ Every verb prints one JSON object (`show` prints text unless `--json`). **Runnin
 | `new --file F` | Create a goal from `{"title", "spec", "priority"?, "release"?, "depends_on"?, "skip"?, "links"?}`. Returns the goal's `design` action. |
 | `start G X --as L [--reclaim] [--force]` | Claim a node. Agent nodes print the task card; op nodes run to completion. |
 | `submit G X --attempt N --as L --output F [--artifact A]` | Finish an agent phase. `--blocked F` instead records a question for the human or the agent (`{"waiting_for", "question" or "instructions", "options"?, "recommendation"?}`). |
-| `renew G X --attempt N` | Keep the lease alive (every quarter of its timeout). |
-| `abandon G X --attempt N` | Give up a phase; the next `start` reclaims it. `--force --note T` acts on anyone's lease. |
+| `renew G X --attempt N` | Keep the lease alive (every quarter of its timeout); `inputs_changed: true` means the inputs changed since start (abandon and restart, or finish knowing it re-runs). |
+| `abandon G X --attempt N` | Give up a phase; the node becomes reclaimable, so the next `start` needs `--reclaim`. `--force --note T` acts on anyone's lease. |
 | `answer G X --fp P --file F` | Record a human decision (the item's `answer_template`). Refused with `fp_mismatch` when the question changed. |
 | `reopen G X --note T` | Re-run a done node (for example re-observe a flaky check). |
-| `edit G… (--file F… \| --set PATH=JSON…) [--base C]…` | Change goals: hold, unhold, depend, skip, close, budget, waive. Without `--base` for every goal it is a dry run that prints the impact preview. |
+| `edit G… (--file F… \| --set PATH=JSON…) [--base C]…` | Change goals: hold, unhold, depend, skip, close, budget, waive. Without `--base` for every goal it is a dry run that prints the impact preview. Both the preview and the applied result list `live_leases_on_changed_nodes` (running phases whose inputs the edit changes, with `abandon` and `restart` commands). |
 | `validate [G…]` / `validate --policy [--dir D]` | Check goals, the environment and policy files; changes nothing. With `--policy-ref REF`, check the policy on `REF` and report its impact. |
 
 **Examples.**
