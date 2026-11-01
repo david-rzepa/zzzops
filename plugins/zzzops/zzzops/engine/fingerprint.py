@@ -43,6 +43,8 @@ def node_def_fp(nd: dict) -> str:
                     for k, s in (nd.get("inputs") or {}).items() if not s.get("context")},
          "outputs": nd.get("outputs", {}), "review": nd.get("review"), "preserve": nd.get("preserve"),
          "workspace": nd.get("workspace", False), "rev": nd.get("rev", 0)}
+    if isinstance(nd.get("lenses"), dict):        # only on multi-lens reviewers, so no other node's fp changes
+        d["lenses"] = {k: (s or {}).get("skippable", True) is not False for k, s in nd["lenses"].items()}
     return V + "sha256:" + H(d)
 
 
@@ -50,7 +52,7 @@ def candidates(graph: Graph, f: str, records: dict) -> list:
     """A filter's `candidates` part: the sorted [id, material] pairs of the open findings on its lenses' latest records
     (`records`: the goal's non-skipped records). A finding without `material` counts as material."""
     out = []
-    for lens in graph.lenses(f):
+    for lens in graph.reviewers(f):
         for x in (records.get(lens) or {}).get("findings") or []:
             if x["status"] == "open":
                 out.append([x["id"], is_material(x)])
@@ -58,7 +60,7 @@ def candidates(graph: Graph, f: str, records: dict) -> list:
 
 
 def fp_parts(graph: Graph, node: str, vals: dict, subject_record: dict | None, settings: dict,
-             records: dict | None = None) -> dict:
+             records: dict | None = None, skip: dict | None = None) -> dict:
     nd = graph.nodes[node]
     p = {"def": node_def_fp(nd),
          "inputs": {k: fp_selected(graph, node, k, vals.get(k)) for k, s in sorted((nd.get("inputs") or {}).items())
@@ -69,6 +71,8 @@ def fp_parts(graph: Graph, node: str, vals: dict, subject_record: dict | None, s
         p["subject"] = out_fp(graph, subject, subject_record or {}, drop={"responses"})
     if graph.is_filter(node):
         p["candidates"] = candidates(graph, node, records or {})
+    if graph.lens_defs(node):
+        p["lenses"] = graph.applied_lenses(node, skip)
     return p
 
 
@@ -91,6 +95,8 @@ def stale_keys(old: dict | None, new: dict) -> list:
         keys.append("subject")
     if old.get("candidates") != new.get("candidates"):
         keys.append("candidates")
+    if old.get("lenses") != new.get("lenses"):
+        keys.append("lenses")
     return sorted(keys)
 
 

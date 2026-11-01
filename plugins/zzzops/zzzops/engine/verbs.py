@@ -824,7 +824,7 @@ def reopen(s, g: int, X: str, note: str) -> dict:
             "preview": impact(before, s.portfolio(), [g]), "pushed": pushed_summary(updates)}
 
 
-PATH_SEG = re.compile(r"^([A-Za-z0-9_]+)(?:\[([^\]]+)\])?$")
+PATH_SEG = re.compile(r"^([A-Za-z0-9_:]+)(?:\[([^\]]+)\])?$")
 
 
 def apply_sets(doc: dict, sets: list) -> dict:

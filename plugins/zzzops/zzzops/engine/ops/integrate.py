@@ -284,7 +284,9 @@ def reviews_section(ctx) -> str:
                 lines.append(one_line(ctx.inputs[k]))
         for k, p in ins:
             if graph.is_review(p) and ctx.inputs.get(k) is not None:
-                lines.append(f"- **{p}**: {one_line(ctx.inputs[k])}")
+                applied = graph.applied_lenses(p, doc.get("skip") or {})
+                lenses = f" ({', '.join(applied)})" if graph.lens_defs(p) else ""
+                lines.append(f"- **{p}**{lenses}: {one_line(ctx.inputs[k])}")
     records = doc.get("records") or {}
     for n, reason in sorted((doc.get("skip") or {}).items()):
         lines.append(f"- **{n}**: skipped: {one_line(reason)}")

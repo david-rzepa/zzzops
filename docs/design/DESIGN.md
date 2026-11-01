@@ -491,6 +491,10 @@ All of these are visible edits, not ceremonies.
 - **Notes** are non-blocking: they never reopen work or count against the budget, the target's card lists them, and approval items show them grouped by lens. A lens whose only open findings are notes answers `approved` (G1020), because "approved plus non-material findings" is exactly a notes-only lens.
 - **Skips:** a node field `skippable` (default true) protects the intent and simplicity lenses, the filters and `approve_merge`. A lens cannot be skipped while it has an open finding that is not a note, so the objecting lens is never skipped silently; its findings must be waived visibly first.
 - **Project intent** is `settings.intent`, a declared policy input of the intent lenses, so a change to it stales their reviews.
+
+**One reviewer, several lenses (G1022).** The shipped graph no longer runs one agent per lens. Each subject has one multi-lens reviewer that works through its lenses one pass at a time (`lenses` on the node, SPEC §3.1), because every separate lens agent repeated the same discovery reading. On G1016 attempt 1 with 6 planted defects and 1 real one, a single reviewer with the lenses compliance, correctness, missing, tests and craft found 7, 7 and 6 of 7 at 82–87k tokens. Five separate lenses found 6 of 7 for 337k, and the seven design lenses copied to code found 6 of 7 for 436k. Only the multi-lens reviewer found the real defect, which lay outside the diff, through its Missing lens (2 of 3 runs). At design the evidence differs: one multi-lens reviewer found 4 of 12 known defects per run, against 7 of 12 for seven separate lenses. One multi-lens run plus a separate `adversary_design` reached 7 of 12 for about 76k tokens instead of about 245k. So the design subject keeps the Adversary as its own node (G1000's lens node, unchanged), and the implementation subject has no second reviewer.
+- **Lens selection reuses skips.** A goal removes a lens with `skip["<node>:<lens>"]`, so a reason is required, non-skippable lenses are refused, and approval items and the PR body list it. The reviewer node still runs, so a lens skip drops no finding and needs none of G1000's open-finding refusal. The node and lens names are the project's; the engine names none.
+- **Freshness.** The applied lens list is a fingerprint part (`lenses`), so un-skipping a lens re-runs the reviewer; like `def`, it does not count against the budget. Compliance acts as the implementation stage's Intent lens; project intent is judged once, at design, so an intent change does not re-run the five-lens implementation review on every open goal.
 - **Re-review:** `reviewed` also records the subject's artifact blobs, on a fresh submit only, and the card points at `git diff <old blob> <new blob>`.
 
 ### 3.9 Goal worktree, operations and outcomes
@@ -956,7 +960,17 @@ A repository whose integration branch has no `.zzzops/workflow.json` gets `not_b
 
 ## 4. Default workflow and worked examples
 
-### 4.1 Default graph (`graphs.default`, 26 nodes)
+### 4.1 Default graph (`graphs.default`, 15 nodes)
+
+**Amended by G1022.** The shipped graph has 15 nodes: `review_design` applies the seven design lenses (`intent`, `simplicity`, `truth`, `adversary`, `concurrency`, `rollout`, `experience`) and runs beside a separate `adversary_design`, and both feed `filter_design`; `review_impl` applies five lenses (`compliance`, `correctness`, `missing`, `tests`, `craft`) and feeds `filter_impl` (§3.8). `intent`, `simplicity`, `compliance`, `missing` and `craft` are not skippable. The G1000 text below describes the 26-node graph it replaces: read `review_design` plus `adversary_design` for the seven `<lens>_design` nodes, and `review_impl` for the seven `<lens>_impl` nodes. The default budget is 3 × 9 agent nodes = 27.
+
+```
+design ─┬→ review_design ───┐
+        └→ adversary_design ┴→ filter_design → approve_design → base → test_design → review_tests → implement → run_tests ─┐
+  ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+  └→ review_impl → filter_impl ─┬→ integrate ─────┬→ merge
+                                └→ approve_merge ─┘
+```
 
 **Amended by G1000 (#748).** `review_design` and `review_impl` are replaced by seven review lenses per subject, `<lens>_design` and `<lens>_impl` for `intent`, `simplicity`, `truth`, `adversary`, `concurrency`, `rollout` and `experience`. Each set feeds one filter, `filter_design` or `filter_impl` (§3.8). Wherever the table and worked examples below name `review_design`, read the lenses joined by `filter_design`; for `review_impl`, read the impl lenses joined by `filter_impl`. `base` gates on `filter_design.summary`, `approve_merge` is ready once `filter_impl` is ok, and `design` dependents read `deps.filter_design.summary`. The graph's source of truth is the shipped template; SPEC §7 states the engine's rules for any graph.
 
@@ -977,8 +991,8 @@ design ─┬→ <7 lenses>_design → filter_design → approve_design → base
 | `base` | `deps.integrate.pr.head` (each unmerged dependency's PR head; the rest of the PR object is context), `deps.merge.merge_commit` (each merged dependency's merge commit; `null` while unmerged) | a dependency's PR head moves (correction or restack) or it merges; not when only a dependency PR's base changes |
 | `run_tests`, `integrate` | `implement.code.tree` | the code tree differs, including after any restack |
 | `review_tests` | `test_design.tests.change` (and its subject's output without `responses`, whose checkpoint fingerprints as `change`) | the tests' own diff changes |
-| `<lens>_impl` | `implement.code.change`, `test_design.tests.change`, `design.doc` (`intent_impl` also `goal.spec` and `settings.intent`) | the goal's diff changes (a conflict-resolving rebase), not after a clean restack or a review-commit drop |
-| `<lens>_design` | `design.doc`, `goal.spec` (`intent_design` also `settings.intent`) | the design text or the spec changes |
+| `review_impl` | `implement.code.change`, `test_design.tests.change`, `design.doc`, and its applied lenses | the goal's diff changes (a conflict-resolving rebase), not after a clean restack or a review-commit drop; or a lens is skipped or unskipped |
+| `review_design`, `adversary_design` | `design.doc`, `goal.spec` (`review_design` also `settings.intent` and its applied lenses) | the design text or the spec changes; for `review_design`, also an intent change or a lens skip |
 | `filter_design`, `filter_impl` | the subject, each lens's `summary`, and the `candidates` part (§4.9) | a lens re-runs, or a lens finding is added, closed or relabelled |
 | `approve_design` | `design.summary`, `design.doc` (blob), `filter_design.summary` | the design text or the filter's verdict changes; never because of a rebase or a response |
 | `approve_merge` | `implement.code.change`; nothing from `integrate` (the PR link is display only, §4.11) | the goal's diff changes |
@@ -987,7 +1001,7 @@ design ─┬→ <7 lenses>_design → filter_design → approve_design → base
 
 **Context edges and gates.** `base` needs a current `filter_design` (non-optional context), so skipping `approve_design` still waits for the lenses and the filter. `merge` needs every dependency's `merge` current (`dep_merges`), so dependents merge in order. Context edges are not in any fingerprint (§4.8).
 
-**Policy invalidation in this graph:** `run_tests` (`verification.commands`), `integrate` (`verification.required_ci`), and `intent_design` and `intent_impl` (`intent`). An intent change stales the intent lenses on every open goal and does not count against the budget.
+**Policy invalidation in this graph:** `run_tests` (`verification.commands`), `integrate` (`verification.required_ci`), and `review_design` (`intent`). An intent change stales `review_design` on every open goal and does not count against the budget.
 
 **Checkpoint bases:** `test_design.tests.base` and `implement.code.base` are both `base.base_commit`, the stack base, so `change` is the goal's own diff, review files excluded, never a dependency's code.
 
@@ -1304,6 +1318,7 @@ The implementation is accepted when all of these hold. Commands and fixtures go 
 30. **Explained cards (G1016, G1018).** Every started card says why it re-runs (`stale_because`, `changed`); `abandon` prints its restart command; a submit refused for responses lists the findings to answer; checkpoint inputs selected by `change` or `tree` show the full checkpoint; cards over 4,096 bytes shrink in a fixed order.
 31. **Conflicting PRs (G1021).** A PR that conflicts with `I` gives a `conflict` finding on `base` on the first `integrate` run, and a PR with no checks at all becomes a human question after 15 minutes.
 32. **Lenses (G1000, G1020).** The template graph validates; lens findings carry `impact` and `material`; the filter never demotes a material claim; a non-skippable node cannot be skipped, and a lens cannot be skipped while it has open findings that are not notes; a notes-only lens approves; an intent change stales the intent lenses; the PR body lists the reviews and skips.
+33. **Multi-lens reviewers (G1022).** The template graph has 15 nodes; a reviewer card carries its lens checklist, and new findings carry a declared `lens`; a goal removes an optional lens with `<node>:<lens>` and is refused a mandatory one; a lens skip stales the reviewer without budget and drops no finding; nodes without `lenses` keep their 1.1 definition fingerprints.
 
 ---
 

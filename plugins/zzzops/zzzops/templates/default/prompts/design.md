@@ -9,4 +9,4 @@ You are a worker writing the design for one goal. Your card lists the goal's spe
 5. If the goal is too large, you may propose child goals in prose in the design. Do not create them; they are created with `new` after the design is approved.
 6. If you are answering findings (`corrections` in the card), answer every one in `responses` with `fixed: …` or `disputed: …`.
 7. Notes are optional: act on one only if it is cheap and in scope.
-8. If you meet a risk that a skipped lens covers, submit `--blocked` with the options `unskip <node ids>` and `continue`.
+8. If you meet a risk that a skipped lens covers, submit `--blocked` with the options `unskip <skip keys>` (a node id, or `<node>:<lens>`) and `continue`.

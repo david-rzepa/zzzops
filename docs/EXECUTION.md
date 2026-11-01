@@ -7,14 +7,15 @@ A goal is one `goal.json` on its own branch, `zzzops/goal/g<id>`: title, spec, p
 `.zzzops/workflow.json` is a graph of nodes. The default graph:
 
 ```
-design → { 7 design lenses } → filter_design → approve_design → base → test_design → review_tests → implement → run_tests ─┐
-  ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-  └→ { 7 code lenses } → filter_impl ─┬→ integrate ─────┬→ merge
-                                      └→ approve_merge ─┘
+design ─┬→ review_design ───┐
+        └→ adversary_design ┴→ filter_design → approve_design → base → test_design → review_tests → implement → run_tests ─┐
+  ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+  └→ review_impl → filter_impl ─┬→ integrate ─────┬→ merge
+                                └→ approve_merge ─┘
 ```
 
 - **Agent nodes** (design, reviews, tests, implementation) are done by workers from a task card.
-- **Review lenses** review the design, and again the implementation, in parallel and independently, each with one question: `intent` (the goal's spec and the project's intent, `settings.intent`), `simplicity`, `truth`, `adversary`, `concurrency`, `rollout` and `experience`. Each finding says what goes wrong if it is ignored (`impact`) and whether the reviewer claims it must be fixed (`material`). A **filter** node per subject then joins them: a material finding reopens the work; the filter judges every other one `keep` (it reopens too) or `note` (shown on the next card and to you, never blocking). The filter may promote a note but never demote a material finding. Goals skip lenses that do not apply (`intent`, `simplicity`, the filters and `approve_merge` cannot be skipped); every skip and its reason is shown on the approvals and in the pull request.
+- **Reviewers** work through several lenses each, one pass per lens. `review_design` applies `intent` (the goal's spec and the project's intent, `settings.intent`), `simplicity`, `truth`, `adversary`, `concurrency`, `rollout` and `experience`, and a separate `adversary_design` runs beside it. `review_impl` applies `compliance`, `correctness`, `missing` (what outside the diff should have changed too), `tests` and `craft`. Every finding names its `lens`. Each finding says what goes wrong if it is ignored (`impact`) and whether the reviewer claims it must be fixed (`material`). A **filter** node per subject then joins them: a material finding reopens the work; the filter judges every other one `keep` (it reopens too) or `note` (shown on the next card and to you, never blocking). The filter may promote a note but never demote a material finding. Goals remove lenses that do not apply with `<reviewer>:<lens>` skip keys (`intent`, `simplicity`, `compliance`, `missing` and `craft`, the reviewers, the filters and `approve_merge` cannot be skipped); every skip and its reason is shown on the approvals and in the pull request.
 - **Human nodes** (`approve_design`, `approve_merge`) are your decisions, answered in conversation.
 - **Ops** run inside `zzzops start`: `git.base` puts the goal's commits on its stack base, `checks.run` runs the tests on the exact code, `git.integrate` builds the review-free pull request and reads its required checks, and `github.merge` merges at the reviewed head.
 
