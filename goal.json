@@ -176,6 +176,56 @@
       "reason": "stale",
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_tests:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:c237ea3cc4c65d0b317e62c6e0b04fe174b08c15135eea5523dbe1602a9f600c",
+          "text": "F1: test_engine_review_lenses.py test_engine_version_or_capability_marks_the_new_shapes does `from engine import ENGINE_VERSION`, then accepts either a version >= 1.2.0 or engine/capabilities/lenses.txt. G1027's approved design deletes ENGINE_VERSION, which is exactly the order in which lenses.txt is the expected form (G1027 section 5). So in that order the test raises ImportError instead of passing. In that order the 15-node template should also require `lenses` (G1027 makes the template declare what its graph needs: requires lens_findings), and nothing checks it. Fix: use `getattr(engine, 'ENGINE_VERSION', None)`; check lenses.txt first and, when present, assert shipped('POLICY.json')['settings']['engine']['requires'] contains 'lenses'; otherwise assert the version bump.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T21:45:36Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:496ddd5a4af997072a6592b0a8c591ece5625b54",
+          "tests": "v1:sha256:df8ad0310245b317622786380dd41103a2ae4865133182fa58f7ba39434dfaea"
+        },
+        "policy": {},
+        "subject": "v1:sha256:c237ea3cc4c65d0b317e62c6e0b04fe174b08c15135eea5523dbe1602a9f600c"
+      },
+      "holder": "claude:e6ad/rd1022",
+      "input_fp": "v1:sha256:494c124db3839c3b9cfac6a0747b6183de948533e80e46624f4f09ac382d6e4f",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "085f9fb517dacf8fa17996313f16960818ec3b4c",
+          "commit": "5ae4d524b55d48de7df61a9609020ee21a5b6a9e",
+          "path": ".zzzops/reviews/1022/review_tests.md"
+        },
+        "summary": "Thorough tests that match design revision 2. All commands collect from the worktree root (review_lenses: 59 tests, 45 failing pre-implementation; the moved G1000/G1020 suites pass on graph26). The writer's three readings (Graph.reviewers; filter_design blocked until the reviewers rerun; review_impl's stale keys checked when it first becomes ready) are all correct. One fix: the capability-or-version test imports ENGINE_VERSION, which G1027 deletes, so it errors in the G1027-first order it is meant to accept."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "004467a58a810eb9b65ecb37f975e8ac9ebdf0cc",
+          "commit": "73cdb03a8877aec4a858729d39607cb0de0d34d1",
+          "tree": "7f17c2d5f952ad71ac9882d57d126154b134dcb8"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
