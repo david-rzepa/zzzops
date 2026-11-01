@@ -172,15 +172,15 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T04:53:10Z",
+      "finished_at": "2026-11-01T05:26:17Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
           "base": "v1:sha256:f0f86e3e5d7131680049bfd289e2d0b91b2df6ab0e5273c2ec770b60152ca61d",
-          "doc": "v1:blob:d7d3e64f91bd9fe8264ac1b901a4ddcaa0536992"
+          "doc": "v1:blob:5ed045be21817ba93e467355960e3c37a4cb091f"
         },
         "policy": {}
       },
@@ -199,8 +199,8 @@
         ".agents/test_engine_docs.py",
         ".agents/test_engine_lenses.py"
       ],
-      "holder": "claude:e6ad/test_design-1000-1",
-      "input_fp": "v1:sha256:2584be26bcae65881ef1eb2003f2a71b1c865c9b264f1330d82055307fa717ae",
+      "holder": "claude:e6ad/test_design-1000-2",
+      "input_fp": "v1:sha256:688433e7e005438cd35b4ccb231dd0c38f222d8d12e119eabb2138f0cb32f2b8",
       "ok": true,
       "output": {
         "commands": [
@@ -210,12 +210,12 @@
         ],
         "tests": {
           "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "8d4ce3781d12b090e7ce2d44c1555d27098700ab",
-          "commit": "a5b5579b95fd8cc2b0af211ff81fa45f0a0ce5a1",
-          "tree": "20af30d3224ad7ba6148ebaa0e5db1f60cceeb21"
+          "change": "813390138d87f194b2c7102ccade7e068a285a62",
+          "commit": "d5e46d1972ced6a2a3f08ced98b8a81bc7742888",
+          "tree": "b7fbdcc97810f38e987088cca88055662537b5c4"
         }
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     }
   },
