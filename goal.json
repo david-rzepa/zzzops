@@ -186,15 +186,15 @@
       "status": "done"
     },
     "review_impl": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_impl:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "implement",
           "target_attempt": 1,
           "target_fp": "v1:sha256:d8e28d8c8499b7de4c71bd29ba0acccbf437630a1bd5037a3bd21734473f755f",
@@ -202,36 +202,36 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T21:40:30Z",
+      "finished_at": "2026-11-01T21:53:54Z",
       "fp_parts": {
         "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
         "inputs": {
-          "code": "v1:sha256:3d7dddaabf075d0befabb2c5cb47b77c86fcd34c541415e5527cef575b56ba71",
+          "code": "v1:sha256:df0ee076f2fc59175c2d1150f43ad9e8980abaca1aef0bf5f9a7e8bbd7dff44c",
           "doc": "v1:blob:f4c441999a3da82b48323c1b35d7f55058578cc7",
           "tests": "v1:sha256:17960be0d86d77405c1f82798717b2a22198c9e78fefe75abe836c3400d157d5"
         },
         "policy": {},
-        "subject": "v1:sha256:d8e28d8c8499b7de4c71bd29ba0acccbf437630a1bd5037a3bd21734473f755f"
+        "subject": "v1:sha256:9b48be50bdae933b31e3bd2e561909267f7ebc55812b4ec5d61445018f281f45"
       },
       "holder": "claude:e6ad/rt5",
-      "input_fp": "v1:sha256:b7bfac42f5a23a8fb641bd2df778e7ed01f0f5706e05b70d7bdaf93d4c87ac30",
-      "ok": false,
+      "input_fp": "v1:sha256:c9fc6beb6ed6303626d6d24e10cbf155abbf23acb4b1db75957590e1db5368a0",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "3f2968293411b861e14d2e26727ca2efe8732dd8",
-          "commit": "5cb7b9dc99d618f051dc6346ba6e0c379b57c9dd",
+          "blob": "5af443a683b66710e27b2edd8fcadbc714110542",
+          "commit": "13cadd83f0d72c51ed5646369041740d92a3fd9e",
           "path": ".zzzops/reviews/1029/review_impl.md"
         },
-        "summary": "The implementation follows design revision 2 and its D5 note: add-goal step 2 (check before new, absent or placeholder intent skips, quote plus change/amend/proceed, owner's own words, no owner present means no paragraph), the no-skip rule with drop-on-edit, the approve_design bullet (with the extra check that the paragraph quotes the owner), DESIGN section 3.12 and the HISTORY row, the prompt_stats signals and the label/spec-input tests. prompt_stats --check passes at 80d4468 and no .zzzops/prompts file is edited. One defect: the last two sentences of the lens_intent.md paragraph can be read as cancelling the feature, because 'In either case, until then, treat the departure as not accepted' also covers an 'Accepted as is' paragraph, which has no amendment to wait for."
+        "summary": "review_impl:1:1 resolved. The only change since 80d4468 is the lens_intent.md paragraph: an Accepted as is paragraph with the owner's quoted, dated words now counts at once, an Amendment on ... paragraph counts only once policy.intent holds the amendment (until then the departure is treated as not accepted), and the phrase accepts nothing is kept for the missing-quote case, so the label test still holds. Nothing else moved; no .zzzops/prompts file touched."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "code": {
           "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "81132b9260e383b58b42fe702ace5b44fc2d56a1",
-          "commit": "80d446871f81edfa6948520ef3fa8d8aca54a777",
-          "tree": "72807734f4a0a6beb0ade3003798ee9ddfa6defb"
+          "change": "7691eec337473b830085d04660a83bc35f18e821",
+          "commit": "474e3491b12e4a51fa492f019cd79b68956fab50",
+          "tree": "ac4db69dd4b9eb4f80c248e56e181ca3f63b6473"
         }
       },
       "status": "done"
