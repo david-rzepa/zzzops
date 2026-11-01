@@ -111,30 +111,30 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-01T06:33:14Z",
+      "finished_at": "2026-11-01T07:21:17Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
-          "base": "v1:sha256:f0f86e3e5d7131680049bfd289e2d0b91b2df6ab0e5273c2ec770b60152ca61d",
+          "base": "v1:sha256:bdd8faa768559c4b8a65bd74f02c7fcb133d59b44c4c97504864a4c68afc3ad5",
           "doc": "v1:blob:5ed045be21817ba93e467355960e3c37a4cb091f",
-          "tests": "v1:sha256:e65850d0065f9360cd8333fbf7dc1af79ba122e8333228e28efb42fdf5f040f4"
+          "tests": "v1:sha256:2c0574165b3d1b73286cfd17f2b9fdf6f92587b44fbace7c285d20cf2ab637c6"
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/implement-1000-2",
-      "input_fp": "v1:sha256:66540271fff8cc53e3b1ae9136a0c758f1c0ad47093b395b0c5c0fe2b8851343",
+      "holder": "claude:e6ad/implement-1000-3",
+      "input_fp": "v1:sha256:e970ea3922feddaa47b4b564cd041778ee6d8714460edcb3701baeb1ed043545",
       "ok": true,
       "output": {
         "code": {
-          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "15eadcd5876053bb888c6f6b3b3e7f35489b21ff",
-          "commit": "e270a250a2337fce3729f80f4bf8711cff0222c0",
-          "tree": "221f1d882da4495d02645fd77b743d6374ebec74"
+          "base": "6747a5ea3c91aedd39089d1811a415680521bfed",
+          "change": "2ff7c35411997dbfcdb07e167588638466848d7d",
+          "commit": "6476249c590625ad6628f56f728f7c8eea02b9f2",
+          "tree": "81c1446cce52a31639b51ff756252d040e81f62f"
         },
-        "summary": "Resubmit of the attempt-1 implementation (5281509 engine, d40bb54 templates, 9b1fbaa docs) after the frozen tests were corrected in 12e8d29 as the implementer's two findings requested. No code change needed. Verified at HEAD: test_engine_lenses.py, 61 tests OK; the implementer's full-suite run passed 438 with prompt_stats --check."
+        "summary": "Resubmit after base rebased G1000 onto dev 6747a5e. The conflict resolution (by the base worker) keeps both sides: frontier.py keeps G1014's running-state parts with G1000's candidates part via fp_parts(..., R); card.py routes G1000's policy section and long candidates/notes through G1018's _steps/_apply shrink mechanism (views never blobbed, never grows); docs merged. Full suite in the worktree: 584 tests OK; prompt_stats --check passes."
       },
       "reason": "stale",
       "status": "done"
