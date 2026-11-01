@@ -195,6 +195,44 @@
       },
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T22:29:55Z",
+      "fp_parts": {
+        "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
+        "inputs": {
+          "code": "v1:sha256:a5b59d19e98a90836921f19d861836c47c08a0d82e8935650e9124b7a4b7c24c",
+          "doc": "v1:blob:6f4c7854b055f0ef632f22312336a6e094a53cd5",
+          "tests": "v1:sha256:f24180556c7db342e38b7b1e592c04459f956a0be681b445c94dde442c4cc1a5"
+        },
+        "policy": {},
+        "subject": "v1:sha256:3cda900b9e8ffaa89346bac195674cf25a6623511ea5539637d12853b5b37f7b"
+      },
+      "holder": "claude:e6ad/rd1022",
+      "input_fp": "v1:sha256:fdabd3b6fcbcb2e00f17dc4c7cf399d023a87857172a4ab7b562cbf63941b60b",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "eecdb3e4289a6d5ed86227ca8a6aaab69deb0b5d",
+          "commit": "9e30958376d8c232929de80b435658dd22abd69d",
+          "path": ".zzzops/reviews/1028/review_impl.md"
+        },
+        "summary": "The implementation matches design revision 2: carried-finding liveness (stale lenses carry material/keep only, ops excluded, the target_fp check ends the carry), the closed-id split and refusals, follows (rounds inherited, upheld false, gated by engine.min >= FOLLOWS_SINCE), and --repo on worker-facing commands only (card, renew inputs_changed, abandon restart). Both departures are accepted: positional edit selectors are safe because ids contain ':' and --base pins positions, and the shortened card texts keep their meaning and SPEC is updated. Notes: at rebase against G1022's 1.2.0, bump FOLLOWS_SINCE as well as ENGINE_VERSION; DESIGN.md:414 quotes the old renew text; the budget fixture CTX lacks a repo path."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "1f8cc8b4a2fba9a2db0e91153c3a7e1075e29c03",
+          "commit": "db493580ea426ff34a5f834697faa0321492458a",
+          "tree": "fe225aa2ad17ae13ddcbd7f13fbe4be0db752288"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 2,
       "correction_runs": 1,
