@@ -10,7 +10,35 @@
     "issue": null
   },
   "priority": "P2",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T19:28:46Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:38bd2bb7e360625c8d4fd7863ee482fb7080b82f31a6acb087c3ad8deb301589",
+          "spec": "v1:sha256:960d773c4c295e2b5daa47dbbcba12c33472dbfed6137192c92d5fd4b682ed28"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1032",
+      "input_fp": "v1:sha256:16113c191bea938ed554b49d6025ce74f8ab4e3645552ee772c7b06e537b2a7b",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "ab9cef22ec163432bbc16852f77271fed4bfee57",
+          "commit": "f09143a3fe3081ecd1a262ad8570f4fe3eedf133",
+          "path": ".zzzops/reviews/1032/design.md"
+        },
+        "summary": "The engine never reads rulesets or branch protection: integrate gates on required_ci from the PR's statusCheckRollup and merge uses gh pr merge with --match-head-commit, and validate checks only gh. So this is a skill and docs fix: step 7 gets a 403 fallback (explain, read merge settings from the repo endpoint, ask the owner for check names or propose them from recent PR check runs, record in required_ci, state that the engine's check gate is the only guard). No engine change; one guard test that integrate does not touch rules endpoints."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
