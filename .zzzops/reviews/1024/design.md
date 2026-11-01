@@ -1,6 +1,10 @@
 # G1024 design: tell repositories when the shipped default policy changed, and offer a reviewed update
 
-Revision 2. The only change from revision 1: the spec gained G1017's acceptance line ("This PR edits docs/design/SPEC.md and DESIGN.md for every contract change it makes (the sections in G1017's pending row), adds a HISTORY §4 row and deletes the G1024 pending row"). §5 now states it as this PR's acceptance and covers the verb outputs it adds, and §6 gains test 10 for it. Nothing else changed.
+Revision 3. It answers review_design:1:1 (F1, version skew) and takes the review's three notes.
+- **1:1:** a non-null base that the running engine's history store does not hold is now its own case, `upstream: unknown_base` ("recorded by a newer or unreleased plugin: upgrade the plugin to compare"). It gets no diff and no apply, and `record.reviewed` keeps that base unchanged, so an older plugin can never present its older template as the new default or downgrade the record (§3.3, §3.4, §3.5, §9). Test 11 covers it.
+- **Notes:** the execute skill says never to edit `.zzzops/TEMPLATE.json` in a goal (§3.7); per-file applies follow the `workflow.json` decision (§3.7 step 3), which matters for G1022's restructure; G1025's template additions get the same history note as G1022 (§7).
+
+Revision 2 folded G1017's acceptance line into §5 and test 10.
 
 Read at dev `c3791a0` and re-checked at `8d8437a` (G1020 merged since, which changed `templates/default/POLICY.json` and `prompts/lens_truth.md`: one more silent default change of the kind this goal reports).
 
@@ -91,7 +95,10 @@ For each path in (shipped files ∪ record keys), with S = the shipped id (absen
 | B present, S present, B != S | yes | `changed` | `unchanged` if L == B, `changed` if L differs, `deleted` if L is absent |
 | B not in record, S present | yes | `added` | `absent` if L is absent, `changed` if a same-named local file exists |
 | B present, S absent | yes | `removed` | `unchanged` / `changed` / `deleted` as above |
-| B null, or B not in the history store | yes, unless L == S | as above (`changed` when S is present) | `unknown` |
+| B null (unknown provenance, written only by `inferred`) | yes, unless L == S | as above (`changed` when S is present) | `unknown` |
+| B non-null and not in the running engine's history store | yes | `unknown_base` | `unknown` |
+
+A non-null base that this engine does not know was recorded by a newer plugin, or by an unreleased build. The running engine cannot tell whether its own template is newer or older than that base, so it claims neither: the row is checked before the others, and the base is never compared with S. It is not an update offer.
 
 - Repository files that are neither shipped nor in the record are the repository's own files and are ignored.
 - **Inputs.**
@@ -137,7 +144,7 @@ There is no item when the record is valid and nothing is listed.
 }
 ```
 
-**`diff`.** It is from the old default to the new one. When the base is unknown or missing from the store, it is from the repository file to the new default instead. A `removed` file gets a diff only when the file was edited here.
+**`diff`.** It is from the old default to the new one. When the base is `null`, it is from the repository file to the new default instead. An `unknown_base` file has no `diff` and no `apply`. It carries `note`: "recorded by a newer or unreleased plugin: upgrade the plugin to compare". A `removed` file gets a diff only when the file was edited here.
 
 **`apply`, by case.**
 - A file unchanged here gets `merge`. With the base equal to the local file, `git merge-file` simply replaces the file with the new default, so the same command serves both an edited and an unedited file.
@@ -145,7 +152,10 @@ There is no item when the record is valid and nothing is listed.
 - `added` and absent here: `copy`.
 - `removed` and unchanged here: `delete`. If edited here, it gets `manual`: "kept: edited here".
 - `deleted` here: `manual`: "deleted here; the new default is …".
-- Unknown base: `manual`.
+- `null` base: `manual`.
+- `unknown_base`: no apply.
+
+When every listed file is `unknown_base`, the message says only "this repository's default record was written by a newer or unreleased plugin: upgrade the plugin to see default updates", and the item offers no record.
 
 **Paths and commands.**
 - Repository paths are `.zzzops/…`, relative to a worktree root, or `<D>/…` for the dir form.
@@ -167,6 +177,8 @@ The engine stays read-only. It computes the exact record content. The agent writ
   - after an update, whether files were merged, copied or kept;
   - for a decline: only the record changes.
 
+  **A base this engine does not know (`unknown_base`) is copied unchanged into `reviewed`.** So a record written by an older plugin never downgrades a newer plugin's base, and two installs on different versions cannot ping-pong the record. `reviewed` is omitted when every listed file is `unknown_base`.
+
   A declined file then reads as `local: changed` against the new base, which is true. It is not listed again until S changes, so **the decision is recorded without a separate "declined" field**.
 - **`inferred`** ("create it from the current files") sets each file to the history id equal to its current content when one exists, and to `null` otherwise. Files absent here are left out. Writing it records only facts, so the regular `update` item that follows lists exactly the real drift, plus the `unknown` files to compare by hand once.
 - **The `no_record` item** lists the files that would be listed after `inferred` is written, so the owner sees the size of the drift up front.
@@ -184,14 +196,14 @@ It is a warning, not a `policy_invalid` error. A stricter validation would pause
 **Bootstrap skill, new section "Update from the shipped defaults"** (used for `update`, `no_record` and `invalid_record`). It has these steps:
 1. Tell the owner what changed: the files, and which were edited here. Updating or declining is the owner's choice.
 2. Create a worktree on a new branch `zzzops/policy/defaults-<template>` from `<I>`. Do not push it until it is ready, because the push pauses new work.
-3. In the worktree, run `zzzops validate --policy --dir .zzzops`. For each file, read `diff` and do its `apply`, or keep the local file. For a `workflow.json` change, read MIGRATING's section for it first. Resolve any conflict markers.
+3. In the worktree, run `zzzops validate --policy --dir .zzzops`. **Decide `workflow.json` first.** For a `workflow.json` change, read MIGRATING's section for it, then take it, merge it or keep the local file. The prompts follow that decision. Copy an `added` prompt only if the chosen workflow uses it, and delete a `removed` prompt only if the chosen workflow no longer names it, whatever its `apply` says. This matters for G1022's restructure. Then, for each other file, read `diff` and do its `apply`, or keep the local file. Resolve any conflict markers. `unknown_base` files are left alone: upgrade the plugin first.
 4. Write `record.reviewed` to `.zzzops/TEMPLATE.json`. For `no_record` without a review, write `record.inferred` instead.
 5. Re-run `validate --policy --dir .zzzops`. It must pass, with no `policy_update` (after `reviewed`) and no `policy_merge_markers`.
 6. Commit, push, and preview the impact with `zzzops validate --policy-ref <branch>` and `zzzops next --policy-ref <branch>`. A changed prompt re-runs nodes that use it. Land through a PR whose body lists what was taken, kept and declined, then delete the branch.
 
 **Declining** is steps 2, 4, 5 and 6 with no file changes. The PR body says what was declined.
 
-**Execute skill, step 2:** "If `next` has `policy_update`, tell the user once and offer the bootstrap skill's update; keep working."
+**Execute skill, step 2:** "If `next` has `policy_update`, tell the user once and offer the bootstrap skill's update; keep working. Never edit `.zzzops/TEMPLATE.json` or other policy files in a goal: use the bootstrap update." `integrate` does not guard TEMPLATE.json (§4), so this line is the guard against the G1023 failure mode.
 
 ### 3.8 Code layout
 
@@ -262,7 +274,7 @@ New `.agents/test_engine_defaults.py`, using the engine fixtures' bootstrapped r
    - After writing it, the `update` item lists exactly the drifted and `unknown` files.
 6. **Shape cases.**
    - `added`, `removed` (edited here or not) and `deleted` here each give the documented `apply`.
-   - A base missing from the store gives `local: unknown` and a local-to-new diff.
+   - A `null` base gives `local: unknown` and a local-to-new diff.
    - CRLF content (repository or template) gives the same id as LF.
 7. **Never blocks.**
    - With an active item, and with `invalid_record` and `newer_record`: `next` has no new blocker and still offers actions, and `start` succeeds.
@@ -270,13 +282,18 @@ New `.agents/test_engine_defaults.py`, using the engine fixtures' bootstrapped r
    - With 30 listed files, `next` stays under 8,192 bytes and shows 10 paths.
    - A computation that raises (patched) drops the item, and the verb succeeds.
 8. **Preview.** `next --policy-ref <branch>`, where the branch has the update and the reviewed record, shows no item while the integration tip still does.
-9. **Skill text.** The bootstrap skill names `record.reviewed`, the decline, and `validate --policy-ref`. The execute skill names `policy_update`.
+9. **Skill text.** The bootstrap skill names `record.reviewed`, the decline, `validate --policy-ref`, and "Decide `workflow.json` first". The execute skill names `policy_update` and says never to edit `.zzzops/TEMPLATE.json` in a goal.
 
 10. **Design docs (acceptance).** In this PR's tree:
     - G1017's `test_no_landed_goal_is_pending` passes, so no G1024 row remains.
     - `docs/design/HISTORY.md` §4 has a G1024 row.
     - `git grep -n 'TEMPLATE.json\|policy_update\|policy_merge_markers' -- docs/design/SPEC.md docs/design/DESIGN.md` finds each name in SPEC (§2.3, §3.2, §3.15/§3.16, §8.3) and `policy_update` in DESIGN §3.10.
     - review_impl checks these against §5.
+
+11. **Version skew (review_design:1:1).** A record is written with a store that holds one more version of `prompts/design.md` than the running engine's (the newer plugin's S_new). Then the older engine runs.
+    - The file is listed as `upstream: unknown_base`, `local: unknown`, with no `diff` and no `apply`, and nothing in the item offers the older template.
+    - `record.reviewed` keeps that base equal to S_new while updating other files' bases. When it is the only listed file, `reviewed` is absent.
+    - Running the newer engine on the record the older engine offered lists nothing for that file, so there is no ping-pong.
 
 New `.agents/test_template_history.py`:
 - Every `templates/default` file's id is in the store with identical normalised bytes, and the failure message names `.agents/template_history.py --write`.
@@ -296,7 +313,7 @@ The existing template test (`validate --policy --dir <template>`) still passes (
   - If G1022 merges after this goal, its PR must add the new versions to the store (`.agents/template_history.py --write`). The history test enforces this. Its `REQUIRED_FILES` edits are unaffected.
   - If it merges first, this goal's seed includes its blobs.
   - In repositories, its restructure arrives as an `update` item: `workflow.json` `changed`, new prompts `added`, old ones `removed`. The item's `see` points to MIGRATING, where G1022 adds its "restructured workflow.json" section. A textual merge of a restructured `workflow.json` is not reliable, so MIGRATING's section says to take the new file and re-apply local changes by hand. The root passes this paragraph to G1022's implement as a note; it needs no dependency edge.
-- **G1025** (optional `settings.branching`, not in the shipped template). A repository that sets it has edited POLICY.json, which is an ordinary `local: changed`. The three-way merge keeps it. There is no interaction otherwise.
+- **G1025** (optional `settings.branching`, not in the shipped template). A repository that sets it has edited POLICY.json, which is an ordinary `local: changed`. The three-way merge keeps it. G1025 also changes the shipped `workflow.json` (it adds `graphs.release`) and adds `approve_start.md` and `approve_finish.md`. The note is therefore the same as G1022's: its PR runs `.agents/template_history.py --write`, and the history test enforces this whichever merges first. The root passes this paragraph to G1025's implement.
 - **G1020** (merged at `8d8437a`). Its `POLICY.json` and `lens_truth.md` versions go in the seed.
 
 ## 8. Rollout
@@ -308,7 +325,7 @@ The existing template test (`validate --policy --dir <template>`) still passes (
 ## 9. Risks
 
 - **Store growth.** It grows by tens of KB per year of default changes. It is deduplicated and small next to the engine. Compaction is out of scope.
-- **Builds from unmerged branches.** A repository bootstrapped from such a build can record a base that never reaches the store. It degrades to `local: unknown` with a local-to-new diff. The result is safe, only less precise.
+- **Builds from unmerged branches.** A repository bootstrapped from such a build can record a base that never reaches the store. It degrades to `upstream: unknown_base` everywhere: no diff, no apply, and the base is kept. Version skew between installed plugins does the same, so no install ever reconciles onto an older default (§3.3). The result is safe, only less precise.
 - **A wrong textual merge of `workflow.json`.** `validate --policy` catches schema errors. MIGRATING, the `--policy-ref` impact preview and the PR review catch semantic ones.
 - **Windows CRLF worktrees.** `git merge-file` on a CRLF file against LF defaults can produce mixed endings. The ids are normalised, so detection is unaffected. The skill tells Windows users to run the merges in a worktree with `core.autocrlf=input` or to check line endings before committing.
 - **A goal diff editing TEMPLATE.json** is not refused by `integrate` (§4). Its effect is limited to the notice.
