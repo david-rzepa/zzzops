@@ -170,7 +170,8 @@ class World:
         self.env = isolated_env(self.home)
         gcfg = self.env["GIT_CONFIG_GLOBAL"]
         with open(gcfg, "a", encoding="utf-8") as fh:
-            fh.write(f'[url "{self.remote}"]\n\tinsteadOf = {REMOTE_URL}\n[zzzops]\n\tcommitter = ZzzOps Test <zzzops@test>\n')
+            # a file: URL with forward slashes: backslashes are escapes in gitconfig (Windows paths)
+            fh.write(f'[url "{Path(self.remote).as_uri()}"]\n\tinsteadOf = {REMOTE_URL}\n[zzzops]\n\tcommitter = ZzzOps Test <zzzops@test>\n')
         self.env.pop("GIT_AUTHOR_DATE", None)
         self.env.pop("GIT_COMMITTER_DATE", None)
         subprocess.run(["git", "init", "-q", "--bare", "-b", "dev", self.remote], check=True, env=self.env)
@@ -406,8 +407,9 @@ class FakeGitHub:
         import engine_fake_gh as f
         st = self.load()
         pr = st["prs"][str(n)]
-        f.refresh(st, pr)
-        f.do_merge(st, pr, method, by="dave")
+        with env_of(self.w.env):                         # the world's Git identity, as the fake gh process has
+            f.refresh(st, pr)
+            f.do_merge(st, pr, method, by="dave")
         self.save(st)
 
     def close_by_hand(self, n):

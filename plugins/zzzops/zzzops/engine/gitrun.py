@@ -56,7 +56,8 @@ class Git:
         env = base_env()
         p = subprocess.run(["git", "-C", str(cwd), "rev-parse", "--git-common-dir"], capture_output=True, text=True, env=env)
         if p.returncode != 0:
-            raise Refused("environment", "not inside a Git repository", details={"cwd": str(cwd)})
+            raise Refused("environment", "not inside a Git repository",
+                          details={"cwd": str(cwd), "git": p.stderr.strip()[:500]})
         common = Path(p.stdout.strip())
         if not common.is_absolute():
             common = (Path(cwd) / common).resolve()

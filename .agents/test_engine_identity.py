@@ -154,7 +154,9 @@ class IdentityTests(unittest.TestCase):
             fh.write("* diff=foo -text\n*.txt -diff\n")
         cfg = os.path.join(h, ".gitconfig")
         with open(cfg, "w") as fh:
-            fh.write(HOSTILE.format(order=os.path.join(h, "order"), attrs=os.path.join(h, "attrs"), hooks=hooks))
+            posix = lambda p: p.replace("\\", "/")             # backslashes are escapes in gitconfig
+            fh.write(HOSTILE.format(order=posix(os.path.join(h, "order")), attrs=posix(os.path.join(h, "attrs")),
+                                    hooks=posix(hooks)))
         env = dict(self.repo.env)
         env.update({"HOME": h, "GIT_CONFIG_GLOBAL": cfg})
         env.pop("GIT_CONFIG_NOSYSTEM", None)
