@@ -251,15 +251,15 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 5,
-      "correction_runs": 4,
+      "attempt": 6,
+      "correction_runs": 5,
       "findings": [
         {
           "id": "review_tests:5:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 5,
           "target_fp": "v1:sha256:1ba8b9da35875668832f428ea26288f81cada639426c8979f6f01b6c9417c2d5",
@@ -267,35 +267,35 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T17:26:31Z",
+      "finished_at": "2026-11-01T17:31:28Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:5ed045be21817ba93e467355960e3c37a4cb091f",
-          "tests": "v1:sha256:810825203a0ce8391334aa18653e910701f106175e16414e2ae975669a630503"
+          "tests": "v1:sha256:a06cb57d8598146667540a9fe8819f3afd5b4f241a5f85a4876c3e5b723e6687"
         },
         "policy": {},
-        "subject": "v1:sha256:1ba8b9da35875668832f428ea26288f81cada639426c8979f6f01b6c9417c2d5"
+        "subject": "v1:sha256:a7deb5acc87cba6ecb048811030ec512ee25537eaecfd6a7c80c3c3e2e98bd64"
       },
       "holder": "claude:e6ad/rt5",
-      "input_fp": "v1:sha256:eb3572434760e7b236fc6a274efbed2a0e9726b3a48c4f398559179c52355247",
-      "ok": false,
+      "input_fp": "v1:sha256:6b88cad009bd154fc8e6fe60e92d18351b98857de8bced0a0ff2756b4d21dc5d",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "969ad2adc4a38af07afec282431180acba49f7db",
-          "commit": "406e84700d710f57fcd07ccd33d56ae4b284cbbd",
+          "blob": "3185f278d39113ad3e6bf7b0d0ced8688b7fccc3",
+          "commit": "d417d47a911ed1d0b2bbbe5af77828ef8a8ba956",
           "path": ".zzzops/reviews/1000/review_tests.md"
         },
-        "summary": "The range-diff shows no test content change (all test commits identical), and test_engine_lenses/docs/bundle pass (75 tests). But the rebase broke dev's G1016 test test_engine_card_ux.DocsTests.test_prompts_name_full_shas: it reads the frozen fixture copy .agents/fixtures/graph12/prompts (engine_fixtures.TEMPLATES), whose test_design.md and implement.md still carry the pre-G1016 checkpoint wording. Fixture must be re-synced with dev's templates/default/prompts. Everything else in card_ux/card_budget passes (65 run, 1 failure)."
+        "summary": "Finding review_tests:5:1 resolved: 6ecbeb0 makes graph12 test_design.md and implement.md byte-identical to dev a05fb97, and all eight graph12 prompts now match dev. Only those two files changed in tests; test content otherwise as approved previously (75 lens/docs/bundle tests passed). No open findings."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "a05fb9714f105b4b6da43deafde535ea6eed8a88",
-          "change": "8f9154ba5965f5bea3156676d8aa66d064914e9c",
-          "commit": "6119eac973d80ebc298693c7dc11b43101a995ad",
-          "tree": "86a3d60fcefa69cc0099009615864ee2cd114a8f"
+          "change": "97c185d5cf500b2a1e8f64e4bceef8ab4c51f73e",
+          "commit": "6ecbeb0fee9ed6f4cff3d03d9c1a3b9fdf7de7f1",
+          "tree": "c23c5d333a09d2e6ba12370e4ecf9595769ac40a"
         }
       },
       "status": "done"
