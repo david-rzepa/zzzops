@@ -1,0 +1,20 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [
+    1017
+  ],
+  "graph": "default",
+  "id": 1034,
+  "links": {
+    "issue": null
+  },
+  "priority": "P1",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Found while designing G1003 (2026-11-01). The owner: \"All goals are in scope - as part of the migration releases should be assigned\". Today the migrate-zzzops-repository skill's triage (step 4) has no release field, step 5's `zzzops new` defaults every goal to settings.releases.current, and MIGRATING.md's \"#695, all release 1\" line is specific to this repository.\n\n1. The triage table gains a release column; the skill proposes a release per goal (from the old issue's milestone or labels, its dependencies and priority) and the owner confirms or changes it.\n2. `new` receives the release explicitly; dependencies are checked against release order (a goal may not depend on a later release) before any goal is created, and conflicts are shown in the triage.\n3. MIGRATING.md's repository-specific line becomes general guidance.\n\nAcceptance: the skill and MIGRATING document the release column and the confirmation; a skill test (or prompt_stats signal) checks it; if `new` or validation changes, engine tests cover it; this PR edits docs/design for contract changes and adds a HISTORY §4 row (G1017's rule).\n\nReplaces G1030, whose branches were deleted to remove private details of the owner's dogfood app (owner decision, 2026-11-01).",
+  "state": "open",
+  "title": "Migration assigns each migrated goal a release"
+}
