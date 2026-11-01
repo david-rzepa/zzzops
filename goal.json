@@ -45,10 +45,31 @@
       "status": "done"
     },
     "base": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "blocked": {
+        "category": "conflict",
+        "commands": {
+          "resume": [
+            "start",
+            "1028",
+            "base",
+            "--as",
+            "<LABEL>"
+          ]
+        },
+        "instructions": "In /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1028: resolve the conflicts in docs/design/HISTORY.md, `git add` them, run `git -c core.editor=true rebase --continue`, then run the resume command. Do not change the meaning of the goal's commits.",
+        "op_state": {
+          "old": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "onto": "d41e740c6788a6eb6391e0beafad677f4b086766",
+          "work": "9e30958376d8c232929de80b435658dd22abd69d"
+        },
+        "reason": "rebase conflict in docs/design/HISTORY.md",
+        "repeats": 1,
+        "waiting_for": "agent"
+      },
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T20:39:10Z",
+      "finished_at": "2026-11-01T22:30:43Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
         "inputs": {
@@ -59,21 +80,10 @@
       },
       "holder": "claude:e6ad/op",
       "input_fp": "v1:sha256:d9ef292a6b05a9ee73c1996b6fdc61e05c28301ce8f94d7c5aad2424acad7e3d",
-      "ok": true,
-      "output": {
-        "base_commit": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-        "branch": "zzzops/work/g1028",
-        "replay_map": {
-          "22d26ab052fe15c6c32851c0400ffe9e4d543e2d": "0c864e0776d89d189b07d2bcc140efbb69e49c07",
-          "2a7079ded6f3742b6f09547662566ef6c1af3e74": "c259ebc0f647024cccb3619fe796034580cc9839",
-          "2b55072115d9c87236c0751570998f76e1cf39be": "e0280813359425ff5d7b89a377e44f774b6ca223",
-          "caf5d6fd648ba4f786bfcd0bca55b1a698689ad2": "d8373943e8665b85109e52d0b800b615186b7b1f"
-        },
-        "replay_pos": {},
-        "stack": []
-      },
-      "reason": "new",
-      "status": "done"
+      "ok": false,
+      "output": null,
+      "reason": "reopened",
+      "status": "blocked"
     },
     "design": {
       "attempt": 2,
