@@ -475,6 +475,24 @@ class DocsTests(unittest.TestCase):
             self.assertIn("work branch's HEAD", im, d)
 
 
+    def test_migrating_names_full_sha(self):
+        text = (fx.PLUGIN_CODE / "references" / "MIGRATING.md").read_text(encoding="utf-8")
+        self.assertIn('"commit": "<full 40-hex sha>"', text)
+
+    def test_no_short_sha_checkpoint_override_shown(self):
+        # Engine, references, skills and templates only; this repo's .zzzops/prompts is policy (separate change).
+        roots = (fx.PLUGIN_CODE / "engine", fx.PLUGIN_CODE / "references", fx.PLUGIN_CODE / "templates",
+                 fx.PLUGIN_CODE.parent / "skills")
+        bad = ('"commit": "<sha>"', '\\"commit\\": \\"<sha>\\"')
+        for root in roots:
+            for f in sorted(root.rglob("*")):
+                if not f.is_file() or f.suffix in (".pyc", ".png"):
+                    continue
+                text = f.read_text(encoding="utf-8", errors="ignore")
+                for b in bad:
+                    self.assertNotIn(b, text, str(f))
+
+
 class RenamedCardTests(ReclaimStalenessTests):
     renamed = True
 
