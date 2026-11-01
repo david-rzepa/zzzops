@@ -182,6 +182,44 @@
       },
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T21:57:56Z",
+      "fp_parts": {
+        "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
+        "inputs": {
+          "code": "v1:sha256:cf683bdad0c64da45efa182273fb2bb1cc743c8bb33beb64b2a6bc90255488bc",
+          "doc": "v1:blob:606311b216268f9b2f2f2495e94b654838796672",
+          "tests": "v1:sha256:1bcf0065f9c13154198538ca456d5aa89dccfd8fc2fa0b0619b5fb5a7fb833af"
+        },
+        "policy": {},
+        "subject": "v1:sha256:154d6eda423d6ab5db2c4c415bdf8ac53a585ccfe1a33db0050a7c7bf6ba1eb6"
+      },
+      "holder": "claude:e6ad/rd1017",
+      "input_fp": "v1:sha256:8d5d0b3633168f12cfe3f7536e9899201cd02c9dcbf6245bf194413ea3122313",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "7c4b77b0f424cf544c1e71602f03dab183623cca",
+          "commit": "ae4cf018031602f948a606586039328686760b3e",
+          "path": ".zzzops/reviews/1033/review_impl.md"
+        },
+        "summary": "Approved with no findings. package.py matches design revision 2. channel_for_version is shared by the build and the check. _is_codex_cachebuster is extracted unchanged. install_harness follows the design's order (cachebuster, Claude base, Codex base, generated catalog, None) with resolved bases and a guard for a missing home. _cache_marketplace documents <m> and falls back to zzzops. The hint has a Claude, Codex and neutral form, and harness is on both dicts while package_check still reads only ok and detail. The build script passes the shared channel. Release bundles at 2.0.0 are byte-identical between b452cd7 and a1d408f apart from zzzops/package.py itself (74 files). The acceptance helper checks the report shape and ignores gh and git entries, and it is called on the generated and the installed runtime in a prepared project. The docs are updated. Outside the diff, no other caller depends on the old hint text or on an exact package_status key set."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "96038a9a1e4cc800745928dbd5756a3a559a2aca",
+          "commit": "a1d408fe3e2d27ca136069f5ad08664a26a7ee6a",
+          "tree": "330f15c24cedd93493f7b382f10dbae82396d04e"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 2,
       "correction_runs": 1,
