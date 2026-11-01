@@ -133,6 +133,42 @@
       },
       "reason": "stale",
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T05:02:16Z",
+      "fp_parts": {
+        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "inputs": {
+          "base": "v1:sha256:f0f86e3e5d7131680049bfd289e2d0b91b2df6ab0e5273c2ec770b60152ca61d",
+          "doc": "v1:blob:8ec7fbf673f2260d90895827429fa7455e445a73"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        ".agents/test_engine_card_budget.py",
+        ".agents/test_engine_lifecycle.py"
+      ],
+      "holder": "claude:e6ad/test_design-1018-1",
+      "input_fp": "v1:sha256:38e13918a41e193cf766793a0500a5eb5690bdb1d5db04e320033ed2d9960745",
+      "ok": true,
+      "output": {
+        "commands": [
+          "python3 -m unittest discover -s .agents -p test_engine_card_budget.py -v",
+          "python3 -m unittest discover -s .agents -p test_engine_lifecycle.py",
+          "python3 -m unittest discover -s .agents"
+        ],
+        "tests": {
+          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
+          "change": "76e1fdab18f870c739b117df206ebd8728778f13",
+          "commit": "bcf4ecf1b11c937f9daa0981521b02f63b6153e1",
+          "tree": "ce5a77186780e6bb9b649cbbfc2b88e7e4868cee"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
