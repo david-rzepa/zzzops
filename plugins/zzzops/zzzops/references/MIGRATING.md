@@ -1,12 +1,15 @@
 # Migrating goals from the pre-reset engine
 
-The reset builds no migration tooling. Old goals stay on GitHub untouched: issue bodies, comments, labels and branches are the archive. Migrate a goal only when someone wants to continue it.
+The CLI detects pre-reset state: `next` and `validate` show a `legacy` item (old goal issues, files and install roots), and an old-format `.zzzops/POLICY.json` is the `legacy_policy` blocker. Both point to the `migrate-zzzops-repository` skill, which inventories, triages and closes the old issues with one go-ahead from the user. This page covers the per-goal details.
+
+The reset builds no automatic migration. Old goals stay on GitHub untouched: issue bodies, comments, labels and branches are the archive. Migrate a goal only when someone wants to continue it.
 
 ## Read an old goal
 - Use the issue text and the goal's branches.
-- For phase outputs, use the old engine's read-only decoding from a worktree at the tag `zzzops-pre-reset`:
+- For phase outputs, use the old engine's read-only decoding from a clone of the ZzzOps repository at the tag `zzzops-pre-reset` (the tag is only in that repository, so clone it outside yours):
   ```sh
-  git worktree add ../zzzops-pre-reset zzzops-pre-reset
+  git clone https://github.com/david-rzepa/zzzops ../zzzops-pre-reset
+  git -C ../zzzops-pre-reset checkout zzzops-pre-reset   # or 64d5196f6f4f if the tag is not published
   python3 -c "import sys; sys.path.insert(0, '../zzzops-pre-reset/plugins/zzzops/zzzops'); import comment_store; help(comment_store.decode_envelope)"
   ```
 - Never run `zzzops goal inspect` from the old engine: it writes.
@@ -37,4 +40,4 @@ The reset builds no migration tooling. Old goals stay on GitHub untouched: issue
 Publication nodes are not carried: the operations re-observe.
 
 ## Releases and housekeeping
-Release assignments from the old release-plan issue #695 are all release 1. Closing moot or delivered issues and removing stale labels is optional and done by hand.
+Release assignments from the old release-plan issue #695 are all release 1. Closing moot or delivered issues is what the `migrate-zzzops-repository` skill does; labels and comments stay as the archive.

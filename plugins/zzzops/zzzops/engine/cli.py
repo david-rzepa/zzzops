@@ -123,7 +123,7 @@ def cmd_next(argv):
     s = session(a, preview=True)
     s.open(goals=[goal_id(g) for g in a.get("goal", [])], readonly=True)
     scope = [goal_id(g) for g in a.get("goal", [])] or None
-    out = s.render_next(scope=scope, all_=bool(a.get("all")))
+    out = s.render_next(scope=scope, all_=bool(a.get("all")), legacy="check")
     s.mirror()
     emit(out)
     return 0
@@ -196,7 +196,8 @@ def cmd_validate(argv):
     env = check_environment(s.git)
     from engine.gh import gh_problems
     st = s.open(readonly=True, all_goals=True)
-    env += gh_problems(s)
+    gh_env = gh_problems(s)
+    env += gh_env
     package = package_check()
     if package:
         env.append(package)
@@ -213,7 +214,7 @@ def cmd_validate(argv):
             goals[str(g)] = []
     policy = []
     for b in st.blockers:
-        if b["kind"] in ("policy_invalid", "not_bootstrapped", "engine_too_old", "engine_too_new", "wrong_integration_branch"):
+        if b["kind"] in ("legacy_policy", "policy_invalid", "not_bootstrapped", "engine_too_old", "engine_too_new", "wrong_integration_branch"):
             policy += b.get("errors") or [b["message"]]
     p = s.portfolio()
     warnings = s.warnings(p)
@@ -225,6 +226,10 @@ def cmd_validate(argv):
     ok = not env and not policy and not any(goals.values())
     out = {"ok": ok, "coordinator": st.coordinator, "goals": goals, "policy": policy, "environment": env,
            "warnings": warnings}
+    from engine import legacy
+    item = legacy.status(s, "force", gh_ok=not gh_env, full=True)
+    if item:
+        out["legacy"] = item
     if a.get("policy-ref") and not policy and st.policy is not None:
         try:
             out.update(policy_impact(dict(a.opts, **{"policy-ref": None}), st.policy, st.workflow))

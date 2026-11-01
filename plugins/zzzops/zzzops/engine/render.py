@@ -537,9 +537,9 @@ def goal_running(res: GoalResult) -> list:
 
 
 def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = False, blockers: list | None = None,
-                warnings: list | None = None, paused: bool = False) -> dict:
+                warnings: list | None = None, paused: bool = False, legacy: dict | None = None) -> dict:
     """`blockers`: [{"kind", "message"}]; a message may contain "{n}" (the number of paused actions).
-    `paused`: a blocker pauses every action."""
+    `paused`: a blocker pauses every action. `legacy`: the pre-reset state item (G1015), shown only when active."""
     blockers = [dict(b) for b in (blockers or [])]
     warnings = list(warnings or [])
     full = bool(scope)
@@ -580,6 +580,8 @@ def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = 
            "blockers": blockers, "actions": actions, "needs_human": needs, "waiting": waiting, "running": running,
            "capacity": {"live": p.live_agents, "max": ctx.settings["parallelism"]["max_workers"]},
            "warnings": warnings}
+    if legacy:
+        out["legacy"] = legacy
     if scope:
         out["also_pending"] = {"human": out_items, "actions": 0 if paused else out_acts}
     if all_:

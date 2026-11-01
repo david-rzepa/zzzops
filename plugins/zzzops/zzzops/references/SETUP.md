@@ -5,7 +5,7 @@ The CLI and the agents' own `git` commands need **network access to the remote**
 ## Requirements
 - **Git 2.41 or later**, SHA-1 repositories, **full clones** (not shallow). Debian 12, Ubuntu 22.04 and Apple Command Line Tools before Git 2.50.1 ship older Git: install current Git (Homebrew, the git-core PPA, Git for Windows).
 - **Python 3.10 or later**, standard library only. The skills try `python3`, `python`, then `py -3`.
-- **`gh` 2.40 or later**, authenticated (`gh auth status`), for `integrate` and `merge`. Headless and sandboxed runs set `GH_TOKEN`.
+- **`gh` 2.40 or later**, authenticated (`gh auth status`), for `integrate` and `merge`. Headless and sandboxed runs set `GH_TOKEN`. `gh` also runs the legacy search for pre-reset goal issues (one `gh api graphql` request): in `next`, at most once a day while the `legacy` item is active or the search is failing, and otherwise only when its cache key changes; in `validate`, every time. Without `gh` the search is skipped and nothing fails.
 
 ## Codex
 Its default sandbox turns the network off and mounts `.git` read-only, so every invocation fails. Use one of:

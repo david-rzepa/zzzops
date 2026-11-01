@@ -485,6 +485,11 @@ SETTINGS_SHAPE = {
 }
 
 
+# Optional settings keys: absent from the shipped template and undeclared, so changing one stales nothing. Any new
+# optional key must raise ENGINE_VERSION, so that `engine.min` can keep older engines away from it.
+OPTIONAL_SETTINGS = {"legacy": {"ignore": "bool"}}
+
+
 def policy_floor(raw) -> tuple:
     """Tolerant pre-read (SPEC §4.5): (schema_version, engine.min) or (None, None) when unreadable."""
     if not isinstance(raw, dict):
@@ -505,12 +510,20 @@ def validate_policy(p) -> list:
     e.unknown("POLICY", p, {"schema_version", "settings", "instructions"})
     sv = p.get("schema_version")
     if sv == 1:
-        e.add("POLICY.schema_version", "1 is the pre-reset policy format; see MIGRATING.md")
+        e.add("POLICY.schema_version", "1 is the pre-reset policy format: run the migrate-zzzops-repository skill "
+                                       "(see MIGRATING.md)")
     elif sv != POLICY_SCHEMA or not _is_int(sv):
         e.add("POLICY.schema_version", f"must be {POLICY_SCHEMA}")
     for path in find_floats(p):
         e.add(path, "floats are not allowed")
-    _check_shape(e, "settings", p.get("settings"), SETTINGS_SHAPE)
+    settings = p.get("settings")
+    if isinstance(settings, dict):
+        _check_shape(e, "settings", {k: v for k, v in settings.items() if k not in OPTIONAL_SETTINGS}, SETTINGS_SHAPE)
+        for k, shape in OPTIONAL_SETTINGS.items():
+            if k in settings:
+                _check_shape(e, f"settings.{k}", settings[k], shape)
+    else:
+        _check_shape(e, "settings", settings, SETTINGS_SHAPE)
     ins = p.get("instructions")
     if not isinstance(ins, dict):
         e.add("instructions", "must be an object")
@@ -541,6 +554,9 @@ def _check_shape(e: Errors, where, value, shape):
             version_tuple(value) if isinstance(value, str) else (_ for _ in ()).throw(ValueError())
         except ValueError:
             e.add(where, "must be a MAJOR.MINOR.PATCH version string")
+    elif shape == "bool":
+        if not isinstance(value, bool):
+            e.add(where, "must be a boolean")
     elif shape == "branch":
         if not _one_line(value) or not value:
             e.add(where, "must be a branch name")

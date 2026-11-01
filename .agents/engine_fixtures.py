@@ -63,11 +63,16 @@ import tempfile
 
 GIT_ENV_KEYS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_CONFIG_GLOBAL",
                 "GIT_CONFIG_NOSYSTEM", "GIT_ATTR_NOSYSTEM")
+# gh credentials and host: with HOME isolated these are all a real gh could authenticate with, so dropping them
+# means no test can reach live GitHub (a `validate` in a World without FakeGitHub then finds gh unauthenticated)
+GH_ENV_KEYS = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GH_HOST",
+               "GH_CONFIG_DIR")
 
 
 def isolated_env(home: str, extra: dict | None = None) -> dict:
-    """An environment with an isolated HOME and global Git configuration."""
-    env = {k: v for k, v in os.environ.items() if k not in GIT_ENV_KEYS and not k.startswith("ZZZOPS_")}
+    """An environment with an isolated HOME and global Git configuration, and no gh credentials."""
+    env = {k: v for k, v in os.environ.items()
+           if k not in GIT_ENV_KEYS and k not in GH_ENV_KEYS and not k.startswith("ZZZOPS_")}
     gcfg = os.path.join(home, ".gitconfig")
     if not os.path.exists(gcfg):
         with open(gcfg, "w", encoding="utf-8") as fh:
@@ -192,7 +197,30 @@ class World:
         path = os.path.join(self.tmp, name)
         subprocess.run(["git", "clone", "-q", REMOTE_URL, path], check=True, env=self.env, capture_output=True)
         self.clones[name] = GitDir(path, self.env)
+        self.seed_legacy_cache(name)
         return self.clones[name]
+
+    def legacy_cache(self, name) -> str:
+        """<git-common>/zzzops/legacy.json of a clone (G1015)."""
+        return os.path.join(self.clones[name].path, ".git", "zzzops", "legacy.json")
+
+    def seed_legacy_cache(self, name):
+        """A clean legacy cache, written with the engine's own key and writer, so `next` makes no legacy check
+        unless a test asks for one (G1015 design §7). Skipped before engine.legacy exists."""
+        try:
+            from engine import ENGINE_VERSION, legacy
+        except ImportError:
+            return
+        from engine.canon import iso
+        legacy.write_cache(os.path.join(self.clones[name].path, ".git"), {
+            "schema": 1, "key": legacy.cache_key(ENGINE_VERSION, REMOTE_URL, ()), "engine": ENGINE_VERSION,
+            "checked_at": iso(self.now), "github": "ok", "retry_after": None, "error": None,
+            "issues": [], "issue_count": 0, "linked": [], "refs": 0})
+
+    def drop_legacy_cache(self, name):
+        """A cold legacy cache: the next `next` runs a check."""
+        if os.path.exists(self.legacy_cache(name)):
+            os.remove(self.legacy_cache(name))
 
     def bootstrap(self, policy=None, workflow=None, prompts=True, settings=None, first_id=1000):
         policy = policy or load_template("POLICY.json")
