@@ -12,10 +12,10 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T18:19:59Z",
+      "finished_at": "2026-11-01T18:25:56Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -29,13 +29,17 @@
       "ok": true,
       "output": {
         "doc": {
-          "blob": "47298bfc949e6fd28d0b87f8f199dfc60b07dbe0",
-          "commit": "270fca67f513adf76e7a5a8d1f64fbaba33b2ed0",
+          "blob": "0c556c21045dcada61dcaab09a6d222e0cdd7d4f",
+          "commit": "200afabcf5448a9fb64e9cd860e81d554150c245",
           "path": ".zzzops/reviews/1027/design.md"
         },
-        "summary": "The engine declares capabilities as one file per name under engine/capabilities/ (lens_findings for G1000's 1.1.0), so goals add theirs without conflicting or racing for a version number. POLICY gains settings.engine.requires; a missing name refuses writes with engine_too_old naming it. engine.min becomes optional and deprecated, mapped through a fixed table (1.0.0 -> none, 1.1.0 -> lens_findings) with a validate warning, and the dead engine_too_new ceiling and REQUIRES_MIN go. ENGINE_VERSION is removed: the Engine: trailer, --version and validate show a build id (plugin version plus package revision from package.py), and the legacy cache key uses a hash of the detector's source. G1022 takes capability lenses, G1025 release_lines, G1024 policy_update if it needs one, with both merge orders covered."
+        "responses": {
+          "review_design:1:1": "fixed: §5 keeps `release_lines`, the name the root recorded in G1025's approve_design (the policy block stays settings.branching). The schema-2 claim is reconciled with G1025: release_lines gates both a branching policy and schema-2 writes, GOAL_SCHEMAS still guards reading, and the details are left to G1025. The stale line references are removed. There is no G1025->G1027 dependency (root decision: it would stale G1025's approved design). Both merge orders are covered as for G1022, and the root passes the §5 paragraph to G1025's implement.",
+          "review_design:1:2": "fixed: §3.6 restates SPEC §4.5's list as 'What ships with a new capability' with every item kept: goal schema (still read-gated by GOAL_SCHEMAS), fingerprint/canonical/code_tree/change semantics including FP_VERSION, op version, lease format, and new POLICY/workflow keys, fields or ops. SPEC §4.8, the op-version sentence, DESIGN D4, the schemas.py comment and CLI_USAGE say the same. §4 lists every SPEC and DESIGN section the review named (blockers kinds, exit-code table, tolerant read order, new/start rows, REPAIR summaries, test item 75, DESIGN §3.10, the settings list, the failure table, invariant 21), and deletes the README row only if one exists. Test 10 greps ENGINE_VERSION|REQUIRES_MIN|requires_min|engine_too_new|engine\\.min bump over plugins/, .agents/ and docs/design/, excluding HISTORY.md. The notes are taken: the evo:H4 trade-off and the 'upgrade, never remove requires' text (§3.3), the DETECTOR hash over both legacy files (§3.5), and store.py:321 (§2, §3.2)."
+        },
+        "summary": "Revision 2. The engine declares capabilities as one file per name under engine/capabilities/ (lens_findings for G1000's 1.1.0). POLICY's settings.engine.requires refuses writes with engine_too_old naming missing ones. engine.min is optional and deprecated through a fixed version-to-capability map with a validate warning, and the dead engine_too_new ceiling goes (including store.py:321). ENGINE_VERSION is replaced by a build id (plugin version plus package revision) in the Engine: trailer, --version and validate. The legacy cache key hashes legacy.py and scripts/cleanup_legacy.py. SPEC §4.5's bump list becomes 'what ships with a new capability' with every item kept, the docs/design edit list covers every floor and ceiling mention, and G1022 (lenses) and G1025 (release_lines, root-recorded name, gating branching and schema-2 writes) are covered in both merge orders without new edges."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
