@@ -25,7 +25,7 @@ PLUGIN_FIELDS = {
     "$schema", "name", "version", "description", "author", "homepage",
     "repository", "license", "keywords", "extensions",
 }
-SHIPPED_SKILLS = {"add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops"}
+SHIPPED_SKILLS = {"add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-zzzops-repository"}
 REQUIRED_FILES = {
     ".codex-plugin/plugin.json",
     "assets/legacy_install_fingerprints.json",
@@ -50,6 +50,7 @@ REQUIRED_FILES = {
     "zzzops/engine/gitrun.py",
     "zzzops/engine/identity.py",
     "zzzops/engine/leases.py",
+    "zzzops/engine/legacy.py",
     "zzzops/engine/ops/__init__.py",
     "zzzops/engine/ops/base.py",
     "zzzops/engine/ops/checks.py",
@@ -77,6 +78,8 @@ REQUIRED_FILES = {
     "zzzops/references/MIGRATING.md",
     "zzzops/references/REPAIR.md",
     "zzzops/references/SETUP.md",
+    "skills/migrate-zzzops-repository/references/REMOVED.md",
+    "skills/migrate-zzzops-repository/references/EXAMPLE.md",
 }
 NAME_PATTERN = re.compile(r"^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$")
 

@@ -12,7 +12,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 HARNESS = ROOT / ".agents" / "claude_plugin_acceptance.py"
-EXPECTED_SKILLS = {"add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops"}
+EXPECTED_SKILLS = {"add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-zzzops-repository"}
 
 
 def load_harness():

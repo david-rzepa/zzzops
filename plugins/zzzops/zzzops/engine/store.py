@@ -304,7 +304,13 @@ def read_state(git: Git, snap: Snapshot, all_goals: bool = False, wanted=()) -> 
     # 1. policy and workflow
     st.policy_raw, perr = blob_json(f"{P}:.zzzops/POLICY.json")
     st.workflow_raw, werr = blob_json(f"{P}:.zzzops/workflow.json")
-    if st.workflow_raw is None and werr is None:
+    from engine.legacy import SKILL, old_policy
+    if old_policy(st.policy_raw):
+        msg = f"this repository's .zzzops/POLICY.json is the pre-reset format: run the {SKILL} skill"
+        st.blockers.append({"kind": "legacy_policy", "message": msg})
+        st.pause = True
+        st.write_block = Refused("legacy_policy", msg, hint=f"run the {SKILL} skill")
+    elif st.workflow_raw is None and werr is None:
         st.blockers.append({"kind": "not_bootstrapped", "message": f"this repository has no ZzzOps policy on `{where}`; "
                                                                    "run the bootstrap skill"})
         st.pause = True

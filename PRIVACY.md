@@ -16,6 +16,7 @@ ZzzOps may process the following data to perform a user-requested workflow:
 - Lease branches (`zzzops/lease/*`) that record which agent session is working on a goal step, with an agent label and a time.
 - The Git author name and email configured on the user's machine (`user.name` and `user.email`), which Git records on every commit ZzzOps writes to goal, lease and work branches.
 - Pull requests, required-check results and, when a goal links one, a GitHub issue that ZzzOps closes when the goal is delivered.
+- A search of the repository's open issues for pre-reset ZzzOps labels and markers (issue numbers only, no bodies or comments), which the command-line tool runs to detect state left by the old engine.
 
 ZzzOps does not need and must not be given authentication secrets, passwords, API keys, MFA or one-time codes, payment-card data, protected health information, government identifiers, or other restricted or regulated data.
 
