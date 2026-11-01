@@ -36,7 +36,7 @@ import unittest
 
 import engine_fixtures as fx
 from engine_sim import Sim
-from engine import ENGINE_VERSION
+import engine
 from engine import records as rec
 from engine import schemas
 from engine.card import previous
@@ -45,7 +45,9 @@ from engine.errors import Refused
 from test_engine_lifecycle import Journey
 
 CAPS_DIR = fx.PLUGIN_CODE / "engine" / "capabilities"
-G1027_MERGED = CAPS_DIR.is_dir()
+# G1027 deletes ENGINE_VERSION; read it only in the G1028-first branches (design §6a: both merge orders)
+G1027_MERGED = CAPS_DIR.is_dir() or hasattr(engine, "CAPABILITIES")
+ENGINE_VERSION = getattr(engine, "ENGINE_VERSION", None)
 
 
 def vtuple(v):
