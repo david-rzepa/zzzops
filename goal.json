@@ -194,6 +194,68 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_tests:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:a83993411892f1979b5340842a4657556b18e0e7e89ccb2e9da248932a7c0053",
+          "text": "F1: require_release_lines (test_engine_branching.py:72) runs 'from engine import ENGINE_VERSION, schemas' before choosing a scheme, and G1027's approved design deletes ENGINE_VERSION. branching_policy() calls the helper and almost every class uses it, so in the G1027-first order the whole file errors with an ImportError even though its requires branch is right; in the G1025-first order, G1027's PR must repair this file. Fix: import schemas only, and read engine.ENGINE_VERSION lazily inside the engine.min branch. Also replace the 'pop(...) if ... else None' expression: when requires is used, pop min unconditionally, since under G1027's shape it is optional and the leftover 0.0.0 adds an engine_min_deprecated warning.",
+          "upheld": false
+        },
+        {
+          "id": "review_tests:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:a83993411892f1979b5340842a4657556b18e0e7e89ccb2e9da248932a7c0053",
+          "text": "F2 (minor): superseded goals are not tested where design revision 3 promised. Rev 3 §13 test 2a says the cut counts done, cancelled and superseded goals from trailers alone, but LedgerTests asserts only 'Closed: cancelled' and 'Closed: done', and no cut test has a superseded release-N goal (only the frontier's line_members_open case uses superseded). Fix: close one release-1 goal as superseded in test_trailers_are_written_with_branching (assert 'Closed: superseded'), and in a cut-item test assert that it neither blocks the cut nor alone makes the release complete.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T21:37:04Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:f240bd5994202bea10cb430a216b74cce56ace63",
+          "tests": "v1:sha256:bf0fa0660322eef7dc82c4fc671254924731abed98bd5c6268b4c4d4e97a9242"
+        },
+        "policy": {},
+        "subject": "v1:sha256:a83993411892f1979b5340842a4657556b18e0e7e89ccb2e9da248932a7c0053"
+      },
+      "holder": "claude:e6ad/rd1025",
+      "input_fp": "v1:sha256:f0fb464cc60a6fcf78365d9c8e2bf923358d3475969f9099afc63fc069b524b2",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "7b2139fac05391c6c1320ca3974e9c157a0c9fa3",
+          "commit": "82a353236911f498e59a13ec1269301ee4a6b78b",
+          "path": ".zzzops/reviews/1025/review_tests.md"
+        },
+        "summary": "Changes requested (two findings). The suite covers design §13 well, and at e4e9334 all 52 failures and errors are missing-feature failures (KeyError 'release', unknown 'branching', schema 1, version 1.1.0), while the regression and golden tests pass at the base. Every docstring interface reading is consistent with the design (portfolio ledger=/upstream=, ledger shape, cut answer keys, created.recovered, the answer-based sync resolution approval, 'target release/1' in show, the release_lines capability). CLI calls run from the clone root. F1: require_release_lines imports ENGINE_VERSION unconditionally, which G1027 deletes, so the file breaks in the G1027-first order. F2: superseded goals are missing from the ledger and cut tests that rev 3 promised. Notes: GOLDEN_FP needs a regeneration rule; G1027 must map G1025's engine.min version to release_lines."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "04c56922675f8fef9f9a15050c0417a99f0c6213",
+          "commit": "e4e9334e6e48682763b4df19d7966c3af5ce4347",
+          "tree": "7cefe13bfd92e692a8a29f16a2e4465c68249b7d"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
