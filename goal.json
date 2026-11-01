@@ -142,15 +142,28 @@
       "status": "done"
     },
     "integrate": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "blocked": {
+        "category": "external",
+        "op_state": {
+          "head": "62e63c783688b96fa8fdb9afb1499d386d029394",
+          "pending_since": 1793555926,
+          "polls": 1,
+          "rerun_head": null
+        },
+        "reason": "required checks pending: dev-required-tests",
+        "repeats": 1,
+        "retry_after": "2026-11-01T18:03:46Z",
+        "waiting_for": "time"
+      },
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-01T07:50:03Z",
+      "finished_at": "2026-11-01T17:58:46Z",
       "fp_parts": {
         "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
         "inputs": {
-          "base": "v1:sha256:bdd8faa768559c4b8a65bd74f02c7fcb133d59b44c4c97504864a4c68afc3ad5",
-          "code": "v1:sha256:af3b0368ff9b9e16651a4a035578501d987e2f2a6bbe585f8bc6dab1eb2faece"
+          "base": "v1:sha256:7630d1d2d0fd6997163e780cd14c0370efe0911b93515170876f562a37cf36f9",
+          "code": "v1:sha256:d1818094089ac2c766fc23cb9a2fda276cc3b63a5293b1eb14af5e2de4f26598"
         },
         "policy": {
           "verification.required_ci": [
@@ -159,29 +172,11 @@
         }
       },
       "holder": "claude:e6ad/op",
-      "input_fp": "v1:sha256:c143e3e0dce59558658d73444ba657211c7cd109f7ca745b3e5ed61075f8afa1",
-      "ok": true,
-      "output": {
-        "ci": {
-          "failed": [],
-          "passed": [
-            "dev-required-tests"
-          ],
-          "required": [
-            "dev-required-tests"
-          ],
-          "stacked": false
-        },
-        "pr": {
-          "base": "dev",
-          "head": "6d4715a1164fd913115f28c8b3bc2df39761be73",
-          "number": 748,
-          "tree": "81c1446cce52a31639b51ff756252d040e81f62f",
-          "url": "https://github.com/david-rzepa/zzzops/pull/748"
-        }
-      },
-      "reason": "retry",
-      "status": "done"
+      "input_fp": "v1:sha256:988bc107710854fe3399edd26e183d1d23be49f740cf80d1034545f99b5eb707",
+      "ok": false,
+      "output": null,
+      "reason": "stale",
+      "status": "blocked"
     },
     "review_design": {
       "attempt": 3,
