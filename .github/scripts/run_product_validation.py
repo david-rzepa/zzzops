@@ -31,6 +31,8 @@ NATIVE_COVERAGE = {
     ),
     "marketplace_package": (
         "test_marketplace_bundle.MarketplaceBundleTests.test_fixed_version_build_is_deterministic_and_complete",
+        "test_marketplace_bundle.MarketplaceBundleTests.test_generated_claude_marketplace_passes_the_full_package_check",
+        "test_marketplace_bundle.MarketplaceBundleTests.test_package_check_assertion_fails_on_a_wrong_channel_build_with_a_claude_hint",
         "test_agent_plugin.AgentPluginTests.test_marketplace_points_to_the_self_contained_package",
     ),
     "package_cli": ("test_engine_docs.CliWithoutRepositoryTests.test_help_and_policy_validation_need_no_repository",),
