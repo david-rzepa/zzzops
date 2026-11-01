@@ -93,48 +93,32 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 3,
-      "correction_runs": 2,
-      "findings": [
-        {
-          "id": "implement:3:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "test_design",
-          "target_attempt": 4,
-          "target_fp": "v1:sha256:83896d9e24361ada85c2d7230e438e526a26dfde81d32a600302e9d656d59210",
-          "text": "Add a `next` assertion next to the capability tests in test_engine_card_ux.CapabilityTests (review_impl:1:1 asked for it, and the frozen tests keep the implementer from adding it). In test_plain_start_of_reopened_node_after_base_moved_keeps_its_capability, call `next --goal G` before `start` and assert that the test_design action has capability 'reasoning' (with corrections == 1), the same as the card. In test_record_stale_only_on_base_is_routine_on_start_and_after_reclaim, assert that the next action has capability 'routine'. This pins next and the card to the same rule.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-01T06:02:09Z",
+      "attempt": 4,
+      "correction_runs": 3,
+      "findings": [],
+      "finished_at": "2026-11-01T06:10:03Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
           "base": "v1:sha256:f0f86e3e5d7131680049bfd289e2d0b91b2df6ab0e5273c2ec770b60152ca61d",
           "doc": "v1:blob:2c1af88e84734bdd997eceba5000279525be0586",
-          "tests": "v1:sha256:140a73fbeb6b9e0d0f69b0b14d6f1603a5b2b85b370d27c55d76f254b0bf87c3"
+          "tests": "v1:sha256:69cae951ed16e0c3015005bd6ecf778e33a7df62f2149b7a9b6b4a4e2b0c4dc0"
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/implement-1016-3",
-      "input_fp": "v1:sha256:74085521025595086025fe2a0bda57703d911cfb5352a96b22291c3e938b5cf0",
+      "holder": "claude:e6ad/implement-1016-4",
+      "input_fp": "v1:sha256:1ed98c3495736f448cfc9b317bcc65db833e720731c461528540c0e0b795975d",
       "ok": true,
       "output": {
         "code": {
           "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
-          "change": "d21226cfab204948fd2c25f42defb51bee67f955",
-          "commit": "f9117d07dcfe30e8c060d024d0f8afadecdefc6b",
-          "tree": "5ec2352a3161a8df62b7b01b30366d65ba46f372"
+          "change": "dfe70799cbc9f250188033c8d353c1f1075a6683",
+          "commit": "cc26f29fcdc1ee5b8c289ec2f8df6e415c7a67a8",
+          "tree": "5b016358250323c1276ed81145ad1c782d23e507"
         },
-        "responses": {
-          "review_impl:1:1": "fixed: the rule was moved into one shared helper, render.run_capability, which both render.capability (next) and card.build call. It returns routine only when the record staleness is exactly [\"inputs.base\"] and there are no live corrections. I checked your reproduction: next now shows reasoning for the correction run, matching the card. The test_design finding asks for the `next` assertion, since the tests are frozen."
-        },
-        "summary": "Attempt 3: fixed review_impl F1. The capability rule now lives in one helper, render.run_capability(state): retry -> reasoning; record staleness exactly [\"inputs.base\"] with no live corrections -> routine; otherwise None, and the caller falls back to the node's own tier. render.capability (next actions) and card.build (task cards) both call it. Record staleness is state.record_stale when present (claim time) and otherwise the frontier's stale_because, which for a ready/stale state is exactly the record staleness. Behavior is otherwise kept: retry still gives reasoning for non-agent nodes in next (test_engine_base relies on this). A probe matching the reviewer's case checked that next and the card agree: the correction run shows reasoning in both, and a plain base-only run shows routine in both. The full suite passes (407 tests), as does prompt_stats --check."
+        "summary": "Resubmit of the attempt-3 implementation (f9117d0: one shared capability rule for next and cards) after the frozen tests gained the next assertions (521d78b) requested by the implementer's finding. No code change needed. Verified at HEAD: card_ux, lifecycle, schemas, journeys and docs, 100 tests OK."
       },
-      "reason": "reopened",
+      "reason": "stale",
       "status": "done"
     },
     "review_design": {
