@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-01T22:01:45Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [
     1017
   ],
@@ -214,6 +219,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T22:01:45Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:b815b2cc44c1a5a33ba9ad8984c8c22b56f8c80baf16fb2ce73ba54a40a47847"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:65b44f6b8b6be50faa566333512b2b9bf4baec56f40735b9d52a4c18cead98c7",
+      "ok": true,
+      "output": {
+        "merge_commit": "79523c6ee3ad8bd42d3c0865a051fb6ccc4517dc",
+        "merged_at": "2026-11-01T22:01:44Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -478,6 +505,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Found while designing G1003 (2026-11-01). Bootstrap step 7 assumes `gh api repos/{o}/{r}/rules/branches/<I>` and ruleset reads work, but a private repository on GitHub's free plan returns 403 for both. The skill gives no path for that case, so required_ci and merge settings cannot be read or set.\n\nGive the skill (and validate's environment checks) a documented fallback: detect 403, explain that branch protection is unavailable on the plan, ask the owner for the required check names (or read them from recent PR check runs), record them in POLICY, and note that merges are then guarded by the engine's own CI gate only.\n\nAcceptance: the skill documents the fallback; if validate or integrate change, engine tests cover the 403 path; docs/design edits per G1017's rule.",
-  "state": "open",
+  "state": "closed",
   "title": "Bootstrap works when rulesets and branch protection are unreadable"
 }
