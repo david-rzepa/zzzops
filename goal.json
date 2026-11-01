@@ -38,6 +38,54 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:626c14e9150f58bc5bfe9ab9ed09cb582af62acca058841d3f88ed1a3e8935b7",
+          "text": "F1: auto-delete also deletes G1025's kept line branches at finish, and the design omits it. G1025 rev3 §6 step 1 opens the finish PR with head release/N itself ('the branch itself, no copy') and merges it into production, and §7 does the same for hotfix/x. With 'Automatically delete head branches' on, GitHub deletes that head on merge. That removes release/N (kept by O3) and hotfix/x (kept by D14). For hotfixes, the later back-merges into dev and the release branch may then fail, and G1025 §4's missing-branch check raises 'gone from origin' mid-finish. This is a stronger reason for 'off' than the stacked-PR race, which G1025 already recovers from. Fix: name it in the SKILL/SETUP/MIGRATING 'why' and in the warning message; add a REPAIR entry that restores the branch from the line goal's recorded tip (git push origin <tip>:refs/heads/<branch>); and have the root note to G1025's implement that finish's back-merges use the recorded tip sha, not the branch name. Test that the warning text names release/hotfix branches.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T19:30:49Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:986411028655122974717619f320f8d976021a78",
+          "spec": "v1:sha256:806bffa4eaadb6405ea331038570632dfc880e8719db892344e20d845c4ce9d3"
+        },
+        "policy": {},
+        "subject": "v1:sha256:626c14e9150f58bc5bfe9ab9ed09cb582af62acca058841d3f88ed1a3e8935b7"
+      },
+      "holder": "claude:e6ad/rd1025",
+      "input_fp": "v1:sha256:0d790538d9834b46c08fd05ff744a5b7177f3ba3d38425b77057f62366b2abc5",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "7aa79372f292bbe4f920663ec5ab29d9ae16bf4e",
+          "commit": "4f82beeebad6a0ffb22290e440e560e3f0928a69",
+          "path": ".zzzops/reviews/1031/review_design.md"
+        },
+        "summary": "Changes requested (one finding). The advice direction (on without settings.branching, off with it) and the non-gating, best-effort validate warning match G1025 §8/§11, and the gh helper's None-on-failure covers GhError, timeout, no gh, no repo and an absent field. The warning also fires under validate --policy-ref, when G1025 rollout step 1 previews the policy. F1: G1025's finish PR uses release/N or hotfix/x itself as head, so auto-delete deletes those kept branches on finish (against O3/D14) and can break a hotfix finish mid-run. The docs, warning message and a REPAIR restore entry should say so, with a note to G1025 to use recorded tips. No owner question."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "986411028655122974717619f320f8d976021a78",
+          "commit": "400510c63e84c360e6cd6bfce9b83acc714d725c"
+        }
+      },
+      "status": "done"
     }
   },
   "release": 1,
