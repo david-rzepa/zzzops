@@ -9,6 +9,33 @@
   },
   "priority": "P1",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T03:57:26Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:b2dfc5b37cd06d95a957280500d9d0948a426de2",
+          "summary": "v1:sha256:d60f26b51a7b598d93c016ed03290c5022d8a538ec2d2c372f97b1ec6511a7da"
+        },
+        "policy": {},
+        "subject": "v1:sha256:8210b2dc24481fb3e31ad7857c7ec8a6c3b31889b92da5107fb324393458c44d"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:63cc4e8b520e32de05458f4a33154d067d6677ead7c219797c7c8b8d59a65bda",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T03:57:26Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Do not wait for my approval",
+        "summary": "Approved the G1001 design: a request key (explicit request_key, or sha256 of title, spec and depends_on) stored as a Request-Key trailer on the goal's immutable root commit. new scans goal roots before allocating and after any failed push, recovers an identical request, and refuses a key reused with different contents. Decision made by Claude (root agent) under the owner's standing delegation for Release 1; the four reviewer notes go to implement."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "design": {
       "attempt": 1,
       "correction_runs": 0,
