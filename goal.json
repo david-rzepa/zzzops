@@ -36,6 +36,40 @@
       "reason": "stale",
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T05:52:45Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:6d64e62645ca8d096809430bf1181bcc67986c01ca736a7640e943cb7838544f"
+        },
+        "policy": {},
+        "subject": "v1:sha256:5cb33212ace3d499653b5747da5acfe44510afc1254dfb784a0f4340ae54f126"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:5d3f7e6109b54bbafe222a987c2d132fd69da6a99867375d9dc72c7691929733",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T05:52:45Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Do not wait for my approval",
+        "summary": "Approved merging PR #745 (G1001) at head a373b44 into dev. It makes zzzops new idempotent: a request key on the immutable root commit; a scan before allocating and after any failed push; recovery of an identical request; refusal of a reused key with different contents; one refetch for the same-clone race; an up-to-date push counted as recovery; a failed scan refused as engine_bug before any write. Two code reviews (the second approved with no findings); required CI passed (20/20). Decision made by Claude (root agent) under the owner's standing delegation for Release 1; merged with --admin because of the dev ruleset's last-push rule."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
+          "change": "b40e6ba83a9c5e4b3b27224add17e466a7453d54",
+          "commit": "62196dd94f75bd5c45f175e59582e09a3a37f597",
+          "tree": "851e522f5401c277e037ddd877434de7123b4bb8"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 1,
       "correction_runs": 0,
