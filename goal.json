@@ -167,39 +167,15 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [
-        {
-          "id": "review_tests:1:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:87bd55a437a13033ec9a47fb0c9a641f565e3ed399fa0b5007b9122e138792c9",
-          "text": "Test 10 fails later goals' deliberate both-order fallbacks. NoStaleReferenceTests.test_old_names_are_gone greps ENGINE_VERSION|… over all of .agents/, excluding only test_engine_capabilities.py. The frozen test files of three in-flight goals name ENGINE_VERSION on purpose, each through getattr or a lazy import, so they work in both merge orders: G1022 .agents/test_engine_review_lenses.py:238-246, G1025 .agents/test_engine_branching.py:72-82 and 358-359, G1028 .agents/test_engine_findings_rounds.py:48-61 and 517. If G1027 merges first, each of those PRs fails G1027's test on its merge ref and must reopen test_design. If they merge first, G1027 must edit their tests. Fix: narrow the .agents scope to non-test modules (.agents/*.py minus .agents/test_*.py), keeping plugins/ and docs/design/. A test that imports a removed name unguarded fails on its own.",
-          "upheld": false
-        },
-        {
-          "id": "review_tests:1:2",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:87bd55a437a13033ec9a47fb0c9a641f565e3ed399fa0b5007b9122e138792c9",
-          "text": "Drop the full-suite command. The recorded commands end with `python3 -m unittest discover -s .agents`, the whole suite (about 17 minutes). run_tests runs every command on every attempt, and the full suite is dev-required-tests' job on the PR. Replace it with the extra modules that exercise surfaces this goal changes: test_design_docs (the docs/design edits, the HISTORY §4 row and the pending row), test_engine_sync_edit (it asserts the Engine: trailer) and test_engine_lenses (hand-written trailers; the shipped graph needs lens_findings). Optionally merge the six module commands into one unittest invocation.",
-          "upheld": false
-        },
         {
           "id": "review_tests:2:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:bc149bfafeee68e7ad136ac98f0bc8e2120545bc75981e756269e1760fa0d866",
@@ -207,35 +183,35 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T21:50:04Z",
+      "finished_at": "2026-11-01T21:51:32Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:0c556c21045dcada61dcaab09a6d222e0cdd7d4f",
-          "tests": "v1:sha256:72e8b93e3a9a077df2c75e970671fa015db0242d65dd16fac79ddea1c48ab138"
+          "tests": "v1:sha256:6f8dcfbc9343cd74fcf7061d7ca9bf16ff79e98a45cfdab478674110c94775f3"
         },
         "policy": {},
-        "subject": "v1:sha256:3512233c08c2b37c912542aac075f1c9cbab07108ea867c286f298e1bd1e4791"
+        "subject": "v1:sha256:ec49bb70430ea9b94a2756e307185358875d15f30bc701fd5618d0a2a6d215ee"
       },
       "holder": "claude:e6ad/rd1017",
-      "input_fp": "v1:sha256:3885115a069cb43398582fb7814bb79b60f24620470951ad5f7e38b89bd9d2d7",
-      "ok": false,
+      "input_fp": "v1:sha256:48a28169e383a86a5f5753cf96dfe5b1d0cfec9fb4e515fb05f4fd4900ffa484",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "4717623ce935c7fb04bf3e1e91d7df6df5e73667",
-          "commit": "62382bd7e384d9d3c969306b9bf3349d54d286d0",
+          "blob": "3e0b8cd62fd2af9658d0bfab819bf95120eb706b",
+          "commit": "d7276b9ef673d4da6fce26ed71d73f462ccaebee",
           "path": ".zzzops/reviews/1027/review_tests.md"
         },
-        "summary": "Both prior findings are resolved. With the new pathspecs, the grep at base still reports engine_fixtures.py, plugins/ and docs/design/ but no test modules, and G1022's, G1025's and G1028's fallbacks are excluded. The full suite is replaced by nine targeted module commands. One new small finding: test 10 still covers docs/design/IMPLEMENTATION_PLAN.md, a historical record (lines 82, 327 and 346 match at base), so it would force the implementation to rewrite history. Exclude it next to HISTORY.md."
+        "summary": "Approved. review_tests:2:1 is resolved: test 10 excludes IMPLEMENTATION_PLAN.md next to HISTORY.md, and the docstring says why. Against base, the docs/design matches left are only the DESIGN and SPEC lines G1027 must edit, plus its own README pending-row marker, which its PR deletes. 1:1 and 1:2 were resolved in attempt 2. No new findings."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "02db5585339000f9006cc45aa77f5f956a5e7278",
-          "commit": "4d0d880582f1d1a29e1ccf4cc91ed59f2689b90a",
-          "tree": "ab8e7abf355c113d24df868a86539a6e33ab004e"
+          "change": "e63cf8fbb0da71136303b17fedaec475a0be54e6",
+          "commit": "4c8c5c6147aea89d261c1ee27100f830d088bb99",
+          "tree": "e90a49f542d57355619832fcb6fdb35aaaca79cd"
         }
       },
       "status": "done"
