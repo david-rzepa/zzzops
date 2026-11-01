@@ -92,6 +92,60 @@
       "reason": "reopened",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "implement:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:dc5ddc6520b0ca05db0723f8a75188edf303e4ec2913f5452c192926db35c268",
+          "text": "test_engine_lenses.FilterTests.test_a_fresh_filter_record_without_a_verdict_keeps_the_note, line 931, asserts `filter_design == \"current\"` right before line 932 asserts `design == \"ready (reopened)\"`. Both cannot hold: filter_design reads design.doc and the lens summaries, and every lens is blocked (subject_not_current) once design reopens, so the frontier shows the filter as `blocked (... design not current ...)`. Its record is still *fresh* in pass 1 (which is what makes the unjudged note live, and the test's lines 932-934 do pass: design reopens with corrections == [the note]); `fresh` is not the state `current`. Fix: drop line 931, or assert freshness without the state string (e.g. that `filter_design` is not `ready (stale...)` before the hand edit, and that its record's input_fp is unchanged).",
+          "upheld": false
+        },
+        {
+          "id": "implement:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:dc5ddc6520b0ca05db0723f8a75188edf303e4ec2913f5452c192926db35c268",
+          "text": "test_engine_lenses.IntentTests.test_changing_intent_at_the_impl_stage_stales_only_the_intent_lenses checks intent_impl right after the intent change, but design §3 makes base wait for filter_design (context input, and the template test requires it) and context inputs gate readiness (§11). So the change stales intent_design, which blocks filter_design -> approve_design -> base -> ... -> every code lens and implement (`blocked (run_tests not current, implement not current, ...)`), not `current`. Measured with this implementation: after `intent_design` re-runs (same summary, so filter_design stays current without a re-run), intent_impl is `ready (stale: policy.intent)`, implement and the six other code lenses are `current`. Fix: re-run intent_design (self.p.run(g, \"intent_design\")) before taking `st` at line 970.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-01T06:10:03Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:f0f86e3e5d7131680049bfd289e2d0b91b2df6ab0e5273c2ec770b60152ca61d",
+          "doc": "v1:blob:5ed045be21817ba93e467355960e3c37a4cb091f",
+          "tests": "v1:sha256:b8cfebfde3bab7258149a06b86a0072177ade37fdbe33787575605b7f97e7679"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/implement-1000-1",
+      "input_fp": "v1:sha256:fce85a53059cf5892220bd590c816e35ce16fca4cb16e7d86c161e70902c76e0",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "54d7e83d3291ca5d7b1c4454c5db2efc577dc949",
+          "change": "00f5509224b4a278539b200c8869533616853427",
+          "commit": "9b1fbaafabd674dd69f7600340fc34702632ae43",
+          "tree": "929163d09ac5343918348e2634582b438dfc7f05"
+        },
+        "summary": "Implemented design rev 4: the shipped template is now the 26-node graph (seven lenses per subject, filter_design and filter_impl, review_design/review_impl and their prompts removed) with seven lens prompts, filter.md, the instruction `review` and a TODO: placeholder `settings.intent`. Engine 1.1.0 adds `skippable` (with not-skippable and open-non-note-finding skip refusals), `review.filter` with lens `impact`/`material`, filter `verdicts` checked against the lease's `candidates` fingerprint part (also in the running-lease fp; candidates-only stales are budget-free), filter-gated liveness (no verdict = kept) and notes on cards and approval items, the intent_placeholder warning and card `policy` section, `previous.changed` from fresh-only `reviewed` artifacts, and the PR body's `## Reviews` section; per the approval directive, approval items and the PR body also list every skip with its reason and the open findings recorded on skipped nodes. Bootstrap, add-goal and execute skills, CLI_USAGE, MIGRATING and docs/EXECUTION are updated; the full suite passes except two frozen lens tests that contradict the design's state model (findings on test_design), and prompt_stats --check passes."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 3,
       "correction_runs": 2,
