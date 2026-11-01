@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 import os
 import re
@@ -12,11 +13,11 @@ from engine import records as rec
 from engine import schemas
 from engine.canon import EMPTY_TREE, iso
 from engine.errors import Refused
-from engine.fingerprint import out_fp
-from engine.frontier import recorded_out, resolve
+from engine.fingerprint import out_fp, stale_keys
+from engine.frontier import live_input_changes, recorded_out, resolve
 from engine.identity import Identity
 from engine.leases import lease_ref, message as lease_message
-from engine.render import command, state_string
+from engine.render import command, lease_commands, live_lease_entry, state_string
 from engine.store import goal_message, parse_commit, push_atomic
 from engine import worktree as wt
 
@@ -554,12 +555,34 @@ def renew(s, g: int, X: str, N: int) -> dict:
         c = s.git.commit_tree(EMPTY_TREE, [L.tip], f"zzzops renew G{g} {X}\n{body}")
         r, _ = push_atomic(s.git, s.R, [(lease_ref(g, X), L.tip, c)])
         if r == "ok":
-            return {"ok": True, "coordinator": s.state.coordinator, "attempt": N,
-                    "expires_at": iso(s.now + L.timeout * 60), "renew_every_minutes": max(1, L.timeout // 4)}
+            out = {"ok": True, "coordinator": s.state.coordinator, "attempt": N,
+                   "expires_at": iso(s.now + L.timeout * 60), "renew_every_minutes": max(1, L.timeout // 4)}
+            try:
+                out.update(renew_inputs_changed(s, g, X, L))
+            except Exception:                                  # a renew that pushed is never reported as failed
+                pass
+            return out
         if r == "remote":
             raise Refused("remote", f"push to `{s.R}` failed")
         if time.monotonic() > deadline:
             raise Refused("contention", "could not renew the lease")
+
+
+def renew_inputs_changed(s, g: int, X: str, L) -> dict:
+    """Fields to add when the phase's inputs changed since start: evaluated with the lease as this renew made it, so
+    an expired-then-renewed lease is running too."""
+    L2 = dataclasses.replace(L, last_active=s.now)
+    p = s.portfolio(leases={**s.state.leases, (g, X): L2})
+    res = p.goals.get(g)
+    a = res.st.get(X) if res else None
+    if not a or a["name"] != "running" or a["fp"] == L.input_fp:
+        return {}
+    abandon_cmd, restart_cmd = lease_commands(s.ctx(), g, X, L.attempt)
+    return {"inputs_changed": True,
+            "stale_because": stale_keys(L.fp_parts, a["parts"]) if a["parts"] else ["unresolved"],
+            "abandon": abandon_cmd, "restart": restart_cmd,
+            "hint": "Your inputs changed after start: work submitted now lands stale and the phase re-runs. Stop, report, "
+                    "and let the root abandon and restart (or finish if nearly done)."}
 
 
 def abandon(s, g: int, X: str, N: int | None, force=False, note=None) -> dict:
@@ -834,13 +857,19 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
     after_docs.update(new_docs)
     after = s.portfolio(docs=after_docs)
     prev = impact(before, after, gids)
+    ctx = s.ctx()
+    live = [live_lease_entry(ctx, g, n, L, sb)
+            for g, n, L, sb in live_input_changes(before, after, s.now, impact_scope(before, after, gids))]
+    extra = {"live_leases_on_changed_nodes": live}
+    if live:
+        extra["warning"] = f"{len(live)} running phase(s) have inputs this edit changes; see live_leases_on_changed_nodes"
     stale = sum(1 for g, nodes in prev.items() for n, ch in nodes.items()
                 if ch["before"] == "current" and ch["after"].startswith("ready (stale")
                 and after.goals.get(int(g[1:])) and after.goals[int(g[1:])].graph.nodes[n]["kind"] == "agent")
     follow = follow_up(s, gids, new_docs)
     if set(base_of) != set(gids):
         out = {"ok": True, "coordinator": s.state.coordinator, "applied": False, "preview": prev,
-               "stale_agent_phases": stale, "hint": "add --base <goal commit> for each goal to apply"}
+               "stale_agent_phases": stale, **extra, "hint": "add --base <goal commit> for each goal to apply"}
         if follow:
             out["follow_up"] = follow
         return out
@@ -861,7 +890,7 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
     kind, updates, closed = s.write_goals("edit", gids, op, retry=False, message=message)
     out = {"ok": True, "coordinator": s.state.coordinator, "applied": True,
            "goal_commits": {str(g): s.snap.goals[g] for g in gids}, "preview": prev, "stale_agent_phases": stale,
-           "pushed": pushed_summary(updates)}
+           **extra, "pushed": pushed_summary(updates)}
     if follow:
         out["follow_up"] = follow
     return out
@@ -948,8 +977,8 @@ def follow_up(s, gids, new_docs) -> list:
     return out
 
 
-def impact(before, after, gids) -> dict:
-    """SPEC §3.16 impact preview over the edited goals and their transitive dependents."""
+def impact_scope(before, after, gids) -> set:
+    """The edited goals and their transitive dependents (before or after the edit)."""
     scope = set(gids)
     changed = True
     while changed:
@@ -958,8 +987,13 @@ def impact(before, after, gids) -> dict:
             if g not in scope and scope & set(res.doc.get("depends_on") or []):
                 scope.add(g)
                 changed = True
+    return scope
+
+
+def impact(before, after, gids) -> dict:
+    """SPEC §3.16 impact preview over the edited goals and their transitive dependents."""
     out = {}
-    for g in sorted(scope):
+    for g in sorted(impact_scope(before, after, gids)):
         b, a = before.goals.get(g), after.goals.get(g)
         nodes = {}
         topo = (a or b).graph.topo if (a or b) else []

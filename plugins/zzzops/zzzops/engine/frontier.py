@@ -194,8 +194,9 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
         if L and L.live(now):
             rv, rmiss = resolve(graph, doc, n, recorded, dep_view)
             rsub = bool(subj) and (subj not in R or R[subj]["status"] != "done")
-            f = None if rmiss or rsub else input_fp(fp_parts(graph, n, rv, R.get(subj), settings))
-            st[n] = {"name": "running", "lease": L, "fp": f}
+            rparts = None if rmiss or rsub else fp_parts(graph, n, rv, R.get(subj), settings)
+            f = input_fp(rparts) if rparts else None
+            st[n] = {"name": "running", "lease": L, "fp": f, "parts": rparts}
             continue
         if missing:
             st[n] = {"name": "blocked", "missing": missing}
@@ -456,6 +457,29 @@ def finish_goal(res: GoalResult, goal_leases: dict, now: int):
         if L and L.live(now) and graph.nodes[n].get("workspace") and st[n]["name"] == "running":
             res.busy = n
             break
+
+
+def live_input_changes(before: Portfolio, after: Portfolio, now: int, scope=None) -> list:
+    """(goal, node, lease, stale_because) for each live lease whose input fingerprint differs between before and
+    after. Goals absent from `after` (closed) are skipped; `scope` limits the goals considered."""
+    out = []
+    for g in sorted(after.goals):
+        if scope is not None and g not in scope:
+            continue
+        b_res = before.goals.get(g)
+        if b_res is None:
+            continue
+        a_res = after.goals[g]
+        for n in a_res.graph.topo:
+            a = a_res.st.get(n)
+            if not a or a["name"] != "running" or not a["lease"].live(now):
+                continue
+            b = b_res.st.get(n)
+            if not b or b["name"] != "running" or b["fp"] == a["fp"]:
+                continue
+            sb = ["unresolved"] if a["fp"] is None else stale_keys(b.get("parts"), a["parts"])
+            out.append((g, n, a["lease"], sb))
+    return out
 
 
 def counts(r0: dict | None, reason: str, old_parts: dict | None, parts: dict) -> int:
