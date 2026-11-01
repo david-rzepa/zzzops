@@ -147,6 +147,44 @@
       "reason": "new",
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T08:12:13Z",
+      "fp_parts": {
+        "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
+        "inputs": {
+          "code": "v1:sha256:fb2d099ff717c5b8e6ab6ec177b57d899d31c79028d9d2f5f63a2b1db79b9796",
+          "doc": "v1:blob:64ae69193ad33c5260fa233cf68c4815659a6c02",
+          "tests": "v1:sha256:f406c4b0222e63db932d0150461a90c5336aa6806270759a56b9f5a158a62997"
+        },
+        "policy": {},
+        "subject": "v1:sha256:75f16f1ede6181acc3cceb62fca1d1c77574822a8b3c047cb504623261fc9f36"
+      },
+      "holder": "claude:e6ad/review_impl-1021-1",
+      "input_fp": "v1:sha256:fd0bb930fb7f8a735fe6e98b2695b5cd6455652e7de0ac0d0e64fd32b3622bd2",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "3c928f59c6a047e386f68ffd0133ac49e44584cb",
+          "commit": "877b0dff6784da4fb26058c4fa10cff7eb26198c",
+          "path": ".zzzops/reviews/1021/review_impl.md"
+        },
+        "summary": "Approved, no findings. Step 5b runs local merge-tree (into-I only; stacked 5a returns first), then the head-not-seen wait, GitHub CONFLICTING/DIRTY, the UNKNOWN wait, then checks, as designed. Unexpected merge-tree exits raise EngineError. The new waits use ctx.wait and are bounded by ci_timeout_minutes. The no-checks question fires on the third poll (t=15) only for an empty rollup on head H. No GitHub calls added. Tests are untouched and the full suite passed. The REPAIR recipe is accurate."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "6747a5ea3c91aedd39089d1811a415680521bfed",
+          "change": "bf978f0d00244715c0c899401f35d7d755fdda98",
+          "commit": "8cc435aeaa7f96905fecf1fb0222cd18b5c6f69d",
+          "tree": "528c24851ed10bd4a5764a64118fc778beed960c"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 2,
       "correction_runs": 1,
