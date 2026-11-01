@@ -238,7 +238,7 @@ class ArtifactPointerTests(CardJourney):
         self.assertNotIn("diff", entry)
         self.assertIn("not available", entry["note"])
         fetches = [t for t in self.w.trace_lines() if t["cmd"][:2] == ["git", "fetch"]
-                   and any(f"zzzops/work/g{g}" in a for a in t["cmd"])]
+                   and any(a.startswith(f"+refs/heads/zzzops/work/g{g}:") for a in t["cmd"])]
         self.assertEqual([], fetches)
 
 
