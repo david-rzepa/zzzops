@@ -11,6 +11,39 @@
   },
   "priority": "P1",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-01T18:44:24Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:6f4c7854b055f0ef632f22312336a6e094a53cd5",
+          "summary": "v1:sha256:fde0cd45b255199d468cddf6ce9cc881d9d4c1f0ab0ead40c8ad64a7a4889cd3"
+        },
+        "policy": {},
+        "subject": "v1:sha256:1a43287123b9e3b5f8cdf2f2122ec872a34c8b1f62106579b7cb76018223a05c"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:dd3fe60a2ac1e8273f557aeeda36fe449d9f2f35a91dcfc6a965e3f5c6d065bc",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-01T18:44:24Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approved G1028 design revision 2: (1) an agent or human reviewer's open finding stays live while its target's output still matches, even after the review goes stale (goal edits no longer drop findings); the target's card marks them stale_review and edit previews carried_findings with waive lines; lens findings follow the filter's last verdicts. (2) Review cards list only open findings in previous.findings, resolved ones under previous.resolved; restating resolved is a no-op, restating open on a closed id is refused 'already resolved'. (3) `follows: <id>` links a new finding to a resolved prior one, inheriting rounds but never upheld; ships as capability finding_follows (G1027), refused until required. (4) Global --repo DIR on worker-facing commands, and the not-a-repository error names the directory. Review approved after one round of two findings."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "6f4c7854b055f0ef632f22312336a6e094a53cd5",
+          "commit": "2a7079ded6f3742b6f09547662566ef6c1af3e74"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 2,
       "correction_runs": 1,
