@@ -47,7 +47,9 @@ def call(*args, env=None):
 
 class DefaultsCase(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(self.enterContext(tempfile.TemporaryDirectory(prefix="default policy ")))
+        stack = contextlib.ExitStack()
+        self.addCleanup(stack.close)
+        self.tmp = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="default policy ")))
         self.shipped = self.tmp / "plugin defaults"
         self.here = self.tmp / "repository policy"
         self.history = self.tmp / "history store"
@@ -63,8 +65,8 @@ class DefaultsCase(unittest.TestCase):
             self.store(rel, content)
         # These two locations are the design's test seam; no comparison API is prescribed.
         defaults = importlib.import_module("engine.defaults")
-        self.enterContext(patch.object(defaults, "TEMPLATE_DIR", self.shipped))
-        self.enterContext(patch.object(defaults, "HISTORY_DIR", self.history))
+        stack.enter_context(patch.object(defaults, "TEMPLATE_DIR", self.shipped))
+        stack.enter_context(patch.object(defaults, "HISTORY_DIR", self.history))
         self.write_record()
 
     def store(self, rel, content):
