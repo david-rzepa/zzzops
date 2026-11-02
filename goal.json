@@ -78,10 +78,10 @@
       "status": "done"
     },
     "design": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-01T18:44:13Z",
+      "finished_at": "2026-11-02T05:00:14Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -95,14 +95,14 @@
       "ok": true,
       "output": {
         "doc": {
-          "blob": "74488c5f2af52070620cd0061cd2ba2f38e24f71",
-          "commit": "2c5801218391f730da0cf188ba8325f44112e9c7",
+          "blob": "64f07bcc146a3775ab9a52bb11167ea8441a02c2",
+          "commit": "f34a0bd5c3645e1e8965d6822c93ea28df3315bf",
           "path": ".zzzops/reviews/1026/design.md"
         },
         "responses": {
-          "review_design:1:1": "fixed: D4 now builds human_decisions from goal history (the answer commits' goal.json) for approve items, the PR body and the node's card. The answers record key, schema, carry-forward, owner_answers capability, G1027 ordering and do-not-answer rule are removed. D5's card answer change is kept. The review's notes are taken: the list is renamed human decisions and labelled by node kind, the prefix is reserved with a case-sensitive check, and the skill names the decided_by convention."
+          "test_design:1:1": "fixed: chose (b). The frontier and SPEC §4.9 are unchanged, and a blocked target's findings stay not live (§5, §11). Removed: the `fixed: owner chose …` response from §1 step 4, design.md step 4 and §10 test 2. The designer records the owner's words from `answer` and `human_decisions`; on the card, each entry's question is unclipped and names the finding ids. The finding stays open on review_design's record, and the re-review resolves it. §8 is corrected: a stale design card does not carry it, with or without G1028; the re-review keeps it open, which reopens design, and design blocks again (the root may relay it to save the run). (a) was rejected because it changes the frontier's liveness rule only to keep one response line. The acceptance journey still holds: asked, answered, recorded verbatim, reviewed, shown at approval. test_design must invert two assertions. (1) test_the_acceptance_journey: the retry card after answer has corrections == [], and the resubmit has no response for the finding. (2) test_spec_edit_while_blocked_unanswered_keeps_the_owner_question: the stale design card has corrections == []; then review_design's previous.findings shows it open and design is reopened with it. Small points: is_owner_question is case-sensitive (§5 now matches D3). When the log fails, render.human_decisions returns None and the approve item (and the card) carries \"human_decisions\": \"unavailable\"."
         },
-        "summary": "Revision 3 answers review_design:1:1. The `answers` record key, its capability and its ordering are dropped. Human decisions are read from goal history (`git log --grep='^zzzops: answer G<g> '`, keeping commits whose record is blocked and answered). They are shown as `human_decisions` on approve items and on the node's own card, and as `## Human decisions` in the PR body, labelled by node kind. The rest is unchanged. A POLICY instruction, owner_questions, holds the undo-reach test, cited by design.md and the reviewers. Material, reserved `owner question:` findings target the design, which blocks for the owner. A non-material one is refused at submit. The card shows `answer` on any card whose record is blocked and answered. The execute skill batches owner questions and names the decided_by convention. No stored format changes."
+        "summary": "Revision 4 answers test_design:1:1 with option (b): the frontier is unchanged, and a blocked design's findings stay not live. So the designer gives no `fixed: owner chose …` response. It records the owner's words under `## Owner decisions`, using `answer` and the unclipped `human_decisions` on its card, and the re-review resolves the finding, which stays open on review_design's record. §8 now says a stale design card does not carry the owner-question finding; the re-review keeps it open and the design blocks again. `is_owner_question` is case-sensitive. A failed history read gives `render.human_decisions` None and `\"human_decisions\": \"unavailable\"` on approve items and cards."
       },
       "reason": "reopened",
       "status": "done"
