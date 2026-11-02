@@ -109,6 +109,35 @@
       "reason": "reopened",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T22:09:47Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:0c2a08d0bde69e18e656d474372b82dbd482df44464aef4c1e75be377a0d3fac",
+          "doc": "v1:blob:891e284f14d6d39fa3bd3d0854b643b5c887b5a6",
+          "tests": "v1:sha256:9bfa8803a302c0ac8148164eb66dd9d43ba5add37da6477d4dc9c63d6a1a6aa6"
+        },
+        "policy": {}
+      },
+      "holder": "codex:takeover/1024-implement",
+      "input_fp": "v1:sha256:166c607b9fe85a97d539a26e0f3bca2f64fe05b725036ffb88b42d47426f0f42",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "de5640d1c5909ea924450aeea6450497a78946f6",
+          "change": "6ec18bb202a403d15c40ee32df16535138c26bb5",
+          "commit": "c246e479f7faccd2c55dd4cf112191ef1ba48804",
+          "tree": "ced40fc33305d2f3fc53bf9cdd8ce6601ba87bac"
+        },
+        "summary": "Explicit next and all valid validate forms now report advisory shipped-default drift from separate TEMPLATE.json provenance, including local edits, quoted diff/three-way merge advice, inferred/reviewed records, unknown-base downgrade protection and removed-file tombstones; writes never carry the notice and no policy is applied automatically. The plugin bundles 60 normalized, content-addressed template versions from published dev history with an append-only upkeep script; bootstrap/execute guidance, migration/CLI references and SPEC/DESIGN/HISTORY cover reviewed adoption and record-only declines. Frozen feature tests pass (16 in 2.909 s), history tests pass (2 in 0.003 s), design docs pass (35 in 0.561 s), environment regressions pass (11 in 1.416 s), agent-plugin tests pass (14 in 0.315 s), marketplace bundle tests pass (12 in 4.666 s), and prompt budgets/diff checks pass; missing-history degradation was directly checked. No installed policy, host cache or repository host setting was changed."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 3,
       "correction_runs": 2,
