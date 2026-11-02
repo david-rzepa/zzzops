@@ -123,10 +123,10 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-02T17:56:32Z",
+      "finished_at": "2026-11-02T18:36:56Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -136,22 +136,25 @@
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/op",
+      "holder": "claude:e6ad/im1025",
       "input_fp": "v1:sha256:ad17208871a6c2808d53edcde87ba1a59f29c244cfd80333348e9b3ff3ff05ea",
       "ok": true,
       "output": {
         "code": {
           "base": "262d7807044ab48b616d63611c5c6711d110ef7c",
-          "change": "3516ca9bf1121a0d177eb47f1e03354fc8ec9733",
-          "commit": "0d06eb05727a30bb388884cd582202df42fbc149",
-          "tree": "0b4971ef1b8eb092a31799bcfb14893a3511ad2e"
+          "change": "8543894973d02848a4c8cefa19c8571da1dbe731",
+          "commit": "9dd6ecad6f8b5b548cf598615da9d12ffbb5abfe",
+          "tree": "25af3951e1524c78f0bccc6f76f90b5dd510826d"
         },
         "responses": {
-          "run_tests:failed": "fixed: synced onto dev, where the closed goals' pending README rows are gone; test_design_docs passes"
+          "review_impl:1:1": "fixed: frontier.py gives a hotfix member's git.base node the `hotfix_start` wait whenever its line does not exist yet, whether base is missing inputs, ready or current. So every node below base loses base's output and cannot run. ops/run.target_of now refuses with `not_ready` (hint: `hotfix start <x>`) for a goal whose line target has no branch, and falls back to the integration branch only when the goal has no line target at all (branching off). New tests in .agents/test_engine_branching_followups.py: in HotfixWaitFrontierTests, a goal driven to implement and then given flow.hotfix waits at base and implement is not runnable; once the line opens, base goes ready (stale) through the hotfix/x target part. TargetOfTests covers the refusal.",
+          "review_impl:1:2": "fixed: Session.line_errors (used by `new`, `edit` and every goal write) now refuses, with `validation`: setting or changing `flow` unless the policy has settings.branching and requires capability release_lines; any change to a line goal's `flow` ('flow is immutable on a line goal'); and the line form of `flow` outside `release cut` / `hotfix start`. A document whose `flow` is unchanged is still writable after branching is turned off, so existing members are never stranded. The new schemas.normalize_flow runs in edit's mutation and in Session.write_goals. It treats `flow: null` as cleared and writes schema 2 only when `flow` is present, and schema 1 otherwise, as design §2 says. Tests: FlowGateTests and FlowWithoutBranchingTests in the new test file.",
+          "review_impl:1:3": "fixed: (1) SPEC §4.5 now says known schemas are {1, 2} and when each is written; the §3.3 schema comment and the Schema 2 paragraph now cover the branching gate, line-goal immutability and that clearing `flow` writes schema 1; DESIGN's goal-schemas bullet notes the G1025 refinement. (2) In §3.13, `release` now defaults to the effective release and `flow` (hotfix form only) is listed. (3) §7 now lists `schedule` and `line_complete`, describes the shipped `release` graph and names the line ops. (4) The `zzzops/sync/g<line>/<into>` row, which is in SPEC §2.1's branch table, now says the engine never deletes it and the next back-merge reuses it. It also says automatic head-branch deletion is recommended off in branching repositories. The `zzzops/pr` row and bootstrap item 7 (§8.3) carry the same recommendation. (5) DESIGN §3.16 gains the stacking-across-targets paragraph and why goal branches keep rebasing; §4.1 gains the release-graph note. (6) references/CLI_USAGE.md documents `release cut N --answer F`, `hotfix start X --answer F`, and `flow` plus the effective-release default on `new`.",
+          "review_impl:1:4": "fixed: Session.fetch_lines now runs the second round only when there is an open line goal (its sync and finish), a pending hotfix_start, or a pending release_cut. It computes these from the trailer ledger with no extra I/O. Otherwise it fetches nothing, and target_tip resolves the production branch (or any branch) lazily if an op asks for it, for example `hotfix start`. FetchRoundTests in the new test file cover: no fetch without a line or a pending item, none without branching, production plus the line branch for an open line, and production for a pending hotfix_start or release_cut."
         },
-        "summary": "Resubmit after base synced G1025 onto dev 262d780 (G1027 #759, G1026 #760, G1041 #761). Conflicts resolved keeping both sides: no ENGINE_VERSION/RELEASE_LINES_MIN; new capability engine/capabilities/release_lines.txt gates settings.branching (schemas._check_branching checks required_caps); errors keep `conflict`; fingerprint keeps lenses + schedule/line_complete/target; frontier keeps G1028's stale tuple + G1025 lctx/pass-3 restack; render.Ctx has repo + targets; HISTORY row last; SPEC capability wording. Rebase-caused fixes: frontier's fp_parts wrapper takes dev's new skip argument; package.REQUIRED_FILES lists lines.py, lineverbs.py, ops/lines.py and the two new prompts. Reverted the shipped POLICY.json template's integration_branch to main (design §1: template unchanged); the frozen validation test now sets dev itself (tests line, review_tests round 5 approved). branching 56, capabilities 27, review_lenses 59, owner_questions 41, schemas 35, design_docs 35, card_budget 35, findings_rounds 30, environment 11, legacy all OK."
+        "summary": "Git-flow release branching behind settings.branching: release and hotfix line goals on a shipped release graph, a race-safe `release cut` / `hotfix start`, goals based on, integrated into and merged into their line's branch, a non-blocking release->dev merge sync, a scheduled restack before agent phases, and a finish that merges into production and back-merges into dev (and, for a hotfix, into the open release branch). This round fixes four review findings. A hotfix member with no line now waits at base even when base is current, and ops refuse rather than fall back to dev. `flow` is now gated on settings.branching, is immutable on line goals, and clearing it writes schema 1. The production fetch now runs only with an open line or a pending line item. The contract docs and CLI reference now match the code."
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
