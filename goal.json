@@ -13,34 +13,34 @@
   "priority": "P1",
   "records": {
     "approve_design": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-02T05:12:35Z",
+      "finished_at": "2026-11-02T05:30:47Z",
       "fp_parts": {
         "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
         "inputs": {
-          "doc": "v1:blob:817343d7dd4732a43ca259904501a9f2c4a17045",
-          "summary": "v1:sha256:cf93199519c8a8ffeb94c65acf761d80b07c7ae486288800eabdf69be035621d"
+          "doc": "v1:blob:3ddfcf819109e6587559b34b5f61a295c331a1db",
+          "summary": "v1:sha256:094066bb7b0b56d84cd2eadd3c626dd051cf511e0d3434d2d698bc28b1aef9a8"
         },
         "policy": {},
-        "subject": "v1:sha256:0d0793493c4e56198b97933f6c9296b8dc3630468f0ab8721ff58d6ca3995c82"
+        "subject": "v1:sha256:08b31c3788861e56a8974fde0afcaaf36f20ad3f068c7b1f1341e6e4adc286dc"
       },
       "holder": "human",
-      "input_fp": "v1:sha256:a06385fbd7439c823776607e8e23ef3cb9f5a56c1a0ca0f7ff9771134e3bc51f",
+      "input_fp": "v1:sha256:1df720db80c34d6c82e042bd1179207dfd25b2df16bb7b50e60859d23d758a0a",
       "ok": true,
       "output": {
-        "decided_at": "2026-11-02T05:12:35Z",
+        "decided_at": "2026-11-02T05:30:47Z",
         "decided_by": "Claude (root agent), delegated by Dave",
         "decision": "approved",
         "quote": "Ok so then we need something in the DAG to cause interviews. My original idea was that during design review, gaps that the human needs to answer should be flagged in the review, and that would stale the design, and require interview to fix it. Could that work simply?",
-        "summary": "Approved G1026 design revision 6 after five review rounds (round 5 approved, no open findings). Reviews flag `owner question:` findings (always material, only when undoing a wrong choice reaches outside the goal or changes product behaviour/direction and no option clearly dominates); design blocks for an interview; the owner's words are recorded verbatim; the frontier is unchanged (option b): the re-review resolves the question against human_decisions now carried on review/filter cards; card.shrink blobs the unclipped human_decisions list; approve items and the PR body show human decisions. It follows the owner's idea that review gaps needing the human should stale the design and require an interview."
+        "summary": "Approved G1026 design revision 7 (review round 6 approved, no open findings). Revision 7 answers the test review: approve items and the PR body read human_decisions from every node that is not a descendant of the item's node, so an answered integrate question shows on approve_merge; filter cards' subject is graph.subject or graph.filter_subject. Otherwise unchanged from approved revision 6: reviews flag `owner question:` findings only for big-consequence choices; design blocks for an interview; the owner's words are recorded verbatim; the frontier is unchanged; the re-review resolves the question against human_decisions on review/filter cards; shrink blobs the unclipped list."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "817343d7dd4732a43ca259904501a9f2c4a17045",
-          "commit": "775c4d9b5e28362e20eff18394b90cc245611368"
+          "blob": "3ddfcf819109e6587559b34b5f61a295c331a1db",
+          "commit": "29b7c15cae58e5f307c0ff39533eff41bc4a662e"
         }
       },
       "status": "done"
