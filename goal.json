@@ -118,10 +118,10 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 4,
-      "correction_runs": 3,
+      "attempt": 5,
+      "correction_runs": 4,
       "findings": [],
-      "finished_at": "2026-11-02T04:59:16Z",
+      "finished_at": "2026-11-02T05:25:49Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -137,13 +137,16 @@
       "output": {
         "code": {
           "base": "25186a5ee98282b3f380ff48a06b014aae34aa10",
-          "change": "d0b2a7994200ac96a895208029094f373759daee",
-          "commit": "234b6cacb4f38a171fbc29de38bc2bd02f5e8f73",
-          "tree": "4bc9a4a0d4e31106c98b0fb07cc02a7a8dd4a9c2"
+          "change": "e1eb727fa3ccdb4433ed62bc2b5d02e38a41de67",
+          "commit": "4cb2671da63ba129ec0e6e47d1cfb8fb16771ed2",
+          "tree": "1ac1a0bd2f85a330f64260a029faddb15f45a224"
         },
-        "summary": "Resubmit after base rebased G1027 onto dev 25186a5 (G1022 merged first). Conflicts resolved per both designs: new capability lenses (engine/capabilities/lenses.txt); LEGACY_VERSIONS maps 1.3.0 -> lens_findings, finding_follows, lenses; default template requires [lens_findings, lenses] because its graph writes the lenses node field; SPEC §4.5, DESIGN §3.10, CLI_USAGE (edit row from G1022, validate row from G1027), MIGRATING (G1022's adoption section now uses settings.engine.requires instead of engine.min) and HISTORY (G1027 row last) updated. Tests line gained lenses in SHIPPED and the template assertions (review_tests round 6 approved). Targeted modules pass: capabilities, review_lenses, findings_rounds, schemas, design_docs, card_budget."
+        "responses": {
+          "run_tests:failed": "fixed: graph26/graph12 fixtures now use settings.engine.requires; test_engine_lenses passes (62 OK)"
+        },
+        "summary": "Fix for run_tests:failed: test_engine_lenses (G1000/G1022) validates the frozen graph26 fixture and expects exact warnings; its POLICY still set engine.min 0.0.0, which G1027 now reports as engine_min_deprecated. The graph26 and graph12 fixtures (not frozen by G1027's test_design) now declare settings.engine.requires (graph26 [lens_findings], graph12 []). test_engine_lenses: 62 OK. The repository's own .zzzops/POLICY.json still has engine.min 0.0.0; it is policy, so it moves through a policy branch after merge."
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
