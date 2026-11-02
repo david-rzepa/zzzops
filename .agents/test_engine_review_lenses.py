@@ -183,8 +183,12 @@ class ShippedTemplateTests(unittest.TestCase):
             self.assertEqual(lens not in IMPL_REQUIRED, spec.get("skippable", True), lens)
 
     def test_adversary_design_is_g1000s_node_byte_for_byte(self):
+        """Adjusted by G1026: the node also lists the `owner_questions` instruction (instructions are not
+        fingerprinted, so its node_def_fp is still G1000's)."""
         g26 = fixture("graph26", "workflow.json")["graphs"]["default"]["nodes"]["adversary_design"]
-        self.assertEqual(g26, self.nodes["adversary_design"])
+        ours = copy.deepcopy(self.nodes["adversary_design"])
+        ours["instructions"] = [i for i in ours.get("instructions") or [] if i != "owner_questions"]
+        self.assertEqual(g26, ours)
         self.assertNotIn("lenses", self.nodes["adversary_design"])
 
     def test_filter_and_downstream_wiring(self):
@@ -570,8 +574,11 @@ class ReviewerCardTests(ReviewWorld):
             self.assertIn(f'"{self.l(lens)}"', schema, lens)
         from engine.canon import canonical
         from engine.card import CARD_LIMIT
-        self.assertLessEqual(len(canonical({k: v for k, v in card.items() if k not in ("ok", "coordinator")})),
-                             CARD_LIMIT)
+        # G1026: review_impl lists the owner_questions instruction (a blob view); design §9 lets a review card
+        # exceed the target by that one view, so the limit applies to the card without it.
+        sized = {k: v for k, v in card.items() if k not in ("ok", "coordinator")}
+        sized["instructions"] = {k: v for k, v in sized["instructions"].items() if k != "owner_questions"}
+        self.assertLessEqual(len(canonical(sized)), CARD_LIMIT)
 
 
 # --------------------------------------------------------------------------------------------- 4: lens tag

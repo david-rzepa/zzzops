@@ -33,6 +33,8 @@ A dependent goal does not wait for its dependency to merge: once the dependency'
 ## Your decisions
 Every human item has a plain question, summaries (never bare hashes), a facts line, and the exact command to record your answer. An answer is fenced: if the question changed since you saw it, it is refused and the new one is shown. "Not yet" records nothing. You can also merge a PR on GitHub yourself; ZzzOps records it.
 
+Owner questions are blocked items whose question starts `owner question:`: a reviewer raised a choice that only you should make (one that is costly to undo outside the goal, or that changes what the product does). They are yours even when approvals are delegated: the root agent collects them across goals and asks them in one sitting, and records your words verbatim with your name. An answer the root agent gives for you on other questions says `decided_by` "<agent> (root agent), delegated by <you>". Every approval and the PR body list these human decisions.
+
 ## Pausing, policy changes and recovery
 - Hold one goal with `zzzops edit G --file hold.json --base <goal commit>`, where `hold.json` is `{"set": {"state": "held"}}` and the goal commit comes from `zzzops show G` (without `--base`, `edit` only previews). Stop everything by stopping the agents.
 - A `zzzops/policy/*` branch pauses all new work until it lands on the integration branch (or is deleted): that is how policy changes.

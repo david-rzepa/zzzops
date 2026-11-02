@@ -296,9 +296,30 @@ def reviews_section(ctx) -> str:
     return "\n".join(lines)
 
 
+def decisions_section(ctx) -> str | None:
+    """`## Human decisions` (G1026): every answered blocked question on a node that is not a descendant of this op,
+    read from goal history; None when there is none."""
+    from engine import render
+    graph, git, snap = ctx.graph, ctx.git, ctx.snap
+    tip = (getattr(snap, "goals", None) or {}).get(ctx.goal)
+    if graph is None or git is None or not tip:
+        return None
+    hd = render.human_decisions(git, tip, ctx.goal, graph, render.not_descendants(graph, ctx.node))
+    if hd is None:
+        return "## Human decisions\n\nUnavailable: goal history could not be read."
+    if not hd:
+        return None
+    lines = ["## Human decisions"]
+    for e in hd:
+        lines.append(f"- **{e['node']}** ({e['kind']}; {e['decided_by']}, {str(e['decided_at'] or '')[:10]}): "
+                     f"{one_line(e['question'])} → \"{one_line(e['quote'])}\"")
+    return "\n".join(lines)
+
+
 def pr_body(ctx, g, stack, target, I) -> str:
     summary = ctx.inputs.get("summary") or ""
-    body = (f"{summary}\n\n{reviews_section(ctx)}\n\n"
+    decisions = decisions_section(ctx)
+    body = (f"{summary}\n\n{reviews_section(ctx)}\n\n" + (f"{decisions}\n\n" if decisions else "") +
             f"ZzzOps goal G{g}. Built from zzzops/work/g{g} without docs(review) commits.")
     if target != I:
         body += "\n\n" + " ".join(f"Stacked on #{e['pr']} (G{e['goal']}), not merged yet." for e in stack)

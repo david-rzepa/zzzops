@@ -170,11 +170,15 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
     if suggested:
         card["suggested_checkpoint"] = suggested
     r = (doc.get("records") or {}).get(n)
-    if s.get("reason") == "retry" and r:
-        if r.get("answer"):
-            card["answer"] = {k: r["answer"][k] for k in ("text", "quote", "decided_by") if k in r["answer"]}
-        if (r.get("blocked") or {}).get("instructions"):
-            card["blocked_instructions"] = r["blocked"]["instructions"]
+    if r and r.get("status") == "blocked" and r.get("answer"):     # also on a stale card (G1026)
+        card["answer"] = {k: r["answer"][k] for k in ("text", "quote", "decided_by") if k in r["answer"]}
+    if s.get("reason") == "retry" and r and (r.get("blocked") or {}).get("instructions"):
+        card["blocked_instructions"] = r["blocked"]["instructions"]
+    hd = reader.human_decisions(g, graph, decision_nodes(graph, n))
+    if hd is None:
+        card["human_decisions"] = "unavailable"
+    elif hd:
+        card["human_decisions"] = hd
     I = session.snap.integration
     card["read_dev"] = {"commit": I, "show": f"git show {I}:<path>", "grep": f"git grep <pattern> {I}",
                         "mirror": session.mirror_path()}
@@ -193,6 +197,13 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
                       when=f"every {every} minutes (timeout {timeout}); renew first after a pause"),
         "abandon": command(ctx, ["abandon", str(g), n, "--attempt", N])}
     return shrink(card, reader)
+
+
+def decision_nodes(graph, n) -> list:
+    """The nodes whose human decisions a card shows: its own, or, on a review or filter card, its subject's and the
+    subject's ancestors' (G1026)."""
+    subj = graph.subject(n) or graph.filter_subject(n)
+    return [n] if not subj else [subj] + sorted(graph.ancestors(subj))
 
 
 def correction(res, f) -> dict:
@@ -440,6 +451,8 @@ def _steps(card: dict) -> list:
     for i, c in enumerate(card.get("corrections") or []):
         if isinstance(c.get("text"), str) and len(c["text"]) > 200 and "full" not in c:
             blobs.append((len(c["text"]), ("corrections", i)))
+    if isinstance(card.get("human_decisions"), list):
+        blobs.append((len(canonical(card["human_decisions"])), ("human_decisions",)))
     for sect in ("candidates", "notes"):
         for i, c in enumerate(card.get(sect) or []):
             size = len(c.get("text") or "") + len(c.get("impact") or "")
@@ -463,6 +476,8 @@ def _apply(card: dict, step: tuple, reader) -> dict:
             v["summary"] = clip(v["summary"], SUMMARY)
     elif step[1] == "prompt":
         card["prompt"] = _blob(reader, card["prompt"]["text"], SUMMARY)
+    elif step[1] == "human_decisions":
+        card["human_decisions"] = _blob(reader, card["human_decisions"], SUMMARY)
     elif step[1] == "instructions":
         card["instructions"][step[2]] = _blob(reader, card["instructions"][step[2]]["text"], SUMMARY)
     elif step[1] == "corrections":
