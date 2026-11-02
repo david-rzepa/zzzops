@@ -14,10 +14,10 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-02T14:57:10Z",
+      "finished_at": "2026-11-02T15:49:42Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -26,18 +26,23 @@
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/d1040",
+      "holder": "claude:e6ad/d1040b",
       "input_fp": "v1:sha256:6c07f4780638a22a1dec313d8797407cd054184fd5460c71a2a3274ac42d74d2",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "f8199f751a3d89246230febc975f1caacbfc9d62",
-          "commit": "bf33a61c7c615642a1a04b9c1c4027acfaef286a",
+          "blob": "3f7f884dc1f76f4d638f9e1f8bc3fe5c9aa0d288",
+          "commit": "a142874b37515b1c514ef993552a664fa76335f1",
           "path": ".zzzops/reviews/1040/design.md"
         },
-        "summary": "Findings on a blocked agent node stay live across the block: its blocked record keeps last_out_fp (the replaced done output's fingerprint, gated by a new G1027 capability blocked_findings), so retry and stale cards list them and submit accepts responses. G1026 option (b) keeps working: with the capability off nothing changes and no G1026 frozen test changes; with it on the re-review still resolves owner questions, and two sentences of G1026's design.md step 4 change inside its frozen needles. The stale half was already fixed by G1028 and is only pinned with a shipped-graph replay test. Refusals for responses that are not live give a per-id reason (details.why) and say to drop them, and an op finding repeats (round 2, dispute) only when its text matches after normalizing numbers and commit ids, with the dispute showing the target's real response."
+        "responses": {
+          "review_design:1:1": "fixed: took the reviewer's rule and made it exact. The blocked record now stores last_output (the replaced done output, copied across a second block) rather than last_out_fp, because a consumer's fp_parts hold selected values that cannot be recomputed from an output fingerprint, so 'stale only because of the block' could not be proven for a consumer that saw an older output of the held node, or for a filter. Pass 1 alone uses a held view: recorded(p), the subject check/fp_parts and liveness read the held output (§3.1). Such consumers are fresh, so they are not in res.stale: (a) op carriers' findings on a held target are kept (new test 13: run_tests:failed on a blocked implement reaches the retry card); (b) no stale_review and no 'made it moot' text (test 2 asserts both, and that review_design and filter_design are not stale); (c) carried_findings is empty for an edit no consumer reads (new test 4b). A consumer whose own inputs changed stays stale and carried: G1026's spec-edit case is genuinely stale (review_design reads goal.spec), so test 4 asserts stale_review true and the carried_findings entry rather than their absence, as G1028 intends. New test 5b pins that a consumer that saw an older output stays stale. SPEC §4.9 states the held-view rule. Pass 2 is unchanged.",
+          "review_design:1:2": "fixed: §3.4 now says the rollout policy PR carries both the requires entry and the revised step 4 in .zzzops/prompts/design.md (the prompt may land earlier, since the new text is right with the capability off; requires never lands before it), with the reason. G1026's text is only in the template, which this goal edits; the installed copy changes only in that policy PR. blocked_findings.txt, SPEC §4.5 and CLI_USAGE say the capability needs the revised design step 4 (doc needle in test 12), and new repository test 14 fails when .zzzops requires blocked_findings and the installed design prompt lacks the needle 'that no entry in `human_decisions` answers', so CI fails a requires-only policy PR. The engine does not gate on prompt text, since prompts are repository-owned free text.",
+          "review_design:1:3": "fixed: norm now replaces, in order, 0[xX][0-9a-fA-F]+ (object addresses), tmp[a-z0-9_]{8} (default tempfile names), (?<=-)[a-z0-9_]{8}(?=[/.]) (the hyphen-ended prefixes this repository's tests use with mkdtemp/mkstemp), [0-9a-f]{7,} without word boundaries, and \\d+ (§3.5, SPEC §4.14). Test 9's recurring failure now differs in a timing, commit id, 0x address and both tempfile forms and must give round 2; a norm unit test pins each token kind and that different test names stay different. §6 no longer claims such tokens are rare and names what is still not covered (letter-bearing UUID groups, random words), bounded by the correction budget."
+        },
+        "summary": "Revision 2 of the G1040 design, fixing the three review_design corrections only. (1) Blocked agent records keep the replaced output (last_output, capability blocked_findings) instead of only its fingerprint; pass 1 alone reads held outputs for carriers' inputs, subjects and liveness, so a consumer stale only because of the block is fresh for that node: not in stale, op findings (run_tests/integrate on a blocked implement) kept, no stale_review, no carried_findings; genuinely stale consumers (spec edit) keep G1028's carry. (2) The rollout policy PR ships the revised design step 4 with the requires entry (prompt may land first, requires never before); capability text, SPEC 4.5 and CLI_USAGE say so; a repository test pins the pairing. (3) norm also replaces 0x addresses, unbounded hex runs of 7+, and default and hyphen-prefixed tempfile names; test 9 and a norm unit test cover them."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
