@@ -153,6 +153,40 @@
         }
       },
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 2,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T21:56:29Z",
+      "fp_parts": {
+        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "inputs": {
+          "base": "v1:sha256:0c2a08d0bde69e18e656d474372b82dbd482df44464aef4c1e75be377a0d3fac",
+          "doc": "v1:blob:aa20a8744d00fc0bc034094524e90fcb9076c9d2"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        ".agents/engine_fake_gh.py",
+        ".agents/test_engine_auto_delete.py"
+      ],
+      "holder": "codex:takeover/1031-test_design",
+      "input_fp": "v1:sha256:0408d2b706338011b895f10e2ffc83c699e800f83179c6c3732d85139afcbcbc",
+      "ok": true,
+      "output": {
+        "commands": [
+          "python3 -m unittest discover -s .agents -p test_engine_auto_delete.py"
+        ],
+        "tests": {
+          "base": "de5640d1c5909ea924450aeea6450497a78946f6",
+          "change": "c37bbf03878fa84f4ce40f6d2482921529dcff74",
+          "commit": "ec68183a7e95dfcb46c5a7604bcba61789ffe9da",
+          "tree": "038d3c86c9c212485437c32b7e88302f7dba725c"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
