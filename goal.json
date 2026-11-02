@@ -381,14 +381,14 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-01T21:46:35Z",
+      "finished_at": "2026-11-02T04:13:03Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
-          "base": "v1:sha256:8a2e8ac0217a3e46b72c1e3ce2d2c6f98e60949f5743134ece85574f6cb677e3",
+          "base": "v1:sha256:8b4a36505e2c062e308b1242d8257779ed10ed7638f92c8846e2941d1dc7ac6f",
           "doc": "v1:blob:496ddd5a4af997072a6592b0a8c591ece5625b54"
         },
         "policy": {}
@@ -419,8 +419,8 @@
         ".agents/test_engine_review_lenses.py",
         ".agents/test_marketplace_bundle.py"
       ],
-      "holder": "claude:e6ad/td1022",
-      "input_fp": "v1:sha256:c325c98427f86c39e191beb39af95013500b099132948de14536115904db731e",
+      "holder": "claude:e6ad/root",
+      "input_fp": "v1:sha256:9e0b9584812cc7a49dd5cc79934b7438be13aa9864e884b25d2ad91e5430c7ba",
       "ok": true,
       "output": {
         "commands": [
@@ -432,17 +432,14 @@
           "python3 -m unittest discover -s .agents -p test_design_docs.py",
           "python3 .agents/prompt_stats.py --check"
         ],
-        "responses": {
-          "review_tests:1:1": "fixed: the test now imports `engine` and checks engine/capabilities/lenses.txt first; when present it asserts shipped POLICY.json settings.engine.requires contains `lenses` and returns. Otherwise it reads getattr(engine, 'ENGINE_VERSION', None), asserts it exists and is >= 1.2.0. No ImportError in the G1027-first order. Commands now use python3."
-        },
         "tests": {
-          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "2aae91270fddb06d14ec81f624e75e5afadf615a",
-          "commit": "18fdceb5b257202f44b9beaf1967f6e55a47bfdc",
-          "tree": "1f8363b0befef2d65d131ec52edc8373c86ae47e"
+          "base": "5288bf7ed3f8373dad773e2de48f6c7603afd985",
+          "change": "c7e732be045863f9a3555d42a2854f75d9d06474",
+          "commit": "07abea9a5bed16199105a33f476824cdf41a5fa8",
+          "tree": "e8c0038a1020e481515d3f412bf80689f564c5ad"
         }
       },
-      "reason": "reopened",
+      "reason": "stale",
       "status": "done"
     }
   },
