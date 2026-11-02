@@ -120,10 +120,10 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 4,
-      "correction_runs": 3,
+      "attempt": 5,
+      "correction_runs": 4,
       "findings": [],
-      "finished_at": "2026-11-02T22:58:19Z",
+      "finished_at": "2026-11-02T23:42:13Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -133,19 +133,22 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1040-implement-after-1031",
+      "holder": "codex:takeover/1040-implement-full-fixes",
       "input_fp": "v1:sha256:d17346d0ed7c9f4d4b68c7ee0043f552ca56d68a7036a3438e9fe3f4bafc3b31",
       "ok": true,
       "output": {
         "code": {
           "base": "575015a9831ccd2ce724c3125dd74dd20029c1b5",
-          "change": "86d82829623b9bedacc05dfa4b5ea12f5483ca78",
-          "commit": "a88ea8ba6c380d5a2bc21c582e31ca95a191b706",
-          "tree": "3bc6039145e71960a4912abaaed9b7398d652226"
+          "change": "e94d0156a022236ffaacde371cb85c6a1d47b1ee",
+          "commit": "99b4e35fb77aaa355ac098e906b952459416c476",
+          "tree": "af1e6adec486728f096447fa7fd5139549e820ca"
         },
-        "summary": "Revalidated the clean rebase onto merged G1031 without source edits. Frozen mapped tests are byte-identical; range-diff preserves G1040 behavior and the stable-option normalization correction, with only HISTORY context shifting around the merged G1031 row. Focused feature suite passed 20 tests in 11.112 seconds and normalization controls passed 3 tests in 0.022 seconds; full verification is delegated to root as requested."
+        "responses": {
+          "run_tests:failed": "fixed: the sharded diagnostic isolated test_engine_card_ux.SubmitRefusalTests.test_refusal_lists_findings_that_arrived_while_running. Restored no_longer_live/details.why pointers in missing-response hints without weakening the test or restoring misleading blanket arrival claims. The exact failing case, obsolete-response case and frozen ResponseRefusalTests all pass (4 tests, 5.946s). Prompt tests and prompt_stats --check already pass; no unrelated prompt edit or serial full-suite rerun was performed."
+        },
+        "summary": "Restored the response-refusal hint’s compatibility pointer to no_longer_live and details.why even when the only mismatch is a finding raised after the card was printed. Precise respond_to instructions, obsolete-key reasons and conditional Drop guidance remain intact. The exact hidden full-suite failure plus obsolete-response and all frozen refusal-reason controls now pass: 4 tests in 5.946 seconds. Existing assertions and frozen accepted tests were not edited."
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
