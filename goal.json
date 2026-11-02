@@ -46,15 +46,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:e0d3e1cb8d2baa7c3c7cc1b2a3a6017b2191d4a8597bb3b58cfbe6a1eb6a9f9b",
@@ -66,7 +66,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:e0d3e1cb8d2baa7c3c7cc1b2a3a6017b2191d4a8597bb3b58cfbe6a1eb6a9f9b",
@@ -78,7 +78,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:e0d3e1cb8d2baa7c3c7cc1b2a3a6017b2191d4a8597bb3b58cfbe6a1eb6a9f9b",
@@ -86,33 +86,33 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-02T15:40:12Z",
+      "finished_at": "2026-11-02T15:55:52Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:f8199f751a3d89246230febc975f1caacbfc9d62",
+          "doc": "v1:blob:3f7f884dc1f76f4d638f9e1f8bc3fe5c9aa0d288",
           "spec": "v1:sha256:77b1ea7deff7c62c46740cea2ad4ef44b2058a52cb809481ba76519d7839c296"
         },
         "policy": {},
-        "subject": "v1:sha256:e0d3e1cb8d2baa7c3c7cc1b2a3a6017b2191d4a8597bb3b58cfbe6a1eb6a9f9b"
+        "subject": "v1:sha256:c09e1c65a5ff0926ddc56704e14f9afc91072d2f725dd34f46a6d692017540e6"
       },
-      "holder": "claude:e6ad/rd1040",
-      "input_fp": "v1:sha256:4e4bda48f0a9412a57ed513e21cc4f1be631edbeb023e898500e0d921447802b",
-      "ok": false,
+      "holder": "claude:e6ad/rd1040b",
+      "input_fp": "v1:sha256:dff884a9df5bd6c905692ddb9441ae52765d46c6417d803191119e7aefde8343",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "1540a3c36d6572a124c67913378f65fbd7ed7080",
-          "commit": "1e45d5db3da80e342996f6f6ee2b2f7f5610e59d",
+          "blob": "c39d496736e31e3974b0fda703e634a694b4b847",
+          "commit": "7b953aa438ce3e2339c337d928d6c8b043640920",
           "path": ".zzzops/reviews/1040/review_design.md"
         },
-        "summary": "The approach is right: last_out_fp behind blocked_findings is the smallest exact fix, G1026 is unchanged with the capability off, the stale claim holds at 25186a5, and the frozen integrate test passes under the normalisation. Three changes are needed. The blocked target's carriers are stale by construction, so op findings are dropped and every retry correction is marked stale_review. Enabling the capability before the installed design prompt changes makes the designer re-block on answered owner questions. norm misses 0x addresses and tempfile names."
+        "summary": "Revision 2 fixes all three round-1 findings. 1:1: the held view in pass 1 (recorded inputs, subject and fp_parts, liveness) is exact against frontier.py at 25186a5. A consumer that is stale only because of the block is fresh, so it is not in res.stale: no stale_review, no carried_findings, op findings kept, filter still fresh. Test 4's stale_review: true is right, because review_design, adversary_design and filter_design all read goal.spec. last_output does not grow the goal doc (it replaces the done record's output, and output becomes null) and never reaches a card. 1:2: one policy PR or prompt first, documented, with test 14 run by validate.yml on every PR; G1026's frozen needles survive the new sentences. 1:3: norm's alternation order and anchors cover 0x addresses, hex runs, tmpXXXXXXXX and every hyphen-prefixed tempfile name in the repository. Three non-blocking notes are in the artifact: quoted-path lookahead, the test 4b example field, and keeping the carrier guard on R."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "f8199f751a3d89246230febc975f1caacbfc9d62",
-          "commit": "bf33a61c7c615642a1a04b9c1c4027acfaef286a"
+          "blob": "3f7f884dc1f76f4d638f9e1f8bc3fe5c9aa0d288",
+          "commit": "a142874b37515b1c514ef993552a664fa76335f1"
         }
       },
       "status": "done"
