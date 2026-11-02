@@ -34,34 +34,34 @@
   "priority": "P1",
   "records": {
     "approve_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T20:02:33Z",
+      "finished_at": "2026-11-02T22:01:19Z",
       "fp_parts": {
         "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
         "inputs": {
-          "doc": "v1:blob:3d5740027b00e0543fd2d9a6c0eeae3c3447bbac",
-          "summary": "v1:sha256:8185cb0696724e2c2eb6728a20742e781d999643912acca978de8a749f4fce29"
+          "doc": "v1:blob:982d3c13e410a3f3c6bf0584d8e1cce94d67cb06",
+          "summary": "v1:sha256:74fe6528426330e6a4f8b22f28f28779ae64eabe7d0fd8dacb1d86ed28179581"
         },
         "policy": {},
-        "subject": "v1:sha256:28d698545ceef92e2400d43b10223bfaef492c762e285a80dec3680ba3f95c87"
+        "subject": "v1:sha256:bee6c9f3d6fb3db7ffe149b4830be16f5b4f5ee763bafb48e597ad0973198fff"
       },
       "holder": "human",
-      "input_fp": "v1:sha256:21902f32ca78eeb466566a912f7a6c42db4820b511a440ba9986187204e049d4",
+      "input_fp": "v1:sha256:2f3686079b7cbb152fa7542abf4e3e6dba5cc4c0bd7f5d881456a1031947594e",
       "ok": true,
       "output": {
-        "decided_at": "2026-11-01T20:02:33Z",
-        "decided_by": "Claude (root agent), delegated by Dave",
+        "decided_at": "2026-11-02T22:01:19Z",
+        "decided_by": "Codex (root agent), delegated by Dave",
         "decision": "approved",
-        "quote": "whitepaper should be after dogfood run, we'll use the [redacted] repository as a dogfood test - migrate the goals and execute through to a release.",
-        "summary": "Approved G1037 design attempt 4 (dogfood Release 1 on the owner's private web app, through to a release): the root holds implement for the run; nine phases from install (Claude and Codex on the dev build) and legacy migration, bootstrap with the owner's intent, migration with releases assigned (later-release goals held), execution on the consolidated graph with owner questions, to a release cut, the app's own staging step and the finish, each deploying step approved separately; failure paths only natural or safe; acceptance checks A1-A17; costs and a lens re-score for G1036. Owner decisions OD1-OD8 recorded; privacy is a convention (app never named; detailed plan in the root's private journal). Approved after three review rounds."
+        "quote": "Do not wait for my approval",
+        "summary": "Approve independently reviewed G1037 revision 5 under existing Release 1 delegation. Preserve OD1–OD8, private journal and anonymization convention. Adopt reviewed merged engine capabilities/prompts/graph explicitly; actual private run waits until all dependencies merge. This approval does not authorize staging or production deployment, migration triage, deletion, publication of identifying details or new product choices; those existing owner gates remain."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "3d5740027b00e0543fd2d9a6c0eeae3c3447bbac",
-          "commit": "4785af5ee640f335ff5637757c5a64f572222e74"
+          "blob": "982d3c13e410a3f3c6bf0584d8e1cce94d67cb06",
+          "commit": "dbef3a2e2e23ddac93901aa87524043374d7ea4b"
         }
       },
       "status": "done"
