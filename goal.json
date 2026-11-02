@@ -13,6 +13,39 @@
   },
   "priority": "P1",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T16:10:27Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:ab1153abea2ff217e185a023c66febc2cdc471b2",
+          "summary": "v1:sha256:fee8fc0ecf0295077c5f326b0633ebfa1efdb03cad5cc8de877c595c7037ea57"
+        },
+        "policy": {},
+        "subject": "v1:sha256:9f165ba79a655355950348cb4e1bf2351c9fcafacbdb45c8d25dc6605ac0daca"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:2121bc480567ede965fed64aa2a18ad8de9b6c589c7a26e00c5a2acf31dcc772",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-02T16:10:27Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "For updating the branch with the trunk, I think merges might work better as conflict resolution doesn't get lost. Then maybe a final rebase when integrating in order to clean up the history?",
+        "summary": "Approved G1038 design revision 3 after three review rounds (round 3 approved, all prior findings resolved). Goal branches sync with trunk by merge commits (git merge-tree with the old base_commit as merge base; fast-forward pushes only; conflicts checked out for resolution and never redone), behind capability merge_sync as a precondition, with merge mode sticky per branch. Tests vs implementation are split by recorded frozen paths and per-phase submit ranges, so test fixes may follow implementation commits without rewrites. Integrate squashes to a `test:` commit and an implementation commit (type ranked from release.config.cjs) on the last synced base, with the PR head always the newest commit. Conventional commits enforced on work branches, PR titles and trunk merge commits; goal-ref record commits keep machine subjects. Notes for implement: take the squash body's parent only when above base_commit; mention merge-queue message settings in REPAIR."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "ab1153abea2ff217e185a023c66febc2cdc471b2",
+          "commit": "54cc920b553376c7d0c9cef9e731743b4b680fee"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 3,
       "correction_runs": 2,
