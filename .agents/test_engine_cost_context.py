@@ -7,17 +7,63 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import shlex
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 import engine_fixtures as fx
 import test_engine_lifecycle as lifecycle
 from engine import schemas, render
 from engine.fingerprint import fp_parts, input_fp
-from engine.ops import OPS
+from engine.ops import OPS, checks as check_ops
+
+
+def measured_test_script(git, script, cwd, env):
+    """Measure the same portable shell/current-interpreter command checks.run uses."""
+    command = shlex.join([sys.executable.replace("\\", "/"), script])
+    resolved_shell = check_ops.shell(git)
+    started = time.perf_counter_ns()
+    completed = subprocess.run([resolved_shell, "-c", command], cwd=cwd, env=env, capture_output=True)
+    duration_ms = (time.perf_counter_ns() - started) // 1000000
+    return command, completed, duration_ms
+
+
+class CostMeasurementLauncherTests(unittest.TestCase):
+    def test_available_shell_records_a_real_red_run_then_green_using_current_interpreter(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo = fx.make_repo(directory)
+            repo.write({"probe path/test script.py": "from pathlib import Path\nassert Path('built').exists()\n"})
+            git = fx.engine_git(repo)
+            with fx.env_of(repo.env):
+                command, red, milliseconds = measured_test_script(git, "probe path/test script.py", repo.path, repo.env)
+                self.assertNotEqual(0, red.returncode)
+                self.assertIn(b"AssertionError", red.stderr)
+                self.assertIs(type(milliseconds), int)
+                self.assertGreaterEqual(milliseconds, 0)
+                self.assertEqual([sys.executable.replace("\\", "/"), "probe path/test script.py"], shlex.split(command))
+                repo.write({"built": "ready\n"})
+                same_command, green, _ = measured_test_script(git, "probe path/test script.py", repo.path, repo.env)
+                self.assertEqual(command, same_command)
+                self.assertEqual(0, green.returncode, green.stderr)
+
+    def test_launcher_uses_resolved_windows_shell_and_quotes_interpreter_and_script_spaces(self):
+        git = object()
+        resolved_shell = "C:/Program Files/Git/bin/sh.exe"
+        interpreter = r"C:\Program Files\Python310\python.exe"
+        with mock.patch.object(check_ops, "shell", return_value=resolved_shell) as resolve, \
+                mock.patch.object(sys, "executable", interpreter), \
+                mock.patch.object(subprocess, "run", return_value=SimpleNamespace(returncode=1, stderr=b"red")) as run:
+            command, observed, milliseconds = measured_test_script(git, "tests/test cost.py", "checkout", {})
+        resolve.assert_called_once_with(git)
+        self.assertEqual([resolved_shell, "-c", command], run.call_args.args[0])
+        self.assertEqual([interpreter.replace("\\", "/"), "tests/test cost.py"], shlex.split(command))
+        self.assertEqual(1, observed.returncode)
+        self.assertIs(type(milliseconds), int)
 
 
 class CostPolicyTemplateTests(unittest.TestCase):
@@ -236,10 +282,9 @@ class CostPlumbingJourney(lifecycle.Journey):
         card = self.A.start(goal, self.n("test_design"))
         wt = self.A.worktree(goal)
         checkpoint = wt.commit({"tests/test_cut.py": "from pathlib import Path\nnamespace = {}\nexec(Path('src/cut.py').read_text(), namespace)\nassert namespace['cut'] == 1\n"}, "test: measured fixture")
-        command = "python3 tests/test_cut.py"
-        started = time.perf_counter_ns()
-        completed = subprocess.run(["/bin/sh", "-c", command], cwd=wt.path, env=self.w.env, capture_output=True)
-        duration_ms = (time.perf_counter_ns() - started) // 1000000
+        with fx.env_of(self.w.env):
+            command, completed, duration_ms = measured_test_script(
+                fx.engine_git(self.w.clones["a"]), "tests/test_cut.py", wt.path, self.w.env)
         self.assertNotEqual(0, completed.returncode, "cost records an actual red run")
         cost = {"checkpoint": checkpoint, "commands": [{"cmd": command, "duration_ms": duration_ms, "exit": completed.returncode}],
                 "total_ms": duration_ms, "changed_tests": [{"id_or_scope": "tests/test_cut.py", "duration_ms": duration_ms,
