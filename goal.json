@@ -185,51 +185,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 3,
-      "correction_runs": 2,
-      "findings": [
-        {
-          "id": "review_tests:2:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:e10723f61e0b013cc22128218cc703ecaaec7977d7fcb925d30dda9dc080f3b3",
-          "text": "No test checks revision 7's PR-body rule, the very case finding 3 was about. Both PR-body checks (test_engine_owner_questions.py lines 451 and 605) use only design answers, and design is an ancestor of integrate. An implementation that builds the PR body from integrate's ancestors (revision 6's rule) passes every test, and it leaves an answered integrate question (kind op) out of the PR body. That breaks D5 and section 1 step 5 ('approve_merge and the PR body list every answered question'), and approve_merge still shows the answer, so the gap is hard to see. Fix: in OpDecisionTests.test_an_answered_integrate_question_is_listed_with_kind_op, after the post-answer integrate run (ops/integrate.py rewrites the body when it differs), assert the PR body has '## Human decisions' with one '- **<integrate>** (op; Claude (root agent), delegated by Dave, <date>): ...' line.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-02T05:44:10Z",
+      "attempt": 4,
+      "correction_runs": 3,
+      "findings": [],
+      "finished_at": "2026-11-02T14:38:10Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:3ddfcf819109e6587559b34b5f61a295c331a1db",
-          "tests": "v1:sha256:49f91d77072f572f3e519083063b73dbbce38291dd02ddef6a780015487b73e5"
+          "tests": "v1:sha256:65d9ab989471da0fe858808028644b0847eb6b6e8d7ddd5cf115ad8273ae261d"
         },
         "policy": {},
-        "subject": "v1:sha256:1081a4ce6ae5aeb92d40ac831d81a6a699574f8b3476dff5eb04d4d57fbd616c"
+        "subject": "v1:sha256:5a53d06ee8b3bbf79f15e38cc20e3abafa084d06df6d35da7aedb3caf00c977b"
       },
-      "holder": "claude:e6ad/rt1026c",
-      "input_fp": "v1:sha256:f81d811b8dedb13e11119102b21688fbf6d9b18a342a911829dad78c9cdbb240",
+      "holder": "claude:e6ad/rt1026d",
+      "input_fp": "v1:sha256:550bea7eb56e8348b13eadd5c574bfaff8c91ad55a110e5ab7334c684940499e",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "c0c0e614356a12e68589967762d06c07c01c578f",
-          "commit": "53ecb0e64e27fee7137ffe7127c8b2cd0b686163",
+          "blob": "de3231f06c1691b4c8b3d0db2a94ac52f988bc15",
+          "commit": "8ac5a9976e7319721cef3ef7fa925fa2bc26b083",
           "path": ".zzzops/reviews/1026/review_tests.md"
         },
-        "summary": "2:1 resolved: the integrate test now asserts the PR body has '## Human decisions' with exactly one integrate line of kind op, and the regex matches design revision 7's D5 line format; it fails at the missing feature on the current engine. Recorded commands: owner-questions suite 41 tests, 23 failures, 6 errors (all at the missing feature); test_design_docs OK; prompt_stats --check PASS. No new findings."
+        "summary": "The only change since approved round 3 is 60efe14: ReviewerCardTests.test_review_impl_card_searches_the_goals_own_commit now measures the review_impl card against CARD_LIMIT with instructions.owner_questions removed. That follows design revision 7 section 9: an instruction is shown as a blob view, and a review card may end above the 4,096-byte target, so the bound applies to everything else. It matches OwnerJourneyTests.test_cards_carry_the_instruction_and_stay_within_the_limit, which removes the same view and also asserts it is a blob view. Only the one excluded key is removed, so the size check still catches growth anywhere else on the card. The commit is on the tests line before the implementation. In the g1026 worktree, test_engine_review_lenses.py (59 tests) and test_engine_owner_questions.py (41 tests) both pass. No findings."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "25186a5ee98282b3f380ff48a06b014aae34aa10",
-          "change": "132aec3ef9d9a1153bf6abbcb33df7a06542736b",
-          "commit": "3974afd0d95b3cab03cdd35b54e601d962d305ce",
-          "tree": "2dde809cf6b6bd1b51312b883bd6bce7fa39c712"
+          "change": "73bd24ada1a17b7a95ef716e17f65c2f68906149",
+          "commit": "60efe1473acdd6afb641b9ff624fe99641b13108",
+          "tree": "de9bfa39beca42f4ee840baa983a669729806525"
         }
       },
       "status": "done"
