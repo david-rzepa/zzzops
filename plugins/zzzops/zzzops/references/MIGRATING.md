@@ -65,3 +65,7 @@ The 1.3 default graph has 15 nodes: one multi-lens reviewer per subject (`review
 - Land when no goal is past `approve_design`. **Rollback:** a policy branch restoring the old files, keeping `settings.engine.requires`.
 
 **Editing the lens set:** add or remove an entry in the reviewer's `lenses` and its prompt file, then run `zzzops validate --policy --dir <dir>`. A non-skippable lens needs a `skippable: false` node. Separate single-lens nodes (G1000's form, such as `adversary_design`) still work: give each an input into its filter (`optional` exactly when it is skippable).
+
+## Adopting release branching (capability `release_lines`)
+
+Before landing a policy with `settings.branching`, require `release_lines` through the upgrade recipe in REPAIR.md and turn GitHub's "Automatically delete head branches" **off**: `gh api -X PATCH repos/{o}/{r} -F delete_branch_on_merge=false`. Merging a finish PR otherwise deletes the kept `release/N` or `hotfix/x` branch; dependency deletion can also close or move stacked and release PRs before the engine retargets them. The host-setting change needs the owner's authority; the engine never makes it. `zzzops validate` warns when the setting is on and readable, without failing validation (see SETUP.md). When removing `settings.branching`, restore the non-branching recommendation, **on**, with the owner's authority (`-F delete_branch_on_merge=true`).

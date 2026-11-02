@@ -27,7 +27,8 @@ In the primary worktree, or add it as a writable root (`--add-dir`): ZzzOps writ
 
 ## Repository and host
 - `zzzops/**` must allow create, update, force-update and delete by the agents' credentials, with no required PRs, checks, signatures or message patterns. Recommended: a ruleset on `zzzops/goal/**` blocking deletion and force-push (not available on a private repository on GitHub's free plan, where the rules reads return 403: see step 2 of the bootstrap skill). A refusal shows as `push_refused`.
-- GitHub: "Automatically delete head branches" on; `settings.merge.method` allowed.
+- GitHub: "Automatically delete head branches" on without `settings.branching`, **off** with it (merging a finish PR deletes the kept `release/N` or `hotfix/x` branch, and deleting a dependency branch can close or move stacked and release PRs before the engine retargets them); `settings.merge.method` allowed.
+- With `settings.branching`, `zzzops validate` checks `delete_branch_on_merge` with one best-effort repository API read (10 s timeout). A true value gives a warning, never a validation error; absent fields, access failures and timeouts stay silent. Confirm the setting in GitHub when it cannot be read. The engine never changes it.
 - Goal worktrees are hidden only by `.git/info/exclude`: add `.zzzops/worktrees/` to the repository's tool ignore files (ESLint, Prettier, test discovery).
 - Set `git config zzzops.committer "Name <email>"` identically on every machine, so PR rebuilds are identical.
 - The repository's `pre-push` hook runs on engine pushes of work and PR branches (git-lfs needs this).
