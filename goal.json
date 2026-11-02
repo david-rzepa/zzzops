@@ -262,7 +262,7 @@
           "target_attempt": 5,
           "target_fp": "v1:sha256:eb3bc9031b6efcb13fdfaeb2fcb1e424c37267ca8d10dc329e9d417414807f2d",
           "text": "`python3 -m unittest discover -s .agents -p 'test_engine_capabilities.py'` exited 1:\nst_engine_capabilities.py\", line 182, in test_policy_dir_validate_warns_too\n    self.assertIn(\"engine_min_deprecated\", self.kinds(out[\"warnings\"]))\n    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'engine_min_deprecated' not found in []\n\n----------------------------------------------------------------------\nRan 26 tests in 5.287s\n\nFAILED (failures=1)\n",
-          "upheld": false
+          "upheld": true
         }
       ],
       "finished_at": "2026-11-02T05:25:58Z",
