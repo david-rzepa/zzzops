@@ -109,15 +109,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [
         {
           "id": "review_design:3:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 4,
           "target_fp": "v1:sha256:a00e00890b63c8f4a17a2015ce8aaf86453cbcef3653cb8bd5ecc77521905e1d",
@@ -129,41 +129,53 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 4,
           "target_fp": "v1:sha256:a00e00890b63c8f4a17a2015ce8aaf86453cbcef3653cb8bd5ecc77521905e1d",
           "text": "Under (b), review_design is the only step that closes an owner-question finding. It resolves the finding 'against the design's ## Owner decisions section', and §11 says 'the review checks it'. But D5 gives human_decisions only to an agent card for its own node, so the reviewer's card has no engine-recorded answer to compare with the designer's copy. A wrong mapping of an answer to a finding id, or an 'owner decision' the owner never gave, would be resolved unchecked. Fix: give the cards of review nodes human_decisions over their subject (the same render.human_decisions helper with the subject's node; update D5, §5, §6 and §10 test 2), and say in the owner_questions reviewer text to resolve an owner question only when an answered entry covers it and the section quotes it. Otherwise, remove 'the review checks it' from §11 and name the gap in §9.",
           "upheld": false
+        },
+        {
+          "id": "review_design:4:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 5,
+          "target_fp": "v1:sha256:0f2ad4f5749a304f5025b79cd9dec0beb825527da46aedb02b7bf1dc13b6942e",
+          "text": "human_decisions on cards has no shrink step. D5 and §5 say entries are unclipped on cards and 'shrink turns it into a blob view if needed'; the frozen decisions_of helper also expects a blob view after shrink. But the shipped card._steps (card.py, around line 420) and SPEC 3.14's shrink rule (SPEC.md:1581) can blob only prompt, instructions, inputs/context/policy entries, correction texts and candidates/notes. A top-level human_decisions list is never a candidate. §9 'Card size' also says the list 'is clipped', which contradicts D5. Revision 5 adds the list to all six review and filter cards, which already carry an unshrinkable previous.findings (this review's own card is 7,367 canonical bytes). Fix: in §5, add a card.py shrink step that blobs a top-level human_decisions list (key summary 'N items'). In §6, add it to SPEC 3.14's shrink order. Correct §9 to 'not clipped on cards; shrink blobs it'. Add a test: with a long answer, the review_design card's human_decisions becomes a view that decisions_of reads back.",
+          "upheld": false
         }
       ],
-      "finished_at": "2026-11-02T05:03:22Z",
+      "finished_at": "2026-11-02T05:08:31Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:64f07bcc146a3775ab9a52bb11167ea8441a02c2",
+          "doc": "v1:blob:0b1b68b8f7519a10e1b1ca80d1ed56f81425473f",
           "spec": "v1:sha256:712a82bb1586f8af2e21fa5349d31dbf159031609fe366558e0f4003e9911e57"
         },
         "policy": {},
-        "subject": "v1:sha256:7c16b48da36d48f8795c1aa9a527cb877a7414e2e9fa32e364a3a18a69b0f750"
+        "subject": "v1:sha256:86a8514f1b48d32b630bb9c561b74d70cf3085f1e4cf64d2202554d0afeec99c"
       },
-      "holder": "claude:e6ad/rd1026",
-      "input_fp": "v1:sha256:394b93f8e7c817ba2505376fbd79d3ff7f5826cc79df204eb495f9e2b46708fd",
+      "holder": "claude:e6ad/rd1026b",
+      "input_fp": "v1:sha256:b3fa7debeaa38b4856baa0396d5b194293852d923a9d483232fb7f51d5434d04",
       "ok": false,
       "output": {
         "decision": "changes_requested",
         "report": {
-          "blob": "b69445742aaeb8cffbab931cc436cb8b4d94701e",
-          "commit": "c8f6af0d9afd118bd5fa2373355995e96afe3eb6",
+          "blob": "ab0d5a2cc5aa231d4255f6d7eeca9ee8ce0264c1",
+          "commit": "2d14646b80bcee1d678826acc090dd9b474e2846",
           "path": ".zzzops/reviews/1026/review_design.md"
         },
-        "summary": "Option (b) is sound: against the shipped frontier (pass 1 liveness, check_responses, process_findings re-fencing), the journey holds end to end (asked, blocked, answered, recorded, re-reviewed and resolved, shown at approve_design and approve_merge), and SPEC 4.9 needs no edit. Two findings: (1) the list of test assertions to invert misses the step-4 prompt test's 'fixed: owner chose' needle and the change in how the stale test ends; (2) the review now resolves the owner question against the designer's copy alone, because review cards do not carry human_decisions, so '§11: the review checks it' has nothing to check against."
+        "summary": "Revision 5 fixes both round-3 findings: the frozen-test change list is complete against a263ee7, and review/filter cards carry human_decisions over the subject and its ancestors, with a fail-closed resolve rule. One new material gap: the shipped shrink cannot blob a top-level human_decisions list. D5 and §5 claim it can, and §9 says it is clipped, which contradicts D5. Revision 5 puts the unclipped list on review cards that already exceed the 4,096-byte target. Add a shrink step plus the SPEC §3.14 edit, fix §9 and add a test."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "64f07bcc146a3775ab9a52bb11167ea8441a02c2",
-          "commit": "f34a0bd5c3645e1e8965d6822c93ea28df3315bf"
+          "blob": "0b1b68b8f7519a10e1b1ca80d1ed56f81425473f",
+          "commit": "80497fd353858b042faf5104a70f663423115dbe"
         }
       },
       "status": "done"
