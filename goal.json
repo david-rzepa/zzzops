@@ -45,8 +45,29 @@
       "status": "done"
     },
     "base": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "blocked": {
+        "category": "conflict",
+        "commands": {
+          "resume": [
+            "start",
+            "1027",
+            "base",
+            "--as",
+            "<LABEL>"
+          ]
+        },
+        "instructions": "In /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1027: resolve the conflicts in docs/design/HISTORY.md docs/design/README.md docs/design/SPEC.md plugins/zzzops/zzzops/engine/__init__.py plugins/zzzops/zzzops/engine/schemas.py plugins/zzzops/zzzops/references/CLI_USAGE.md, `git add` them, run `git -c core.editor=true rebase --continue`, then run the resume command. Do not change the meaning of the goal's commits.",
+        "op_state": {
+          "old": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "onto": "5288bf7ed3f8373dad773e2de48f6c7603afd985",
+          "work": "40336b9cac011fc8a525f6f798ff63c2ed3de740"
+        },
+        "reason": "rebase conflict in docs/design/HISTORY.md docs/design/README.md docs/design/SPEC.md plugins/zzzops/zzzops/engine/__init__.py plugins/zzzops/zzzops/engine/schemas.py plugins/zzzops/zzzops/references/CLI_USAGE.md",
+        "repeats": 1,
+        "waiting_for": "agent"
+      },
+      "correction_runs": 1,
       "findings": [
         {
           "id": "base:reopen:1",
@@ -61,7 +82,7 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T20:39:04Z",
+      "finished_at": "2026-11-02T04:28:14Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
         "inputs": {
@@ -72,21 +93,10 @@
       },
       "holder": "claude:e6ad/op",
       "input_fp": "v1:sha256:d9ef292a6b05a9ee73c1996b6fdc61e05c28301ce8f94d7c5aad2424acad7e3d",
-      "ok": true,
-      "output": {
-        "base_commit": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-        "branch": "zzzops/work/g1027",
-        "replay_map": {
-          "200afabcf5448a9fb64e9cd860e81d554150c245": "913b22b56fa1ba6627f90eb2e809f2abac774721",
-          "270fca67f513adf76e7a5a8d1f64fbaba33b2ed0": "746a54b0ef816a659ebfcd256260e711f4df21c6",
-          "8fc0b88e577447bf84107d90a9afa8d7406e4c28": "d5ae0c133fbd8d6825b60d8efc87e17a7cf7ef1a",
-          "cf9707234fbd23273637e68d6a2ab09e2690ebd5": "c4b25a7efcefedab790b273b0009fb3f137409dd"
-        },
-        "replay_pos": {},
-        "stack": []
-      },
-      "reason": "new",
-      "status": "done"
+      "ok": false,
+      "output": null,
+      "reason": "reopened",
+      "status": "blocked"
     },
     "design": {
       "attempt": 2,
