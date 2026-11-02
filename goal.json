@@ -71,23 +71,10 @@
       "status": "done"
     },
     "design": {
-      "attempt": 3,
-      "correction_runs": 1,
-      "findings": [
-        {
-          "id": "design:reopen:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "design",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:a1b8324a7aee6228a40609ae820a034594cf5e3ecf1daf63b05ec56f5a793143",
-          "text": "Pre-implementation review confirmed full plan hash includes goal-specific targeted commands, suppressing canonical verification deltas across most distinct goals. Independently qualify repository-command timing against the same newest eligible merged candidate with a repository-plan hash; keep whole-run comparison unavailable when full plan differs, no older fallback/new scan/state.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-02T22:09:57Z",
+      "attempt": 4,
+      "correction_runs": 2,
+      "findings": [],
+      "finished_at": "2026-11-02T22:37:57Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -96,21 +83,19 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1043-design-fix",
+      "holder": "codex:takeover/1043-design-verification",
       "input_fp": "v1:sha256:f57f7b1df1cd5a8c7632c143491cf9cb7f66f9a211312c4cbd48b641d4003be5",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "4f9af989059cfa941d80e35d7bcee2094bea961c",
-          "commit": "ad50f593d101fa85db6e44f86d9837f4abf8d2b4",
+          "blob": "a361e31ab8798ddb675ac6b835eda82dd46266c9",
+          "commit": "eee324c47bee6b61c1fa04c4b6bb4b344144321f",
           "path": ".zzzops/reviews/1043/design.md"
         },
         "responses": {
-          "review_design:1:1": "fixed: compute the effective total from available CPUs and inherited ZZZOPS_TEST_WORKERS before mode choice/split; parent=4 on 20 CPUs allocates 2+2 and parent=1 is sequential; record and test observed versus effective budgets.",
-          "review_design:1:2": "fixed: audited test_random_portfolios/run_seeds/random_step/check_invariant and Sim/frontier; no elapsed-time assertion exists, so remove the stale isolation entry/comment while preserving every test/seed/step/assertion. No cross-invocation isolation is claimed; genuine future exclusive requirements use sequential policy, with barrier tests for both ordinary overlap and conservative sequencing.",
-          "review_design:1:3": "fixed: best-effort baseline lookup has document/history/tree caps (64/256/16), a 2000 ms local-work/Git deadline and <=1000 ms lookup-process cleanup. Exhaustion returns unavailable lookup_budget_exhausted; no partial older baseline or change to verification outcome. Add capped-stream, fake-clock and blocked-process tests."
+          "design:reopen:1": "fixed: add verification_plan_sha256 excluding goal-specific commands; select newest eligible merged source once and independently qualify baseline.verification against repository hash/environment. Whole-run mismatch remains unavailable while matching repository delta/status/provenance/caveat is shown. No second scan/older fallback/new state; acceptance/tests/docs cover both scopes and missing/budget-exhausted evidence."
         },
-        "summary": "Revision 2 fixes all three design findings while keeping the feature scope stable: resolve and split one parent-capped CPU total, remove the obsolete exclusive-property scheduling entry after auditing its unchanged semantic assertions, and bound informational baseline lookup by work caps and a supervised local deadline. Costs, exact inventory/command coverage, qualified comparisons and the separate owner-approved policy adoption remain as designed."
+        "summary": "Revision 3 fixes the cross-goal comparison gap with a separate repository-plan hash and independently qualified nested verification comparison against the same newest eligible merged source. A changed targeted command leaves total-time comparison unavailable while preserving a matching canonical verification delta, with its own provenance and explicit concurrency/load caveat. No extra lookup, older-source fallback or new state is added; prior CPU, isolation-audit and bounded-lookup corrections remain unchanged."
       },
       "reason": "reopened",
       "status": "done"
