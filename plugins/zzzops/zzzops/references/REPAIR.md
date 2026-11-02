@@ -126,3 +126,11 @@ git push <R> <recorded-tip>:refs/heads/<branch>
 ```
 
 Once the finish PR has merged, its approved tip is reachable through production history, even if a back-merge has not finished; fetch that history if the tip is not local. Turn automatic deletion off with the owner's authority as above; `finish` back-merges use the approved SHA rather than the deleted branch name.
+
+## Goal sync, checkpoints and delivery
+
+**Goal sync (`merge_sync`).** After every writer is upgraded, require `merge_sync` through a policy branch to sync the target into each work branch by merge. Without it, base retains legacy rebase mode. Work moves forward; integrate independently squashes the final frozen tests and implementation into at most two conventional commits on the last synced base, preserving the tested code tree. The PR head has the newest date; unchanged integrate keeps its head. A moved target is synced before the next relevant work as configured; integration does not silently use an untested live tip.
+
+Only base makes work-branch merges. Agent commits need conventional subjects (`type(scope): summary`, types feat/fix/perf/revert/docs/style/chore/refactor/test/build/ci); a subject refusal is `commit_subject`, and a preserved tests node's non-test commit is `test_commit_type`. Reword only unpushed commits, then resubmit. Test fixes may land after implementation; their paths remain frozen, implementation may not touch them even transiently, and tests changes are scoped to those paths. Views show tests separately from implementation; previous.syncs exposes merge resolutions. See REPAIR for conflict resume: edit only listed files, do not commit, and run the returned base command.
+
+**Rollback restriction:** never remove `merge_sync` while an open goal's work branch has sync merges. Merge or cancel those goals first. The new engine blocks base when the requirement is missing; an older engine could rebase/drop the recorded resolutions. No checkpoint suggestion or map-following refusal remains; explicit checkpoint overrides still require a full ancestor SHA.

@@ -480,7 +480,10 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
                 accepted = (doc.get("records") or {}).get(nd["preserve"]) or {}
                 bad = sorted(set(accepted.get("frozen") or []) & set(ident.changed_paths(c)))
                 if bad:
-                    raise Refused("test_freeze", f"commit {c[:12]} changed accepted test paths: " + ", ".join(bad))
+                    raise Refused("test_freeze", f"commit {c[:12]} changed accepted test paths: " + ", ".join(bad),
+                                  details={"paths": [{"path": p} for p in bad],
+                                           "route": f"Restore these paths and resubmit. If a frozen test is wrong, keep it unchanged "
+                                                    f"and add findings: [{{\"target\": \"{nd['preserve']}\", \"text\": \"…\"}}] to your output."})
         ident.check_i1_i2(origin, head)
         for k in graph.checkpoint_outputs(X):
             cp_key = k
