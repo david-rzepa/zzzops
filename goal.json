@@ -111,93 +111,32 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 1,
-      "correction_runs": 0,
-      "findings": [
-        {
-          "id": "implement:1:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "test_design",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:c8df3222e0f67f9ebc062239d6811ac192125c6681c862e8402a84e5d25c93cd",
-          "text": "test_engine_branching.FrontierTests.test_a_ready_workspace_op_is_blocked_while_base_restacks asserts run_tests is `ready` right after `s.reopen(1001, 'test_design')`. run_tests takes test_design.commands as a non-context input, so a reopened (not current) test_design blocks run_tests in pass 2, on the base engine too ('test_design not current'). In graph12 every agent workspace node produces an input of run_tests, so this graph cannot have a ready run_tests together with a ready agent. Rebuild the case on a graph where it can (for example a fixture graph whose op reads only implement.code.tree while another agent is ready), or check the pass-3 rewrite of a ready op on a hand-built state.",
-          "upheld": false
-        },
-        {
-          "id": "implement:1:2",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "test_design",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:c8df3222e0f67f9ebc062239d6811ac192125c6681c862e8402a84e5d25c93cd",
-          "text": "test_engine_branching.FrontierTests.test_release_sync_is_a_frontier_wait_that_ends_on_its_own: Sim fabricates the dependency's integrate output as pr = {'v': …}, with no `head`. So base's `heads` input (deps.integrate.pr.head) resolves as missing for the merged dependency, and base is `blocked`, not `ready`, once the release_sync wait ends. The first assertion now passes, because the wait is checked before the missing inputs. Give G1001 a real-shaped pr (s.step(1001, 'integrate', outputs={'pr': {'number': 1, 'url': 'u', 'head': s.sha(), 'tree': s.sha(), 'base': 'release/1'}, 'ci': {}})), or assert only that base is no longer waiting.",
-          "upheld": false
-        },
-        {
-          "id": "implement:1:3",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "test_design",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:c8df3222e0f67f9ebc062239d6811ac192125c6681c862e8402a84e5d25c93cd",
-          "text": "test_engine_branching.HotfixTests.test_member_waits_on_hotfix_start_then_merges_into_the_hotfix_branch calls self.discovery(m) and later self.done(m). done() calls deliver(), which runs discovery again, and `start design` refuses with not_ready ('design is current'). After hotfix start, continue from base (self.op(m, 'base') and the rest of deliver) instead of done().",
-          "upheld": false
-        },
-        {
-          "id": "implement:1:4",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "test_design",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:c8df3222e0f67f9ebc062239d6811ac192125c6681c862e8402a84e5d25c93cd",
-          "text": "test_engine_branching.LedgerTests.test_closed_goals_are_counted_from_trailers_alone runs `commit-tree -p <goal tip>` in the seed clone. The seed never fetched zzzops/goal/g<a>, so git fails before the engine runs. Fetch the goal ref into the seed first: s.git('fetch', '-q', 'origin', f'refs/heads/zzzops/goal/g{a}').",
-          "upheld": false
-        },
-        {
-          "id": "implement:1:5",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "test_design",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:c8df3222e0f67f9ebc062239d6811ac192125c6681c862e8402a84e5d25c93cd",
-          "text": "test_engine_branching.LedgerTests.test_legacy_closed_goals_are_read_in_one_batch compares git-process counts of two `next` runs. Only the first runs right after push_dev, so it also downloads the new policy commit, which shows in GIT_TRACE as pack-objects plus unpack-objects (24 vs 20 processes). That download is the only difference; the legacy documents are read through the one persistent cat-file --batch. Warm up with one `next` (or a fetch) before the first count, or count only cat-file and show processes.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-01T22:32:02Z",
+      "attempt": 2,
+      "correction_runs": 1,
+      "findings": [],
+      "finished_at": "2026-11-02T14:39:11Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
           "base": "v1:sha256:8a2e8ac0217a3e46b72c1e3ce2d2c6f98e60949f5743134ece85574f6cb677e3",
           "doc": "v1:blob:f240bd5994202bea10cb430a216b74cce56ace63",
-          "tests": "v1:sha256:a95e2f7a7e8445e30470d27354b94cce570bd3e1e55b5ee2395057ebb4c9551d"
+          "tests": "v1:sha256:5b630c686012fca0373ec028665ea6effeb2af6f8d9b17d0dc1fa3ac0fea1cac"
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/d1025",
-      "input_fp": "v1:sha256:4a8091bb7bc1aae44b9850a58d6625ef66d7109d584bd034f7a55aaa3341fb56",
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:a332064c32c2b5090682f670a4503c4462e594aa9b54cd15bcd807db18fb92cd",
       "ok": true,
       "output": {
         "code": {
           "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "215cf800000b42a89d5fa1ff9f979c3a55cb3d81",
-          "commit": "01c49fdfd5b22795fc6d80e5b1596fbb689ef0f6",
-          "tree": "ed28bcea79229313fdc78c5da60b0063ed977e21"
+          "change": "a6e97471b5d926eb38a7ce1c3a3c8c6fe5c19156",
+          "commit": "328366f4e5cc9fdfbce8fb100aae248b702ab9b8",
+          "tree": "6063f5fbabe0c80f7bc35280def06de5166b0612"
         },
-        "summary": "This change adds git-flow release lines behind an optional settings.branching block, which requires capability release_lines (engine 1.2.0, gated by engine.min). Without the block the engine behaves exactly as before, and the golden fingerprints are unchanged. It ships a second graph, `release` (approve_start, git.line_sync, approve_finish, git.line_finish), new verbs `release cut N` and `hotfix start X`, goal schema 2 with `flow`, trailer-based ledgers, goal targets in base, integrate, merge, cards, next and show, the effective release gate, frontier-computed waits (hotfix_start, release_sync, line_members_open) and a bounded scheduled restack (pass 3). SPEC and DESIGN are amended, a HISTORY §4 row is added and the G1025 pending row is deleted. The full suite passes except 5 frozen tests whose fixtures cannot pass on any engine; each is filed as a finding on test_design. Two side changes: the shipped POLICY placeholder integration_branch is now dev (a frozen test validates the template with production main), and test_engine_schemas counts the new `conflict` exit code."
+        "summary": "Resubmit after test_design fixed implement:1:1-1:5 on the tests line (checkpoint 848e66c, before the implementation; owner force-pushed the reorder; review_tests round 4 approved). Implementation 2f583cf (git-flow release lines behind settings.branching) and 5061b79 (test_engine_schemas exit-code count) unchanged; test_engine_branching 56 OK at 5061b79."
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "review_design": {
