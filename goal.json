@@ -135,6 +135,56 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_tests:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:1c9aa073cdd94538b2b4e31501c596584c81c1a62cb461ece66ebd1e925a3f6e",
+          "text": "The new CostPlumbingJourney in .agents/test_engine_cost_context.py hardcodes subprocess.run([\"/bin/sh\", \"-c\", command]) for its real red-cost measurement and records a python3 command. This engine/card journey is platform-independent, but /bin/sh is not the supported Windows executable; checks.shell(ctx.git) already resolves Git for Windows bin/sh.exe, and the current interpreter should be quoted rather than assuming a python3 alias. The early missing test_cost capability guard hides the problem in today's red run. Use the same platform shell resolver as actual checks.run and a shell-quoted sys.executable command for the red and green script, preserving the actual measured red failure and renamed-graph evidence. Add/run a small launcher control for Windows shell selection or the corresponding supported-platform probe; no full-suite rerun is needed.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-02T22:50:25Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:a361e31ab8798ddb675ac6b835eda82dd46266c9",
+          "tests": "v1:sha256:6492f49342cbd911b884a2eeb71083178d84e15fdcd03fc393718d2590017fcf"
+        },
+        "policy": {},
+        "subject": "v1:sha256:1c9aa073cdd94538b2b4e31501c596584c81c1a62cb461ece66ebd1e925a3f6e"
+      },
+      "holder": "codex:takeover/1043-review-tests",
+      "input_fp": "v1:sha256:32a42277c58fc1ef89a01210aac17d1d1d990fdf115c753bb4f65241772250de",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "14d2ad72072fe417bb988f8bb4e8186b29d27866",
+          "commit": "f701124da558aad4c0e8bb93e1424f83a8e3bb1e",
+          "path": ".zzzops/reviews/1043/review_tests.md"
+        },
+        "summary": "The 50 tests substantively cover the approved design and remain fast under Python 3.10, but the new real-cost CLI journey hardcodes a POSIX shell/interpreter alias and needs a bounded Windows launcher correction before approval."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "de5640d1c5909ea924450aeea6450497a78946f6",
+          "change": "1f03cade9cb991e837346399dcdea3925b0c49e6",
+          "commit": "03fe8db58f195ccf99675d818ffda774fe22be82",
+          "tree": "20f823295db5befa09cf58f07e3b8144f4bcec96"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 2,
       "correction_runs": 1,
