@@ -181,6 +181,43 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T22:01:15Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:3f7f884dc1f76f4d638f9e1f8bc3fe5c9aa0d288",
+          "tests": "v1:sha256:09b8d27fa29e6e889184a74ace3e03d0bc37948e0a8e25eae8bf0f4f0be4fb73"
+        },
+        "policy": {},
+        "subject": "v1:sha256:fda7df298a60edbbdf5ff6524608c1085911b5e35e5f1a8dc34f3fef5f89ff9b"
+      },
+      "holder": "codex:takeover/1040-review-tests",
+      "input_fp": "v1:sha256:719b8abeb99df9798682b86c9a713c2a16010d2476d49e2294f5995a5d7dcdab",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "c452e8b4f94b949f8a71ea13eb4f6f3c2a59ba40",
+          "commit": "c1ed0b9b5e6af258bece25668b85bb8bc983d3a1",
+          "path": ".zzzops/reviews/1040/review_tests.md"
+        },
+        "summary": "Approved: 20 unique tests cover revision-2 held-output liveness, capability-off compatibility, truthful refusal reasons, normalized op recurrence, and two public-card journeys. Independent red run took 14.325 seconds; failures are expected missing G1040 behavior. Python 3.10 syntax and unittest API usage checked."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "de5640d1c5909ea924450aeea6450497a78946f6",
+          "change": "6cfa32bc36292115c533e7cc946ba7f5535a9239",
+          "commit": "824c48f1a37af827423ad48d858ddd23bb7eda65",
+          "tree": "fe07d782dfb2a6ea201523db6683d8c9f47bf0fb"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 2,
       "correction_runs": 0,
