@@ -109,11 +109,11 @@
 |---|---|---|---|
 | `zzzops/goal/g<id>` | One file, `goal.json` (§3.3). The branch log is the goal's history. | Every goal write (§4.4), as a child commit of the fetched tip. | Never. The recommended ruleset on `zzzops/goal/**` blocks deletion and force-push. |
 | `zzzops/work/g<id>` | Code commits and `docs(review):` artifact commits. Linear. | Created by the first artifact submit or by `git.base`; advanced by workspace submits and `git.base` (the only rewrite). | Kept by default. Deletable by hand (REPAIR.md recipe) once the goal is closed and no open goal depends on it. |
-| `zzzops/pr/g<id>` | The review-free PR head built by `git.integrate`. Dependents may stack on it. | `git.integrate` only. | By GitHub's automatic head-branch deletion after the merge. `github.merge` retargets the PRs based on it to `I` once it observes the merge (§5.5); it deletes no branch itself. |
+| `zzzops/pr/g<id>` | The review-free PR head built by `git.integrate`. Dependents may stack on it. | `git.integrate` only. | By GitHub's automatic head-branch deletion after the merge. `github.merge` retargets the PRs based on it to `I` (G1025: to each dependent's own target) once it observes the merge (§5.5); it deletes no branch itself. With `settings.branching`, turning automatic deletion off is recommended (§8.3 item 7), and the branch is then kept until deleted by hand. |
 | `zzzops/stack/g<id>` | One combine commit of the goal's stack set (k ≥ 2), the stack base of the goal's PR. | `git.base` (§5.2). | By `git.base` when k drops below 2 (after its push and its `gh` calls, §5.2), and by the goal's close (§4.19). |
 | `zzzops/lease/g<id>/<node>` | One empty-tree commit per phase in progress (§3.8). | `start`, `renew`, `abandon` (an expired renewal). | `submit`, an op's finishing push, and the goal's close. Orphans are never deleted by the engine (§4.12). |
 | `zzzops/policy/<topic>` | An open policy change. Its existence blocks new work, unless it has landed: its tip is in `I`, or its `.zzzops/` files equal `I`'s (§4.3). | Humans. | When landed or abandoned. |
-| `zzzops/sync/g<line>/<into>` | G1025: one back-merge of a line goal into `integration` or the open `release` branch, the head of its merge PR. | `git.line_sync`, `git.line_finish` (§5.7, §5.8). | By GitHub's automatic head-branch deletion after the merge. |
+| `zzzops/sync/g<line>/<into>` | G1025: one back-merge of a line goal into `integration` or the open `release` branch, the head of its merge PR. | `git.line_sync`, `git.line_finish` (§5.7, §5.8). | Never by the engine: the line's next back-merge reuses it (rebuilt on its previous tip). Branching repositories are recommended to turn GitHub's automatic head-branch deletion off (§8.3 item 7), so it is kept; where deletion stays on, GitHub deletes it after the merge and the next back-merge recreates it from `I`. |
 | `<release_prefix><N>`, `<hotfix_prefix><x>` | G1025, with `settings.branching` only: a release line (cut from `I`) or a hotfix line (cut from the production branch). Goals of that line base on, integrate into and merge into it. | `release cut`, `hotfix start` (§6); goal PRs merged into it. | Never by the engine: finished lines are kept. |
 
 Display form of a goal id: `G<id>`. Ref forms: `refs/heads/zzzops/goal/g1002`, `refs/heads/zzzops/lease/g1002/implement`.
@@ -288,7 +288,7 @@ There is no `review_path` field: the review path is the constant `.zzzops/review
 
 ```jsonc
 {
-  "schema": 1,                                   // int; engines read every schema they shipped and write the newest (§4.5)
+  "schema": 1,                                   // int; 1, or 2 for a document with `flow` (G1025, §4.5)
   "id": 1002,                                    // int; equals the branch name's id
   "title": "Add `release cut` command",          // string, 1–200 chars, one line
   "graph": "default",                            // string; a graph in workflow.json
@@ -307,7 +307,7 @@ There is no `review_path` field: the review path is the constant `.zzzops/review
                                                  // {"line": "release"|"hotfix", "name", "branch", "from", "cut": <sha>}
 }
 ```
-**Schema 2** (G1025) is schema 1 plus the optional `flow`. The engine writes schema 2 only for a document with `flow`; every other document stays schema 1. A line goal uses the `release` graph. A hotfix name is a branch-name part and is single-use: `new`, `edit` and `hotfix start` refuse a name whose line exists and is closed ("choose a new name"). A hotfix member may depend only on goals of its line or on goals closed `done`.
+**Schema 2** (G1025) is schema 1 plus the optional `flow`. The engine writes schema 2 only for a document with `flow`; every other document stays schema 1, and clearing `flow` (`edit --set flow=null`, or a whole document without it) writes schema 1 again. Setting or changing `flow` is refused (`validation`) unless the policy has `settings.branching` (and so requires capability `release_lines`); a document whose `flow` is unchanged is still written as it is after branching is turned off. On a line goal `flow` is immutable: any change is refused, and only `release cut` and `hotfix start` create the line form. On a member, `edit` may set or clear `{"hotfix": "<x>"}`, which changes the goal's target (§4.9). A line goal uses the `release` graph. A hotfix name is a branch-name part and is single-use: `new`, `edit` and `hotfix start` refuse a name whose line exists and is closed ("choose a new name"). A hotfix member may depend only on goals of its line or on goals closed `done`.
 
 **Validation** (`validate_goal(doc, old, all_docs, workflow, settings)`; `old` is the document before the write, or none):
 1. Shape and types as above; `state == "closed"` ⇔ `closed` is an object; `closed.note` non-empty.
@@ -519,13 +519,16 @@ Every text field of an answer file is at most 4,096 bytes (`too_large` otherwise
 {"title": "Add `release cut` command",   // required
  "spec": "## Outcome\n…",                // required
  "priority"?: "P2",                      // default "P2"; P0 (highest) … P3
- "release"?: 1,                          // default settings.releases.current
+ "release"?: 1,                          // default: the effective release (G1025, §4.9); without settings.branching
+                                         // that is settings.releases.current
  "depends_on"?: [1001],                  // default []; integers
  "skip"?: {"approve_design": "docs-only change; agreed with the owner 2026-10-30"},   // default {}
  "links"?: {"issue": 812},               // default {"issue": null}
  "graph"?: "default",                    // default "default"
  "state"?: "open",                       // "open" | "held"; default "open"
- "request_key"?: "release-cut-1"}        // 1–128 of A-Z a-z 0-9 . _ -, starting with a letter or digit (G1001)
+ "request_key"?: "release-cut-1",        // 1–128 of A-Z a-z 0-9 . _ -, starting with a letter or digit (G1001)
+ "flow"?: {"hotfix": "login-crash"}}     // G1025, only with settings.branching: a hotfix member (schema 2, §3.3);
+                                         // the line form is refused (release cut / hotfix start create line goals)
 ```
 **Request identity (G1001).** A `new` request is identified by its `request_key`, or, when the file has none, by `"sha256:" + H({"v": 1, "title", "spec", "depends_on": sorted unique ids})`. Rerunning the same `new` after an error is therefore safe. Set `request_key` when two distinct goals legitimately share title, spec and `depends_on`.
 
@@ -808,7 +811,7 @@ def write_goals(verb, ids, mutate, extra=None, retry=True):
 - **Older engines.** An engine from before capabilities reads `requires` as an unknown key and reports `policy_invalid` (work paused, writes refused): it fails closed. Upgrade it; never remove the key (the trade-off against `evo:H4` is in DESIGN §3.10).
 - **What ships with a new capability** (one list): a new goal schema (reading is still gated by the goal schemas the engine knows, below; the capability gates the policy that lets an engine write them); any change to fingerprint, canonical-JSON, `code_tree` or `change` semantics; any op `version`; the lease message format; any new POLICY or workflow key, field or op; any new record or finding key. The goal that makes the change adds `engine/capabilities/<name>.txt` in its own PR, and its rollout adds `<name>` to `settings.engine.requires` before the first such write.
 - **`follows` (G1028, capability `finding_follows`).** The finding key `follows` (§3.6) is read only by engines with `finding_follows`, so `submit` writes it only while the policy's required set contains `finding_follows`; the policy branch that adds it to `settings.engine.requires` comes first.
-- **Goal schemas.** An engine reads every goal schema it has shipped and writes the newest when it writes a goal (a lazy migration). Known schemas today: `{1}`. A goal whose schema is newer than the engine knows is *newer*: writes to it are refused with `engine_too_old`, and its dependents show `waiting: engine upgrade`, never a stuck item.
+- **Goal schemas.** An engine reads every goal schema it has shipped. Known schemas today: `{1, 2}`. Schema 2 (G1025, capability `release_lines`) adds only the optional `flow` (§3.3), so a write picks the schema from the document instead of always writing the newest: schema 2 for a document with `flow`, schema 1 otherwise (clearing `flow` writes schema 1). `flow` is set only while the policy has `settings.branching`, which requires `release_lines`; so an older engine sees as *newer* only line goals and hotfix members, and every other goal is unaffected. A goal whose schema is newer than the engine knows is *newer*: writes to it are refused with `engine_too_old`, and its dependents show `waiting: engine upgrade`, never a stuck item.
 - **Fingerprint versions** (§4.8): a record's fingerprint is compared only in the version it carries. An engine computes only its own version, so a record in another version is stale. A version is bumped only when the old one is unsafe (it missed changes), always together with a new capability; the cost is that every open goal re-runs its nodes. There is no multi-version support.
 - **Upgrade and rollback** are REPAIR.md recipes (§8.4).
 - **Tests, not self-tests.** The identity fixtures (blobs, the `B`/`C` commit pair with review files at `.zzzops/reviews/` and a top-level `reviews` directory path, a gitlink entry, a binary change, a mode-only change and a blank context line) are ordinary unit tests in CI, which pin `code_tree`, `change` and `input_fp` values. CI also runs them under a hostile global configuration (`diff.suppressBlankEmpty=true`, `diff.submodule=log`, a `core.attributesFile` marking files `-diff`) and expects identical values. The engine runs no self-test.
@@ -2175,10 +2178,11 @@ Every verb prints one JSON object on stdout (`show` prints text unless `--json`)
 **The shipped default graph is configuration, not engine contract** (owner decision, 2026-11-01; HISTORY §4). Its source of truth is `plugins/zzzops/zzzops/templates/default/workflow.json`, with its prompts in `templates/default/prompts/`. The template tests run `validate --policy --dir` on it (DESIGN §10 item 24). DESIGN §4.1 explains why the default graph has the shape it has. A repository's own graph is its `.zzzops/workflow.json` on `I`, changed only through a policy branch. The engine reads no node names (DESIGN §10 item 3).
 
 Any `workflow.json`, the shipped one included, must satisfy the engine's rules. These are stated in §3 and §5 and summarised here:
-- **Schema and fields** (§3.1): `schema: 1`, a `default` graph, a non-empty `terminal`, and node fields allowed per kind: `kind`, `stage`, `prompt`, `inputs`, `outputs`, `review` (with optional `filter`), `skippable`, `lenses`, `policy`, `instructions`, `preserve`, `release_gate`, `rev`, `timeout`, `root`, `capability`, `op` and `workspace`.
+- **Schema and fields** (§3.1): `schema: 1`, a `default` graph, a non-empty `terminal`, and node fields allowed per kind: `kind`, `stage`, `prompt`, `inputs`, `outputs`, `review` (with optional `filter`), `skippable`, `lenses`, `policy`, `instructions`, `preserve`, `release_gate`, `rev`, `timeout`, `root`, `capability`, `op` and `workspace`, plus G1025's `schedule` (op) and `line_complete` (human, op), valid on the release graph's nodes.
+- **The `release` graph** (G1025): the shipped template also has `graphs.release`, the graph of line goals: `approve_start` (human, no inputs, recorded by `release cut` / `hotfix start`) → `sync` (`git.line_sync`, `workspace`, `schedule: "upstream"`, outputs `merged`, `merge_commit`) → `approve_finish` (human, `line_complete`, `review: {subject: sync}`, input `sync.merged`) → `finish` (`git.line_finish`, `workspace`, `line_complete`, outputs `production_merge`, `back_merges`). A policy with `settings.branching` needs a `release` graph with both line ops (`validate --policy`); without it the graph is unused.
 - **Graph validation** (§3.1 rules 1–15): every selector parses; the producer graph is acyclic; discovery never depends on delivery; checkpoint nodes declare a `base` input; `preserve` names a checkpoint ancestor; every op is registered and accepts its inputs; every node reaches a terminal; the filter rules (rule 14) and the lens rules (rule 15). In the shipped graph, for example, `filter_design` joins `review_design` (seven lenses) and `adversary_design`, and `filter_impl` reads `review_impl` (five lenses).
 - **Review, filter and skip semantics** (§4.9, §4.14, §4.18): what a review's `decision` means, how a filter's verdicts make lens findings live, and which skips `edit` refuses.
-- **Op inputs** (§5): `git.base`, `checks.run`, `git.integrate` and `github.merge` each validate the inputs and outputs they need (§5.1).
+- **Op inputs** (§5): `git.base`, `checks.run`, `git.integrate`, `github.merge`, `git.line_sync` and `git.line_finish` each validate the inputs and outputs they need (§5.1).
 - **Policy references** (§3.1 rule 6): every `policy` key, `instructions` key, `capability` and `prompt` named by the graph exists in the coordinator's `POLICY.json` and prompts.
 
 ## 8. Minimal `POLICY.json`, prompt files, templates and repair recipes
@@ -2207,7 +2211,7 @@ The shipped `POLICY.json`, prompts and graph are configuration (owner decision, 
   4. **Land the files on `I`:** through a `zzzops/policy/bootstrap` branch and a PR when `I` is protected; otherwise a direct push.
   5. **Per clone:** `git config zzzops.integrationBranch <I>` when `I` is not the remote's HEAD branch (and `zzzops.remote`, `zzzops.committer` when needed).
   6. **Harness setup** (§1.5): the Codex profile or rules, the Claude Code `permissions.allow` entries, sandbox domains.
-  7. **Host settings (GitHub)**, checked with `gh api`, never by the engine: "Automatically delete head branches" on; the allowed merge method matches `settings.merge.method`; the ruleset on `zzzops/goal/**` blocks deletion and force-push; `zzzops/**` is excluded from every all-branch ruleset and hook rule (probe: `gh api repos/{o}/{r}/rules/branches/zzzops/lease/g0/x` lists no rules).
+  7. **Host settings (GitHub)**, checked with `gh api`, never by the engine: "Automatically delete head branches" on (off is recommended with `settings.branching`, G1025, so that only the engine retargets dependents across targets; DESIGN §3.16); the allowed merge method matches `settings.merge.method`; the ruleset on `zzzops/goal/**` blocks deletion and force-push; `zzzops/**` is excluded from every all-branch ruleset and hook rule (probe: `gh api repos/{o}/{r}/rules/branches/zzzops/lease/g0/x` lists no rules).
   8. **CI and integration triggers**, if the human agrees: `branches-ignore: ['zzzops/**']` on unfiltered `on: push` workflows and preview-deploy integrations; `.zzzops/worktrees/` in the repository's tool ignore files. A draft stack PR into `I` runs the repository's `pull_request` CI on every combine push; a `pull_request` workflow can skip it with a job condition on `github.head_ref` not starting with `zzzops/stack/`.
   9. **Developer clones (optional):** the negative refspec `^refs/heads/zzzops/*` (§2.2).
   10. **Run `validate`** (environment, Git version, SHA-1, not shallow, harness probe, `gh`).
