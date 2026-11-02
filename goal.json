@@ -252,39 +252,39 @@
       "status": "done"
     },
     "review_impl": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T22:29:55Z",
+      "finished_at": "2026-11-02T03:57:16Z",
       "fp_parts": {
         "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
         "inputs": {
-          "code": "v1:sha256:a5b59d19e98a90836921f19d861836c47c08a0d82e8935650e9124b7a4b7c24c",
+          "code": "v1:sha256:5bbe054c113339dc77a19e79cdf4c622fbd0f48b833e7386dac81deb911fe0cc",
           "doc": "v1:blob:6f4c7854b055f0ef632f22312336a6e094a53cd5",
           "tests": "v1:sha256:f24180556c7db342e38b7b1e592c04459f956a0be681b445c94dde442c4cc1a5"
         },
         "policy": {},
-        "subject": "v1:sha256:3cda900b9e8ffaa89346bac195674cf25a6623511ea5539637d12853b5b37f7b"
+        "subject": "v1:sha256:9ab8abe16d83e71e63352519dd014761c70b14aa548d7d9065ea5f2560be553d"
       },
-      "holder": "claude:e6ad/rd1022",
-      "input_fp": "v1:sha256:fdabd3b6fcbcb2e00f17dc4c7cf399d023a87857172a4ab7b562cbf63941b60b",
+      "holder": "claude:e6ad/rd1022b",
+      "input_fp": "v1:sha256:83961c727e8a647f660099d9f8edcdd163509a99893cc6fc35163486ec06354a",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "eecdb3e4289a6d5ed86227ca8a6aaab69deb0b5d",
-          "commit": "9e30958376d8c232929de80b435658dd22abd69d",
+          "blob": "ce349ea30194ceadeec687bf62ba60aae462f776",
+          "commit": "78036acb30e5a7a12e4597a5e3e0f7d6b4ff2b9e",
           "path": ".zzzops/reviews/1028/review_impl.md"
         },
-        "summary": "The implementation matches design revision 2: carried-finding liveness (stale lenses carry material/keep only, ops excluded, the target_fp check ends the carry), the closed-id split and refusals, follows (rounds inherited, upheld false, gated by engine.min >= FOLLOWS_SINCE), and --repo on worker-facing commands only (card, renew inputs_changed, abandon restart). Both departures are accepted: positional edit selectors are safe because ids contain ':' and --base pins positions, and the shortened card texts keep their meaning and SPEC is updated. Notes: at rebase against G1022's 1.2.0, bump FOLLOWS_SINCE as well as ENGINE_VERSION; DESIGN.md:414 quotes the old renew text; the budget fixture CTX lacks a repo path."
+        "summary": "Range-diff confirms only the rebase moved: all commits except the feature commit are identical, and that commit differs only by HISTORY.md/MIGRATING.md context from dev. HISTORY.md at 071e989 keeps both the G1029 row (from dev) and G1028's row. Prior approval stands."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "code": {
-          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "1f8cc8b4a2fba9a2db0e91153c3a7e1075e29c03",
-          "commit": "db493580ea426ff34a5f834697faa0321492458a",
-          "tree": "fe225aa2ad17ae13ddcbd7f13fbe4be0db752288"
+          "base": "d41e740c6788a6eb6391e0beafad677f4b086766",
+          "change": "e67399df16c4abc82b440f7023ca7d534680741d",
+          "commit": "071e989933f3219cf9b96470a203c0f8ed7fb0b9",
+          "tree": "5a64a3426514c365f7ce0ce1fd7e72551980398a"
         }
       },
       "status": "done"
