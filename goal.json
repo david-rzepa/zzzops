@@ -132,6 +132,56 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_tests:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:29d69f5ae4ef564cc203afcc14127833ded8bbda4b7bcc3139c91cbf744967b8",
+          "text": "test_real_concurrent_add_remove asserts elapsed < 5 s while its churn deadline is 4 s, so the margin is only the last add/remove cycle plus each reader's last discover and registered_worktrees. With a correct implementation under load (16 parallel runs on 2 CPUs) it took 4.4 to 5.3 s and failed once ('5.135... not less than 5'). Remove the wall-clock assert or make it generous (for example 20 s), detect hangs with assertFalse(any(t.is_alive() for t in threads)) after the joins, and optionally lower the churn deadline to about 3 s.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-02T16:19:22Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:cc60eabf6331555c3c73bd5ea08d6311e25f34d3",
+          "tests": "v1:sha256:a91beb25e7feffb156da843ec2e6f15f4a7708bf9b277d801d01aa8976cdcf1e"
+        },
+        "policy": {},
+        "subject": "v1:sha256:29d69f5ae4ef564cc203afcc14127833ded8bbda4b7bcc3139c91cbf744967b8"
+      },
+      "holder": "claude:e6ad/rt1041",
+      "input_fp": "v1:sha256:8601027a2cc2d9916ec1387ea3f2222913915b0c98d913ad0933fb882ff16f4a",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "23391ef3a4fb729d555deae8b8ca1a955e58f190",
+          "commit": "36eda031c6b8a7389a4461c7719bb06c06a44927",
+          "path": ".zzzops/reviews/1041/review_tests.md"
+        },
+        "summary": "The tests prove the design: all five fail on current code (the race test failed 10 of 20 runs), and with a prototype of the design's helper they pass (race test 80 of 80 across unloaded, 1-CPU and 8-parallel runs). The mock on engine.gitrun.subprocess.run catches every caller without over-specifying the helper, and the recorded commands are right. One defect: the real-race test's wall-clock assert (< 5 s, against a 4 s churn deadline) fails under load with a correct implementation (5.135 s, seen once in 48 heavily loaded runs)."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "f4eaf7465f1d3e95392733d9ba05456702fd41d0",
+          "change": "5062e267b334ddc715fbfbf95afb379fc7198259",
+          "commit": "61edb9cece8cef936cf006beeee13dc82c8965c4",
+          "tree": "7379ea53d93b90fb3f03ae607784a778b8c69ab6"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
