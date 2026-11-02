@@ -162,7 +162,7 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
         vals, missing = resolve(graph, doc, c, recorded, dep_view)
         subj = graph.subject(c)
         fresh[c] = (not missing and not (subj and (subj not in R or R[subj]["status"] != "done"))
-                    and input_fp(fp_parts(graph, c, vals, R.get(subj), settings, R)) == R[c]["input_fp"])
+                    and input_fp(fp_parts(graph, c, vals, R.get(subj), settings, R, skip)) == R[c]["input_fp"])
     live = {n: [] for n in topo}
     notes = {}
     stale = {c for c in fresh if not fresh[c]}
@@ -223,7 +223,7 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
         if L and L.live(now):
             rv, rmiss = resolve(graph, doc, n, recorded, dep_view)
             rsub = bool(subj) and (subj not in R or R[subj]["status"] != "done")
-            rparts = None if rmiss or rsub else fp_parts(graph, n, rv, R.get(subj), settings, R)
+            rparts = None if rmiss or rsub else fp_parts(graph, n, rv, R.get(subj), settings, R, skip)
             f = input_fp(rparts) if rparts else None
             st[n] = {"name": "running", "lease": L, "fp": f, "parts": rparts}
             continue
@@ -233,7 +233,7 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
         if node.get("release_gate") and doc["release"] > settings["releases"]["current"]:
             st[n] = {"name": "waiting", "until": f"release {doc['release']}", "reason": "release"}
             continue
-        parts = fp_parts(graph, n, vals, R.get(subj), settings, R)
+        parts = fp_parts(graph, n, vals, R.get(subj), settings, R, skip)
         f = input_fp(parts)
         corr = sorted((x for _, x in live[n]), key=lambda x: x["id"])
         if L:
@@ -547,8 +547,13 @@ def counts(r0: dict | None, reason: str, old_parts: dict | None, parts: dict) ->
     """1 when a new record counts toward the correction budget (SPEC §4.10)."""
     if r0 is None:
         return 0
-    if reason == "stale" and all(k in ("def", "candidates") or k.startswith("policy.")
-                                 for k in stale_keys(old_parts, parts)):
+    keys = stale_keys(old_parts, parts)
+    # an input the definition added or removed (present on one side only, with `def` stale) is a policy change, not
+    # a correction: like `def` itself it is exempt (G1022: adopting a new graph re-runs in-flight phases for free)
+    old_in, new_in = (old_parts or {}).get("inputs") or {}, (parts or {}).get("inputs") or {}
+    redefined = {f"inputs.{k}" for k in set(old_in) ^ set(new_in)} if "def" in keys else set()
+    if reason == "stale" and all(k in ("def", "candidates", "lenses") or k.startswith("policy.") or k in redefined
+                                 for k in keys):
         return 0
     return 1
 

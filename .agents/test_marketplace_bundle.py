@@ -132,10 +132,12 @@ class MarketplaceBundleTests(unittest.TestCase):
         files = self.builder.plugin_files(ROOT, "2.0.0")
         workflow = json.loads(files["zzzops/templates/default/workflow.json"])
         nodes = workflow["graphs"]["default"]["nodes"]
-        self.assertEqual(26, len(nodes))                         # the lens graph (G1000)
+        self.assertEqual(15, len(nodes))                         # the consolidated review graph (G1022)
         for node in nodes.values():
             if node["kind"] != "op":
                 self.assertIn(f"zzzops/templates/default/prompts/{node['prompt']}", files)
+            for lens in (node.get("lenses") or {}).values():
+                self.assertIn(f"zzzops/templates/default/prompts/{lens['prompt']}", files)
         json.loads(files["zzzops/templates/default/POLICY.json"])
 
     def test_invalid_version_or_incomplete_sources_fail_before_output(self) -> None:

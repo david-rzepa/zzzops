@@ -23,7 +23,6 @@ Goals that will change the contract and have not landed yet. Every goal listed h
 
 | Goal | Sections | Landed when |
 |---|---|---|
-| G1022 multi-lens reviewer | SPEC §3.1, §3.3, §3.6, §4.8, §4.10, §4.18, §4.20, §5.4, §7, §8.2, §8.3; DESIGN §3.8, §4.1, §10 | `plugins/zzzops/zzzops/templates/default/workflow.json lacks "\"truth_design\""` |
 | G1024 default-policy update notices | SPEC §2.3, §3.2, §3.15, §3.16, §8.3, §9; DESIGN §3.10 | `plugins/zzzops/zzzops/engine contains "policy_update"` |
 | G1027 declared engine capabilities | SPEC §3.2, §3.9, §3.15, §3.17, §4.3, §4.5, §4.8, §6, §8.4; DESIGN §3.10, D4, §10 item 21 | `plugins/zzzops/zzzops/engine/__init__.py lacks "ENGINE_VERSION"` |
 | G1031 auto-delete advice with release branching | SPEC §3.16 (`validate` warning `auto_delete_head_branches`), §8.3 step 7; DESIGN §3.15 (`validate` cost) | `plugins/zzzops/zzzops/engine contains "auto_delete_head_branches"` |

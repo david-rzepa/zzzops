@@ -186,6 +186,7 @@ There is no `review_path` field: the review path is the constant `.zzzops/review
 | `outputs` | object | agent, op | `{}` | `{"<name>": <type>}`. Forbidden on review nodes (their outputs are implicit). |
 | `review` | `{"subject": "<node>", "filter"?: "<node>"}` | agent, human | absent | Makes the node a review of `subject`. Required on human nodes. `filter` (agent reviews only, G1000) names the node that judges this lens's non-material findings. |
 | `skippable` | bool | all | `true` | `false` forbids `goal.skip.<node>` (G1000). |
+| `lenses` | `{"<lens>": {"prompt": "<file>", "skippable"?: bool}}` | agent reviews | absent | A multi-lens reviewer (G1022): the lenses it applies, in order, each a prompt file in `.zzzops/prompts/`. Non-empty; lens names match `^[a-z][a-z0-9_]*$`. A lens with `skippable: false` cannot be removed by a goal (`goal.skip.<node>:<lens>`, §3.3), and its node must then be `skippable: false` too. |
 | `policy` | array of strings | all | `[]` | Dotted keys under `settings` whose values enter this node's fingerprint. |
 | `instructions` | array of strings | agent, human | `[]` | Keys of POLICY `instructions` shown in the task card or human item. |
 | `preserve` | string | agent | absent | Node whose checkpoint is frozen (§4.16). |
@@ -243,6 +244,7 @@ There is no `review_path` field: the review path is the constant `.zzzops/review
 12. `terminal` is non-empty and names existing nodes.
 13. Every node is a terminal node or a transitive producer of one. A node no consumer reads would otherwise gate only by racing the terminal.
 14. **Filters (G1000).** A node named by some `review.filter` is an agent node, not a review, with the output `verdicts: "object"`, and is not skippable. Every lens naming one filter shares one subject, and that subject is the filter's subject (for `independence`, §4.12). Every lens has an input into its filter, and that input is not `context`; it is `optional` exactly when the lens is skippable.
+15. **Lenses (G1022).** `lenses` appears only on agent nodes with `review`; every lens prompt exists; a node holding a non-skippable lens is `skippable: false`. A node without `lenses` behaves exactly as before.
 
 ### 3.2 `.zzzops/POLICY.json`
 
@@ -291,7 +293,7 @@ There is no `review_path` field: the review path is the constant `.zzzops/review
   "priority": "P2",                              // "P0" | "P1" | "P2" | "P3"
   "release": 1,                                  // int ≥ 1
   "depends_on": [1001],                          // array of int; unique; no self
-  "skip": {},                                    // {"<node>": "<reason>"}; reason non-empty
+  "skip": {},                                    // {"<node>" | "<node>:<lens>": "<reason>"}; reason non-empty
   "links": {"issue": null},                      // {"issue": null | int}
   "budget": null,                                // null | int ≥ 0; overrides the default correction budget (§4.10)
   "records": {"<node>": { /* record §3.4 */ }}
@@ -301,6 +303,7 @@ There is no `review_path` field: the review path is the constant `.zzzops/review
 1. Shape and types as above; `state == "closed"` ⇔ `closed` is an object; `closed.note` non-empty.
 2. `graph` exists; `skip` and `records` keys are nodes of that graph or are ignored with an `orphan_record` warning if the graph no longer has them (records of removed nodes are kept and ignored).
 3. No `skip` key names a terminal node of the graph: a skipped terminal can never be current, so the goal could neither close nor be stuck.
+3a. **Lens skips (G1022).** A key `<node>:<lens>` removes one lens of a multi-lens reviewer for this goal; the node itself still runs. An unknown node or lens only warns (`orphan_record`; the lens still runs). A new key naming a lens with `skippable: false` is refused on a write ("`<node>:<lens>` is not skippable (lenses.<lens>.skippable: false in workflow.json)"); on reading, or when `old` already held it, it warns (`skip_not_skippable`). A key containing `:` never matches a node id, so every other use of `skip` is unaffected.
 4. Every `depends_on` id is an existing goal; the dependency relation over all goals is acyclic (an error names every cycle member); `release(dep) ≤ release(goal)` for every dependency.
 5. A write may not change `state` to `open` (or `held`) when `old.closed.reason == "done"`: a done goal stays closed; open a follow-up goal. A cancelled or superseded goal may be reopened.
 6. Serialized size ≤ 65,536 bytes (§2.4). A size error names the five largest JSON paths and their byte counts.
@@ -367,6 +370,8 @@ A done record with `ok == false` must carry at least one open finding; submit re
  "note": null,                      // string | null; set by waive/uphold answers, reopen and edits
  "repeats"?: 1,                     // op findings only: int ≥ 1; consecutive done records of the carrier that raised this id
                                     // with the same input_fp (§4.9 op-finding cap)
+ "lens"?: "missing",                // multi-lens reviewers only (G1022): the lens that produced it; one of the node's
+                                    // declared `lenses`. Displayed as `<node>:<lens>` (untagged: `<node>`)
  "impact"?: "…",                    // filtered lenses only (G1000): what goes wrong if this is ignored
  "material"?: true,                 // filtered lenses only (G1000): false = a note; a missing key counts as material
  "follows"?: "review_impl:1:2",     // review findings only (G1028): the prior finding of the same reviewer this one
@@ -522,6 +527,8 @@ Every text field of an answer file is at most 4,096 bytes (`too_large` otherwise
  "stale_because"?: ["inputs.base"],                      // on reclaim cards too: the union of lease and record staleness (G1016)
  "changed"?: {"inputs.spec": "git diff <old> <new> -- goal.json"},   // one cheap local pointer per stale key that has one (G1016)
  "policy"?: {"intent": <value view>},                    // the node's declared policy keys (G1000)
+ "lenses"?: {"apply": ["compliance", …], "skipped": {"tests": "<reason>"}, "text": {"text": "…"} | <blob view>},
+                                                         // multi-lens reviewers (G1022)
  "candidates"?: [{"id", "lens", "target", "text", "impact", "material", "response"}],   // filter nodes (G1000)
  "notes"?: [{"text", "impact", "lens", "reason"}],      // targets of a filter: findings the filter judged notes (G1000)
  "prompt": {"blob": "<sha>", "read": "git cat-file -p <sha>", "summary": "first line"},   // or {"text": "…"} when short
@@ -866,12 +873,14 @@ def node_def_fp(n):                                                   # ALLOWLIS
                   for k, s in n.get("inputs", {}).items() if not s.get("context")},     # context edges excluded
        "outputs": n.get("outputs", {}), "review": n.get("review"), "preserve": n.get("preserve"),
        "workspace": n.get("workspace", False), "rev": n.get("rev", 0)}
+  if "lenses" in n: d["lenses"] = {k: s.get("skippable", True) for k, s in n.lenses.items()}   # G1022; prompts excluded
   return "v1:sha256:" + H(d)
 def fp_parts(n, vals, subject_record):
   p = {"def": node_def_fp(n),
        "inputs": {k: fp_selected(vals[k], s) for k, s in n.inputs.items() if not s.get("context")},
        "policy": {k: get_dotted(settings, k) for k in n.get("policy", [])}}
   if n.review: p["subject"] = out_fp(subject_record, drop={"responses"})
+  if "lenses" in n: p["lenses"] = applied_lenses(n, goal.skip)       # G1022: declared lenses less `<n>:<lens>` skips
   return p
 def input_fp(parts): return "v1:sha256:" + H(parts)
 ```
@@ -880,7 +889,7 @@ def input_fp(parts): return "v1:sha256:" + H(parts)
 - `T[k]` for a review record includes the implicit types (`report`: artifact).
 - **Provenance is never identity:** holder, attempt, reason, correction counts, times, the prompt blob, `reviewed`, `frozen` and `carried_by` are not fingerprinted.
 - **Versions.** The `v1:` prefix is the fingerprint version. It is compared only in the version a record carries (§4.5).
-- **`stale_because`** = the sorted keys `def`, `inputs.<name>`, `policy.<key>`, `subject` whose values differ between the record's `fp_parts` and the current parts.
+- **`stale_because`** = the sorted keys `def`, `inputs.<name>`, `policy.<key>`, `subject`, `candidates`, `lenses` whose values differ between the record's `fp_parts` and the current parts.
 
 ### 4.9 Frontier (two passes, `ok` semantics)
 
@@ -1100,14 +1109,17 @@ if used > limit:  # no further agent actions (start or reclaim) for this goal; o
   human item {"kind": "budget", "question": f"G{g} has used {used} correction runs (limit {limit}): {per-node counts}. Continue, hold, or cancel?",
               "options": [raise: {"set": {"budget": used + 3*len(agent)}}, hold: {"set": {"state": "held"}}, cancel]}
 ```
-- **What counts** (`correction_runs`, §3.4): every agent attempt after a node's first record, except an attempt started `stale` whose `stale_because` holds only `def` or `policy.<key>` entries, and except carried records (§4.21), which keep their count unchanged. Re-runs after a correction, a Blocked retry or a base move all count: after carry-forward, base-only re-runs are rare and are real work when they happen. Crashes are bounded by the crash-loop cap, not the budget (a crashed attempt writes no record; its reclaim counts once).
+- **What counts** (`correction_runs`, §3.4): every agent attempt after a node's first record, except an attempt started `stale` whose `stale_because` holds only `def`, `policy.<key>`, `candidates` or `lenses` entries, or, together with `def`, `inputs.<name>` entries for inputs the definition added or removed (G1022: adopting a new graph re-runs in-flight phases for free), and except carried records (§4.21), which keep their count unchanged. Re-runs after a correction, a Blocked retry or a base move all count: after carry-forward, base-only re-runs are rare and are real work when they happen. Crashes are bounded by the crash-loop cap, not the budget (a crashed attempt writes no record; its reclaim counts once).
   ```text
   def counts(r0, reason, old_parts, parts):        # 1 when this record counts toward the budget
     if r0 is None: return 0                         # the node's first record
-    if reason == "stale" and all(k == "def" or k.startswith("policy.") for k in stale_keys(old_parts, parts)): return 0
+    keys = stale_keys(old_parts, parts)
+    redefined = {"inputs." + k for k in set(old_parts.inputs) ^ set(parts.inputs)} if "def" in keys else set()
+    if reason == "stale" and all(k in ("def", "candidates", "lenses") or k.startswith("policy.") or k in redefined
+                                 for k in keys): return 0
     return 1
   ```
-- The default graph has 6 agent nodes, so the default limit is 3 × 6 = 18 counted runs.
+- The shipped default graph has 9 agent nodes, so its default limit is 3 × 9 = 27 counted runs.
 - A node whose kind changed from human to agent keeps its old record's `correction_runs` in the count; this is harmless.
 
 **Crash-loop cap.** A lease whose `Attempt` ≥ the record attempt + 3 and which has expired is `needs_human (crash_loop)` instead of `reclaimable` (§4.9). Abandons count: an abandon expires the lease and the next start reclaims it with a higher attempt (§4.12). Options: `start G X --as <LABEL> --reclaim --force` (one more try), skip X, cancel. A repeat-cap or op-finding-cap `crash_loop` (§4.9) offers `start G X --as <LABEL> --force` (one more try), skip X, cancel. Skip X is omitted when X is a terminal node, which `validate_goal` would refuse (§3.3 rule 3; `x2:L8`). For an agent node of a goal over its correction budget (below), one more try prints the budget item's raise command before the `start` command, which `budget_exceeded` would otherwise refuse (`m5:N4`).
@@ -1378,6 +1390,7 @@ def process_findings(X, r0, out, L):
 **Filtered lenses and filters (G1000, G1020).**
 - `is_material(f)` is `f.get("material", True) is not False`: a finding without the key (a legacy record, or a review with no filter) is material.
 - A **filtered lens** (a review whose node declares `review.filter`) must give `impact` and `material` on every new finding. Its record is always `ok`: its findings are candidates, and blocking happens through its subject reopening. It may answer `approved` while only non-material findings are open (approve with notes); with any material finding open it must answer `changes_requested`. The submit outcome then reads `approved with N note(s) → <targets>` (§3.9), not `failed: …`. Unfiltered reviews (`review_tests`, human approvals) keep "approved requires no open findings".
+- A **multi-lens reviewer** (a review whose node declares `lenses`, G1022) gives `lens` on every new finding, one of the node's declared lenses; a lens the goal skipped is accepted, so no finding is refused for the lens it came from. The record keeps `lens` on the finding.
 - A **filter** submit gives `verdicts` with `keep` or `note` and a reason for exactly the non-material candidates on its card; a missing or extra id is refused. The filter's record is always `ok`.
 - **`reviewed`** (§3.4) is written only on a fresh submit, when the lease's input fingerprint equals the current one (the same condition as `target_fp`), and also records each artifact output of the subject as `{"blob", "commit"}`.
 
@@ -1516,6 +1529,8 @@ write_goals("reopen", [g], mutate)            # retries freely; prints the impac
 
 **Skips (G1000).** `edit` refuses `skip.<n>` for a node with `skippable: false` ("`<n>` is not skippable (`skippable: false` in workflow.json)"), and a new `skip.<n>` while `n`'s latest record has any open finding that is not a note (live, waiting for its filter, or waiting for re-review). The refusal names the findings and the waiver path: set their `status` to `"waived"` with a `note`. Reading a document never fails on a skip of a node a later policy made non-skippable. Human items offer no `skip` option for a non-skippable node.
 
+**Lens skips (G1022).** `skip.<node>:<lens>` (the path segment may contain `:`) removes one lens; `=null` restores it. A lens with `skippable: false` is refused (§3.3 rule 3a). A lens skip is not subject to the open-finding refusal above: the node keeps running, its record and open findings stay, and a new finding tagged with a skipped lens is accepted, so nothing is dropped. Adding or removing a lens skip stales the reviewer (`stale_because: ["lenses"]`, not counted, §4.10).
+
 **Live leases (G1014).** The preview and the applied result both carry `live_leases_on_changed_nodes` (§3.16), and `warning` when it is non-empty.
 
 ### 4.19 Generic close
@@ -1568,8 +1583,9 @@ def view(v, label):
 
 **Lens and filter sections (G1000).**
 - **`policy`:** for an agent node, each declared `policy` key's value as a view.
-- **`candidates`** (filter cards): every open finding on the filter's lenses' latest records, with its lens.
-- **`notes`** (targets of a filter): the findings the filter judged `note`, with the filter's reason.
+- **`candidates`** (filter cards): every open finding on the filter's lenses' latest records, with its lens label (`<node>:<lens>` for a tagged finding, else `<node>`).
+- **`notes`** (targets of a filter): the findings the filter judged `note`, with the filter's reason and lens label.
+- **`lenses`** (multi-lens reviewers, G1022): `apply`, the node's declared lenses less the goal's `<node>:<lens>` skips, in order; `skipped`, the removed lenses with their reasons; and `text`, the applied lenses' prompt files concatenated in order (`{"text"}` up to 600 bytes, otherwise a blob view, as for `prompt`). `apply` and `skipped` are always inline. The `output_schema.findings` hint names `"lens"` with every declared lens.
 - **`previous.changed`:** for a changed artifact subject, `git diff <old blob> <new blob>`, built only from validated 40-hex ids. If the old blob is missing after one fetch of the work branch, or `reviewed` is absent (records from before 1.1), the card says "previous version not available; review in full". Checkpoint subjects keep `interdiff`.
 
 ### 4.21 Carry-forward across a clean replay
@@ -1999,7 +2015,7 @@ classify(StatusContext): SUCCESS -> passed; FAILURE, ERROR -> failed; else pendi
 
 **`base` does not go stale when `I` moves (G1021).** The integration tip is not an input of `base`; `git.base` reads it at run time. Making it one would stale every in-flight goal's `base` on every merge into `I`. A conflict reaches `base` through the `conflict` findings of `integrate` (this step) and `merge` (§5.5).
 
-**PR body (G1000).** The PR body has a `## Reviews` section: the filter summary, one line per input whose producer is a review node (`**<node>**: <summary>`, clipped to one line), then `skipped: <reason>` for every node in the goal's `skip`. It reads no node names, and it is refreshed on every run.
+**PR body (G1000).** The PR body has a `## Reviews` section: the filter summary, one line per input whose producer is a review node (`**<node>**: <summary>`, clipped to one line; a multi-lens reviewer adds its applied lenses, `**<node>** (<lens>, …): <summary>`, G1022), then `skipped: <reason>` for every key in the goal's `skip` (`**<node>:<lens>**: skipped: <reason>` for a lens skip). It reads no node names, and it is refreshed on every run.
 
 ### 5.5 `github.merge`
 
@@ -2098,8 +2114,8 @@ Every verb prints one JSON object on stdout (`show` prints text unless `--json`)
 **The shipped default graph is configuration, not engine contract** (owner decision, 2026-11-01; HISTORY §4). Its source of truth is `plugins/zzzops/zzzops/templates/default/workflow.json`, with its prompts in `templates/default/prompts/`. The template tests run `validate --policy --dir` on it (DESIGN §10 item 24). DESIGN §4.1 explains why the default graph has the shape it has. A repository's own graph is its `.zzzops/workflow.json` on `I`, changed only through a policy branch. The engine reads no node names (DESIGN §10 item 3).
 
 Any `workflow.json`, the shipped one included, must satisfy the engine's rules. These are stated in §3 and §5 and summarised here:
-- **Schema and fields** (§3.1): `schema: 1`, a `default` graph, a non-empty `terminal`, and node fields allowed per kind: `kind`, `stage`, `prompt`, `inputs`, `outputs`, `review` (with optional `filter`), `skippable`, `policy`, `instructions`, `preserve`, `release_gate`, `rev`, `timeout`, `root`, `capability`, `op` and `workspace`.
-- **Graph validation** (§3.1 rules 1–14): every selector parses; the producer graph is acyclic; discovery never depends on delivery; checkpoint nodes declare a `base` input; `preserve` names a checkpoint ancestor; every op is registered and accepts its inputs; every node reaches a terminal; and the filter rules (rule 14). In the shipped graph, for example, `filter_design` joins the seven design lenses and `filter_impl` the seven implementation lenses.
+- **Schema and fields** (§3.1): `schema: 1`, a `default` graph, a non-empty `terminal`, and node fields allowed per kind: `kind`, `stage`, `prompt`, `inputs`, `outputs`, `review` (with optional `filter`), `skippable`, `lenses`, `policy`, `instructions`, `preserve`, `release_gate`, `rev`, `timeout`, `root`, `capability`, `op` and `workspace`.
+- **Graph validation** (§3.1 rules 1–15): every selector parses; the producer graph is acyclic; discovery never depends on delivery; checkpoint nodes declare a `base` input; `preserve` names a checkpoint ancestor; every op is registered and accepts its inputs; every node reaches a terminal; the filter rules (rule 14) and the lens rules (rule 15). In the shipped graph, for example, `filter_design` joins `review_design` (seven lenses) and `adversary_design`, and `filter_impl` reads `review_impl` (five lenses).
 - **Review, filter and skip semantics** (§4.9, §4.14, §4.18): what a review's `decision` means, how a filter's verdicts make lens findings live, and which skips `edit` refuses.
 - **Op inputs** (§5): `git.base`, `checks.run`, `git.integrate` and `github.merge` each validate the inputs and outputs they need (§5.1).
 - **Policy references** (§3.1 rule 6): every `policy` key, `instructions` key, `capability` and `prompt` named by the graph exists in the coordinator's `POLICY.json` and prompts.

@@ -72,6 +72,8 @@ AMENDMENT_SENTINELS = {
     "G1021": [("SPEC.md", "no checks appeared")],
     "G1000": [("SPEC.md", "filter_design"), ("DESIGN.md", "filter_design")],
     "G1020": [("SPEC.md", "approved with")],
+    # G1022's skip key form (SPEC §3.3) and the separate design Adversary's rationale (DESIGN §3.8).
+    "G1022": [("SPEC.md", "<node>:<lens>"), ("DESIGN.md", "adversary_design")],
     # G1023's wording, folded under G1016's row (SPEC §4.20 hint, §3.10 example).
     "G1023": [("SPEC.md", "<full 40-hex sha>")],
 }

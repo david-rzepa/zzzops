@@ -8,4 +8,4 @@ Implement the design so that the accepted tests pass, on the goal's work branch 
 - Your checkpoint defaults to the suggested checkpoint in the card, else your work branch's HEAD; omit the key unless you override.
 - If you are answering findings, answer every one in `responses` with `fixed: …` or `disputed: …`.
 - Notes are optional: act on one only if it is cheap and in scope.
-- If you meet a risk that a skipped lens covers, submit `--blocked` with the options `unskip <node ids>` and `continue`.
+- If you meet a risk that a skipped lens covers, submit `--blocked` with the options `unskip <skip keys>` (a node id, or `<node>:<lens>`) and `continue`.

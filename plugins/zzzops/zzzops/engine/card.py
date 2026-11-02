@@ -8,7 +8,7 @@ import json
 
 from engine.canon import canonical, iso
 from engine import schemas
-from engine.schemas import SHA, get_dotted, is_material
+from engine.schemas import SHA, get_dotted, is_material, lens_label
 from engine.frontier import recorded_out, resolve
 from engine.render import clip, command, first_line, run_capability
 from engine.schemas import SHA
@@ -144,6 +144,8 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
     ins = (session.state.policy or {}).get("instructions") or {}
     card["instructions"] = {k: ({"text": ins[k]} if len(ins[k].encode("utf-8")) <= INLINE else reader.blob_view(ins[k]))
                             for k in nd.get("instructions", []) if k in ins}
+    if graph.lens_defs(n):
+        card["lenses"] = lens_section(reader, graph, n, doc.get("skip") or {})
     card["inputs"], card["context"] = inputs, context
     if nd["kind"] == "agent" and nd.get("policy"):
         card["policy"] = {k: view(reader, get_dotted(settings, k)) for k in nd["policy"]}
@@ -216,9 +218,19 @@ def finding_by_id(doc, fid):
     return None
 
 
+def lens_section(reader, graph, n, skip) -> dict:
+    """A multi-lens reviewer's checklist (G1022): the lenses it applies, in order; those the goal skipped, with
+    reasons; and the applied lenses' prompt texts, concatenated (a blob view when long)."""
+    apply = graph.applied_lenses(n, skip)
+    defs = graph.lens_defs(n)
+    text = "\n\n".join((reader.prompt(defs[x]["prompt"]) or "").strip() for x in apply) + "\n"
+    return {"apply": apply, "skipped": graph.skipped_lenses(n, skip),
+            "text": {"text": text} if len(text.encode("utf-8")) <= INLINE else reader.blob_view(text)}
+
+
 def notes_for(res, n) -> list:
     """The filter-judged notes on target n: optional to act on, never corrections."""
-    return [{"id": f["id"], "lens": c, "text": f["text"], "impact": f.get("impact"), "reason": reason}
+    return [{"id": f["id"], "lens": lens_label(c, f), "text": f["text"], "impact": f.get("impact"), "reason": reason}
             for c, f, reason in sorted(res.notes.get(n, []), key=lambda x: x[1]["id"])]
 
 
@@ -228,12 +240,12 @@ def candidates(res, flt) -> list:
     out = []
     skip = res.doc.get("skip") or {}
     records = res.doc.get("records") or {}
-    for lens in res.graph.lenses(flt):
+    for lens in res.graph.reviewers(flt):
         if lens in skip:
             continue
         for f in (records.get(lens) or {}).get("findings") or []:
             if f["status"] == "open":
-                out.append({"id": f["id"], "lens": lens, "target": f["target"], "text": f["text"],
+                out.append({"id": f["id"], "lens": lens_label(lens, f), "target": f["target"], "text": f["text"],
                             "impact": f.get("impact"), "material": is_material(f),
                             "response": response_of(res.doc, f["target"], f["id"]) or f.get("response")})
     return sorted(out, key=lambda c: c["id"])
@@ -289,6 +301,15 @@ def finding_effect(graph, n) -> str:
     return "it reopens that ancestor; this phase re-runs if that ancestor's output changes."
 
 
+def new_finding_hint(graph, n, follows: bool = False) -> str:
+    """The shape of a new review finding; a multi-lens reviewer's names every declared lens (G1022); `follows`
+    is offered only when the policy requires it (G1028)."""
+    lenses = " | ".join(f'"{x}"' for x in graph.lens_defs(n))
+    tail = ", \"follows\"?: <id>" if follows else ""
+    return (f'{{"target"?: <node>, "lens": {lenses}, "text": …{tail}}}' if lenses
+            else f'{{"target"?: <node>, "text": …{tail}}}')
+
+
 def output_schema(graph, n, s, follows: bool = False) -> dict:
     """`follows`: the policy requires the finding key `follows` (only then is it offered, G1028)."""
     out = {}
@@ -299,12 +320,12 @@ def output_schema(graph, n, s, follows: bool = False) -> dict:
         out["summary"] = "text: your verdict"
         if follows:
             out["findings"] = ("[{\"id\": <id>, \"status\": \"open\"|\"resolved\"} for every finding in previous.findings, "
-                               "{\"target\"?: <node>, \"text\": …, \"follows\"?: <id>} for new ones]. Ids in "
+                               f"{new_finding_hint(graph, n, True)} for new ones]. Ids in "
                                "previous.resolved need no status. When a prior finding is partly fixed, resolve it and "
                                "raise what remains with \"follows\": <its id>. " + finding_effect(graph, n))
         else:
             out["findings"] = ("[{\"id\": <id>, \"status\": \"open\"|\"resolved\"} for every finding in previous.findings, "
-                               "{\"target\"?: <node>, \"text\": …} for new ones]. Ids in previous.resolved need no "
+                               f"{new_finding_hint(graph, n)} for new ones]. Ids in previous.resolved need no "
                                "status. " + finding_effect(graph, n))
     else:
         for k, t in graph.output_types[n].items():
