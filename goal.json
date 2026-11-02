@@ -44,6 +44,32 @@
       },
       "status": "done"
     },
+    "base": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T16:09:59Z",
+      "fp_parts": {
+        "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
+        "inputs": {
+          "heads": "v1:sha256:ab5b44fe24ba0e66db858b07d012e1ea3692b315d9652337ef18df14f0ba86fe",
+          "merges": "v1:sha256:a9c86e74e781e157538824485eab1146d19a2640ed1b11d312c75fc211bc5e14"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:4046994a0e18b1ed529d048dec8fc286a5ced458563d62cdc9407a1a6c9c0d42",
+      "ok": true,
+      "output": {
+        "base_commit": "f4eaf7465f1d3e95392733d9ba05456702fd41d0",
+        "branch": "zzzops/work/g1041",
+        "replay_map": {},
+        "replay_pos": {},
+        "stack": []
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "design": {
       "attempt": 1,
       "correction_runs": 0,
