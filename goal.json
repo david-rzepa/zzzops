@@ -192,51 +192,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 2,
-      "correction_runs": 1,
-      "findings": [
-        {
-          "id": "review_tests:1:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:1c9aa073cdd94538b2b4e31501c596584c81c1a62cb461ece66ebd1e925a3f6e",
-          "text": "The new CostPlumbingJourney in .agents/test_engine_cost_context.py hardcodes subprocess.run([\"/bin/sh\", \"-c\", command]) for its real red-cost measurement and records a python3 command. This engine/card journey is platform-independent, but /bin/sh is not the supported Windows executable; checks.shell(ctx.git) already resolves Git for Windows bin/sh.exe, and the current interpreter should be quoted rather than assuming a python3 alias. The early missing test_cost capability guard hides the problem in today's red run. Use the same platform shell resolver as actual checks.run and a shell-quoted sys.executable command for the red and green script, preserving the actual measured red failure and renamed-graph evidence. Add/run a small launcher control for Windows shell selection or the corresponding supported-platform probe; no full-suite rerun is needed.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-02T23:01:11Z",
+      "attempt": 3,
+      "correction_runs": 2,
+      "findings": [],
+      "finished_at": "2026-11-02T23:12:52Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:a361e31ab8798ddb675ac6b835eda82dd46266c9",
-          "tests": "v1:sha256:efd2965f0761716e4636df9b3d8db14cbe13cf6d3d1cd81ded04d165e4335fd3"
+          "tests": "v1:sha256:37f77726f16c787978fbe63007db62f56fcaad1e0a64cc26ffb6fed021ea6384"
         },
         "policy": {},
-        "subject": "v1:sha256:4cf5d95f66e4485d6b0024f1fa5d3aa2fa06267724a3a2327cffd54663b21c35"
+        "subject": "v1:sha256:34a82aecb08abca0c729deeebadb0301cdc8635f6cf10b1159c0758c6b176ea9"
       },
-      "holder": "codex:takeover/1043-review-tests-portability",
-      "input_fp": "v1:sha256:3825afdb6702a88520fbfb20e59841703ec749bfac5f5467fa2ba1eba1e4cd51",
+      "holder": "codex:takeover/1043-review-tests-context",
+      "input_fp": "v1:sha256:767ef867b3eb0c735fa02d137eb27cad9e7f49c063428918a8807cda90878b2c",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "602cdad2744c81a231f28afe35d08cbb22ab7f14",
-          "commit": "a259db280b0c3e234b3f9ee9914e3dafdeb05757",
+          "blob": "7f7c56e9fe5ca723d304918eda0e83ae8e8af1c4",
+          "commit": "6f88e27a2866e4d55425339b090b10a0db050edf",
           "path": ".zzzops/reviews/1043/review_tests.md"
         },
-        "summary": "Approved the bounded portability correction after clean sync to merged G1031. The measured red script uses checks.shell and a shlex-quoted current interpreter; the identical command is retained for green execution. Launcher controls pass on Python 3.10/3.14, and an independent space/apostrophe-path red/green probe passes. The previously reviewed substantive 50-case suite is unchanged."
+        "summary": "Approved the narrow context fixture correction at 5907d057. The journey now asserts cost is absent from identity-bearing inputs and reads context.cost, matching existing card.build routing for context:true. Complete cost equality/blob decoding, measured red/green command and prior substantive coverage remain unchanged. Tests checkpoint contains no product source."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "575015a9831ccd2ce724c3125dd74dd20029c1b5",
-          "change": "a52a0500536e9b7e5b4e1ae719c13985815f8f2e",
-          "commit": "51edabe503247c4806fe55ea09164a7de1d8de9d",
-          "tree": "72af0e5493de58a5bb6a95983052af8b4cd803e9"
+          "change": "1c5601dd8cb7003ca94e6e1b1dd523b8298f4b7b",
+          "commit": "5907d057e5a713e015635acecf85a33658106f49",
+          "tree": "085adbc9ad63a602f608d00e3742efa73602608b"
         }
       },
       "status": "done"
