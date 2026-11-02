@@ -40,6 +40,40 @@
       "reason": "new",
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T04:47:13Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:68992095a3a3352d72e205d9aee0591a0204b89e8ea17404aa041bf88feaa515"
+        },
+        "policy": {},
+        "subject": "v1:sha256:38bb8ec2731e6892bb8ae36789c52bb2bd08e81deaafed4eb2487cd1553bf0a7"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:00375d1d75c1ec240db52aad19373ed27b341a60b8888e7a43356e906f1cd6a6",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-02T04:47:13Z",
+        "decided_by": "Dave (owner), recorded by Claude (root agent)",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approved merging PR #758 (G1022) at head 8e496c8 into dev: the shipped default graph goes from 26 to 15 nodes; review_design applies the seven design lenses in one reviewer with adversary_design beside it; review_impl applies compliance, correctness, missing (searching the goal's own commit), tests and craft; both feed the existing filters. New node field `lenses`, skip keys `<node>:<lens>` (mandatory lenses refused), `lens` tag on findings, lens checklist on cards, approval items and the PR body. ENGINE_VERSION 1.3.0. Rebased once onto G1028 with one frozen test adjusted for G1028's carried findings; tests, code review and the rebase review approved; required CI passed. The owner asked to merge everything on the Release 1 stack; merged with --admin because of the dev ruleset's last-push rule."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "5288bf7ed3f8373dad773e2de48f6c7603afd985",
+          "change": "736b8e14c8ac93001db5bb7a928286fb14df44ac",
+          "commit": "bf98f7b3d3a76f5a5eff36c8eada585cf1033a78",
+          "tree": "58ec5491ea73405f25067ad2fa7f8023d539e15d"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 3,
       "correction_runs": 2,
