@@ -48,7 +48,7 @@ class Autopilot:
                     if card["workspace"]:
                         wtd = fx.GitDir(card["workspace"], self.w.env)
                         kind = "test" if node in self.preserved else "feat"
-                        wtd.commit({f"work/{node}.txt": f"{node} {self.turn}\n"}, f"{kind}: {node}")
+                        wtd.commit({f"work/g{g}/{node}.txt": f"G{g} {node} {self.turn}\n"}, f"{kind}: {node}")
                 elif t == "strings":
                     out[k] = ["true"]
                 elif t in ("text", "string"):

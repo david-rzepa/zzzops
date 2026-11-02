@@ -59,8 +59,9 @@ def view(reader, v):
 
 def checkpoint_view(cp, sub=None, scope=None, exclude=None, reader=None):
     """The card view of a checkpoint; `tree` only for a whole checkpoint or a `.tree` selector."""
+    paths = " ".join("':/'" if p == ":/" else shlex.quote(p) for p in view_paths(scope, exclude))
     out = {"commit": cp["commit"], "base": cp["base"], "change": cp["change"],
-           "diff": f"git diff {cp['base']} {cp['base'] if scope == [] else cp['commit']} -- " + " ".join(shlex.quote(p) for p in view_paths(scope, exclude))}
+           "diff": f"git diff {cp['base']} {cp['base'] if scope == [] else cp['commit']} -- {paths}"}
     if sub in (None, "tree"):
         out["tree"] = cp["tree"]
     if len(scope or []) + len(exclude or []) > 12:
