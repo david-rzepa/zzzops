@@ -133,9 +133,17 @@ def make_context(s, res, X, lease) -> OpContext:
 
 
 def target_of(s, res) -> dict:
-    """The goal's target branch and tip: the integration branch unless a release line owns the goal (G1025)."""
-    b = (res.target or {}).get("branch")
-    if not b or b == s.snap.I:
+    """The goal's target branch and tip: the integration branch unless a release line owns the goal (G1025). A goal
+    whose line target has no branch yet (a hotfix member before `hotfix start`) never falls back to the integration
+    branch: the op is refused."""
+    if res.target is None:
+        return {"branch": s.snap.I, "tip": s.snap.integration}
+    b = res.target.get("branch")
+    if not b:
+        name = res.target.get("name") or res.target.get("kind")
+        raise Refused("not_ready", f"G{res.goal}'s {res.target.get('kind')} line {name} has no branch yet",
+                      hint=f"run `hotfix start {name}` first" if res.target.get("kind") == "hotfix" else None)
+    if b == s.snap.I:
         return {"branch": s.snap.I, "tip": s.snap.integration}
     return {"branch": b, "tip": s.target_tip(b)}
 

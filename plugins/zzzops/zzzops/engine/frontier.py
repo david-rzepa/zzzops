@@ -258,8 +258,10 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
             f = input_fp(rparts) if rparts else None
             st[n] = {"name": "running", "lease": L, "fp": f, "parts": rparts}
             continue
-        if missing and lctx and node.get("op") == "git.base":
-            w = line_wait(n, node)                        # a merged dependency not in the target yet, or no hotfix line
+        if (missing or lx.get("hotfix_waiting")) and lctx and node.get("op") == "git.base":
+            # a merged dependency not in the target yet, or no hotfix line: a hotfix member with no line waits even
+            # when its base record is current, so nothing below it runs against the integration branch (§4, §7)
+            w = line_wait(n, node)
             if w:
                 st[n] = w
                 continue
