@@ -114,23 +114,10 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 2,
-      "correction_runs": 1,
-      "findings": [
-        {
-          "id": "implement:reopen:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "implement",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:c7f94edf13e07c8ba39968ee1d31d9012655d668cdf8787828753ca2763e4e54",
-          "text": "Independent preliminary review reproduced sticky merge-mode policy-block op_state dropping prior old base. After capability restoration and dependency removal, resume falls back to merge-base and incorrectly retains dependency-only files. Preserve prior old base through policy blocks and retries.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-02T22:33:12Z",
+      "attempt": 3,
+      "correction_runs": 2,
+      "findings": [],
+      "finished_at": "2026-11-02T22:36:00Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -140,20 +127,20 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1038-implement-breaking",
+      "holder": "codex:takeover/1038-implement-sticky",
       "input_fp": "v1:sha256:fd387ccd828ad46022503b7324f5681dfc745d11f7bf35e8eec3a67993980604",
       "ok": true,
       "output": {
         "code": {
           "base": "de5640d1c5909ea924450aeea6450497a78946f6",
-          "change": "b6b93cd7233bad8cb096b6637c2ce7ffb317e711",
-          "commit": "665724441a71198d07b11dc63d8f518051901e34",
-          "tree": "473743395ac1e4ca2b0532abee67a8dcc807a72c"
+          "change": "27abcc412358dbab174437945de1619a0a3ba58c",
+          "commit": "5a9a7318fa7e327413d8cde4b79fc989cb52ad44",
+          "tree": "037a42461802c927556dff458ba134cd58e932b6"
         },
         "responses": {
-          "implement:reopen:1": "fixed: squash.rebuild now reads conventional(subject)[2] for the declaration bang; literal !: text in the summary does not mark a major release. Four new real-Git regression cases cover literal text, scoped bang, BREAKING CHANGE and BREAKING-CHANGE footers; red reproduces the literal false positive, green passes all four."
+          "implement:reopen:1": "fixed: the sticky policy block writes op_state.old with the prior base_commit; repeated blocks and an answered retry keep that exact base. A new real-Git regression disables the capability twice, restores it with an owner answer and removes the dependency, proving dependency-only content is removed while goal content/history stay intact."
         },
-        "summary": "Squash breaking-release classification now uses the conventional declaration bang rather than searching summary text, so a literal !: delimiter stays a patch fix. Genuine scoped declaration bangs and both supported BREAKING CHANGE footer forms still produce breaking squashes with their footers retained. Four new small real-Git regression cases pass in 2.788s; three focused frozen grammar/release controls pass in 1.869s."
+        "summary": "Sticky merge-mode policy waits now retain the original sync base through repeated blocks and the owner answer, so restoring the capability while dropping a dependency removes its content correctly. The previous correction also keeps literal !: text from becoming a breaking release while retaining genuine declaration bangs and footer behavior. The new repeated-wait recovery regression passes in 0.587s, two frozen sticky/drop controls pass in 1.667s, and 35 documentation checks pass in 0.530s."
       },
       "reason": "reopened",
       "status": "done"
