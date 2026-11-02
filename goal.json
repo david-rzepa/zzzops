@@ -67,28 +67,28 @@
       "status": "done"
     },
     "design": {
-      "attempt": 4,
-      "correction_runs": 3,
+      "attempt": 5,
+      "correction_runs": 4,
       "findings": [],
-      "finished_at": "2026-11-01T20:01:18Z",
+      "finished_at": "2026-11-02T21:59:04Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
-          "dep_designs": "v1:sha256:c064c06c4194ebc7b5e1c8198fc7b9401e3bf4861500e9c8da4fcbda768978fc",
+          "dep_designs": "v1:sha256:4344e940a9056830fed9851c4961344aa32c51f3605d9c0b828f9d2e46c86efc",
           "spec": "v1:sha256:e2c063ee9322840387685a5c86388a130816b2a8e1960e4e6cdd0d7ede8870e3"
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/d1037",
-      "input_fp": "v1:sha256:756925127412f3988f594ebee851651636b093580681ddac2991c07c3094fae4",
+      "holder": "codex:takeover/1037-design",
+      "input_fp": "v1:sha256:95f370e53142e781a864a61b2c1fc83a17a3929f3f5259fe6dc8ab89bad45107",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "3d5740027b00e0543fd2d9a6c0eeae3c3447bbac",
-          "commit": "4785af5ee640f335ff5637757c5a64f572222e74",
+          "blob": "982d3c13e410a3f3c6bf0584d8e1cce94d67cb06",
+          "commit": "dbef3a2e2e23ddac93901aa87524043374d7ea4b",
           "path": ".zzzops/reviews/1037/design.md"
         },
-        "summary": "Attempt 4: spec aligned with OD8; plan unchanged. Attempt 3 records OD8 (the owner judged secret-scrubbing machinery intent drift) and simplifies the redaction rule to a naming convention: the app is never named, public artifacts stay generic, owner quotes have identifying words replaced, the detailed plan stays private, and A15 is one grep of the report and this goal's artifacts for the app's name and slug before publication. The run plan is otherwise unchanged."
+        "summary": "Attempt 5 preserves OD1–OD8 and the nine-phase private dogfood plan, updating only its integration with the reviewed merge-sync, clean-carry/budget and blocked-findings dependencies. Bootstrap explicitly adopts their capabilities and paired prompts/graph edge, and acceptance records actual sync/finding behaviour without manufacturing failures. The real run still waits for every dependency to merge, uses both harnesses, keeps app-specific facts private, and requires separate owner approvals for staging and production."
       },
       "reason": "stale",
       "status": "done"
