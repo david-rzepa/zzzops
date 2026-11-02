@@ -384,6 +384,8 @@ A done record with `ok == false` must carry at least one open finding; submit re
 - op findings: `<carrier node>:<key>`, where `<key>` is fixed by the op (§5) and sanitized to `[A-Za-z0-9_-]` (every other character becomes `_`);
 - reopen findings: `<node>:reopen:<n>`, `n` = 1 + the number of reopen findings already on the record.
 
+**Owner questions (G1026).** A finding is an owner question when its `text`, with leading whitespace stripped, starts with exactly `owner question:` (case-sensitive; the prefix is reserved). A filtered lens's owner question must have `material: true` (§4.14).
+
 ### 3.7 Blocked record (`records.<node>.blocked`)
 
 ```jsonc
@@ -443,6 +445,7 @@ State: <open|held|closed>
 - `Request-Key:` appears only on a goal's root (`new`) commit, and carries the request identity of §3.13 (G1001).
 - `<verb>` ∈ `new`, `submit`, `start` (op outcomes and carry-forward), `answer`, `reopen`, `edit`, `abandon`. The `Outcome:`, `State:` and `Engine:` trailers are always present.
 - `State` is the document's state after the write; readers use it to skip closed documents (§4.3).
+- **The `answer` subject is an index (G1026).** Every answer is one goal commit with subject `zzzops: answer G<id> <node>`. Human decisions (§3.14, §3.15, §5.4) are read from these commits (`git log --reverse --first-parent --grep='^zzzops: answer G<id> '` on the goal tip, then `goal.json` at each): a commit counts when `records[<node>]` there is blocked with an `answer`, which leaves out approval and dispute answers. The subject's form is part of the contract.
 - `Outcome` is one line built from what was written: `ok`; `changes_requested: 2 findings → implement`; `blocked (human): <reason>`; `waiting until 14:35: required checks pending`; `failed: integrate:check-lint → implement`; `carried: test_design, implement`; `closed: done (PR #1187, 5a1c2d3)`; for `new` and `edit`, `created` or the edited paths.
 - **"What happened since T"** is one local command over these trailers: `git log --since=<T> --format='%cI %s%n%b' --glob='refs/zzzops/goal/<R>/*'` (followed by `next` for current human items).
 
@@ -546,7 +549,11 @@ Every text field of an answer file is at most 4,096 bytes (`too_large` otherwise
                "output"?: { /* stale_because == ["def"]: the previous output */ },
                "hint"?: "If it still holds, resubmit it."},
  "suggested_checkpoint"?: {"tests": "<sha>"},            // after a base move: from base's replay map (§4.20); the default checkpoint (§4.14)
- "answer"?: {"text": "…", "quote": "…", "decided_by": "…"},   // retry after a human answer
+ "answer"?: {"text": "…", "quote": "…", "decided_by": "…"},   // the node's record is blocked and answered (any reason, G1026)
+ "human_decisions"?: [{"node", "kind", "question", "text", "quote", "decided_by", "decided_at", "commit"}] | <blob view> | "unavailable",
+                                                         // G1026: answered blocked questions (§3.9) of the node itself, or on a
+                                                         // review or filter card of its subject (`review.subject`, or a filter's
+                                                         // reviewers' subject) and the subject's ancestors; entries unclipped
  "blocked_instructions"?: "text",
  "read_dev": {"commit": "<I tip>", "show": "git show <I tip>:<path>", "grep": "git grep <pattern> <I tip>",
               "mirror": "/abs/.git/zzzops/coordinator"},
@@ -605,6 +612,9 @@ A **value view** is the value itself when its canonical form is at most 600 byte
  "stack"?: "stacked on G1001 (PR #1180, not merged yet)",
  "facts"?: "review_tests: 1 review; review_impl: 3 reviews; waived: review_impl:2:1; disputed: none; CI: not run yet",
  "previous"?: {"decided_at": "iso", "quote": "…", "stale_because": ["inputs.code"], "interdiff"?: "git range-diff <old base>..<old commit> <new base>..<new commit>"},
+ "human_decisions"?: [{"node", "kind", "question", "text", "quote", "decided_by", "decided_at", "commit"}] | "unavailable",
+                                                  // approve items (G1026): answered blocked questions (§3.9) on every node
+                                                  // that is not a descendant of this one, in commit order, text clipped to 300
  "options": [{"label": "approve", "command": {"argv": ["answer", "1002", "approve_merge", "--fp", "<fp>", "--file", "<F>"], "command": "…"}},
              {"label": "request changes", "command": {…}}],
  "recommendation"?: "text",                       // blocked items: from the record
@@ -1392,6 +1402,7 @@ def process_findings(X, r0, out, L):
 - `is_material(f)` is `f.get("material", True) is not False`: a finding without the key (a legacy record, or a review with no filter) is material.
 - A **filtered lens** (a review whose node declares `review.filter`) must give `impact` and `material` on every new finding. Its record is always `ok`: its findings are candidates, and blocking happens through its subject reopening. It may answer `approved` while only non-material findings are open (approve with notes); with any material finding open it must answer `changes_requested`. The submit outcome then reads `approved with N note(s) → <targets>` (§3.9), not `failed: …`. Unfiltered reviews (`review_tests`, human approvals) keep "approved requires no open findings".
 - A **multi-lens reviewer** (a review whose node declares `lenses`, G1022) gives `lens` on every new finding, one of the node's declared lenses; a lens the goal skipped is accepted, so no finding is refused for the lens it came from. The record keeps `lens` on the finding.
+- An **owner question** (§3.6) from a filtered lens with `material: false` is refused: "an owner question is always material: set material: true" (G1026). The prefix is case-sensitive, so a note such as "Owner question: none" is accepted.
 - A **filter** submit gives `verdicts` with `keep` or `note` and a reason for exactly the non-material candidates on its card; a missing or extra id is refused. The filter's record is always `ok`.
 - **`reviewed`** (§3.4) is written only on a fresh submit, when the lease's input fingerprint equals the current one (the same condition as `target_fp`), and also records each artifact output of the subject as `{"blob", "commit"}`.
 
@@ -1577,9 +1588,10 @@ def view(v, label):
 - **Stale explanation (G1016):** `stale_because` is shown on every started card, reclaim cards included (the union of the lease's and the record's staleness), and `changed` gives one local, never-fetching pointer per stale key that has one: a goal-field input gets a `goal.json` diff since the record, an artifact input a blob diff.
 - **Output schema text (G1016):** says what a finding does ("it reopens that ancestor; this phase re-runs if that ancestor's output changes"), that checkpoint keys are optional (omit the key to take the default), and how an artifact is passed (`--artifact`, `artifact.path` content).
 - **Review `findings` text (G1028):** "every finding in previous.findings" gets a status; "Ids in previous.resolved need no status". Only when the policy allows `follows` (§4.5) does it add `"follows"?: <id>` and "When a prior finding is partly fixed, resolve it and raise what remains with \"follows\": <its id>." `responses` adds a sentence on `stale_review` corrections: answer `fixed:` if the output handles it, or `disputed:` with the reason if the change made it moot.
+- **Answer and human decisions (G1026):** `answer` is shown whenever the node's own record is blocked and answered, so a `stale` card from an edit made after the answer still carries the owner's words; `blocked_instructions` stays on retry cards. `human_decisions` lists the answered blocked questions (§3.9) of the node itself, or, when the node has a subject (`review.subject`, or for a filter its reviewers' subject), of that subject and its ancestors. Entries are not clipped; the key is omitted when there are none and is the string `"unavailable"` when the goal history cannot be read.
 - **`read_dev`:** always present, so discovery nodes read the integration tip with `git show`/`git grep` or the mirror, with no worktree.
 - **Commands:** `submit` and `blocked` carry `--as <holder>` so a worker's lost response is recognized (§4.14).
-- **Size (shrink steps, G1018):** 4,096 bytes is a target. While `len(canonical(card)) > 4096`, apply the first of these steps that makes the card smaller: drop `argv` from `commands` (each keeps its runnable `command` string); point `context.commands` at `commands_to_run` (`"see commands_to_run"`); clip blob summaries to 120 characters (a blobbed correction's `full` carries no `summary`; a blobbed dict or list gets a key summary); then replace the largest inline text value (prompt, instructions, inputs, context, correction texts; ties by key order) with a view reference, and if none above 100 bytes remains, cut each correction `text` to 200 characters with its full text under `corrections[i].full`. Checkpoint views are never blobbed, and a card never leaves larger than it entered. Cards under 4,096 bytes are unchanged.
+- **Size (shrink steps, G1018):** 4,096 bytes is a target. While `len(canonical(card)) > 4096`, apply the first of these steps that makes the card smaller: drop `argv` from `commands` (each keeps its runnable `command` string); point `context.commands` at `commands_to_run` (`"see commands_to_run"`); clip blob summaries to 120 characters (a blobbed correction's `full` carries no `summary`; a blobbed dict or list gets a key summary); then replace the largest inline text value (prompt, instructions, inputs, context, correction texts, a `human_decisions` list blobbed whole with key summary `N items` (G1026); ties by key order) with a view reference, and if none above 100 bytes remains, cut each correction `text` to 200 characters with its full text under `corrections[i].full`. Checkpoint views are never blobbed, and a card never leaves larger than it entered. Cards under 4,096 bytes are unchanged.
 - **Approve items (G1018):** checkpoint entries in a human item's `context` carry `commit` and `base` with the `diff`.
 
 **Lens and filter sections (G1000).**
@@ -2016,7 +2028,7 @@ classify(StatusContext): SUCCESS -> passed; FAILURE, ERROR -> failed; else pendi
 
 **`base` does not go stale when `I` moves (G1021).** The integration tip is not an input of `base`; `git.base` reads it at run time. Making it one would stale every in-flight goal's `base` on every merge into `I`. A conflict reaches `base` through the `conflict` findings of `integrate` (this step) and `merge` (§5.5).
 
-**PR body (G1000).** The PR body has a `## Reviews` section: the filter summary, one line per input whose producer is a review node (`**<node>**: <summary>`, clipped to one line; a multi-lens reviewer adds its applied lenses, `**<node>** (<lens>, …): <summary>`, G1022), then `skipped: <reason>` for every key in the goal's `skip` (`**<node>:<lens>**: skipped: <reason>` for a lens skip). It reads no node names, and it is refreshed on every run.
+**PR body (G1000).** The PR body has a `## Reviews` section: the filter summary, one line per input whose producer is a review node (`**<node>**: <summary>`, clipped to one line; a multi-lens reviewer adds its applied lenses, `**<node>** (<lens>, …): <summary>`, G1022), then `skipped: <reason>` for every key in the goal's `skip` (`**<node>:<lens>**: skipped: <reason>` for a lens skip). It reads no node names, and it is refreshed on every run. After it, when non-empty, a `## Human decisions` section (G1026) lists the answered blocked questions (§3.9) on every node that is not a descendant of the op writing the body (so its own answers are included), one line each: `- **<node>** (<kind>; <decided_by>, <date>): <question, one line> → "<quote, one line>"`. When the goal history cannot be read it says "Unavailable: goal history could not be read."
 
 ### 5.5 `github.merge`
 
@@ -2128,13 +2140,14 @@ The shipped `POLICY.json`, prompts and graph are configuration (owner decision, 
 ### 8.1 Shipped template (`templates/default/POLICY.json`)
 - The template is a complete `POLICY.json` under §3.2: it sets every required settings key, and its `instructions` hold every key the shipped graph names. `validate --policy --dir <template>` passes on it, with only the `intent_placeholder` warning while `settings.intent` holds the `TODO:` placeholders (§3.2).
 - Bootstrap copies it and then sets the repository's values (§8.3 step 2): `integration_branch`, `verification.commands`, `required_ci`, `goals.first_id` and the `routing.tiers` of the harnesses in use. This repository's own policy is `.zzzops/POLICY.json` on `dev`.
+- The template's `owner_questions` instruction (G1026) states when a choice belongs to the owner and how reviewers raise one (`owner question:`, §3.6) and resolve it against the card's `human_decisions`; it is listed on the design and its reviewers, and its text is configuration.
 - `routing.tiers` is advisory: its keys are the valid `capability` values (§3.1 rule 6), and the engine copies the matching model list into a card's `run.models` (§3.14) without interpreting it.
 
 ### 8.2 Prompt files (`.zzzops/prompts/`)
 - A prompt is Markdown, read from `<I>:.zzzops/prompts/<file>` on demand. Every `prompt` a node names must exist at the coordinator commit (§3.1 rule 6).
 - For human nodes, the first non-empty line is the question shown to the human: `{id}`, `{title}` and `{<input name>}` are substituted, and a leading `#` is removed (§4.11). The rest is guidance for the agent presenting it.
 - For agent nodes, the prompt is shown on the task card, inline when it is at most 600 bytes and otherwise as a blob view; its blob id goes into the lease's `Prompt:` field and then the record's `prompt` (§4.20), so a prompt edit is visible in the record.
-- The engine fixes no prompt text. The shipped prompts are in `templates/default/prompts/`; DESIGN §4.1 and §3.8 explain the lens set and the filter.
+- The engine fixes no prompt text; it only reserves the finding prefix `owner question:` (§3.6). The shipped design prompt blocks on owner questions and the approve prompts show `human_decisions` (G1026). The shipped prompts are in `templates/default/prompts/`; DESIGN §4.1 and §3.8 explain the lens set and the filter.
 
 ### 8.3 Templates and the bootstrap checklist
 - **Templates.** The plugin ships `plugins/zzzops/zzzops/templates/default/{POLICY.json, workflow.json, prompts/*.md}`, the source of truth for the defaults (§7, §8.1, §8.2). A CI test runs `validate --policy --dir <template>`.

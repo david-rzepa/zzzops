@@ -33,7 +33,8 @@
           "instructions": [
             "workflow",
             "rigor",
-            "communication"
+            "communication",
+            "owner_questions"
           ]
         },
         "review_design": {
@@ -60,7 +61,8 @@
           ],
           "instructions": [
             "review",
-            "communication"
+            "communication",
+            "owner_questions"
           ],
           "lenses": {
             "intent": {
@@ -108,7 +110,8 @@
           },
           "instructions": [
             "review",
-            "communication"
+            "communication",
+            "owner_questions"
           ]
         },
         "filter_design": {
@@ -342,7 +345,8 @@
             "review",
             "communication",
             "security",
-            "code_quality"
+            "code_quality",
+            "owner_questions"
           ],
           "lenses": {
             "compliance": {
