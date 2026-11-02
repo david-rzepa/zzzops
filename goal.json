@@ -44,6 +44,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T04:04:07Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:5bbe054c113339dc77a19e79cdf4c622fbd0f48b833e7386dac81deb911fe0cc"
+        },
+        "policy": {},
+        "subject": "v1:sha256:9ab8abe16d83e71e63352519dd014761c70b14aa548d7d9065ea5f2560be553d"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:a95a26e673cd13777ade098cb8922b05390bb8a981e7baede42ba655e5e0d105",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-02T04:04:07Z",
+        "decided_by": "Dave (owner), recorded by Claude (root agent)",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approved merging PR #757 (G1028) at head 09135cd into dev: open findings of a stale reviewer stay live while their target's output is unchanged (goal edits no longer drop them; cards mark them stale_review; edit lists carried_findings with waive lines); review cards split open from resolved findings and restating a closed id is handled; `follows` links a new finding to a resolved one (inherits rounds, never upheld; gated on engine 1.2.0); global --repo on worker-facing commands. ENGINE_VERSION 1.2.0. Rebased once (HISTORY row conflict); tests and code review approved; required CI passed. The owner asked to merge everything on the Release 1 stack; merged with --admin because of the dev ruleset's last-push rule."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "d41e740c6788a6eb6391e0beafad677f4b086766",
+          "change": "e67399df16c4abc82b440f7023ca7d534680741d",
+          "commit": "071e989933f3219cf9b96470a203c0f8ed7fb0b9",
+          "tree": "5a64a3426514c365f7ce0ce1fd7e72551980398a"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 3,
       "correction_runs": 2,
