@@ -10,7 +10,35 @@
     "issue": null
   },
   "priority": "P2",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T16:06:58Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:ae62f2c1bca9ce3a03656fb1cda1e2b7b462fdf4a86e60806088be5c3c8fed1e",
+          "spec": "v1:sha256:b90f03765b7f695de714249db0c39d241525b8eac6a035e7f31b16fc090d0826"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1041",
+      "input_fp": "v1:sha256:869d377a16dbfbc7e55209fa6012435fed6c60224c4322a4a5aabd6bf1143354",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "cc60eabf6331555c3c73bd5ea08d6311e25f34d3",
+          "commit": "a2a518a6d5a8e2b8d394a682606fa5b0bce60994",
+          "path": ".zzzops/reviews/1041/design.md"
+        },
+        "summary": "Reproduced: `git worktree list --porcelain` exits 128 when another process adds or removes a linked worktree at the same moment; in the test, the concurrent change is `next` adding the coordinator mirror worktree. Locally (Git 2.55) the main entry usually prints before Git dies, and one empty-output case was seen. On CI's Git 2.56 2 of 20 calls got empty stdout, so discover found no line and refused. Fix: one `Git` helper that uses the output only when the exit code is 0 and otherwise retries up to 6 times with jittered backoff (about 1.3 s worst case); `discover` and `registered_worktrees` both use it. The refusal message stays the same and gains Git's stderr in details. Deriving the primary from the common dir was rejected: it gives a second path form (Windows) and has layout edge cases."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
