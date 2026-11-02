@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-02T17:08:36Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [
     1027
   ],
@@ -200,6 +205,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T17:08:36Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:50b4b5367a4b834a6d43597287547164a92cc3a82099c0fd888dc28d65af8d10"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:7c35cab2b438bd1e9fcf91e40d057edadea84e84427dd159fe787383eefe6cdf",
+      "ok": true,
+      "output": {
+        "merge_commit": "08aa793dec96226e189f457a3796b9701a42787f",
+        "merged_at": "2026-11-02T17:08:35Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -416,6 +443,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Found while dogfooding Release 1. CI for G1027 (PR #759, Linux Python 3.10 shard 1) failed test_engine_store.PolicyTests.test_twenty_concurrent_next_after_dev_moves: 2 of 20 concurrent `zzzops next` calls returned `environment: cannot find the primary worktree`. The test passed locally and on the other shards, so it is a race.\n\n`Git.discover` (engine/gitrun.py) takes the primary worktree from the first `worktree` line of `git worktree list --porcelain` and ignores its exit status. When another process is adding, pruning or locking a worktree at the same moment, that command can fail or print nothing, and discovery refuses. Parallel workers running `next`, `start` and `submit` at once is the normal case, so this can refuse real calls, not only the test.\n\nScope:\n- Discovery tolerates a transient `git worktree list` failure: check its exit status, retry briefly, or derive the primary worktree from the common git directory (its parent, when the common directory is the primary's `.git`) without depending on the worktree list.\n- A genuinely missing primary worktree is still refused with the current message.\n\nAcceptance:\n- The concurrent `next` test passes reliably, for example 50 repeated runs in CI-like conditions.\n- A test simulates a failing `git worktree list` and shows discovery still finds the primary worktree.\n- If the change alters a contract, this PR edits docs/design/SPEC.md and adds a HISTORY §4 row.",
-  "state": "open",
+  "state": "closed",
   "title": "Primary worktree discovery survives concurrent git worktree changes"
 }
