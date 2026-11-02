@@ -157,6 +157,56 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_tests:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:47f104349342d70827692e933fbbf90f03c8262d983c13de62574738b39b4897",
+          "text": "DefaultsCase.setUp in .agents/test_engine_defaults.py calls self.enterContext at lines 50, 66 and 67, but unittest.TestCase.enterContext is unavailable in Python 3.10, which required CI runs. Reproduced with python3.10 -m unittest discover -s .agents -p test_engine_defaults.py: 14 setup AttributeErrors before behavior assertions (16 tests, 0.003 s). Replace it with Python-3.10-compatible cleanup management, such as contextlib.ExitStack plus addCleanup(stack.close), and rerun under 3.10 so the red result reaches the intended absent feature.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-02T22:00:26Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:891e284f14d6d39fa3bd3d0854b643b5c887b5a6",
+          "tests": "v1:sha256:5bc8e41627ee752da995398bb5d97bacfd82a0603bb1af1db5066c5b73616d2a"
+        },
+        "policy": {},
+        "subject": "v1:sha256:47f104349342d70827692e933fbbf90f03c8262d983c13de62574738b39b4897"
+      },
+      "holder": "codex:takeover/1024-review-tests",
+      "input_fp": "v1:sha256:0d7be983bbef8819a443ca52d7b16db52ea015794f72fc34936f02be4f797172",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "4fc25623943b0f8345beed9b441ce171bb2a9e41",
+          "commit": "5ada9fd3181f93c1dac8eb814edc58fbfc7a5c59",
+          "path": ".zzzops/reviews/1024/review_tests.md"
+        },
+        "summary": "Behavioral coverage is substantive and lightweight, but replace TestCase.enterContext: it fails before assertions on the required Python 3.10 CI matrix."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "de5640d1c5909ea924450aeea6450497a78946f6",
+          "change": "5dca21aa2fb70f47b0f0df300456c68f6361616a",
+          "commit": "bedf97ad36f8b5c0c820ff49802406cc4e3d9948",
+          "tree": "5a13c9d6c88d1a7b39668ff53c117caaff0d1a6b"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 2,
       "correction_runs": 0,
