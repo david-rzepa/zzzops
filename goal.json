@@ -122,35 +122,32 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-02T22:36:00Z",
+      "finished_at": "2026-11-02T22:58:16Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
-          "base": "v1:sha256:0c2a08d0bde69e18e656d474372b82dbd482df44464aef4c1e75be377a0d3fac",
+          "base": "v1:sha256:a517aeb92cc9adc5bfaa0dba482802d7f6f0acd71b9b18bd9ea68112a8c4054a",
           "doc": "v1:blob:ab1153abea2ff217e185a023c66febc2cdc471b2",
           "tests": "v1:sha256:af416495120811ad2bdbff1e982b776eaa6b0ec6a3901d84576f16c0ca0bb227"
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1038-implement-sticky",
-      "input_fp": "v1:sha256:fd387ccd828ad46022503b7324f5681dfc745d11f7bf35e8eec3a67993980604",
+      "holder": "codex:takeover/1038-implement-after-1031",
+      "input_fp": "v1:sha256:574c00ef0f165df160f27acbb77e4a0088ab0d017d72e058cfd3b8a4c25584ff",
       "ok": true,
       "output": {
         "code": {
-          "base": "de5640d1c5909ea924450aeea6450497a78946f6",
-          "change": "27abcc412358dbab174437945de1619a0a3ba58c",
-          "commit": "5a9a7318fa7e327413d8cde4b79fc989cb52ad44",
-          "tree": "037a42461802c927556dff458ba134cd58e932b6"
+          "base": "575015a9831ccd2ce724c3125dd74dd20029c1b5",
+          "change": "413a244ab3b5e72779ed0d438200c6322c2186d0",
+          "commit": "aa9e67fb57a82efaa90fc5c49ec8281c9d95b506",
+          "tree": "250f56c3619f7471578fea139dcfc1ed6a7a80da"
         },
-        "responses": {
-          "implement:reopen:1": "fixed: the sticky policy block writes op_state.old with the prior base_commit; repeated blocks and an answered retry keep that exact base. A new real-Git regression disables the capability twice, restores it with an owner answer and removes the dependency, proving dependency-only content is removed while goal content/history stay intact."
-        },
-        "summary": "Sticky merge-mode policy waits now retain the original sync base through repeated blocks and the owner answer, so restoring the capability while dropping a dependency removes its content correctly. The previous correction also keeps literal !: text from becoming a breaking release while retaining genuine declaration bangs and footer behavior. The new repeated-wait recovery regression passes in 0.587s, two frozen sticky/drop controls pass in 1.667s, and 35 documentation checks pass in 0.530s."
+        "summary": "Revalidated the unchanged merge-sync implementation on the merged G1031 base, preserving both goals' documentation and the two preliminary-review fixes. All 42 frozen merge-sync/conventional tests pass, along with 27 capability tests, 35 documentation checks and five breaking-marker/sticky-recovery regression cases. The mapped frozen checkpoint is unchanged by implementation, including G1031's upstream repository-settings fake API; no new source commit was needed."
       },
-      "reason": "reopened",
+      "reason": "stale",
       "status": "done"
     },
     "review_design": {
