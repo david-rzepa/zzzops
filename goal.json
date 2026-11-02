@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-02T22:50:09Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [
     1017,
     1025
@@ -211,6 +216,28 @@
       "reason": "retry",
       "status": "done"
     },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T22:50:09Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:c06d941ea1435d3ae98130986195bb1af6d2d5e188ae32e0972d9f0a4e943cbc"
+        },
+        "policy": {}
+      },
+      "holder": "codex:takeover/op",
+      "input_fp": "v1:sha256:292fd545ddd48a76a441cfc80b5e529f6120fc8e3141734480678aed030164c9",
+      "ok": true,
+      "output": {
+        "merge_commit": "575015a9831ccd2ce724c3125dd74dd20029c1b5",
+        "merged_at": "2026-11-02T22:50:08Z"
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 2,
       "correction_runs": 1,
@@ -416,6 +443,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Found while designing G1003 (2026-11-01). Bootstrap step 7 says to turn GitHub's \"Automatically delete head branches\" on, while G1025 (release branching) recommends it off in branching repositories, because deleting a dependency's branch on merge closes or retargets stacked and release PRs. Make the bootstrap skill and REPAIR/MIGRATING say: on without settings.branching, off with it, and why; validate warns when branching is configured and auto-delete is on (if readable).\n\nAcceptance: skill text and a validate warning test (or a documented reason the setting is unreadable); docs/design edits per G1017's rule.",
-  "state": "open",
+  "state": "closed",
   "title": "Bootstrap's branch-deletion advice must match release branching"
 }
