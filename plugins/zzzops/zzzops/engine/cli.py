@@ -198,7 +198,7 @@ def cmd_validate(argv):
     s = session(a, environment=False, preview=True)
     from engine.gitrun import check_environment
     env = check_environment(s.git)
-    from engine.gh import gh_problems
+    from engine.gh import gh_problems, head_branch_auto_delete
     st = s.open(readonly=True, all_goals=True)
     gh_env = gh_problems(s)
     env += gh_env
@@ -227,6 +227,11 @@ def cmd_validate(argv):
         warnings.append({"kind": "info_attributes", "message": f"{attrs} exists: it can change diffs, and cannot be disabled"})
     if s.git.config("remote." + (s.R or "origin") + ".partialclonefilter") or s.git.config("extensions.partialClone"):
         warnings.append({"kind": "partial_clone", "message": "partial clone: missing goal documents cost one round trip each"})
+    if not gh_env and st.settings is not None and "branching" in st.settings and head_branch_auto_delete(s) is True:
+        warnings.append({"kind": "auto_delete_head_branches", "message":
+                         "settings.branching is set and GitHub's 'Automatically delete head branches' is on; "
+                         "merging a finish PR would delete the kept release/ or hotfix/ branch, and it can close "
+                         "or move stacked and release PRs before the engine retargets them. Turn it off (see SETUP.md)."})
     ok = not env and not policy and not any(goals.values())
     warnings += schemas.engine_warnings(st.policy_raw.get("settings") if isinstance(st.policy_raw, dict) else None)
     out = {"ok": ok, "coordinator": st.coordinator, "goals": goals, "policy": policy, "environment": env,

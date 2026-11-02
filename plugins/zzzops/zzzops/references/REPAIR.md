@@ -112,3 +112,17 @@ zzzops edit <id> --file g<id>.json --base <current goal commit>
 
 ## Close a cancelled goal's PR and issue
 `edit` makes no GitHub calls; it prints the `follow_up` commands, for example `gh pr close <n>` and `gh issue close <issue>`. Deleting a goal's stack branch (done by its close) lets GitHub close its PR and stack PR.
+
+## Auto-deleted head branch in a branching repository
+
+A stacked or release PR closed or moved to another base just after its dependency merged: GitHub's automatic head-branch deletion may have beaten the engine's retargeting. With the owner's authority, turn "Automatically delete head branches" off (`gh api -X PATCH repos/{o}/{r} -F delete_branch_on_merge=false`). Reopen the affected PR (`gh pr reopen <n>`) and correct its base (`gh pr edit <n> --base <target>`), or recreate it if GitHub cannot reopen it. The next `base` or `integrate` run reconciles its target.
+
+## release/N or hotfix/x deleted after finish
+
+Merging a finish PR uses the line branch itself as head, so automatic head-branch deletion removes a branch ZzzOps intends to keep. Read the line goal with `zzzops show <line-goal> --json`: `goal.records.sync.output.merged` is the recorded tip approved for and consumed by `finish`. Confirm it is the approved tip, not a newer unapproved sync, then restore the missing branch (never force-update an existing one):
+
+```sh
+git push <R> <recorded-tip>:refs/heads/<branch>
+```
+
+Once the finish PR has merged, its approved tip is reachable through production history, even if a back-merge has not finished; fetch that history if the tip is not local. Turn automatic deletion off with the owner's authority as above; `finish` back-merges use the approved SHA rather than the deleted branch name.
