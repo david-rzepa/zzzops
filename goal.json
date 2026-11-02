@@ -13,6 +13,39 @@
   },
   "priority": "P1",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T15:56:19Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:3f7f884dc1f76f4d638f9e1f8bc3fe5c9aa0d288",
+          "summary": "v1:sha256:768d00628b6f92d1b3417d4c054119075b731024515953c154cc306f931f9180"
+        },
+        "policy": {},
+        "subject": "v1:sha256:c09e1c65a5ff0926ddc56704e14f9afc91072d2f725dd34f46a6d692017540e6"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:715504c7e435ab63cba85d95fa2990f96cdb85baa1c8ba909dd9cd055d683a15",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-02T15:56:19Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "3. Ok",
+        "summary": "Approved G1040 design revision 2 (review round 2 approved, no open findings). Findings on a blocked node reach its retry card: a blocked agent record keeps the replaced output (last_output) behind capability blocked_findings, and frontier pass 1 treats a consumer stale only because of the block as fresh (no stale_review, op findings kept, nothing carried). The rollout policy PR that requires blocked_findings must ship G1026's revised design.md step 4 (enforced by a repository test). The 'arrived while you ran' refusal becomes per-id reasons; a run_tests failure is a repeat only when its normalised text matches (0x/hex/tempfile names normalised)."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "3f7f884dc1f76f4d638f9e1f8bc3fe5c9aa0d288",
+          "commit": "a142874b37515b1c514ef993552a664fa76335f1"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 2,
       "correction_runs": 1,
