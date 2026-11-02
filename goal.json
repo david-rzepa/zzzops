@@ -101,73 +101,36 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 2,
-      "correction_runs": 1,
-      "findings": [
-        {
-          "id": "review_design:1:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:aecc02250f284b1013796126d126c73e18b793071bb5538b66e3b3847307ea3e",
-          "text": "Section 3 does not preserve an inherited total CPU budget: it splits observed C first and then independently clamps each lane by ZZZOPS_TEST_WORKERS. With C=20 and a parent budget of 4 this allocates 4+4=8 workers; with parent=1 it still launches two one-worker lanes despite the single-CPU fallback. Compute the effective total C=min(available CPUs, validated parent budget) before deciding parallel versus sequential execution and before splitting it, then pass lane allocations whose simultaneous sum never exceeds that effective C. Add parent-budget-smaller-than-half-C and parent=1 cases to the arithmetic/overlap tests; distinguish observed CPUs from the effective allocation in recorded metadata.",
-          "upheld": false
-        },
-        {
-          "id": "review_design:1:2",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:aecc02250f284b1013796126d126c73e18b793071bb5538b66e3b3847307ea3e",
-          "text": "Sections 1 and 3 retain exclusive test scheduling but define exclusivity only inside each local runner pool. With two parallel command lanes, runner A can finish its concurrent pool and start LINUX_EXCLUSIVE_TESTS while runner B (or an ordinary targeted command) is still running. CPU budgets do not prevent this overlap. The current runner explicitly keeps test_engine_property.NoDeadEndPropertyTests.test_random_portfolios outside its pool; the new design promises to preserve that exclusivity. Specify the boundary and a compatible execution rule: coordinate retained exclusive phases across the simultaneously launched lanes, or use a conservative sequential arrangement when such coordination cannot be guaranteed. Do not claim job-wide isolation from a per-invocation join. Add a barrier-based two-lane test where one lane reaches its exclusive phase while the other still has active work, and prove the chosen rule.",
-          "upheld": false
-        },
-        {
-          "id": "review_design:1:3",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:aecc02250f284b1013796126d126c73e18b793071bb5538b66e3b3847307ea3e",
-          "text": "The informational baseline lookup in section 5 has no bounded completion contract, and section 4 explicitly ends the shared command timeout and measured wall interval before that lookup starts. Normal read_state skips closed goal bodies; the proposal adds reads of those bodies plus target first-parent traversal/ancestry/code-tree checks. Catching missing objects/exceptions and avoiding network calls does not bound work as the closed portfolio and target history grow, so a successful verification can remain in run_tests arbitrarily long for an optional delta. Specify a small bounded local-work/deadline policy covering candidate documents and target-history/tree work, and return an explicit unavailable reason if it is exhausted. Reuse existing snapshot/evidence and clocks; no timing database or new persistent index is necessary. Test a large/capped candidate stream and history traversal to prove completion, no fallback to a convenient older candidate, and unchanged verification success when lookup is incomplete.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-02T22:11:15Z",
+      "attempt": 3,
+      "correction_runs": 2,
+      "findings": [],
+      "finished_at": "2026-11-02T22:39:11Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:4f9af989059cfa941d80e35d7bcee2094bea961c",
+          "doc": "v1:blob:a361e31ab8798ddb675ac6b835eda82dd46266c9",
           "spec": "v1:sha256:a696c0b7e3e8448ebb71dd9d0df065f69d7225b378bc9635ed1d03a30f475d7e"
         },
         "policy": {},
-        "subject": "v1:sha256:c1b4afe193a4f607db60f76672dfd8b3ba37038b3cd3c3a70f7db33e0f48500c"
+        "subject": "v1:sha256:d2ea4a940bb4413cd284284ed999ff004f31618dcc61a18f5b2cfdfff1c5e55f"
       },
-      "holder": "codex:takeover/1043-review-design-2",
-      "input_fp": "v1:sha256:5ec79592f9aa463941a0e5213f063a6568a754921e3f93fbe08178d575852635",
+      "holder": "codex:takeover/1043-review-design-verification",
+      "input_fp": "v1:sha256:9b7ff15bc73fadfad001341a9eabea75142832aa6b49b4561a25e7ec4829a858",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "ff8bc859a3c1dbca4d82ac26609ef47c276d939f",
-          "commit": "5a11596e33f5b509d15d196f45ac66560a5c6325",
+          "blob": "af627ba034f032f1cec30e772a1376588595be24",
+          "commit": "78d77dc0ea9a1a93dc7e953f815064b0b5e32ff7",
           "path": ".zzzops/reviews/1043/review_design.md"
         },
-        "summary": "Revision 2 resolves all three findings: one parent-capped CPU budget precedes lane allocation; source-audited removal of the stale exclusive property entry preserves every semantic assertion; bounded read-only baseline lookup returns unavailable on incomplete evidence rather than an older partial match. No new finding or owner-only question."
+        "summary": "Revision 3 supplies a useful separately qualified repository delta across goals while retaining a strict whole-run comparison. Both scopes use the same newest eligible merged source and bounded lookup; full approval shows repository evidence with provenance and concurrency caveat even when total comparison is unavailable. Prior three findings remain resolved; no new findings or owner question."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "4f9af989059cfa941d80e35d7bcee2094bea961c",
-          "commit": "ad50f593d101fa85db6e44f86d9837f4abf8d2b4"
+          "blob": "a361e31ab8798ddb675ac6b835eda82dd46266c9",
+          "commit": "eee324c47bee6b61c1fa04c4b6bb4b344144321f"
         }
       },
       "status": "done"
