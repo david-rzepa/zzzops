@@ -192,7 +192,8 @@ def human_findings(graph: Graph, X: str, r0: dict | None, given: list, attempt: 
 
 
 # Timings, commit ids, object addresses and tempfile randomness do not identify an op failure.
-NORM = re.compile(r"0[xX][0-9a-fA-F]+|tmp[a-z0-9_]{8}|(?<=-)[a-z0-9_]{8}(?=[/.'\"]|$)"
+# A prefixed temp suffix needs a basename prefix and a path separator/extension; options are stable.
+NORM = re.compile(r"0[xX][0-9a-fA-F]+|tmp[a-z0-9_]{8}|(?<=[a-z0-9_]-)[a-z0-9_]{8}(?=[/.])"
                   r"|[0-9a-fA-F]{7,}|[0-9]+(?:\.[0-9]+)?")
 
 
