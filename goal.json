@@ -12,7 +12,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T15:39:26Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:715c01eaee101c3c5912543efc2418760d47db48ee2a2e696417f44acbd34fa7",
+          "spec": "v1:sha256:4596edb8db8e0919aa8d3e7ee71551c9beb2a95d2894d7c8bf51877cb236186e"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1038",
+      "input_fp": "v1:sha256:d5969d5a4d646d81b1de7bc5f382a300f484577db9a7efef265f1078a65e5e9b",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "52f38899ce6deb56e209a274f6daab31522daafe",
+          "commit": "980ef3da8421e7f049c984385cfc28478cacd857",
+          "path": ".zzzops/reviews/1038/design.md"
+        },
+        "summary": "base syncs a goal's work branch with its target by a merge commit built with merge-tree using the old base_commit as merge base, so the branch only fast-forwards and conflict resolutions (made once in the worktree) are never redone. The preserved node's checkpoint change is scoped to its frozen paths, so test fixes can land on top of implement's commits with no rewrite, the default checkpoint is always HEAD, and review_impl's view excludes the frozen paths. integrate squashes to a tests commit and an implementation commit on base_commit (root decision R1) by tree overlay, with deterministic metadata. G1038 provides the synced result {old, onto, work, tip, merge, resolved}, relocate, change(paths=) and the single carry function whose predicate G1039 widens; capability merge_sync, no op-version or declared-output change."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
