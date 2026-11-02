@@ -44,6 +44,32 @@
       },
       "status": "done"
     },
+    "base": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T22:12:34Z",
+      "fp_parts": {
+        "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
+        "inputs": {
+          "heads": "v1:sha256:c0b9be78b739ce690c15459c13706c2d141ba8b594c91a70b77978964a8837fd",
+          "merges": "v1:sha256:3c9532ae0875d225d8f7c990bd04d6b96139e926a6910a748eede4952bb888a9"
+        },
+        "policy": {}
+      },
+      "holder": "codex:takeover/op",
+      "input_fp": "v1:sha256:6d953d274d87c949b03e9719048273b2c24974dbdc84355b0d7e2ac8f2dca143",
+      "ok": true,
+      "output": {
+        "base_commit": "de5640d1c5909ea924450aeea6450497a78946f6",
+        "branch": "zzzops/work/g1043",
+        "replay_map": {},
+        "replay_pos": {},
+        "stack": []
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "design": {
       "attempt": 3,
       "correction_runs": 1,
