@@ -180,6 +180,41 @@
         }
       },
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 2,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T21:59:41Z",
+      "fp_parts": {
+        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "inputs": {
+          "base": "v1:sha256:0c2a08d0bde69e18e656d474372b82dbd482df44464aef4c1e75be377a0d3fac",
+          "doc": "v1:blob:3f7f884dc1f76f4d638f9e1f8bc3fe5c9aa0d288"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        ".agents/test_engine_blocked_findings.py"
+      ],
+      "holder": "codex:takeover/1040-test_design",
+      "input_fp": "v1:sha256:b9cf35bfd1ee68b200291d7ca3f7837ad290485c9b0c6d8810f77c47f0d3b80d",
+      "ok": true,
+      "output": {
+        "commands": [
+          "python3 -m unittest discover -s .agents -p test_engine_blocked_findings.py",
+          "python3 -m unittest discover -s .agents -p test_engine_owner_questions.py",
+          "cd .agents && python3 -m unittest test_engine_github.IntegrateTests.test_failure_after_a_fix_escalates"
+        ],
+        "tests": {
+          "base": "de5640d1c5909ea924450aeea6450497a78946f6",
+          "change": "6cfa32bc36292115c533e7cc946ba7f5535a9239",
+          "commit": "824c48f1a37af827423ad48d858ddd23bb7eda65",
+          "tree": "fe07d782dfb2a6ea201523db6683d8c9f47bf0fb"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
