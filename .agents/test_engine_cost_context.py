@@ -291,7 +291,8 @@ class CostPlumbingJourney(lifecycle.Journey):
                     "observation": "measured test script: red before implementation"}], "summary": "Observed red test script; implementation does not exist yet"}
         self.A.submit(goal, self.n("test_design"), card, {"commands": [command], "cost": cost})
         reviewed = self.B.start(goal, self.n("review_tests"))
-        observed = reviewed["inputs"]["cost"]
+        self.assertNotIn("cost", reviewed["inputs"], "declared context belongs outside identity-bearing inputs")
+        observed = reviewed["context"]["cost"]
         if "blob" in observed:
             observed = json.loads(self.w.clones["b"].git("cat-file", "-p", observed["blob"]))
         self.assertEqual(cost, observed)
