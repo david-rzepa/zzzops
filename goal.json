@@ -229,10 +229,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-02T05:34:47Z",
+      "finished_at": "2026-11-02T05:41:50Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -245,7 +245,7 @@
         ".agents/test_engine_owner_questions.py",
         ".agents/test_engine_review_lenses.py"
       ],
-      "holder": "claude:e6ad/td1026b",
+      "holder": "claude:e6ad/td1026c",
       "input_fp": "v1:sha256:3e690e81c3c651d87e97578cd023d864bb492db673d89ebd258637870bfef084",
       "ok": true,
       "output": {
@@ -254,14 +254,17 @@
           "python3 -m unittest discover -s .agents -p 'test_design_docs.py'",
           "python3 .agents/prompt_stats.py --check"
         ],
+        "responses": {
+          "review_tests:2:1": "fixed: in OpDecisionTests.test_an_answered_integrate_question_is_listed_with_kind_op, after the post-answer integrate run succeeds and before approve_merge is driven, the test reads the PR body and asserts it has '## Human decisions' with exactly one '- **<integrate>** (op; Claude (root agent), delegated by Dave, <YYYY-MM-DD...>): <question> → \"Wait for it.\"' line (design revision 7: the PR body reads every node not a descendant of the writing op). A revision-6 implementation (integrate's ancestors only) now fails here. Against the current engine the test fails at this new assertion (body has '## Reviews' but no '## Human decisions'), i.e. at the missing feature; before it errored later with KeyError 'human_decisions' on approve_merge. Suite: 41 tests, 23 failures, 6 errors (was 22/7; this test moved from error to failure). test_design_docs.py: 35 OK. prompt_stats.py --check: PASS."
+        },
         "tests": {
           "base": "25186a5ee98282b3f380ff48a06b014aae34aa10",
-          "change": "b76ff8ec99b9330059d54e207952147f1364c44a",
-          "commit": "8b973821f0c89cbad19b69c5476cb49ab98c8ac1",
-          "tree": "fce605870e2388550d979fa08a9167d3f7351c10"
+          "change": "132aec3ef9d9a1153bf6abbcb33df7a06542736b",
+          "commit": "3974afd0d95b3cab03cdd35b54e601d962d305ce",
+          "tree": "2dde809cf6b6bd1b51312b883bd6bce7fa39c712"
         }
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     }
   },
