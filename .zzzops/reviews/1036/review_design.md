@@ -1,32 +1,29 @@
-# G1036 review_design, attempt 2: re-review of design revision 2
+# G1036 whitepaper design review, revision 3
 
-**Verdict: approved.** Revision 2 fixes both of my attempt-1 findings and takes all three notes. I have no new findings.
+Decision: changes requested, for two factual corrections to the proposed paper/checks. This review approves no writing or external publication.
 
-I read the diff from rev 1 (`96ea4d2`) to rev 2 (`ac8bbd5`), and checked every new citation against `docs/design/` on `zzzops/work/g1017`.
+## What checks out
 
-## Prior findings
+- WD1–WD8 are unchanged byte for byte from revision 2: audience, progressive-disclosure focus, repository paper and blog draft, owner publication boundary, brief generic related work, coined term, byline, ratios/trends with sample sizes.
+- The design explicitly waits for G1037 to merge and its anonymised report to exist before either writing phase. Stack-ready base is explicitly insufficient. G1037 attempt 5 has the corresponding dependency-merge boundary for the real run.
+- The revised merge-sync account agrees with G1038 revision 3: forward work history, tests/implementation PR parts on the recorded synced base, tested code-tree equality, scoped frozen paths and test fixes after implementation.
+- The carry account preserves G1039 revision 3’s per-node own-change and whole-side-union checks, conservative refusal, verification rerun and configuration-driven implementation-review base edge. Its budget wording needs the correction below.
+- G1040 adoption includes blocked_findings and the paired revised design prompt. Answered owner decisions, other live findings and genuinely stale carriers remain distinct.
+- Evaluation separates actual observations, cited deterministic tests and absent cases; it keeps population/build/capability denominators and avoids inventing G1043 timing results. The design claims no dogfood outcome.
+- Public artifacts remain generic about the private app. The paper, report and blog check use privately supplied identifiers, and no extra public app detail is proposed.
+- Earlier review findings are already resolved; their corrections remain intact. No closed finding is re-opened or restated in the submission.
 
-- **review_design:1:1: resolved.**
-  - The decision ids now match DESIGN §9: D1, with D2 for the spec text; D7 for leases; D11 for the policy branch; D12 with §4.1 as G1022 amends it; D14 with §3.4 and §3.5. D5 and D13 were already correct.
-  - The new SPEC citations all exist with the right subjects:
-    - §4.4, the per-goal compare-and-swap write;
-    - §4.7, `code_tree` and `change`;
-    - §4.8, fingerprints;
-    - §4.12, leases;
-    - §4.21, carry-forward;
-    - §3.1, where `release_gate` is a workflow field, which the §4.9 frontier evaluates.
-  - The DESIGN sections cited (§3.3 workflow definition, §3.7 leases) exist too.
-  - Decisions are now always cited as `DESIGN §9 Dn` and removals as `DESIGN §5 Rn`, and the script checks the quoted phrase against that table row (W14).
-  - R9 is reconciled with G1025: the propose/freeze ceremony was removed, and release lines come back without it.
-- **review_design:1:2: resolved.**
-  - The binding diff now covers all of `plugins/zzzops`, so skills, references, prompts and templates are inside it. It excludes only the three version-bearing manifests, all of which exist at those paths.
-  - Rendered provenance prefixes are stripped only if a rendered copy is ever committed on the tagged branch, and the ledger records which case applies.
-  - The header labels its build id as the checked dev build's, and the tag statement is limited to the source. W3 matches.
+## Findings
 
-## Notes taken
+1. **Clean-sync budget exemption.** G1039 §3.5 exempts base-only stale records of nodes with no checkpoint outputs even when they raise material findings. T8’s statement that a genuinely new material finding spends a round is false for the sync-focused review it describes. State and test the precise exemption and distinguish it from checkpoint-node or changed-subject reruns that count.
+2. **Card-size target versus guarantee.** The 4,096-byte hard-bound claim is unsupported by the checked build. G1039 explicitly leaves previous-card oversize to G1019, an open Release 2 goal. Describe the target and current exception, add it to limitations/evidence, and upgrade to a hard guarantee only when the final checked source actually supports one.
 
-- **T1** now says G2's design waits for G1's design (`deps.design.doc`): discovery runs ahead of delivery, not ahead of a dependency's design.
-- **The ratio rule** now catches suffixed and comma-separated numbers near "token", currency, and cost words. Its exceptions are an exact-string allow list for the contract byte limits and for sample sizes.
-- **The cited-test fallback** now applies to any trace step, with fixed step ids so the ledger is unaffected.
+## Verification
 
-The owner decisions WD1-WD8, the dependency on G1037's report, and the privacy handling are unchanged from revision 1, and remain sound.
+Read the full task card, prompt, spec, current and prior design blobs and their diff. Read G1037 attempt 5, G1038 revision 3, G1039 revision 3 and G1040 revision 2; checked relevant current templates, normative documents and card implementation at de5640d1c5909ea924450aeea6450497a78946f6.
+
+Ran the existing ShrinkBudgetTests.test_a_card_over_budget_because_of_previous_is_a_fixed_point without editing it: passed in 0.011 seconds. Its normal fixture yields an 8,537-byte card against a 4,096-byte target with zero remaining shrink candidates. This is a documented current limitation, not a new engine defect to fix inside G1036.
+
+## Dogfood notes
+
+None. CLI and card behaved as expected.
