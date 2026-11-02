@@ -47,7 +47,20 @@
     "base": {
       "attempt": 1,
       "correction_runs": 0,
-      "findings": [],
+      "findings": [
+        {
+          "id": "base:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "base",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:1714690629bd6d43c21a9f2f21d3faab154ec5fddbdaf3674a352c197f6fdae9",
+          "text": "dev moved (G1027 #759, G1026 #760, G1041 #761 merged); run_tests failed on test_design_docs pending rows of now-closed goals — sync onto dev",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-01T20:38:58Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
