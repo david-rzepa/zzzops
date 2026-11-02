@@ -505,8 +505,9 @@ def dispute_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:
     carrier, f = s["escalated"][0]
     records = res.doc.get("records") or {}
     cr = records[carrier]
+    response = f.get("response") or (((records.get(n) or {}).get("output") or {}).get("responses") or {}).get(f["id"], "")
     q = (f"`{carrier}` and `{n}` disagree on {f['id']}: '{clip(f['text'], 300)}'. `{n}` answered: "
-         f"'{clip(f.get('response') or '', 300)}'. Uphold the finding (the target must fix it) or waive it?")
+         f"'{clip(response, 300)}'. Uphold the finding (the target must fix it) or waive it?")
     item = {"goal": g, "node": carrier, "stage": res.graph.nodes[carrier]["stage"], "kind": "dispute", "question": q,
             "since": cr["finished_at"]}
     if not full:

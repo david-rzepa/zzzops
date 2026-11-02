@@ -439,6 +439,8 @@ Uniqueness is not a correctness requirement: claims carry a nonce, every lease v
 
 ### 3.8 Reviews, findings and corrections
 
+**Findings across a block (G1040).** With capability `blocked_findings` required, an agent's blocked record retains the replaced done output as `last_output` (copied through a second block). Only frontier pass 1 views it as done, for recorded inputs, subjects, filter fingerprints and target liveness; pass 2 still blocks consumers. A review that saw that output stays fresh, including op findings, while a genuinely changed spec or older reviewed output remains stale. The exact target fingerprint prevents old answered findings from returning. Older-mode writes and op Blocked records do not gain this key. Requiring the capability must be paired with the revised design step 4 so an answered owner question is answered as a correction rather than blocked again.
+
 - **Findings are judged against their target, not their carrier (G1028).** An open finding of a review whose own inputs changed (a spec or `depends_on` edit, a sibling finding that reopened an upstream node) stays live while the output it names is unchanged, marked `stale_review` on the target's card; only op findings, which re-observe, are dropped. A partly fixed finding is resolved and followed by a new one (`follows`), which keeps the dispute count but never `upheld`.
 
 **Review output** (agent or human): `{decision: approved|changes_requested, summary, findings: [...], report?: artifact}`. The record's `ok` is `decision == approved`.
@@ -737,6 +739,8 @@ A command timeout has a fail-closed recovery boundary: group termination failure
 - **Deferring.** A human saying "not yet" means nothing is recorded; the item stays pending (R8 #4).
 
 **Blocked questions** from agents (`submit --blocked`) or operations are answered the same way. A blocked record whose inputs have since changed is no longer asked (R1 L8, R2 #48).
+
+With `blocked_findings` required (G1040), an owner-question round's other live findings reach the retry card too, through `last_output`; the designer records the real answer, responds to answered owner questions and fixes the ordinary findings in that revision. Unanswered owner questions still block. Without the capability, G1026's re-review-only flow is unchanged. A response to an obsolete finding is refused with its reason and an instruction to drop it, separately from missing live responses. This avoids an unnecessary design/review round without giving a designer authority to invent an answer.
 
 **Genuine human decision points:**
 - goal scope at capture;
@@ -1143,7 +1147,7 @@ G1001 is a few steps ahead of G1002. G1002 stacks on G1001's PR.
 - **A required check fails** (on a PR into `dev`).
   - On the first failure for this PR head, `integrate` re-runs the failed jobs once and waits.
   - If they fail again, `integrate` records `ok: false` with finding `integrate:check-<name>` targeting `implement`.
-  - A real failure: `implement` fixes it (`fixed: …`), the tree and `change` change, and `run_tests`, `review_impl` and `integrate` re-run, and `approve_merge` is asked again (the cost of approving before CI; §3.16). If the same check fails again after that `fixed:` response, the finding escalates to the human, because `implement`'s recorded output answered the same id.
+  - A real failure: `implement` fixes it (`fixed: …`), the tree and `change` change, and `run_tests`, `review_impl` and `integrate` re-run, and `approve_merge` is asked again (the cost of approving before CI; §3.16). If a failure with the same normalized text recurs after that `fixed:` response, the finding escalates to the human and shows the actual response (G1040). A different failure is a new round; normalization ignores timings, commit ids, object addresses and tempfile names, not test/command names. A prior upheld decision applies only to the same normalized text.
   - A flaky failure: the agent reads the failed log (`gh run view --log-failed`). If it is a flake, it runs `reopen 1002 integrate --note "flaky"`. The reopen waives `integrate`'s own check findings, so `implement` is no longer reopened, and `integrate` re-runs with no `implement` run. Alternatively, `implement` can answer `disputed: flaky`: `integrate` then becomes `ready (not_ok)`, and `review_impl` does not re-run, because `responses` are not part of its subject fingerprint.
 - **`dev` moves under an approved goal (clean rebase).** The dev ruleset requires an up-to-date branch, so `merge` records a finding on `base`, which reopens it.
   - `start 1002 base` replays the work branch onto the new `dev` without conflicts. The same push carries `test_design`'s and `implement`'s records forward to the rebased commits: new trees (they now include the newer `dev`), the same changes C1 and C2, and no agent phase.
