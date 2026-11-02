@@ -428,6 +428,18 @@ def main(argv):
         return graphql(st, argv[2:])
     if argv[:1] == ["api"] and faults.get("rules_403") and re.search(r"/(rules|rulesets|protection)(/|$|\?)", argv[1]):
         die("gh: Upgrade to GitHub Pro or make this repository public to enable this feature. (HTTP 403)", 1)
+    if argv[:2] == ["api", "repos/" + st["repo"]]:
+        if faults.get("repo_settings_error"):
+            die("gh: repository settings unavailable (HTTP 403)")
+        repository = st.get("repository", {})
+        _, options = opts(argv[2:])
+        if options.get("jq") == ".delete_branch_on_merge":
+            print(json.dumps(repository.get("delete_branch_on_merge")))
+        elif "jq" not in options:
+            print(json.dumps(repository))
+        else:
+            die("fake gh: unsupported repository query")
+        return 0
     if argv[:1] == ["api"]:
         print("[]")
         return 0
