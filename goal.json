@@ -48,7 +48,20 @@
     "base": {
       "attempt": 1,
       "correction_runs": 0,
-      "findings": [],
+      "findings": [
+        {
+          "id": "base:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "base",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:25a4f97e8f50fef26930656e21981f4b4adfae335f9b7f843fe8400955992b3f",
+          "text": "Sync onto merged G1031 dev575015a9 before final verification; current installed engine requires explicit base reopen for this trunk move.",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-02T20:56:05Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
