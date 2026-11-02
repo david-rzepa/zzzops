@@ -68,7 +68,8 @@ def check_responses(responses: dict, corrections: list, carriers: dict | None = 
         hints = []
         if missing:
             hints.append("Answer each finding under respond_to in `responses` with 'fixed: …' or 'disputed: …'; "
-                         "some may have been raised after your card was printed.")
+                         "some may have been raised after your card was printed. "
+                         "Check no_longer_live and details.why for obsolete response keys and their reasons.")
         if extra:
             hints.append("Drop each response under no_longer_live (details.why says why it is not live), then resubmit.")
         raise Refused("validation", "; ".join(msg),
