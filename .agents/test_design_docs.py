@@ -76,6 +76,9 @@ AMENDMENT_SENTINELS = {
     "G1022": [("SPEC.md", "<node>:<lens>"), ("DESIGN.md", "adversary_design")],
     # G1023's wording, folded under G1016's row (SPEC §4.20 hint, §3.10 example).
     "G1023": [("SPEC.md", "<full 40-hex sha>")],
+    # G1043 measured test-cost and optional concurrent checks contract.
+    "G1043": [("SPEC.md", "test_cost"), ("SPEC.md", "parallel_commands"),
+              ("SPEC.md", "lookup_budget_exhausted"), ("DESIGN.md", "test_cost")],
     # G1025's release lines (SPEC §3.2, §3.15, §5.7/§5.8; DESIGN's new release-branching section).
     "G1025": [("SPEC.md", "settings.branching"), ("SPEC.md", "git.line_sync"), ("SPEC.md", "git.line_finish"),
               ("SPEC.md", "release_cut"), ("SPEC.md", "hotfix_start"), ("SPEC.md", "line_complete"),

@@ -25,7 +25,7 @@ PLUGIN_ROOT = fx.PLUGIN_CODE.parent
 # Every capability shipped so far. A goal that adds a capability appends its name here (G1027 §3.1): a capability is
 # never removed. (G1022's `lenses` joins when it merges; it had not merged when these tests were written.)
 # finding_follows added at rebase onto G1028 (merged first); lenses added at rebase onto G1022 (merged first)
-SHIPPED = {"lens_findings", "finding_follows", "lenses", "release_lines"}
+SHIPPED = {"lens_findings", "finding_follows", "lenses", "release_lines", "test_cost"}
 
 
 def expected_build_id(plugin_code: Path = fx.PLUGIN_CODE) -> str:
@@ -367,7 +367,7 @@ class TemplateTests(unittest.TestCase):
     def test_default_template_requires_lens_findings(self):
         # lenses added at rebase onto G1022 (merged first): the template requires it too
         p = json.loads((fx.SHIPPED / "POLICY.json").read_text(encoding="utf-8"))
-        self.assertEqual({"requires": ["lens_findings", "lenses"]}, p["settings"]["engine"])
+        self.assertEqual({"requires": ["lens_findings", "lenses", "test_cost"]}, p["settings"]["engine"])
         nowhere = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, nowhere, True)
         r = subprocess.run([sys.executable, str(fx.PLUGIN_CODE / "zzzops.py"), "validate", "--policy", "--dir",
@@ -385,7 +385,7 @@ class TemplateTests(unittest.TestCase):
                     workflow=json.loads((fx.SHIPPED / "workflow.json").read_text(encoding="utf-8")), prompts=False)
         w.push_dev({f".zzzops/prompts/{p.name}": p.read_text(encoding="utf-8")
                     for p in sorted((fx.SHIPPED / "prompts").iterdir())}, "chore(zzzops): prompts")
-        self.assertEqual({"requires": ["lens_findings", "lenses"]}, w.policy["settings"]["engine"])
+        self.assertEqual({"requires": ["lens_findings", "lenses", "test_cost"]}, w.policy["settings"]["engine"])
         out = w.ok("a", "next")
         self.assertEqual([], [b for b in out["blockers"] if b["kind"] in ("engine_too_old", "policy_invalid")])
         w.new(title="from the template")
