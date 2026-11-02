@@ -23,6 +23,7 @@ Goals that will change the contract and have not landed yet. Every goal listed h
 
 | Goal | Sections | Landed when |
 |---|---|---|
+| G1024 default-policy update notices | SPEC §2.3, §3.2, §3.15, §3.16, §8.3, §9; DESIGN §3.10 | `plugins/zzzops/zzzops/engine contains "policy_update"` |
 
 Other goals that depend on G1017 need no row: G1026 (its approved design applies its amendment in its own PR without a row), G1029, G1032 and G1034 (skill, prompt or documentation changes only), and G1033 (a package check and hint; its design changes no contract).
 

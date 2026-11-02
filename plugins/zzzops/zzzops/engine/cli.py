@@ -126,8 +126,7 @@ def cmd_next(argv):
     s = session(a, preview=True)
     s.open(goals=[goal_id(g) for g in a.get("goal", [])], readonly=True)
     scope = [goal_id(g) for g in a.get("goal", [])] or None
-    from engine import defaults
-    out = s.render_next(scope=scope, all_=bool(a.get("all")), legacy="check", policy_update=defaults.status(s))
+    out = s.render_next(scope=scope, all_=bool(a.get("all")), legacy="check")
     s.mirror()
     emit(out)
     return 0
@@ -237,11 +236,7 @@ def cmd_validate(argv):
     warnings += schemas.engine_warnings(st.policy_raw.get("settings") if isinstance(st.policy_raw, dict) else None)
     out = {"ok": ok, "coordinator": st.coordinator, "goals": goals, "policy": policy, "environment": env,
            "warnings": warnings, "engine": engine_info()}
-    from engine import defaults, legacy
-    out["warnings"] += defaults.warnings(session=s)
-    update = defaults.status(s, full=True)
-    if update:
-        out["policy_update"] = update
+    from engine import legacy
     item = legacy.status(s, "force", gh_ok=not gh_env, full=True)
     if item:
         out["legacy"] = item
@@ -294,12 +289,7 @@ def validate_policy_dir(a) -> int:
            "warnings": (schemas.intent_warnings((policy or {}).get("settings"))
                         + schemas.engine_warnings((policy or {}).get("settings"))) if not errors else [],
            "engine": engine_info()}
-    from engine import defaults
-    out["warnings"] += defaults.warnings(directory=d)
     if not errors:
-        update = defaults.status_dir(d)
-        if update:
-            out["policy_update"] = update
         try:
             out.update(policy_impact(a, policy, workflow))
         except (Refused, Exception):
