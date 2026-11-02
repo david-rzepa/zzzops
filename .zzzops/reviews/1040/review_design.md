@@ -1,29 +1,63 @@
-# G1040 review_design (attempt 1)
+# G1040 review_design, round 2
 
-**Verdict: changes requested.** The approach is right: a stored `last_out_fp` behind the capability `blocked_findings` is the smallest exact fix (§3.1's resurrection case rules out a pure rule), the refusal rework is sound, and the op-round rule is a good direction. Three defects need a revision: the blocked-target findings reach the retry card through the *stale-carrier* path, which drops op findings and mislabels the rest; enabling the capability before the installed design prompt changes makes the designer re-block on answered owner questions; and the normalisation misses common varying tokens.
+Verdict: **approved**. Revision 2 (blob 3f7f884) fixes all three round-1 findings. I checked each fix against `read_dev` 25186a5 and found no new defect that would change the design.
 
-## Claims checked at read_dev 25186a5
+## Prior findings
 
-- **Stale re-run cards are already fixed by G1028: holds.** `frontier.frontier` pass 1 iterates every carrier with a done record, fresh or not. An unfiltered stale review (`review_tests`) skips the verdict branch, is not an op, and its open finding stays live while `target_fp == out_fp(test_design)`. `card.correction` adds `stale_review: true`, and `.agents/test_engine_frontier.py::test_stale_review_findings_stay_live_while_the_target_is_unchanged` pins it. Outcome 1's journey test only pins this.
-- **G1026 with the capability off: unchanged.** `OwnerWorld` bootstraps from the shipped template, and §3.4 leaves its `requires` alone, so nothing writes `last_out_fp`. `test_the_acceptance_journey` (`corrections == []`, no response, `set(rec) <= RECORD_KEYS`) and `test_spec_edit_while_blocked_unanswered_keeps_the_owner_question` pass as written. `test_record_schema_is_unchanged` checks only `answers` and `human_decisions`. `resubmit_design` answers only the live ids. The needles `give no response` and `the review resolves` survive the new step-4 text.
-- **G1026 with the capability on:** the journey works in the engine (retry card lists the findings, submit requires them, the re-review resolves against `human_decisions`). The two defects below are about how they get there (finding 1) and the installed prompt (finding 2).
-- **Stored field and capability vs a pure rule: agree with the design.** A blocked record keeps neither the previous output nor its attempt. The `target_attempt`-max rule resurrects answered findings after a stale re-run that then blocks. Reading the previous done record from goal history would avoid the key, but the frontier is pure and would need history preloaded for every blocked node. G1027 requires a capability for a new record key. `answer` mutates the blocked record in place (verbs.py:762), so the key survives it. `carry.carry_forward` skips non-done records, so `last_out_fp` and the findings' `target_fp` stay consistent across a restack.
-- **Frozen `test_engine_github.test_failure_after_a_fix_escalates`: passes under §3.5.** The integrate run after the fix is a Blocked CI poll, and `ops/run.py:211` copies r0's findings onto it, so `p` is the first failure. Texts are `required check \`ci\` failed on <H[:7]>: https://github.com/<repo>/actions/runs/<n>/job/1`. They differ only in the short sha (hex, or all digits) and numbers, so they match after `norm` and give round 2 and a dispute, as the test asserts.
-- **`p` is what the target answered:** holds. While `implement` has a live op finding it is `ready (reopened)` and not current, so `run_tests`/`integrate` are `blocked` on a missing input and cannot re-observe in between.
+| id | status | basis |
+|---|---|---|
+| review_design:1:1 | resolved | The held view in pass 1 is exact. Checked against `frontier.frontier` below. |
+| review_design:1:2 | resolved | The rollout is one policy PR (or prompt first). The pairing is documented and enforced by repository test 14, which CI runs on every PR. |
+| review_design:1:3 | resolved | `norm` covers `0x` addresses, hex runs without `\b`, default tempfile names and this repository's hyphen-prefixed names. All are pinned in test 9 and the `norm` unit test. |
 
-## Findings
+## 1:1: held outputs in pass 1
 
-1. **Every carrier of a blocked target's findings is a stale carrier, so the findings go through G1028's carry path.** §3.1 says "nothing else in pass 1 or pass 2 changes; the carrier rules apply as today", but in pass 1 `fresh[c]` is False for any carrier whose subject or input is the blocked node: `subj` is not done, and `resolve(..., recorded)` returns `Missing("no_record")` for a blocked record. So every such carrier is in `stale` and takes the `carry` branch. The results:
-   - (a) **Op carriers are never carried** (`if carry and ... N[c]["kind"] == "op": continue`). A `run_tests:failed` or `integrate:check-*` finding on `implement` is still dropped from its retry card when `implement` blocks, against outcome 2 and the spec ("lists the open findings against that node"). The design never states this exclusion.
-   - (b) **Every retry-card correction gets `stale_review: true`** (`card.correction`, `c in res.stale`). `output_schema.responses` then adds "came from a review whose inputs have since changed … disputed: with the reason if the change made it moot". On a retry nothing changed. That text invites `disputed:` responses to owner questions and ordinary findings. Those raise `rounds` when the review keeps them open, and then they escalate to disputes.
-   - (c) **Any `edit` while the target is blocked** (G1026's spec-edit case) reports them in `carried_findings`, with `--set … status="waived"` lines.
+- **Code.** Pass 1 (`frontier.py`) reads recorded values in three places: `recorded_out`, the subject check together with `fp_parts(..., R.get(subj), ...)`, and the liveness guard `R[t]["status"] == "done" and target_fp == out_fp(graph, t, R[t])`. Replacing a held record with `{**R[t], status: done, output: last_output}` in exactly those places gives the consumer back the `input_fp` it had before the block. `out_fp` reads only `record["output"]`. The `subject` part drops `responses` from the same output. `candidates` reads lens records, which the view does not change. So "fresh only if the block were not there" holds, as claimed.
+- **Effects.** A fresh carrier is not in `res.stale`. As a result:
+  - `card.correction` adds no `stale_review`, and `output_schema` adds no "made it moot" text. Both are keyed on `c in res.stale`.
+  - `verbs.carried_findings` skips the carrier, because it filters on `res.stale`.
+  - The op `continue` applies only to `carry and N[c]["kind"] == "op"`, so `run_tests:failed` on a held `implement` stays live.
+  - The op-attempt guard applies only to op targets, and only agent records are held.
+  - `filter_verdicts` needs `fresh[filter_design]`. `filter_design` reads `design.doc`, so the held output keeps it fresh.
+- **Test 4 reasoning.** This is correct. In the shipped `workflow.json`, `review_design`, `adversary_design` and `filter_design` all read `goal.spec`. A spec edit therefore makes them stale for real, whatever the block does. G1028 carries the material owner question, and the card marks it `stale_review`. `design` reads `goal.spec` too, so pass 2 gives `ready (stale)` before the blocked branch. Asserting `stale_review: true` and the `carried_findings` entry is the right expectation. Test 4b covers the case that is not stale.
+- **Supporting claims.**
+  - `answer` edits the blocked record in place (it sets `r["answer"]` and switches `waiting_for` to `agent`), so the key survives.
+  - `rec.record` copies no keys from `r0`, so `last_output` cannot leak onto the retry's done record.
+  - `carry_forward` skips non-done records.
+  - Op Blocked records (`ops/run.py`) copy `r0`'s findings, so §3.5's `p` is the finding the target answered.
+- **Record size and card budget.** The held copy does not grow the goal document. The blocked record replaces the done record whose `output` it copies, and `output` becomes null. A second block copies the key and does not stack it. Net growth is the `blocked` fields only, as today. For scale: the largest live goal documents are about 33 KB of the 64 KiB `DOC_LIMIT`, and the largest agent outputs are about 4 KB. Cards never show `last_output`:
+  - `card.previous` returns None for a record that is not done.
+  - `correction` reads only finding fields.
+  - Render items read named fields only.
 
-   Fix: in pass 1, a carrier that is not fresh only because a blocked agent target with `last_out_fp` hides its output should count as unchanged for that target. It is not in `stale`, and an op carrier's finding on that target is kept like a fresh one. Alternatively, state and pin each exclusion (op findings in SPEC §4.9 and §8; `stale_review` wording on retry cards). Add assertions to tests 2 and 4 (no `stale_review`, no `carried_findings` entry) and add a test for an op finding on a blocked `implement`.
-2. **Rollout: requiring `blocked_findings` before the installed design prompt changes makes the designer re-block on answered owner questions.** G1026 puts its step-4 text only in `templates/default/prompts/design.md` (its branch does not touch `.zzzops/prompts/`). Installed prompts change only through a policy PR, like any other repository's. The G1026 text says "a correction starts `owner question:` … do not decide it. Submit `--blocked`". Once the capability is on, the answered question is a correction on the retry card, so that text makes the designer block again. Each retry then needs another human answer. §3.4's rollout adds only the name to `settings.engine.requires`, and "wherever G1026 put its text" leaves the repository prompt open. Fix: the rollout policy PR carries the new step-4 text in the same change as the `requires` entry (or after it). `blocked_findings.txt`, CLI_USAGE or MIGRATING says that requiring the capability needs the revised step 4. Add a test: with the capability on and the old step-4 text the card still works, but the prompt check (or a doc needle) pins the pairing.
-3. **`norm` misses tokens that vary between runs of one failure, so a real repeat looks new.** `\b[0-9a-f]{7,40}\b|\d+` does not cover CPython object addresses: in `0x7f3a9c0d1e20` there is no word boundary after `x`, so only the digits are replaced and the hex letters remain and differ. It also misses tempfile names (`/tmp/tmpk3j_9x2a/…`, random letters). Tracebacks and assertion messages from this repository's git- and tempdir-based tests print both. Two runs of the same failure then compare different: round 1 again, no escalation, and `implement` loops until the correction budget. §6 says this "needs output that varies in words, which test runners rarely print", which is not true here. Impact is moderate, because the budget bounds the loop. Fix: also replace `0x[0-9a-fA-F]+` and `tmp[a-z0-9_]{8}` (or any run of 7 or more hex characters, without `\b`), state it in SPEC §4.14, and add both cases to test 9.
+  So the 4,096-byte card limit and the 8,192-byte next limit are not affected.
 
-## Not raised
+## 1:2: rollout pairing
 
-- The refusal codes and hint (§3.3) are consistent with `check_responses` and keep `details.no_longer_live`.
-- Escalation on the retry (§6) is correct, because a finding at rounds ≥ 2 that is not upheld already escalated before the block.
-- No owner question: the capability is default-off and the owner approved carrying findings ("3. Ok").
+- §3.4 now makes the policy PR carry both the `requires` entry and the revised step 4. The prompt may land first. The `requires` entry never lands before it.
+- G1026's work branch confirms the premise: its owner-question text is only in `templates/default/prompts/design.md`, and the installed `.zzzops/prompts/design.md` is unchanged.
+- The new sentences keep every needle in G1026's frozen `test_design_prompt_step_4_blocks_with_every_owner_question`:
+  - `owner question:`
+  - `--blocked`
+  - `waiting_for: human`
+  - `Q1: `
+  - `## Owner decisions`
+  - `human_decisions`
+  - `give no response`
+  - `the review resolves`
+- `validate.yml` runs on every `pull_request`, so test 14 fails a policy PR that only adds `requires`.
+
+## 1:3: normalisation
+
+- I checked the alternation order and the anchors:
+  - `0[xX][0-9a-fA-F]+` consumes a whole address at its `0`.
+  - `tmp[a-z0-9_]{8}` matches Python's default names, which are `tmp` plus 8 characters from `[a-z0-9_]`.
+  - The `(?<=-)…{8}(?=[/.])` form matches the prefixes in the repository: `zzzops-card-budget-`, `zzzops-claude-acceptance-`, `zzzops-native-` with suffix `.json`, `.zzzops-cleanup-` with suffix `.tmp`, and `.legacy-` with suffix `.json`.
+  - `[0-9a-f]{7,}` without word boundaries covers `integrate`'s `failed on <sha>`.
+- Over-normalisation: the patterns also match ordinary text such as `-fixtures/` or `tmpdir_cl…`. This is harmless, because both texts normalise the same way. The only cost is the accepted one, where failures that differ only inside such tokens merge into round 2.
+
+## Non-blocking observations (no finding)
+
+- The hyphen form's lookahead `(?=[/.])` misses a prefixed temporary directory at the end of a quoted path or a repr (`'/tmp/zzzops-card-budget-ab12cd_e'`). That repeat would get round 1. The correction budget bounds it, as §6 says for the other uncovered tokens. The implementer could widen the lookahead to `(?=[/.'")\s]|$)`.
+- Test 4b gives `links` as "a goal field that is no node's input", but `merge` reads `goal.links.issue`. The test still holds, because `merge` has no record at the design stage. The wording could name a field outside `links.issue`.
+- "Pass 1 uses H for three reads, and nothing else" should keep the carrier loop's own guard (`R[c]["status"] == "done"`) on `R`. That keeps a held node out of `fresh` and `stale`. The design implies this; the implementation should keep it.
