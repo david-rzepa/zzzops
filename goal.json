@@ -147,9 +147,16 @@
       "status": "done"
     },
     "integrate": {
+      "answer": {
+        "decided_at": "2026-11-02T15:35:56Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "text": "wait"
+      },
       "attempt": 3,
       "blocked": {
         "category": "external",
+        "instructions": "The human answered: wait",
         "op_state": {
           "head": "a1e09387454f99411731f1402db35b4e12310f70",
           "pending_since": 1793631411,
@@ -164,7 +171,7 @@
         "reason": "no checks appeared",
         "recommendation": "check the PR's checks and Actions settings on GitHub first",
         "repeats": 1,
-        "waiting_for": "human"
+        "waiting_for": "agent"
       },
       "correction_runs": 2,
       "findings": [],
