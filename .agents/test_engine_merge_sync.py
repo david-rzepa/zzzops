@@ -417,6 +417,37 @@ class MergeCarryTests(msf.OpFixture):
             self.assertEqual("recorded-" + node, doc["records"][node]["output"][key]["change"])
 
 
+    def test_unrelated_checkpoint_is_not_carried_even_when_predicate_accepts(self):
+        from engine_sim import Sim
+        sim = Sim()
+        doc = sim.goal(1000)
+        sim.drive(1000, until="implement")
+        tests = self.publish({"tests/probe.txt": "tests\n"}, "test: probe")
+        work = self.publish({"own.txt": "code\n"}, "feat: code")
+        # Same code tree, different ancestry: diff equivalence must not turn a
+        # checkpoint outside synced.work's history into work that was reviewed.
+        unrelated = self.git.commit_tree(self.ident.code_tree(work), [self.base], "feat: unrelated checkpoint\n")
+        self.assertFalse(self.git.is_ancestor(unrelated, work))
+        for node, key, c in (("test_design", "tests", tests), ("implement", "code", unrelated)):
+            doc["records"][node]["output"][key] = {"commit": c, "base": self.base,
+                "tree": self.ident.code_tree(c), "change": self.ident.change(self.base, c)}
+        doc["records"]["test_design"]["frozen"] = ["tests/probe.txt"]
+        untouched = copy.deepcopy(doc["records"]["implement"])
+        onto = self.trunk({"trunk.txt": "trunk\n"})
+        tree = self.git.out("merge-tree", "--write-tree", work, onto).splitlines()[0]
+        tip = self.git.commit_tree(tree, [work, onto], f"chore(sync): merge dev into G1000\n\nZzzops-Old-Base: {self.base}\n")
+        br = copy.deepcopy(doc["records"]["base"])
+        br["output"] = {"base_commit": onto, "branch": "zzzops/work/g1000", "stack": [],
+                        "replay_map": {}, "replay_pos": {}, "synced": {
+                            "old": self.base, "onto": onto, "work": work, "tip": tip,
+                            "merge": tip, "resolved": []}}
+        with patch.object(carry, "unchanged", return_value=True, create=True):
+            nodes = carry.carry_forward(SimpleNamespace(git=self.git), self.graph, doc, "base", br, None, {})
+        self.assertIn("test_design", nodes, "valid ancestor should carry with the accepting predicate")
+        self.assertNotIn("implement", nodes, "non-ancestor checkpoint must never relocate")
+        self.assertEqual(untouched, doc["records"]["implement"])
+
+
 class InterdiffTests(msf.OpFixture):
     def previous(self, old, current):
         from engine.card import previous
