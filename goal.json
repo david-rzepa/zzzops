@@ -10,7 +10,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 2,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T22:01:58Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:d332851aa3030d37bb708e3b05ca4c400e36e1507dbdf9cd0d94f025179b8d70",
+          "spec": "v1:sha256:a696c0b7e3e8448ebb71dd9d0df065f69d7225b378bc9635ed1d03a30f475d7e"
+        },
+        "policy": {}
+      },
+      "holder": "codex:takeover/1043-design",
+      "input_fp": "v1:sha256:f57f7b1df1cd5a8c7632c143491cf9cb7f66f9a211312c4cbd48b641d4003be5",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "d345f69af806b834872d8b37f710c3255ea95283",
+          "commit": "750bb8d540533824de9743cb94a057c9aed96970",
+          "path": ".zzzops/reviews/1043/design.md"
+        },
+        "summary": "Reuse the existing CI runner's individual-test balancing for an all-CPU local suite with exact execution accounting, then measure and remove the slowest remaining bottlenecks to meet the owner's five-minute target. Add an opt-in, CPU-budgeted parallel mode for goal/repository command lanes without skipping commands; record integer-millisecond timing with a strictly qualified last-merged-target baseline. The default template passes measured test cost to test review and the Tests lens and shows timing/delta or an explicit unavailable reason at merge approval; this repository adopts the changes through its separately owner-approved policy PR."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
