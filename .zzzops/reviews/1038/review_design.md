@@ -1,91 +1,92 @@
-# G1038 review_design, attempt 1
+# G1038 review_design, attempt 2
 
-Verdict: changes_requested. Seven findings, all on `design`. The core mechanism holds: the merge-tree sync with an explicit merge base, the read-tree conflict checkout, the frozen-path scoping of the preserved checkpoint, the tree-overlay squash, and the no-fingerprint-change rollout. Read against dev `25186a5` (base.py, integrate.py, identity.py, carry.py, verbs.py submit/frozen_paths/preserve_check, worktree.sync, card.py), G1025's design on `zzzops/work/g1025`, and G1039 rev 1. Lenses: rigor (engineering risk, contracts, rollout) and communication (claims checked, outcomes first).
+Verdict: changes_requested. Five of the seven round-1 findings are resolved: F1, F2, F3, F4 and F5. Two stay open on narrow residuals:
+- F6: the resume's path check, as written, always re-blocks (verified).
+- F7: trunk merge commits are left out of the conventional-commit scope, and the stated reason is false.
 
-## Checked and sound
-- D1/D2 hold against the code. The "no redo" property follows from using the previous `onto` as the merge base. Today's `base.py` 3 (hand-resolved conflict) and 4 (rebase) are replaced cleanly.
-- D3/D5 and §9: `frozen_paths` (verbs.py:552) already diffs `W..checkpoint` when W is an ancestor, so a tests fix on top of implement adds only its own paths. An empty F gives ZERO, the same as today's legacy `change(base, base)`. The legacy equivalence argument holds for in-flight, already-rebased goals: the tests checkpoint sat below implement, and preserve kept F unchanged above it.
-- D8: no node_def_fp or input_fp change. In-flight PRs keep their rebased heads until integrate next runs, which is harmless.
-- G1021: CONFLICTING/DIRTY/BEHIND still target `base`, and integrate's `local_conflict` goes away because the overlay cannot conflict.
-- Owner force-push: none is needed in the new engine's flow. The base push is a fast-forward, a resume pushes on top of the current remote W, and the PR branch is force-updated by the engine as today. (F5 covers the gap: an older engine could still do a rewrite.)
-- G1039 items 2 (the carry writer keeps the recorded `change`) and 5 (`base_commit` is kept; `carried_by` is the base node's name, `"base"` in the default graph) match.
+There is one new finding, on D9's rollback path. I read revision 2 (blob 6ee2d01) against revision 1, and checked it against dev `f4eaf74` (G1027 merged), G1039 rev 1 on `zzzops/work/g1039`, and release.config.cjs. I also ran a scratch repository on Git 2.55.0.
 
-## Findings
+## Prior findings
 
-**F1. §6 answers an older G1039 draft, and four of G1039 rev 1's six §5 items don't match what G1038 provides.**
-- (1) G1039 calls `unchanged(node, old_cp, new_cp)` with a body that reads "the checkpoint's recorded `scope`". G1038 defines `clean(node, k, r, cp2, scope)`, with the scope coming from `checkpoint_scope(graph, node, record)`.
-- (3) G1039 relies on a stored checkpoint `scope` key. D3 rejected that key, so G1039's predicate would always run unscoped. It would then stale test_design whenever implementation lines move.
-- (4) G1039 reads base output `sync = {from, onto, merge, resolved}`, including `sync.from` in §3.4. G1038 writes `synced = {old, onto, work, tip, merge, resolved}`.
-- (6) G1039 describes the moved-base interdiff as "range-diff plus previous.syncs". G1038 drops range-diff for `log -p --first-parent --no-merges` plus `previous.syncs`.
-- §6's left column still quotes needs that G1039 rev 1 no longer has: `relocate(node, key, cp, synced)` and `Done.synced = {old, onto, tip}`.
+- **review_design:1:1: resolved.** Section 6 now pins the following, and the relay list names each edit G1039 has to make to its §5 items 1, 3, 4 and 6:
+  - `carry.unchanged(ident, node, key, old_cp, new_cp, scope)`;
+  - `records.checkpoint_scope`, derived from `record.frozen` and never stored;
+  - `change(..., paths)`, to which G1039 adds `unified`;
+  - `synced = {old, onto, work, tip, merge, resolved}`;
+  - `relocate(cp, synced)`;
+  - the first-parent, no-merges interdiff plus `previous.syncs`.
 
-Fix: rewrite §6 against G1039 rev 1 §5, items 1–6, and pin one name, one signature and one key set. Example: `unchanged(node, k, old_cp, new_cp, scope)`, with the scope passed in from `checkpoint_scope` and never stored, and output key `synced` with `old`. Then state the exact edits G1039 must make (no `scope` key, `synced.old` not `sync.from`, the interdiff form) so the root can relay them. Otherwise two goals that each pass review are built against a carry interface neither one implements.
+  G1039 rev 1 §5 items 2 and 5 match as stated. G1039 can adopt this as written.
+- **review_design:1:2: resolved.** `own(W, P)` excludes `^P`, plus each first-parent merge's second parent and its `Zzzops-Old-Base:` trailer. I traced three cases:
+  - a re-squashed dependency head: the walk stops at the old head D1, which is the trailer and the previous second parent;
+  - a dropped dependency, and a dev to `release/N` target change: the first merge's trailer is the old `base_commit`, so the walk stops there;
+  - rebase mode: `P..W`, which is linear.
 
-**F2. The "own commits" walk `P..W` picks up foreign commits whenever `onto` does not descend from the old base.**
-This happens with a rewritten dependency PR head, which G1038 makes routine because every re-integrate re-squashes the PR branch. It also happens with a dropped dependency or a G1025 target change. D1 keeps the tree right, but `M = commit-tree -p tip -p onto` keeps the old base in M's history. So `git log --first-parent P..W` walks into the old dependency commits, or into dev history not on `release/N`.
+  Test 6 asserts c2's subject and body.
+- **review_design:1:3: resolved.**
+  - The ranking (feat; fix/perf/revert; most common no-release type; chore; `!` for breaking) matches release.config.cjs at f4eaf74.
+  - It runs over implementation commits only. A tests commit is a commit of type `test` that touches only F.
+  - c1 is always `test:`.
+  - Test 5 has the `revert:` + `refactor:` case.
+- **review_design:1:4: resolved.** R1 is restated with the correct reasoning:
+  - building on `base_commit` is today's behaviour;
+  - the base does not always re-sync before integrate (G1025 §2 and §5.3);
+  - the PR tree equals the tested tree;
+  - CI and GitHub mergeability, fed back through G1021, cover any later trunk move.
 
-Several things derived from that walk are then wrong:
-- c2's type and `!`
-- the body's subject list
-- the BREAKING CHANGE footers
-- the authors and dates in §4.5
+  Outcome §1 and test 5 are reworded, and acceptance 3 is mapped.
+- **review_design:1:5: resolved** for the forward direction. At f4eaf74 the gate is real:
+  - `schemas.required_caps(settings)` reads `settings.engine.requires`, and ops get `ctx.settings`.
+  - `store.floor_check` pauses an engine that lacks a required capability (`engine_too_old`, with `st.pause` and `write_block`).
+  - A pre-capability engine reads `requires` as an unknown key and reports `policy_invalid` (SPEC §4.5).
 
-For a goal moved from dev to a release line, the walk lists every dev commit since the fork. Example: a dev `feat!:` lands in a hotfix's c2 and forces a major bump on the line.
+  So once `merge_sync` is required, no older engine runs `base`. Rebasing until then keeps today's behaviour. Test 8 covers both modes and the pause. The new finding N1 covers the reverse direction.
+- **review_design:1:6: open.** The intent is fixed, but check 2 does not work as written. After `git read-tree -u --reset T`, the index is T and HEAD stays at the tip. So `git status --porcelain` reports every path where T differs from the tip as a staged change: that is every trunk-side change merged in, not only the conflicted files. Check 2 therefore re-blocks on any sync where trunk changed some other file, which is nearly every conflicting sync. Verified on Git 2.55.0: trunk changes `a.txt` and `t.txt`, the goal changes `a.txt`. After read-tree and an edit of `a.txt`, status prints `MM a.txt` and `M  t.txt`, while `git diff --name-only T` prints only `a.txt`.
 
-Fix: define the goal's own commits so they exclude every previous base, not just P. One way: record the old base in each engine merge's message as a trailer (for example `Zzzops-Old-Base: <sha>`), then walk `--first-parent --no-merges W ^P ^<each merge's second parent> ^<each recorded old base>`. Add a test-6 case per scenario that asserts the c2 subject and body.
+  Fix: compare against T, not HEAD:
+  - modified or deleted paths: `git diff --name-only -z T --`, which compares the worktree with T and does not depend on what the agent staged;
+  - untracked paths: `git ls-files --others --exclude-standard -z`;
+  - refuse any path outside the listed files.
 
-**F3. c2's type derivation does not follow this repository's release rules, so the claim that "semantic-release then computes the same release bump" is false in some cases.**
-- release.config.cjs releases `revert` as a patch. The order "feat > fix > perf > any other conventional type > chore" leaves `revert` in an unordered "other" bucket. A `revert:` + `refactor:` goal can come out as `refactor:`, so no release where today there is a patch.
-- The walk also includes test_design's commits, which are now required to be `test:` (owner decision, F7), and any `fix(test):`-style commits.
+  Add a test-1 case where trunk also changes a non-conflicting file and the resume is accepted.
+- **review_design:1:7: open, on one residual.** The rest of the fix is complete:
+  - the scope for work, stack and PR branches;
+  - the exemption for goal-ref and lease-ref record commits;
+  - `commit_subject` and `test_commit_type`, with codes, texts and order;
+  - per-commit `test_freeze`;
+  - `chore(sync):` and `chore(stack):`;
+  - the SPEC §4.14 text;
+  - tests 5 and 10.
+
+  The residual: D10 and 4.8 justify the scope with "these are the only branches whose commits reach trunk". That is false. The `merge` op runs `gh pr merge --<method>` (merge.py:92), which writes a trunk commit whose subject is the PR title, and that is not conventional. Two consequences:
+  - Under `merge`, the method this repository uses, every goal adds a non-conventional merge commit to dev and then to main. dev's tip `f4eaf74` "Replace ENGINE_VERSION and engine.min with declared engine capabilities (G1027) (#759)" is one. That goes against the owner's "always". semantic-release ignores it, so there is no release harm.
+  - Under `squash`, a policy value the design allows ("PR commits may land in trunk as they are", §3), GitHub writes one commit titled with the PR title. semantic-release then sees no conventional commit, so c2's derived type is lost and no release is made. This breaks the 4.5.2 claim that semantic-release computes the highest release.
+
+  Fix: the merge op passes `--subject` and `--body` to `gh pr merge`:
+  - `squash`: c2's subject, with a body that holds c1's and c2's bodies and the breaking footers;
+  - `merge`: a conventional subject, for example `chore(merge): <PR title> (#n)` (`chore` releases nothing, and c1 and c2 still carry the release);
+  - `rebase`: nothing extra (c1 and c2 land as they are).
+
+  Add the merge op and trunk merge commits to 4.8's "Covered" list and to the SPEC §4.14 and §5.5 text, and add a test-10 case per method. If the designer prefers to exempt trunk merge commits, the reason must be true, and the squash release loss still needs this fix.
+
+## New finding
+
+**N1. D9's "no older engine can ever see a merge-synced branch" fails on the documented rollback.** SPEC's upgrade procedure at f4eaf74 says: "**Rollback** is the same procedure removing the names". Once `merge_sync` is removed from `settings.engine.requires`:
+- the new engine's `mode` becomes `rebase`, and 4.1 runs today's rebase on a work branch that has `chore(sync):` merges;
+- older engines un-pause and do the same.
+
+Today's `base` (`rebase -q --onto onto old`) drops the merges, replays the goal's commits, redoes every resolved conflict and force-pushes. That is the review_design:1:5 hazard again, reached through a documented path.
 
 Fix:
-- Rank by release effect: breaking > feat > fix/perf/revert > no release.
-- Derive c2's type from the implementation commits only, the same split §4.5 already uses for identity: commits touching paths outside F.
-- Derive c1's type as `test:` always.
-- Test the `revert` case.
+- Make merge mode sticky per branch. If W's first-parent history above `base_commit` has an engine sync merge, the new engine refuses to rebase. `base` blocks with a policy item: "the work branch has merge syncs; the policy must require `merge_sync`".
+- Have `merge_sync.txt` and SPEC §4.5/§8 state that removing `merge_sync` is not supported while any open goal's work branch has merge syncs. Older engines cannot be stopped any other way.
+- Add a test-8 case: a policy without `merge_sync` and a merge-synced W blocks `base` and pushes nothing.
 
-**F4. R1's premise is factually wrong.**
-R1 says that when trunk moves, the base goes stale and re-syncs before integrate (via G1025's scheduled restack or G1021), "so at integrate time, in the normal flow, the last synced trunk commit is the live tip". That is not how the system works:
-- Without the `settings.branching` block, nothing re-syncs on a dev move. G1025 §2 notes that G1021 keeps `base` non-stale when dev moves.
-- Even in branching mode, pass 3 fires only before agent phases of unstacked goals, and never before ops (G1025 §5.3, D1).
-
-So the PR routinely sits on an older trunk commit, and the spec's literal "on the integration tip" is not met. The conclusion is still defensible: today's integrate already rebuilds on `ctx.inputs["base"]` (integrate.py `rebase … B`), the tested-tree argument holds, PR CI and GitHub's merge check the real merge, and BEHIND/CONFLICTING come back to `base`.
-
-Fix: restate R1 with the correct reasoning. Reword outcome §1 and acceptance test 5 to "on the trunk commit of the last sync (today's behaviour)" and say explicitly that this is how acceptance 3's "trunk tip" is met. The owner then isn't relying on a premise that does not hold.
-
-**F5. "An older engine … would refuse a work branch with merges (I1/I2) … fails closed" is false for `base`.**
-At dev, `base.py` calls `wt.sync`, then `rebase -q --onto onto old`, which silently drops merge commits and replays the goal's pre-sync commits. That redoes the conflicts the merges had resolved. It then calls `check_i1_i2(onto, H)` on the linearised result, which passes, and pushes `(W, H)`: the non-fast-forward rewrite this goal exists to remove. Agent submits on an old engine also pass, because `check_i1_i2(W, head)` covers only the agent's own range. Only an old integrate fails closed.
-
-This window is real here: workers run cached plugin engines, not the dev engine.
-
-Fix: make the policy step a precondition, not a race. Two options:
-- The new engine writes a merge sync only when `settings.engine.requires` contains `merge_sync`. Otherwise base blocks with a policy-prerequisite item.
-- Or state the rule that the merge_sync policy lands before the first merge-synced base runs.
-
-Correct §8 and D9 to match, and add a test for the precondition.
-
-**F6. The conflict resume's `git add -A` puts anything in the worktree into the merge commit.**
-That includes untracked scratch files, `*.orig` files from mergetool, build output, and edits to files that did not conflict. From the merge commit they go into the goal's code and its squashed PR. Today's rebase flow has the agent `git add` the conflicted files itself.
-
-Fix:
-- Stage only the listed files (`git add -A -- <files>`).
-- Re-block if any other path differs from T, listing those paths. Untracked or modified files outside the list are refused, not absorbed.
-- Cover this in test 1.
-
-**F7. Owner decision, relayed by the root. This is material.**
-Owner, verbatim: "Yeah, we should ensure we always use conventional commit messages". The owner said this in reply to the root's proposal:
-- Keep the tests/implementation split by recorded frozen paths and per-phase submit ranges, not by commit message.
-- (1) Submit refuses commits whose subjects are not conventional commits. test_design's commits must be `test:`. implement's commits must not touch frozen paths.
-- (2) integrate's squashed tests commit is `test: …`, and the implementation commit's type is derived from the goal's commits.
-
-The design must adopt this and state which commits the rule covers. The root's recommendation: every commit on work and PR branches, agent-made and engine-made (the existing `docs(review):` commits already comply). Engine record commits on goal refs (`zzzops: answer G<g> …`, which G1026 parses) keep their machine subjects, because they never reach trunk. If the design scopes it differently, it must justify that.
-
-Concretely, G1038's own engine commits do not comply today:
-- The sync merge message `Merge <onto> into zzzops/work/g<g> (zzzops base)` (§4.1).
-- The combine commits `zzzops: stack for G<g> …` and `zzzops: partial stack` (base.py `combine`), which sit on stack branches that PRs target.
-
-Give them conventional subjects (for example `chore(sync): merge <onto> into G<g>` and `chore(stack): combine … for G<g>`), or exclude them with a stated reason. Then add:
-- the submit refusal codes and texts (non-conventional subject; a non-`test:` commit from test_design);
-- the matching SPEC §4.14 text;
-- tests for both refusals and for the engine subjects;
-- the type derivation from F3, which then reads implement's conventional types only.
+## Checked and sound in revision 2
+- **The new date rule (4.5.3).**
+  - `d1 = max(t1, prev+1s)` and `d2 = max(t2, d1+1s)` make the PR head strictly the newest commit, also after a later tests fix and after an earlier head. When c1 is omitted, `d2 = max(t2, prev+1s)`.
+  - Unchanged content (trees, parents, messages and authors compared before dates) keeps the existing head and pushes nothing.
+  - `commit_tree(env=)` is a small addition to gitrun.py:153.
+- **Engine commit sites at f4eaf74.** They are identity.py:150 (`docs(review):`), base.py:150/152 (combine, renamed to `chore(stack):`), and verbs.py/store.py (lease and goal refs, exempt). No other engine commit lands on a work, stack or PR branch.
+- **The capability file path** `engine/capabilities/merge_sync.txt` matches G1027's loader (`engine/__init__.py`: `CAPABILITIES` from `capabilities/*.txt`).
+- **`wt.sync` on merge-synced branches.** Its `rebase Rc` paths only replay unpushed local agent commits above a shared merge, and `after_push` moves the worktree to M. So it never linearises an engine merge in the normal flow.
