@@ -188,15 +188,19 @@ def select_baseline(candidates, history, *, target, current, code_tree, clock=ti
 def _kill_lookup(proc):
     try:
         if os.name == "nt":
-            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
-                           capture_output=True, timeout=CLEANUP_SECONDS / 2)
+            outcome = subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                                     capture_output=True, timeout=CLEANUP_SECONDS / 2)
+            if outcome.returncode == 0:
+                return
         else:
             os.killpg(proc.pid, signal.SIGKILL)
+            return
     except (OSError, subprocess.TimeoutExpired):
-        try:
-            proc.kill()
-        except OSError:
-            pass
+        pass
+    try:
+        proc.kill()
+    except OSError:
+        pass
 
 
 def supervise_lookup(argv, *, input_bytes=None, popen=None, kill_group=None, clock=time.monotonic):
@@ -225,7 +229,12 @@ def supervise_lookup(argv, *, input_bytes=None, popen=None, kill_group=None, clo
             pass
         return unavailable("lookup_budget_exhausted", "deadline")
     except OSError:
+        cleanup_end = clock() + CLEANUP_SECONDS
         kill_group(proc)
+        try:
+            proc.communicate(timeout=max(0.0, cleanup_end - clock()))
+        except (subprocess.TimeoutExpired, OSError):
+            pass
         return unavailable("missing_history")
     if proc.returncode:
         return unavailable("missing_history")

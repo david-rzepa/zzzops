@@ -172,7 +172,8 @@ class ShippedTemplateTests(unittest.TestCase):
         self.assertEqual({"subject": "implement", "filter": "filter_impl"}, nd["review"])
         froms = {k: (s["from"], bool(s.get("context"))) for k, s in nd["inputs"].items()}
         self.assertEqual({"doc": ("design.doc", False), "tests": ("test_design.tests.change", False),
-                          "code": ("implement.code.change", False), "checks": ("run_tests.result", True)}, froms)
+                          "code": ("implement.code.change", False), "checks": ("run_tests.result", True),
+                          "cost": ("test_design.cost", True)}, froms)
         self.assertNotIn("spec", nd["inputs"])                 # D6: compliance judges against the approved design
         self.assertEqual([], nd.get("policy", []))              # project intent is judged once, at design
         self.assertTrue({"review", "communication", "security", "code_quality"} <= set(nd["instructions"]),

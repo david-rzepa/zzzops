@@ -370,6 +370,8 @@ class Pilot:
                     if card["workspace"]:
                         fx.GitDir(card["workspace"], self.w.env).commit(
                             {f"work/{self.rev.get(node, node)}.txt": f"{node} {self.turn}\n"}, f"feat: {node}")
+                elif t == "object":
+                    out[k] = {}  # Generic fixture value for newly declared object outputs.
                 elif t == "strings":
                     out[k] = ["true"]
                 elif t in ("text", "string"):

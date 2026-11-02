@@ -11,7 +11,7 @@ import time
 
 from engine.canon import H
 from engine.identity import Identity
-from engine.ops.run import Done
+from engine.ops.run import Blocked, Done
 from engine.test_cost import available_cpus, cpu_budget, lookup_baseline, unavailable
 
 TAIL = 2048
@@ -25,16 +25,26 @@ def shell(git) -> str:
 
 
 def kill_group(proc):
+    """Return false when only the parent fallback could be attempted."""
     try:
         if os.name == "nt":
-            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, timeout=5)
+            outcome = subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                                     capture_output=True, timeout=0.5)
+            if outcome.returncode == 0:
+                return True
         else:
             os.killpg(proc.pid, signal.SIGKILL)
+            return True
+    except ProcessLookupError:
+        return True  # The process group no longer exists.
     except (OSError, subprocess.TimeoutExpired):
-        try:
-            proc.kill()
-        except OSError:
-            pass
+        pass
+    try:
+        proc.kill()
+    except OSError:
+        pass
+    # Killing just the parent does not prove that descendants have stopped.
+    return False
 
 
 class _Commands:
@@ -44,12 +54,14 @@ class _Commands:
         self.lock = threading.Lock()
         self.stopped = threading.Event()
         self.live = set()
+        self.unconfirmed = set()
 
     def cancel(self):
         with self.lock:
             self.stopped.set()
             for proc in self.live:
-                kill_group(proc)
+                if kill_group(proc) is False:
+                    self.unconfirmed.add(proc.pid)
 
     def command(self, cmd, env):
         started = time.monotonic()
@@ -72,10 +84,23 @@ class _Commands:
                     timed_out, code = True, -1
             except subprocess.TimeoutExpired:
                 self.cancel()
-                output, _ = proc.communicate()
+                try:
+                    output, _ = proc.communicate(timeout=1.0)
+                except (subprocess.TimeoutExpired, OSError) as error:
+                    with self.lock:
+                        self.unconfirmed.add(proc.pid)
+                    output = getattr(error, "output", None) or b""
+                    output += b"\nProcess/pipe termination could not be confirmed after bounded cleanup."
                 timed_out, code = True, -1
         except OSError as error:
             output, code = str(error).encode(), 127
+            if proc is not None:
+                self.cancel()
+                try:
+                    proc.communicate(timeout=1.0)
+                except (subprocess.TimeoutExpired, OSError):
+                    with self.lock:
+                        self.unconfirmed.add(proc.pid)
         finally:
             if proc is not None:
                 with self.lock:
@@ -153,8 +178,17 @@ def run(ctx):
         total_ms = max(0, round((time.monotonic() - started) * 1000))
     finally:
         # Futures and process groups have exited before cleanup of the shared tree.
-        ctx.git.run("reset", "-q", "--hard", "HEAD", cwd=p, check=False)
-        ctx.git.run("clean", "-q", "-fd", cwd=p, check=False)
+        if not commands.unconfirmed:
+            ctx.git.run("reset", "-q", "--hard", "HEAD", cwd=p, check=False)
+            ctx.git.run("clean", "-q", "-fd", cwd=p, check=False)
+    if commands.unconfirmed:
+        pids = sorted(commands.unconfirmed)
+        return Blocked({"waiting_for": "human", "category": "external",
+                        "reason": "verification process termination could not be confirmed",
+                        "question": f"Verification timed out and process groups or pipes for PIDs {pids} "
+                                    "could not be confirmed stopped. The worktree was preserved. "
+                                    "Stop the remaining processes and inspect the checkout before retrying.",
+                        "op_state": {"unconfirmed_pids": pids}})
     details = ([dict(d, source="goal") for d in goal_details]
                + [dict(d, source="verification") for d in repo_details])
     passed = (not commands.stopped.is_set() and all(d["exit"] == 0 for d in details)
