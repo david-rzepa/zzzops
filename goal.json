@@ -39,6 +39,126 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:d6454014d6870b4e68e82d27758e04ba4d07688822c9edf2f97ace0f80495301",
+          "text": "§6 answers an older G1039 draft, and four of G1039 rev 1's six §5 items don't match. (1) G1039 calls unchanged(node, old_cp, new_cp) and reads 'the checkpoint's recorded scope'; G1038 defines clean(node, k, r, cp2, scope) with the scope from checkpoint_scope(graph, node, record). (3) G1039 relies on a stored checkpoint scope key, which D3 rejects, so G1039's predicate would always run unscoped and stale test_design whenever implementation lines move. (4) G1039 reads base output sync = {from, onto, merge, resolved}, including sync.from in §3.4; G1038 writes synced = {old, onto, work, tip, merge, resolved}. (6) G1039 describes the interdiff as 'range-diff plus previous.syncs'; G1038 drops range-diff for log -p --first-parent --no-merges plus previous.syncs. §6's left column also quotes needs G1039 rev 1 no longer has (relocate(node, key, cp, synced); Done.synced = {old, onto, tip}). Fix: rewrite §6 against G1039 rev 1 §5 items 1-6; pin one name, signature and key set (for example unchanged(node, k, old_cp, new_cp, scope), with the scope passed in from checkpoint_scope and never stored, and output key synced with old); state the exact edits G1039 must make (no scope key, synced.old not sync.from, the interdiff form) so the root can relay them. Otherwise two goals that each pass review are built against a carry interface neither one implements.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:d6454014d6870b4e68e82d27758e04ba4d07688822c9edf2f97ace0f80495301",
+          "text": "The own-commit walk P..W (§4.5: c2's type and '!', the body's subjects, the BREAKING CHANGE footers, authors and dates) picks up foreign commits whenever onto does not descend from the old base. That happens with a rewritten dependency PR head (routine under G1038, since every re-integrate re-squashes the PR branch), a dropped dependency, or a G1025 target change. D1 keeps the tree right, but M = commit-tree -p tip -p onto keeps the old base in first-parent history, so log --first-parent P..W walks into old dependency commits, or into all dev history not on release/N. Example: a dev 'feat!:' lands in a hotfix's c2 and forces a major bump on the line. Fix: exclude every previous base, not just P. For example, record the old base as a trailer in each engine merge message, then walk --first-parent --no-merges W ^P ^<each merge's second parent> ^<each recorded old base>. Add test-6 cases that assert the c2 subject and body.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:3",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:d6454014d6870b4e68e82d27758e04ba4d07688822c9edf2f97ace0f80495301",
+          "text": "c2's type derivation does not match release.config.cjs, so 'semantic-release computes the same release bump' is false in some cases. revert releases a patch, but the order 'feat > fix > perf > any other > chore' puts revert in an unordered 'other' bucket, so a revert: + refactor: goal can get refactor: and no release. The walk also counts test_design's commits (test:, fix(test):). Fix: rank by release effect (breaking > feat > fix/perf/revert > no release); derive c2's type from implementation commits only (those touching paths outside F, the split §4.5 already uses for identity); c1 is always test:. Test the revert case.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:4",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:d6454014d6870b4e68e82d27758e04ba4d07688822c9edf2f97ace0f80495301",
+          "text": "R1's premise is factually wrong. Outside branching mode nothing re-syncs base when dev moves (G1025 §2: G1021 keeps base non-stale on dev moves), and in branching mode G1025 pass 3 fires only before agent phases of unstacked goals, never before ops (G1025 §5.3, D1). So 'at integrate time, in the normal flow, the last synced trunk commit is the live tip' does not hold, and the PR routinely sits on an older trunk commit. The conclusion is still defensible: today's integrate already rebuilds on ctx.inputs['base'], the PR tree equals the tested tree, PR CI and GitHub check the real merge, and BEHIND/CONFLICTING come back to base. Fix: restate R1 with that reasoning; reword outcome §1 and test 5 to 'on the trunk commit of the last sync (today's behaviour)', and say explicitly that this is how acceptance 3's 'trunk tip' is met.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:5",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:d6454014d6870b4e68e82d27758e04ba4d07688822c9edf2f97ace0f80495301",
+          "text": "§8 and D9 claim an older engine 'would refuse a work branch with merges (I1/I2) ... fails closed'. That is false for base. At dev, base.py runs wt.sync, then 'rebase -q --onto onto old', which drops the merges and replays the pre-sync commits (redoing their conflicts); then check_i1_i2(onto, H) on the linearised result, which passes; then a non-fast-forward push (W, H), the rewrite this goal removes. Old agent submits also pass, because check_i1_i2(W, head) covers only the agent's own range. Only an old integrate fails closed. Workers here run cached plugin engines, so this window is real. Fix: make the policy step a precondition. Either the new engine writes a merge sync only when settings.engine.requires contains merge_sync (otherwise base blocks with a policy-prerequisite item), or state the rule that the merge_sync policy lands before the first merge-synced base runs. Correct §8 and D9, and add a test.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:6",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:d6454014d6870b4e68e82d27758e04ba4d07688822c9edf2f97ace0f80495301",
+          "text": "The conflict resume (§4.2) runs 'git add -A', so anything in the worktree goes into the merge commit, and from there into the goal's code and its squashed PR: untracked scratch files, *.orig files from mergetool, build output, edits to files that did not conflict. Fix: stage only the listed files (git add -A -- <files>); re-block if any other path differs from T, listing those paths, and refuse untracked or modified files outside the list. Cover this in test 1.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:7",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:d6454014d6870b4e68e82d27758e04ba4d07688822c9edf2f97ace0f80495301",
+          "text": "Owner decision, relayed by the root (material). Owner, verbatim: \"Yeah, we should ensure we always use conventional commit messages\". This was in reply to the root's proposal: keep the tests/implementation split by recorded frozen paths and per-phase submit ranges, not by commit message; (1) submit refuses commits whose subjects are not conventional commits, test_design's commits must be test:, and implement's commits must not touch frozen paths; (2) integrate's squashed tests commit is 'test: ...' and the implementation commit's type is derived from the goal's commits. The design must adopt this and state which commits the rule covers. The root recommends: every commit on work and PR branches, agent-made and engine-made (docs(review): commits already comply); engine record commits on goal refs ('zzzops: answer G<g> ...', which G1026 parses) keep their machine subjects because they never reach trunk; justify any other scope. G1038's own engine commits do not comply: the sync merge 'Merge <onto> into zzzops/work/g<g> (zzzops base)' (§4.1), and the combine commits 'zzzops: stack for G<g> ...' / 'zzzops: partial stack' (base.py combine) on the stack branches PRs target. Give them conventional subjects (for example chore(sync): ..., chore(stack): ...) or exclude them with a reason. Add the submit refusal codes and texts, the SPEC §4.14 text, tests for both refusals and for the engine subjects, and the type derivation from the implementation commits' conventional types.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-02T15:50:48Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:52f38899ce6deb56e209a274f6daab31522daafe",
+          "spec": "v1:sha256:4596edb8db8e0919aa8d3e7ee71551c9beb2a95d2894d7c8bf51877cb236186e"
+        },
+        "policy": {},
+        "subject": "v1:sha256:d6454014d6870b4e68e82d27758e04ba4d07688822c9edf2f97ace0f80495301"
+      },
+      "holder": "claude:e6ad/rd1038",
+      "input_fp": "v1:sha256:d4ec58f132603ee399d3ac5d425b3f825552a5f193d0f742512cbd5ecad7e063",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "eb5aef930049c3331bdc1cf22d9f05b2f4a8bc5c",
+          "commit": "c42892b80dc9dc33a83c47cce5d8343ecfe4c5d9",
+          "path": ".zzzops/reviews/1038/review_design.md"
+        },
+        "summary": "The core mechanism is sound: a merge-tree sync with the old base_commit as merge base, a read-tree conflict checkout, the preserved checkpoint scoped to its frozen paths, a tree-overlay squash, and no fingerprint change on upgrade. Seven findings block approval: §6 does not match G1039 rev 1 §5 (name, signature, a stored scope key, the synced/sync keys, the interdiff form); the own-commit walk P..W includes foreign commits when onto does not descend from the old base; c2's type derivation does not follow the release rules (revert) and counts test commits; R1's premise is wrong; the claim that old engines fail closed is false for base; the resume's git add -A absorbs stray files; and the owner's conventional-commit decision is not yet in the design."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "52f38899ce6deb56e209a274f6daab31522daafe",
+          "commit": "980ef3da8421e7f049c984385cfc28478cacd857"
+        }
+      },
+      "status": "done"
     }
   },
   "release": 1,
