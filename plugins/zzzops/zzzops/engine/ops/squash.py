@@ -22,7 +22,8 @@ def rebuild(ctx, ident, base, work, code_tree):
         bucket = tests if parsed and parsed[0] == "test" and set(ident.changed_paths(c)) <= set(frozen) else code
         bucket.append(c)
     typ = release_type(git, ident, code)
-    breaking = any(breaking_notes(git.out("show", "-s", "--format=%B", c)) or "!: " in ident.subject(c) for c in code)
+    breaking = any((conventional(ident.subject(c)) or (None, None, None))[2]
+                   or breaking_notes(git.out("show", "-s", "--format=%B", c)) for c in code)
     title = f"{ctx.doc['title']} (G{ctx.goal})"
     parts = []
     def part(tree, commits, prefix):
