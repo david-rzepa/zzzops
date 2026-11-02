@@ -2,7 +2,7 @@
   "schema_version": 2,
   "settings": {
     "engine": {
-      "requires": []
+      "min": "0.0.0"
     },
     "integration_branch": "main",
     "verification": {
