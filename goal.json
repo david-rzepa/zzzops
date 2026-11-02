@@ -161,6 +161,44 @@
       },
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T16:59:10Z",
+      "fp_parts": {
+        "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
+        "inputs": {
+          "code": "v1:sha256:4651ce4237f637dc228cb3aa70b1c1be646126e90a7e4bdc9a00d3c31f9ba61c",
+          "doc": "v1:blob:cc60eabf6331555c3c73bd5ea08d6311e25f34d3",
+          "tests": "v1:sha256:404b296af52c6cc4adc0c30a6cdd7796393e8ac5a8d5601d8d919b0c9c81c05f"
+        },
+        "policy": {},
+        "subject": "v1:sha256:83f21274cb6ebb54d4795ca42d4cd8e0ff1ddb2114d207fabf462e20b369491c"
+      },
+      "holder": "claude:e6ad/ri1041",
+      "input_fp": "v1:sha256:c73ecacc0be05e268b4fa42c6d899127dceb961e00b977067d3d8afe10ec8bc0",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "b6c549bbe003cfb7345ca08a6bc91d6315cb0fe5",
+          "commit": "b6848903f409373c3af90f90634a267685a46454",
+          "path": ".zzzops/reviews/1041/review_impl.md"
+        },
+        "summary": "Approved. Git.worktree_paths matches the design: it parses output only on exit 0, retries with bounded jittered backoff, and returns the last rc and stderr. discover refuses unchanged, now with details.git. registered_worktrees keeps its GitError failure path, and an empty list stays distinct from a failure. Those are the only two worktree-list callers on read_dev. Frozen tests are unedited and all checks pass. Minor non-blocking notes: the actual worst-case backoff is about 0.93 s, not 1.3 s, and text=True locale decoding (pre-existing in discover) now also applies to registered_worktrees."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "f4eaf7465f1d3e95392733d9ba05456702fd41d0",
+          "change": "20fa99d7ff9fcb3f16735e5004deadd71c193d1b",
+          "commit": "210b1ca6210d59f31d741b9f42dd7a8dd175ddee",
+          "tree": "a7a0cb89561713b8f66d19d548f75808635d7642"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 2,
       "correction_runs": 1,
