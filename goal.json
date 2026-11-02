@@ -210,38 +210,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 5,
-      "correction_runs": 4,
+      "attempt": 6,
+      "correction_runs": 5,
       "findings": [],
-      "finished_at": "2026-11-02T04:34:34Z",
+      "finished_at": "2026-11-02T04:58:45Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:0c556c21045dcada61dcaab09a6d222e0cdd7d4f",
-          "tests": "v1:sha256:1138f98973239d0cdff442a3242ce3b6909360c1c4b0b62ddc77d916469f2c52"
+          "tests": "v1:sha256:c355bb701fe53674d4f6e44c80da585d5c3f8c5b3ade31fd8fcef168168f4d77"
         },
         "policy": {},
-        "subject": "v1:sha256:7d9ffe7f80a135aa93051732040e4787eff34b399de87833ee9b1a3f87a0a356"
+        "subject": "v1:sha256:e4e555f797e2f301765b0dd156ada87d8d3d21387e9e845cc08b5c884835dc9a"
       },
       "holder": "claude:e6ad/rt1027",
-      "input_fp": "v1:sha256:5c38b453640a9325c6ef053ecdbcbcc4bb2e5fe4af38ec43fea449048a90fdb6",
+      "input_fp": "v1:sha256:31d557f539f6d13779f00ffd9858a77c27a795da13e2418da79f322952be278e",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "333323fffca7e21077515443f3e274a76b9e49ab",
-          "commit": "3b49062439aae463d3535551c16deec8ae80175d",
+          "blob": "e8706dda8dc39deb2ba476906c20859342d4d2da",
+          "commit": "234b6cacb4f38a171fbc29de38bc2bd02f5e8f73",
           "path": ".zzzops/reviews/1027/review_tests.md"
         },
-        "summary": "Approved. The range-diff shows commits 1-10 unchanged. Commit 11 differs only by the semantic-conflict resolution in .agents/test_engine_capabilities.py: SHIPPED = {\"lens_findings\", \"finding_follows\"}, which makes the pinned set include G1028's capability. The 27 exit-1 code count change is intact. No assertion was removed or weakened, and the SHIPPED set was widened rather than narrowed. Tests still fail without the implementation, as intended."
+        "summary": "Rebase-only delta: SHIPPED gains lenses and the default template is expected to require [lens_findings, lenses]. Both match design §3.1/§3.4/§5, given that G1022 shipped lenses and the dev template graph uses the lenses node field. test_engine_capabilities passes on the work branch (26 OK). Non-blocking: LEGACY_VERSIONS 1.2.0/1.3.0 are implemented but not pinned by tests."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
-          "base": "5288bf7ed3f8373dad773e2de48f6c7603afd985",
-          "change": "018e7f10bd7b9c6001dc4cc0aa264d8664d810b1",
-          "commit": "e1e8d0f7dc4246cc50907ab2750e22dfbb897802",
-          "tree": "d05b335b6ab3ae41fd23f5c8ec76d88057164424"
+          "base": "25186a5ee98282b3f380ff48a06b014aae34aa10",
+          "change": "f6cd2e75a808c6fc5bfe64bac07102eb179fa31c",
+          "commit": "c401f1d9681e3a1f71d01849400ab4fd758511ec",
+          "tree": "8a4f829c16fb41aa1a2bddb647f57994ce4994c2"
         }
       },
       "status": "done"
