@@ -11,6 +11,39 @@
   },
   "priority": "P2",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T16:09:57Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:cc60eabf6331555c3c73bd5ea08d6311e25f34d3",
+          "summary": "v1:sha256:6f41406393ae3d280950ffdccebf8167826eb792b98ef674cc862ba76e5cafdf"
+        },
+        "policy": {},
+        "subject": "v1:sha256:b13720cdef2e32ccd365345d17d251192b3b73210e7beb66b8bf6947998a0a10"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:eeadd0d726e4c5755981be7a23cf6d6ae8ea6bc68f0211e05282207782e30a8c",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-02T16:09:57Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "If you find any issues that arise due to this dogfooding, create goals to fix and execute them. Do not wait for my approval",
+        "summary": "Approved G1041 design (review approved, no findings). `git worktree list --porcelain` exits 128 while ZzzOps's own coordinator-mirror `git worktree add` (or any worktree add/remove) runs; Git.discover ignored the exit status. One Git helper, used by discover and registered_worktrees, trusts output only on exit 0 and retries up to 6 times with jittered backoff (~1.3 s worst case), then refuses as before with git's stderr in details. Reviewer stress test: no call needed a second retry."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "cc60eabf6331555c3c73bd5ea08d6311e25f34d3",
+          "commit": "a2a518a6d5a8e2b8d394a682606fa5b0bce60994"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 1,
       "correction_runs": 0,
