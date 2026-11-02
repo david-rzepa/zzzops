@@ -1,4 +1,4 @@
-"""G1026: design review flags owner questions; the design blocks for an interview to answer them (design revision 3).
+"""G1026: design review flags owner questions; the design blocks for an interview to answer them (design revision 6).
 
 These tests run on the SHIPPED template (`fx.SHIPPED`, G1022's 15-node graph) unless they say otherwise. They are
 written before the implementation and define these contracts (design §2-§6, §10):
@@ -15,8 +15,13 @@ written before the implementation and define these contracts (design §2-§6, §
   [{node, kind, question, text, quote, decided_by, decided_at, commit}]; None when the log fails.
 - Approve items (full form) gain `human_decisions` over their ancestor nodes (text clipped to 300 characters), omitted
   when empty, and the string "unavailable" when the history cannot be read. An agent card gains `human_decisions` for
-  its own node (a list, or a blob view of it after shrink). The card's `answer` is shown for any card whose node's
-  record is blocked and answered, not only on a retry card.
+  its own node, or, on a card whose node has a subject (a review or filter), for the subject and its ancestors (a
+  list with unclipped entries, or one blob view of it after shrink: `card._steps` adds `("blob", "human_decisions")`
+  sorted with the other blob candidates; the string "unavailable" is never a candidate). The card's `answer` is shown
+  for any card whose node's record is blocked and answered, not only on a retry card.
+- Option (b) of `test_design:1:1`: after a blocked round the owner-question finding is not live on the design card
+  (`corrections == []`); the designer gives no response for it, and the re-review resolves it against the
+  `human_decisions` on its own card and the design's `## Owner decisions` section.
 - The PR body gains `## Human decisions` after `## Reviews`, only when non-empty, one line per entry:
   `- **<node>** (<kind>; <decided_by>, <date>): <question, one line> → "<quote, one line>"`.
 - Nothing new is stored: the record schema, fingerprints and node_def_fp values are unchanged.
@@ -83,6 +88,13 @@ class OwnerQuestionsTemplateTests(unittest.TestCase):
             self.assertIn(needle, text, needle)
         self.assertGreater(len(text.encode("utf-8")), 600)         # shown as a blob view on cards (INLINE is 600)
 
+    def test_the_instruction_has_the_reviewers_resolve_rule(self):
+        """Revision 5 (3:2): the reviewer resolves an owner question against `human_decisions` on its card."""
+        text = self.policy["instructions"].get("owner_questions")
+        self.assertIsInstance(text, str, "POLICY.json has no `owner_questions` instruction")
+        self.assertIn("Resolve an owner question only when an entry in `human_decisions` on your card answers it and "
+                      "the design's `## Owner decisions` section quotes that answer; otherwise keep it open.", text)
+
     def test_the_instruction_is_listed_on_the_four_nodes(self):
         for n in ("design", "review_design", "adversary_design", "review_impl"):
             self.assertIn("owner_questions", self.nodes[n].get("instructions") or [], n)
@@ -98,7 +110,7 @@ class OwnerQuestionsTemplateTests(unittest.TestCase):
     def test_design_prompt_step_4_blocks_with_every_owner_question(self):
         text = prompt_text("design.md")
         for needle in ("owner_questions", "owner question:", "--blocked", "waiting_for: human", "Q1: ",
-                       "## Owner decisions", "human_decisions", "fixed: owner chose"):
+                       "## Owner decisions", "human_decisions", "give no response", "the review resolves"):
             self.assertIn(needle, text, needle)
 
     def test_implement_prompt_does_not_handle_owner_questions(self):
@@ -386,8 +398,8 @@ class OwnerJourneyTests(OwnerWorld):
         [commit] = self.answer_commits(g)
         ag, card = self.p.start(g, "design")
         self.assertEqual("retry", card["reason"])
-        # design.md step 4: the retry answers the owner-question finding `fixed: owner chose …`, so it is a correction
-        self.assertIn(fid, [c["id"] for c in card["corrections"]], card["corrections"])
+        # option (b): design's record was blocked, so the owner-question finding is not live on the retry card
+        self.assertEqual([], card.get("corrections", []), card.get("corrections"))
         self.assertEqual(("A", "Go with A: `human_decisions`.", "Dave"),
                          (card["answer"]["text"], card["answer"]["quote"], card["answer"]["decided_by"]))
         decisions = decisions_of(self.w, card["human_decisions"])
@@ -395,10 +407,15 @@ class OwnerJourneyTests(OwnerWorld):
         self.assertEqual(("design", "agent", commit), (decisions[0]["node"], decisions[0]["kind"],
                                                         decisions[0]["commit"]))
         out = self.p.output(self.n("design"), card)
-        out["responses"] = dict(out.get("responses") or {}, **{fid: "fixed: owner chose A"})
+        self.assertNotIn(fid, out.get("responses") or {})                   # no response for the finding
         ag.submit(g, self.n("design"), card, out, artifact="# design\n\n## Owner decisions\n\nA\n")
         rcard, _ = self.p.run(g, "review_design")                     # resolves the finding and approves
         self.assertIn(fid, [f["id"] for f in rcard["previous"]["findings"] if f["status"] == "open"])
+        # revision 5 (3:2): the review card carries the engine's record of the answer
+        self.assertIn("human_decisions", rcard)
+        rdecisions = decisions_of(self.w, rcard["human_decisions"])
+        self.assertEqual([(self.n("design"), "agent", commit)],
+                         [(e["node"], e["kind"], e["commit"]) for e in rdecisions], rdecisions)
         self.to_approve_design(g)
         self.assertEqual("resolved", next(f for f in self.p.record(g, "review_design")["findings"]
                                           if f["id"] == fid)["status"])
@@ -435,6 +452,100 @@ class OwnerJourneyTests(OwnerWorld):
         [e] = self.p.item(g, "approve_design")["human_decisions"]
         self.assertLessEqual(len(e["text"]), 300)
         self.assertTrue(e["text"].startswith("A xxx"), e["text"])
+
+
+    def test_long_answer_is_blobbed_on_the_review_card(self):
+        """Revision 6 (4:1): a long decision list is blobbed whole on the review card, not clipped."""
+        g = self.goal()
+        self.p.drive(g, lambda st: st["design"] == "current")
+        fid = self.raise_owner_question(g)
+        self.block(g, [fid])
+        long_text = "A " + "x" * 3998
+        self.assertEqual(4000, len(long_text))
+        self.answer_block(g, text=long_text)
+        self.resubmit_design(g, [fid])
+        rcard, _ = self.p.run(g, "review_design")
+        v = rcard.get("human_decisions")
+        self.assertIsInstance(v, dict, v)                                  # a blob view, not a list
+        self.assertTrue({"blob", "read", "summary"} <= set(v), v)
+        self.assertEqual("1 items", v["summary"])
+        [e] = decisions_of(self.w, v)
+        self.assertEqual(long_text, e["text"])                             # unclipped
+        self.assertEqual(self.n("design"), e["node"])
+        self.assertLess(card_size(rcard), card_size(dict(rcard, human_decisions=[e])))
+        self.to_approve_design(g)
+        [ie] = self.p.item(g, "approve_design")["human_decisions"]
+        self.assertLessEqual(len(ie["text"]), 300)                         # the item still clips
+        self.assertTrue(ie["text"].startswith("A xxx"), ie["text"])
+
+
+class ReviewCardDecisionTests(OwnerWorld):
+    """Revision 5 (3:2): a card whose node has a subject (a review or filter) carries `human_decisions` over the
+    subject and its ancestors; any other agent card carries only its own node's."""
+
+    def test_review_and_filter_cards_carry_the_subjects_and_ancestors_decisions(self):
+        g = self.goal()
+        self.p.drive(g, lambda st: st["design"] == "current")
+        fid = self.raise_owner_question(g)
+        self.block(g, [fid])
+        self.answer_block(g)
+        [commit] = self.answer_commits(g)
+        self.resubmit_design(g, [fid])
+        want = [(self.n("design"), "agent", commit)]
+
+        def entries(card, node):
+            self.assertIn("human_decisions", card, node)
+            return [(e["node"], e["kind"], e["commit"]) for e in decisions_of(self.w, card["human_decisions"])]
+
+        for node in ("review_design", "adversary_design"):                  # subject: design
+            card, _ = self.p.run(g, node)
+            self.assertEqual(want, entries(card, node), node)
+        self.p.drive(g, lambda st: st["filter_design"].startswith("ready"))
+        card, _ = self.p.run(g, "filter_design")                           # a filter: its reviewers' subject
+        self.assertEqual(want, entries(card, "filter_design"))
+        self.until_ready(g, "implement")
+        ag, card = self.p.start(g, "implement")
+        self.assertNotIn("human_decisions", card)                         # its own node only: no answers there
+        ag.submit(g, self.n("implement"), card, self.p.output(self.n("implement"), card))
+        self.until_ready(g, "review_impl")
+        card, _ = self.p.run(g, "review_impl")                             # subject implement; design an ancestor
+        self.assertEqual(want, entries(card, "review_impl"))
+
+
+class ShrinkHumanDecisionsTests(unittest.TestCase):
+    """Revision 6 (4:1): `card._steps` blobs a top-level `human_decisions` list, sorted with the blob candidates."""
+
+    ENTRY = {"node": "design", "kind": "agent", "question": "owner question: Q1 (r1): which name?",
+             "quote": "Go with A.", "decided_by": "Dave", "decided_at": "2026-11-02T10:00:00Z", "commit": "c" * 40}
+
+    def card(self, text_len, prompt_len, value=None):
+        hd = [dict(self.ENTRY, text="A " + "x" * text_len)] if value is None else value
+        return {"prompt": {"text": "p" * prompt_len}, "instructions": {}, "human_decisions": hd}
+
+    def test_a_long_list_is_a_blob_candidate_sorted_largest_first(self):
+        from engine import card as C
+        c = self.card(5000, 700)
+        steps = C._steps(c)
+        self.assertIn(("blob", "human_decisions"), steps)
+        self.assertLess(steps.index(("blob", "human_decisions")), steps.index(("blob", "prompt")))
+        out = C._apply(c, ("blob", "human_decisions"), None)
+        v = out["human_decisions"]
+        self.assertIsInstance(v, dict)
+        self.assertTrue({"blob", "read", "summary"} <= set(v), v)
+        self.assertEqual("1 items", v["summary"])
+        self.assertEqual(c["prompt"], out["prompt"])
+        self.assertIn(("blob", "human_decisions"), C.shrink_candidates(c))
+
+    def test_a_short_list_is_not_blobbed_ahead_of_a_large_prompt(self):
+        from engine import card as C
+        steps = C._steps(self.card(10, 5000))
+        self.assertLess(steps.index(("blob", "prompt")), steps.index(("blob", "human_decisions")))
+
+    def test_unavailable_and_an_existing_view_are_never_candidates(self):
+        from engine import card as C
+        for value in ("unavailable", {"summary": "1 items", "blob": "b" * 40, "read": "git cat-file -p " + "b" * 40}):
+            steps = C._steps(self.card(0, 5000, value=value))
+            self.assertFalse([st for st in steps if "human_decisions" in st], (value, steps))
 
 
 class DurabilityTests(OwnerWorld):
@@ -511,8 +622,21 @@ class DurabilityTests(OwnerWorld):
         ag, card = self.p.start(g, "design")
         self.assertNotIn("answer", card)
         self.assertNotIn("human_decisions", card)
-        self.assertIn(fid, [c["id"] for c in card["corrections"]])              # G1028 carries it
-        ag.submit(g, self.n("design"), card, blocked=blocked_file([fid]))
+        # a blocked record's findings are not live, with or without G1028: the stale card has no corrections
+        self.assertEqual([], card.get("corrections", []), card.get("corrections"))
+        ag.submit(g, self.n("design"), card, self.p.output(self.n("design"), card), artifact="# design v2\n")
+        self.assertEqual("done", self.p.record(g, "design")["status"])
+        # the finding stays open on review_design's record; the re-review sees it and keeps it open
+        self.p.drive(g, lambda st: st["review_design"].startswith("ready"))
+        rcard, _ = self.p.run(g, "review_design", keep_open=(fid,))
+        self.assertIn(fid, [f["id"] for f in rcard["previous"]["findings"] if f["status"] == "open"])
+        self.assertNotIn("human_decisions", rcard)                      # no answer yet: no key
+        self.assertEqual("open", next(f for f in self.p.record(g, "review_design")["findings"]
+                                      if f["id"] == fid)["status"])
+        self.p.drive(g, lambda st: st["filter_design"].startswith("ready"))
+        self.p.run(g, "filter_design")
+        self.assertEqual("ready (reopened)", self.p.states(g)["design"])
+        self.block(g, [fid])                                            # asserts fid is in the corrections
         self.assertIsNotNone(self.blocked_item(g))
 
     def test_the_answer_commit_subject_is_the_index(self):
