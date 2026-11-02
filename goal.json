@@ -1,0 +1,22 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [
+    1025,
+    1026,
+    1027
+  ],
+  "graph": "default",
+  "id": 1039,
+  "links": {
+    "issue": null
+  },
+  "priority": "P1",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Found while dogfooding Release 1. Every sync of a goal with the integration branch marks test_design, review_tests, implement, run_tests and review_impl stale, even when the goal's own diff did not change. G1027 synced twice and ran out of its correction budget (19 of 18) mostly that way.\n\nOwner decisions (verbatim):\n- \"Ok I guess, but syncing to trunk changes things semantically like you said.\"\n- On what re-runs after a sync merge where the goal's own diff didn't change, the owner chose \"Tests + code review\": design and tests reviews stay valid; run_tests always re-runs, and review_impl re-runs with a card focused on what the trunk merge brought in.\n- \"I think we may as well get these done now, before dogfooding again\"\n\nScope:\n- A sync whose goal diff is unchanged (the goal's own changes against the new trunk equal its changes against the old trunk, apart from context) keeps design, review_design, approve_design, test_design, review_tests and implement current.\n- run_tests always re-runs after a sync.\n- review_impl re-runs after a sync; its card shows what the trunk brought in that touches the goal (files the goal also changes, names it uses) and asks for semantic conflicts, not a full re-review.\n- A sync that changes the goal's diff (conflict resolutions, or trunk changes inside the goal's hunks) stales as today.\n- Re-runs caused by a clean sync do not count against the goal's correction budget.\n\nAcceptance:\n- Replaying G1027's second sync (onto G1022) keeps the reviews of design and tests, re-runs run_tests, and gives review_impl a sync-focused card that names the graph26 fixture change.\n- A conflicting sync stales as today.\n- This PR edits docs/design/SPEC.md and DESIGN.md for every contract change it makes and adds a HISTORY §4 row.",
+  "state": "open",
+  "title": "A clean trunk sync keeps design and tests reviews; run_tests and a focused code review re-run"
+}
