@@ -173,6 +173,52 @@
         }
       },
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T22:34:41Z",
+      "fp_parts": {
+        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "inputs": {
+          "base": "v1:sha256:0c2a08d0bde69e18e656d474372b82dbd482df44464aef4c1e75be377a0d3fac",
+          "doc": "v1:blob:4f9af989059cfa941d80e35d7bcee2094bea961c"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        ".agents/fixtures/g1043_property_ast.json",
+        ".agents/test_ci_selection.py",
+        ".agents/test_design_docs.py",
+        ".agents/test_engine_capabilities.py",
+        ".agents/test_engine_cost_baseline.py",
+        ".agents/test_engine_cost_context.py",
+        ".agents/test_engine_test_cost.py",
+        ".agents/test_local_validation.py"
+      ],
+      "holder": "codex:takeover/1043-test-design",
+      "input_fp": "v1:sha256:b265e29dc9d9a027ec4a958b5d8321e728cd005334a0c28ddc5e53133a261b45",
+      "ok": true,
+      "output": {
+        "commands": [
+          "python3 -m unittest discover -s .agents -p 'test_local_validation.py'",
+          "python3 -m unittest discover -s .agents -p 'test_engine_test_cost.py'",
+          "python3 -m unittest discover -s .agents -p 'test_engine_cost_baseline.py'",
+          "python3 -m unittest discover -s .agents -p 'test_engine_cost_context.py'",
+          "python3 -m unittest discover -s .agents -p 'test_ci_selection.py'",
+          "python3 -m unittest discover -s .agents -p 'test_engine_capabilities.py'",
+          "python3 -m unittest discover -s .agents -p 'test_design_docs.py'"
+        ],
+        "tests": {
+          "base": "de5640d1c5909ea924450aeea6450497a78946f6",
+          "change": "861fab1b9e42b7cbf48932fa2511504c86570f25",
+          "commit": "35acd9dd0e8261a1222420f0947d143d00168630",
+          "tree": "fbf0f3ee749d8000efbe437dafe021749c2f19bf"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
