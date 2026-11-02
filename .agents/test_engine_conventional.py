@@ -177,6 +177,47 @@ class SubmitTests(unittest.TestCase):
         self.assertIn("only base makes merge commits", out["error"]["message"])
 
 
+class FakeMergeTests(msf.OpFixture):
+    def test_fake_honors_messages_and_replays_each_commit_for_rebase(self):
+        tests = self.publish({"tests/probe.txt": "test\n"}, "test: probe\n\nTest body")
+        head = self.publish({"src/probe.py": "code\n"}, "feat!: probe\n\nBREAKING CHANGE: migrate users")
+        trunk = self.trunk({"upstream.txt": "advanced base\n"})
+        gh = self.ctx().gh
+        url = gh.run("pr", "create", "--head", "zzzops/work/g1000", "--base", "dev",
+                     "--title", "Default PR title", "--body-file", "-", input="PR body")
+        number = url.strip().rsplit("/", 1)[-1]
+        initial = self.fake.load()
+        for method in ("squash", "merge", "rebase"):
+            with self.subTest(method=method):
+                self.fake.save(copy.deepcopy(initial))
+                self.w.remote_git("update-ref", "refs/heads/dev", trunk)
+                self.w.remote_git("update-ref", "refs/heads/zzzops/work/g1000", head)
+                args = ["pr", "merge", number, f"--{method}", "--match-head-commit", head]
+                if method != "rebase":
+                    args += ["--subject", "fix!: explicit subject", "--body", "Explicit body\n\nBREAKING CHANGE: preserved"]
+                gh.run(*args)
+                self.repo.git("fetch", "-q", "origin", "dev")
+                tip = self.repo.git("rev-parse", "FETCH_HEAD")
+                parents = self.git.out("rev-list", "--parents", "-n", "1", tip).split()[1:]
+                if method == "rebase":
+                    commits = self.git.out("rev-list", "--reverse", f"{trunk}..{tip}").split()
+                    self.assertEqual(2, len(commits))
+                    self.assertEqual(["test: probe", "feat!: probe"], [self.ident.subject(c) for c in commits])
+                    self.assertEqual(trunk, self.git.out("rev-parse", f"{commits[0]}^"))
+                    self.assertEqual([commits[0]], parents)
+                    for original, replay in zip((tests, head), commits):
+                        self.assertEqual(self.git.out("show", "-s", "--format=%B", original),
+                                         self.git.out("show", "-s", "--format=%B", replay))
+                        self.assertEqual(2, len(self.git.out("rev-list", "--parents", "-n", "1", replay).split()))
+                else:
+                    self.assertEqual([trunk] if method == "squash" else [trunk, head], parents)
+                    self.assertEqual("fix!: explicit subject\n\nExplicit body\n\nBREAKING CHANGE: preserved",
+                                     self.git.out("show", "-s", "--format=%B", tip))
+                self.assertEqual("advanced base", self.git.out("show", f"{tip}:upstream.txt"))
+                self.assertEqual("test", self.git.out("show", f"{tip}:tests/probe.txt"))
+                self.assertEqual("code", self.git.out("show", f"{tip}:src/probe.py"))
+
+
 class EngineSubjectsTests(msf.OpFixture):
     def test_combine_is_conventional_without_needing_merge_mode(self):
         left = self.publish({"left.txt": "left\n"}, "feat: left")
