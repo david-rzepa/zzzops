@@ -159,6 +159,17 @@ class LegacyMinTests(CapWorld):
         self.assertEqual({"lens_findings"}, set(caps("1.1.0")))
         self.assertEqual({"engine_min_99.0.0"}, set(caps("99.0.0")))
 
+    def test_mapping_covers_the_rollouts_of_g1028_and_g1022(self):
+        """1.2.0 (G1028) and 1.3.0 (G1022) floors keep working through the fixed map (review_impl:1:1)."""
+        from engine import schemas
+        self.assertEqual(("lens_findings", "finding_follows"), tuple(schemas.LEGACY_VERSIONS["1.2.0"]))
+        self.assertEqual(("lens_findings", "finding_follows", "lenses"), tuple(schemas.LEGACY_VERSIONS["1.3.0"]))
+        caps = schemas.legacy_caps
+        self.assertEqual({"lens_findings", "finding_follows"}, set(caps("1.2.5")))
+        self.assertEqual({"engine_min_1.3.1"}, set(caps("1.3.1")))
+        self.assertTrue(schemas.follows_required({"engine": {"min": "1.2.0"}}))
+        self.assertFalse(schemas.follows_required({"engine": {"min": "1.1.0"}}))
+
     def test_old_floors_proceed_and_validate_warns(self):
         for mn in ("0.0.0", "1.0.0", "1.1.0"):
             self.set_engine({"min": mn})
