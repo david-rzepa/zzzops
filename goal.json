@@ -205,6 +205,44 @@
       "reason": "stale",
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T04:01:45Z",
+      "fp_parts": {
+        "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
+        "inputs": {
+          "code": "v1:sha256:072fbac614d4b310ee9b48097a553d3f65a361b9c8070bd3a42399c8fce72cba",
+          "doc": "v1:blob:496ddd5a4af997072a6592b0a8c591ece5625b54",
+          "tests": "v1:sha256:ab4587ed9a9ccbce97138a167701b6cb6f77e23c735bc427c074110e3425c3a1"
+        },
+        "policy": {},
+        "subject": "v1:sha256:d007dd74290ed17d318931516dfb0934dd43149f8625e7fa13fdbfa3f4aadb86"
+      },
+      "holder": "claude:e6ad/rd1022",
+      "input_fp": "v1:sha256:145f1cbd98eca313c4e67582e725df3c25db98061679be5b1075f54e48685b65",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "824f20c66a34466732a6a3456daf479665ac85f8",
+          "commit": "e166b12291c128fe14bba1a5721863b0661588db",
+          "path": ".zzzops/reviews/1022/review_impl.md"
+        },
+        "summary": "Approved: the 15-node graph, the lenses field, <node>:<lens> skips, lens tags, the lenses fingerprint and budget exemption, the card checklist, approval and PR display and docs match design rev 2. Both reported departures are sound: the redefined-input exemption is exactly the inputs the definition added or removed (confirmed with a probe), and lenses.text uses the same INLINE/blob rule as prompt. Tests are not weakened. Notes: a stale paired-skip example in DESIGN §4.1, the config number in SPEC §4.10, and that rebasing to 1.3.0 must also update the HISTORY row and three MIGRATING mentions."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "change": "a9c19f896fa543cfb0581e34d7862e917ee93c7a",
+          "commit": "256ec0e52ee761899293de959dfdd624af06c676",
+          "tree": "d5ab0d4591f962c1710a39bf895b21a1c09cb85e"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 2,
       "correction_runs": 1,
