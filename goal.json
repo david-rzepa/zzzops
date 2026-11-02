@@ -13,7 +13,35 @@
     "issue": null
   },
   "priority": "P2",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 2,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T21:57:23Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:dfef81fe9927f05fe42e5b7c08e03d8747480ff39ae9973692aa51f8f7e51844",
+          "spec": "v1:sha256:b88c64f0769611a174678629021d8728af2d09c70c12c391029615dac4a4b5ac"
+        },
+        "policy": {}
+      },
+      "holder": "codex:takeover/1042-design",
+      "input_fp": "v1:sha256:f4367a9148a851d4fa9e3c02aa6ed84d053c5669dba8fc87248e18ff541eddd6",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "abd52351d4bb795f01ba11ba8ecbbd49b84b2319",
+          "commit": "3b826719032b1e62b0e1266d218194dd939319a4",
+          "path": ".zzzops/reviews/1042/design.md"
+        },
+        "summary": "Audit the README against the implementation tip and correct its opening, capture/owner-decision wording, capability compatibility, optional release branching and supporting execution docs without changing branding. The PR will map each changed or removed claim to source evidence, explain how the updated tree reaches main, and propose exact GitHub description/topic corrections for explicit owner approval before applying them at merge. Reuse existing documentation, disclosure and positioning checks; no engine or policy change is introduced."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
