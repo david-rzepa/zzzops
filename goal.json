@@ -15,10 +15,10 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 3,
-      "correction_runs": 1,
+      "attempt": 4,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-02T16:15:26Z",
+      "finished_at": "2026-11-02T16:29:57Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -27,18 +27,23 @@
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/d1039d",
+      "holder": "claude:e6ad/d1039e",
       "input_fp": "v1:sha256:dc968d2d2ebcb0aee81da53bc28e811f6daf071e158c0e5c7402bc84f6fdd85a",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "f130aca0cd404c195476bd4a9f36df79bf14ddfd",
-          "commit": "53b0e020522b39168a27c7deddea553d85eae336",
+          "blob": "48db30e141b058f1e0aa82e4687321fdb6b2dc6e",
+          "commit": "e121cd29b573b34361c05471655ac94198e1ab84",
           "path": ".zzzops/reviews/1039/design.md"
         },
-        "summary": "Revision 2 adopts G1038 §6 verbatim: G1039 only replaces the body of carry.unchanged(ident, node, key, old_cp, new_cp, scope) with a zero-context patch-id comparison (Identity.change gains unified=; the scope is records.checkpoint_scope from record.frozen, never stored; carry.relocate and the kept change are G1038's), and the sync card reads synced = {old, onto, work, tip, merge, resolved} while previous.interdiff/previous.syncs stay G1038's. In rebase mode (until the policy requires merge_sync) carry stays today's replay map, but the review_impl base edge, the sync-focused card and the budget exemption still apply; sticky merge mode keeps the widened predicate on merge-synced branches only. round_budget is checked against G1027's merged capability code: one file under engine/capabilities/, appended to SHIPPED, and the new counting rule is used only while the policy requires it (SPEC §4.5). The budget redefinition (10 rounds with new material findings per stage) is unchanged."
+        "responses": {
+          "review_design:1:1": "fixed: §3.1/§3.2 add check 2. For each hand-resolved path inside the node's scope (every path when scope is None), M's blob must equal `git merge-file -p --union` of the W/B0/O versions, in either side order. Otherwise the node stales. The hand-resolved set is derived inside `unchanged()`, which keeps G1038's signature: `carry.resolved_paths(ident, M)` diffs M against G1038's merge-tree T, recomputed and memoized per M, and this equals synced.resolved. `carry.union_kept` does the comparison. The HISTORY both-rows case still carries in either order (verified). Interleaved, moved, wrong-copy, mixed-order and modify/delete resolutions stale the node. Tests 1 and 6 add the reordered and moved-line cases, and the moved-line test asserts that check 1 alone would have carried it. §1 now says 'trunk edits to the goal's own -/+ lines' and that context edits inside the -U3 hunk carry (test 4).",
+          "review_design:1:2": "fixed: §3.4 and the §4 table add `(\"blob\", \"sync\", \"touching\")` to the size-sorted blob steps, keeping more and all. They also add `(\"fold\", \"sync\")`, which runs after every blob step and folds everything except from/to/diff/log into one blob view, `sync.detail`. Both go into card._steps/_apply and the SPEC §4.20 list. The constant ask moves into review.md as an 'After a trunk sync' section. Prompts are not fingerprinted (SPEC §4.8), and the card has no `ask` key. Test 11 is restated: real re-run cards already exceed 4,096 bytes because `previous` is unshrunk (G1019's job). After shrink, `sync` is exactly {from, to, diff, log, detail}, so it adds at most one view. The previous-driven fixed point still holds.",
+          "review_design:1:3": "fixed: §3.5 exempts a record only when the node has no checkpoint outputs (`graph.checkpoint_outputs(n) == []`) and every stale key is a base-selecting input. In practice that is a review_impl re-run whose subject was carried. A test_design or implement re-run after a sync that carry refused counts when it raises a new material finding. Test 7 adds these rows: implement stale only on inputs.base with a new material finding -> 1; test_design the same -> 1; implement with no new finding -> 0. Also fixed the noted inconsistency: §3.5 and §4 now both call `res.budget` a shape change, not an additive one (used/agents/over are replaced by stages while round_budget is required, and the old shape is kept otherwise), and they list its in-repo readers."
+        },
+        "summary": "Revision 3 builds on revision 2 and fixes only the three round-1 findings. The carry predicate now needs two things: equal -U0 patch ids, and, for every hand-resolved path inside the node's scope, a merged blob equal to `git merge-file --union` of the three versions in either side order. The resolved paths are derived from the sync merge, so the HISTORY both-rows case still carries, and reordered, moved or wrong-copy resolutions stale the node. The card's `sync` section gets two shrink steps in card._steps and SPEC §4.20, and its constant ask text moves into review.md. Test 11 now bounds only what `sync` adds after shrink (one view), because `previous` keeps re-run cards over 4 KB (G1019). The budget exemption is limited to nodes with no checkpoint outputs, and `res.budget` is documented as a shape change."
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
