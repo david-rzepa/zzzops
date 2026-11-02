@@ -261,38 +261,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 6,
-      "correction_runs": 5,
+      "attempt": 7,
+      "correction_runs": 6,
       "findings": [],
-      "finished_at": "2026-11-02T04:58:45Z",
+      "finished_at": "2026-11-02T14:34:31Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:0c556c21045dcada61dcaab09a6d222e0cdd7d4f",
-          "tests": "v1:sha256:c355bb701fe53674d4f6e44c80da585d5c3f8c5b3ade31fd8fcef168168f4d77"
+          "tests": "v1:sha256:327889640ce64f2b6b24e8f00505e05584819b7daf5b36389675a2c0c7b443da"
         },
         "policy": {},
-        "subject": "v1:sha256:e4e555f797e2f301765b0dd156ada87d8d3d21387e9e845cc08b5c884835dc9a"
+        "subject": "v1:sha256:4ca2323b8c9c9e8cd5b3e8d038224944a080604265fd9c7e225e39ffbae8a06b"
       },
-      "holder": "claude:e6ad/rt1027",
-      "input_fp": "v1:sha256:31d557f539f6d13779f00ffd9858a77c27a795da13e2418da79f322952be278e",
+      "holder": "claude:e6ad/rt1027b",
+      "input_fp": "v1:sha256:24b67389cdd6e03c9f58d23595bc774acb1a91daf380f74fefd037ebfa6e4dea",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "e8706dda8dc39deb2ba476906c20859342d4d2da",
-          "commit": "234b6cacb4f38a171fbc29de38bc2bd02f5e8f73",
+          "blob": "feba7a34ea2290ee7d200771f6602fbb694422c2",
+          "commit": "3c27ed0c19030bbca1068a3071ff4f805f279d56",
           "path": ".zzzops/reviews/1027/review_tests.md"
         },
-        "summary": "Rebase-only delta: SHIPPED gains lenses and the default template is expected to require [lens_findings, lenses]. Both match design §3.1/§3.4/§5, given that G1022 shipped lenses and the dev template graph uses the lenses node field. test_engine_capabilities passes on the work branch (26 OK). Non-blocking: LEGACY_VERSIONS 1.2.0/1.3.0 are implemented but not pinned by tests."
+        "summary": "The new test pins the 1.2.0 (G1028) and 1.3.0 (G1022) map entries as exact cumulative tuples, the in-between (1.2.5) and above-map (1.3.1 sentinel) cases, and follows_required at 1.2.0/1.1.0. This matches design 3.3/5 and every case review_impl:1:1 asked for. 27 tests OK in the g1027 worktree. No findings."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "25186a5ee98282b3f380ff48a06b014aae34aa10",
-          "change": "f6cd2e75a808c6fc5bfe64bac07102eb179fa31c",
-          "commit": "c401f1d9681e3a1f71d01849400ab4fd758511ec",
-          "tree": "8a4f829c16fb41aa1a2bddb647f57994ce4994c2"
+          "change": "55ee24e956dad99b6651db4117d66691a348fc8c",
+          "commit": "a223d4552ca5654f806b5767b19dd64756dfdecf",
+          "tree": "65921a985fbc31f2fea39aa3ec5dce92c4a61dd1"
         }
       },
       "status": "done"
