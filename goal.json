@@ -116,7 +116,20 @@
     "implement": {
       "attempt": 2,
       "correction_runs": 1,
-      "findings": [],
+      "findings": [
+        {
+          "id": "implement:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "implement",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:c7f94edf13e07c8ba39968ee1d31d9012655d668cdf8787828753ca2763e4e54",
+          "text": "Independent preliminary review reproduced sticky merge-mode policy-block op_state dropping prior old base. After capability restoration and dependency removal, resume falls back to merge-base and incorrectly retains dependency-only files. Preserve prior old base through policy blocks and retries.",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-02T22:33:12Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
