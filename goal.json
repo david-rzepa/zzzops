@@ -112,7 +112,20 @@
     "implement": {
       "attempt": 2,
       "correction_runs": 1,
-      "findings": [],
+      "findings": [
+        {
+          "id": "implement:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "implement",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:985e5513b5381c2bd6bdb121f63ca82ccdde6a59b53968eb976c7a28efae5845",
+          "text": "Preliminary code review reproduced failure normalization conflating distinct --strategy and --protocol options into --#, turning different failing checks into a repeated disputed finding. Restrict temp-path normalization and preserve stable command tokens.",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-02T22:11:53Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
