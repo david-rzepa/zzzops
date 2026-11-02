@@ -45,6 +45,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T17:17:05Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:fa9a7a6d890a14d8aeeb9b94e77cf7cfb8186ee8ac4114150b97b303b19f3a78"
+        },
+        "policy": {},
+        "subject": "v1:sha256:045c1d2c6cb24fe624a58c21c2ada5006d84f67686857f6c5f301af94d9975f0"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:061324407b0b9993f084b6fd19214a0f1818e835495e8c200c90a283c6c8dfa5",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-02T17:17:05Z",
+        "decided_by": "Dave (owner), recorded by Claude (root agent)",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approved merging PR #760 (G1026) at head 2d21fb1 into dev: reviews flag `owner question:` findings (always material) only when undoing a wrong choice would reach outside the goal or change product behaviour/direction and no option clearly dominates; the design blocks for an interview; the owner's words are recorded verbatim; the re-review resolves the question against human_decisions carried on review/filter cards; approve items and the PR body list human decisions; card.shrink blobs the unclipped list. Seven design revisions, four test-review rounds, code review approved with no findings; synced onto dev after G1027; full suite and required CI passed (macOS job re-run after a cancel). Head is an empty commit that keeps the PR head newest. The owner asked to merge everything on the Release 1 stack; merged with --admin because of the dev ruleset's last-push rule."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "f4eaf7465f1d3e95392733d9ba05456702fd41d0",
+          "change": "3a2e9b59fc1716de810fbe2b214f69577fb2afc7",
+          "commit": "7f6788498ad91db48140b8e3927ab2df23f39e71",
+          "tree": "9537f6aeaa9cac1a03d8b592185b925cab82ea92"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 3,
       "correction_runs": 2,
