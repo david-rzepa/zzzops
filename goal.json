@@ -15,30 +15,30 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 2,
-      "correction_runs": 0,
+      "attempt": 3,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-02T15:38:13Z",
+      "finished_at": "2026-11-02T16:15:26Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
-          "dep_designs": "v1:sha256:715c01eaee101c3c5912543efc2418760d47db48ee2a2e696417f44acbd34fa7",
+          "dep_designs": "v1:sha256:f73fb9ce655c04f16f06eebd2e179543e7587b6e973c0cc281029d2fff395d35",
           "spec": "v1:sha256:c3c8269a8b2c0441b4f34016b97cc295747f075760cca82339fce4a699da9326"
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/d1039",
-      "input_fp": "v1:sha256:2fbc591013ff0b15c1d0ce6c596b1ee9e078c389853f3bc76f263d8e44221afb",
+      "holder": "claude:e6ad/d1039d",
+      "input_fp": "v1:sha256:dc968d2d2ebcb0aee81da53bc28e811f6daf071e158c0e5c7402bc84f6fdd85a",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "7c8f0f52281711c362a9f824a0bc67cfe2544f67",
-          "commit": "a3c2b1b17be754192cd34d5e8a747cca8718d5ca",
+          "blob": "f130aca0cd404c195476bd4a9f36df79bf14ddfd",
+          "commit": "53b0e020522b39168a27c7deddea553d85eae336",
           "path": ".zzzops/reviews/1039/design.md"
         },
-        "summary": "A sync carries a node when its own diff has the same zero-context patch id against the old and new trunk. The carried change is kept, so the design and tests reviews stay current; run_tests re-runs, and review_impl re-runs through a new base input with a sync-focused card. The budget becomes a per-stage limit (default 10) on agent rounds that raise new material findings, kept in correction_runs and counted in the stage of the node that raised them. Clean-sync re-runs never count, and capability round_budget gates the change. G1039 widens G1038's single carry predicate and reads its sync record, so it must merge after G1038."
+        "summary": "Revision 2 adopts G1038 §6 verbatim: G1039 only replaces the body of carry.unchanged(ident, node, key, old_cp, new_cp, scope) with a zero-context patch-id comparison (Identity.change gains unified=; the scope is records.checkpoint_scope from record.frozen, never stored; carry.relocate and the kept change are G1038's), and the sync card reads synced = {old, onto, work, tip, merge, resolved} while previous.interdiff/previous.syncs stay G1038's. In rebase mode (until the policy requires merge_sync) carry stays today's replay map, but the review_impl base edge, the sync-focused card and the budget exemption still apply; sticky merge mode keeps the widened predicate on merge-synced branches only. round_budget is checked against G1027's merged capability code: one file under engine/capabilities/, appended to SHIPPED, and the new counting rule is used only while the policy requires it (SPEC §4.5). The budget redefinition (10 rounds with new material findings per stage) is unchanged."
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     }
   },
