@@ -115,45 +115,32 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 1,
-      "correction_runs": 0,
-      "findings": [
-        {
-          "id": "implement:1:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "test_design",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:5b97603be997be20623ef56820260e7e57e99b6da04dc3b0be592218db080f02",
-          "text": "Frozen test_engine_cost_context.py::CostPlumbingJourney.test_measured_cost_reaches_review_and_actual_checks_summary_reaches_full_approval declares review_tests.inputs.cost with context:true (setUp), then reads reviewed[\"inputs\"][\"cost\"] at line294. card.build correctly routes context:true values to card[\"context\"] (card.py lines117–122/149), and approved design section6 requires that context placement. The test raises KeyError before checks execution; changing product semantics would violate the design. Correct the fixture access to reviewed[\"context\"][\"cost\"], preserving its measured red/green command and blob handling. No feature assertions should be weakened. Source changes are uncommitted/private and worktree is clean at the approved tests-only checkpoint.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-02T23:08:54Z",
+      "attempt": 2,
+      "correction_runs": 1,
+      "findings": [],
+      "finished_at": "2026-11-02T23:51:03Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
           "base": "v1:sha256:a517aeb92cc9adc5bfaa0dba482802d7f6f0acd71b9b18bd9ea68112a8c4054a",
           "doc": "v1:blob:a361e31ab8798ddb675ac6b835eda82dd46266c9",
-          "tests": "v1:sha256:efd2965f0761716e4636df9b3d8db14cbe13cf6d3d1cd81ded04d165e4335fd3"
+          "tests": "v1:sha256:37f77726f16c787978fbe63007db62f56fcaad1e0a64cc26ffb6fed021ea6384"
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1043-implement",
-      "input_fp": "v1:sha256:bdd2f779e95d64bfc2882851cb34c00ec08613b7589fafe5f0438fd59e3c99d7",
+      "holder": "codex:takeover/1043-implement-restored",
+      "input_fp": "v1:sha256:ea177aade27bcfe5e5bf3e9fc50d4304e2273d428b30cbbc3510c4a68b38f8db",
       "ok": true,
       "output": {
         "code": {
           "base": "575015a9831ccd2ce724c3125dd74dd20029c1b5",
-          "change": "a52a0500536e9b7e5b4e1ae719c13985815f8f2e",
-          "commit": "a259db280b0c3e234b3f9ee9914e3dafdeb05757",
-          "tree": "72af0e5493de58a5bb6a95983052af8b4cd803e9"
+          "change": "9576ffcca571cc3a7598467c4f2786d9780f05fc",
+          "commit": "53cc184c003604fb6219b6f98b948ab62c4a34bd",
+          "tree": "0bd9113728aa4787af2e16b00cab7a736a447e94"
         },
-        "summary": "Implementation is incomplete and no product source has been committed. Independent component checks passed for command lanes, bounded baseline selection and runner behavior, but the approved end-to-end cost-plumbing test reads the context:true cost from inputs instead of context. Product edits have been saved privately and removed from the source-free tests checkpoint so test_design can correct the fixture before implementation continues."
+        "summary": "Implemented individual-ID local sharding, parent-capped concurrent verification lanes, measured test-cost review/approval context and bounded same-source total/repository timing comparisons. At the final checkpoint, all 984 canonical test IDs executed and completed exactly once with no failures, errors or skips in 168.06 seconds on 20 workers; all seven required focused commands and Python 3.10 compatibility checks passed. Process-tree/pipe termination failures preserve the worktree and block for recovery, and failure reports retain IDs/tracebacks with actionable compact tails. Installed repository policy is unchanged; adoption remains its separate owner-approved policy PR, with template-history refresh deferred until the G1024 updater is in the integration base."
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "review_design": {
