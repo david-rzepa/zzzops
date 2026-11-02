@@ -24,9 +24,21 @@ def to_iso(text):
         return text
 
 
+def dependent_target(ctx, head, default):
+    """A dependent PR goes to its own goal's target, not the merged goal's (G1025 §8)."""
+    import re
+    m = re.match(r"^zzzops/pr/g(\d+)$", head or "")
+    if not m or ctx.session is None:
+        return default
+    res = ctx.session.portfolio().goals.get(int(m.group(1)))
+    b = (res.target or {}).get("branch") if res else None
+    return b or default
+
+
 def _run(ctx):
     gh, snap = ctx.gh, ctx.snap
-    g, I = ctx.goal, snap.I
+    g = ctx.goal
+    I = (ctx.target or {}).get("branch") or snap.I          # the goal's target (G1025), the integration branch by default
     pr = ctx.inputs["pr"]
     n, H = pr["number"], pr["head"]
 
@@ -47,8 +59,9 @@ def _run(ctx):
             return Blocked({"category": "external", "waiting_for": "human", "reason": "PR merged other code",
                             "question": f"PR #{n} for G{g} was merged with code other than the reviewed checkpoint. Open a "
                                         f"follow-up goal for the difference, then cancel G{g}."})
-        for m in gh.json("pr", "list", "--base", f"zzzops/pr/g{g}", "--state", "open", "--json", "number") or []:
-            gh.run("pr", "edit", str(m["number"]), "--base", I)
+        for m in gh.json("pr", "list", "--base", f"zzzops/pr/g{g}", "--state", "open", "--json",
+                         "number,headRefName") or []:
+            gh.run("pr", "edit", str(m["number"]), "--base", dependent_target(ctx, m.get("headRefName"), I))
         if ctx.inputs.get("issue"):
             try:
                 gh.run("issue", "close", str(ctx.inputs["issue"]), "--comment", f"Done in #{n}.")

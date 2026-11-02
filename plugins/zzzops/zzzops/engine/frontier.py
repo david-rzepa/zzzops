@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from engine.canon import parse_iso
-from engine.fingerprint import fp_parts, input_fp, out_fp, stale_keys
+from engine.fingerprint import fp_parts as _fp_parts, input_fp, out_fp, stale_keys
 from engine.schemas import Graph, is_material
 
 ABSENT = object()
@@ -142,11 +142,42 @@ def recorded_out(doc: dict, p: str):
 # --------------------------------------------------------------------------------------------- frontier
 
 
-def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: dict, now: int):
+def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: dict, now: int, lctx: dict | None = None):
     """States of one goal's nodes. `leases`: node -> Lease (valid leases only). Returns (st, cur, live, notes, stale):
     `notes` maps a target to the (lens, finding, reason) of its open lens findings that a fresh filter judged `note`;
-    `stale` is the set of carriers whose done record is not fresh (their findings may be carried, G1028)."""
+    `stale` is the set of carriers whose done record is not fresh (their findings may be carried, G1028).
+    `lctx` (G1025, branching only): {"target", "integration", "effective", "hotfix_waiting", "upstream",
+    "members_open", "line_behind"}; None keeps every rule as it was."""
     N, topo = graph.nodes, graph.topo
+    lx = lctx or {}
+    tpart = lx.get("target") if lx.get("target") and lx.get("target") != lx.get("integration") else None
+    effective = lx.get("effective", settings["releases"]["current"])
+    hotfix_member = bool((doc.get("flow") or {}).get("hotfix"))
+
+    def fp_parts(graph, n, vals, subj_rec, settings, records=None, skip=None):
+        p = _fp_parts(graph, n, vals, subj_rec, settings, records, skip)
+        if tpart and N[n].get("op") == "git.base":
+            p["target"] = tpart
+        return p
+
+    def line_wait(n, node):
+        """A frontier-computed wait (G1025 design §6, §7, §8): never recorded, so it ends on its own."""
+        if not lctx:
+            return None
+        if node.get("op") == "git.base":
+            if lx.get("hotfix_waiting"):
+                x = lx["hotfix_waiting"]
+                return {"name": "waiting", "until": f"hotfix {x} started", "reason": "hotfix_start"}
+            mi = (lx.get("upstream") or {}).get("merged_in_target") or {}
+            late = sorted(int(d) for d, ok in mi.items() if ok is False)
+            if late:
+                return {"name": "waiting", "until": f"G{late[0]}'s release sync", "reason": "release_sync"}
+        if node.get("line_complete") and lx.get("members_open"):
+            ids = ", ".join(f"G{x}" for x in lx["members_open"])
+            return {"name": "waiting", "until": f"{ids} of the line close", "reason": "line_members_open"}
+        return None
+
+    comp = {}
     skip = doc.get("skip") or {}
     records = doc.get("records") or {}
     R = {n: records[n] for n in topo if n in records and n not in skip}
@@ -227,14 +258,22 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
             f = input_fp(rparts) if rparts else None
             st[n] = {"name": "running", "lease": L, "fp": f, "parts": rparts}
             continue
+        if (missing or lx.get("hotfix_waiting")) and lctx and node.get("op") == "git.base":
+            # a merged dependency not in the target yet, or no hotfix line: a hotfix member with no line waits even
+            # when its base record is current, so nothing below it runs against the integration branch (§4, §7)
+            w = line_wait(n, node)
+            if w:
+                st[n] = w
+                continue
         if missing:
             st[n] = {"name": "blocked", "missing": missing}
             continue
-        if node.get("release_gate") and doc["release"] > settings["releases"]["current"]:
+        if node.get("release_gate") and not hotfix_member and doc["release"] > effective:
             st[n] = {"name": "waiting", "until": f"release {doc['release']}", "reason": "release"}
             continue
         parts = fp_parts(graph, n, vals, R.get(subj), settings, R, skip)
         f = input_fp(parts)
+        comp[n] = (f, parts)
         corr = sorted((x for _, x in live[n]), key=lambda x: x["id"])
         if L:
             if L.attempt >= (r["attempt"] if r else 0) + 3:
@@ -276,11 +315,17 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
                 st[n] = {"name": "blocked", "missing": [miss(t, "findings_open") for t in own]}
                 continue
             s = {"name": "ready", "reason": "not_ok"}
+        elif node.get("schedule") == "upstream" and lx.get("line_behind"):
+            s = {"name": "ready", "reason": "upstream", "stale_because": ["upstream"]}
         else:
             st[n] = {"name": "current"}
             cur[n] = r["output"]
             continue
         s["corrections"], s["fp"], s["parts"] = corr, f, parts
+        w = line_wait(n, node)
+        if w:
+            st[n] = w
+            continue
         esc = [(c, x) for c, x in live[n] if escalates(N, n, c, x)]
         if esc:
             st[n] = {"name": "needs_human", "kind": "dispute", "escalated": esc, "ready": s}
@@ -289,6 +334,8 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
             st[n] = {"name": "needs_human", "kind": "approve", "ready": s, "fp": f, "parts": parts}
             continue
         st[n] = s
+    if lctx:
+        restack(graph, doc, st, comp, lx)
     return st, cur, live, notes, stale
 
 
@@ -301,6 +348,36 @@ def carried_verdicts(graph: Graph, R: dict, lens: str):
     fr = R.get(F)
     v = ((fr or {}).get("output") or {}).get("verdicts") if fr and fr["status"] == "done" else None
     return v if isinstance(v, dict) else {}
+
+
+def restack(graph: Graph, doc: dict, st: dict, comp: dict, lx: dict):
+    """Pass 3 (G1025 design §5.3): a scheduled restack before an agent works on the goal's code. It rewrites only
+    states pass 2 computed: `base` becomes ready (upstream) and every ready workspace node below it is blocked."""
+    N = graph.nodes
+    up = lx.get("upstream") or {}
+    base = next((n for n in graph.topo if N[n].get("op") == "git.base"), None)
+    if not base or not up.get("behind") or st.get(base, {}).get("name") != "current" or base not in comp:
+        return
+    rb = (doc.get("records") or {}).get(base) or {}
+    out = rb.get("output") or {}
+    if out.get("stack"):
+        return                                                    # stacked: the base moves with its dependencies
+    below = [n for n in graph.topo if n != base and N[n].get("workspace") and base in graph.ancestors(n)]
+    if any(st[n]["name"] == "running" for n in below):
+        return
+    done = out.get("scheduled_for")
+    records = doc.get("records") or {}
+    cands = [{"node": n, "after_attempt": (records.get(n) or {}).get("attempt", 0)} for n in below
+             if N[n]["kind"] == "agent" and st[n]["name"] == "ready"]
+    due = [c for c in cands if c != done]
+    if not due:
+        return
+    f, parts = comp[base]
+    st[base] = {"name": "ready", "reason": "upstream", "stale_because": ["upstream"], "corrections": [], "fp": f,
+                "parts": parts, "scheduled_for": due[0]}
+    for n in below:
+        if st[n]["name"] in ("ready", "reclaimable"):
+            st[n] = {"name": "blocked", "missing": [miss(base, "restack")]}
 
 
 def filter_verdicts(graph: Graph, R: dict, fresh: dict, lens: str):
@@ -346,6 +423,7 @@ class GoalResult:
     budget: dict = field(default_factory=dict)       # {"used", "limit", "over", "per_node"}
     close: bool = False                              # every terminal current but the goal is open
     busy: str | None = None                          # workspace node with a live lease
+    target: dict | None = None                       # G1025: {"branch", "kind"} with branching on
 
 
 @dataclass
@@ -357,6 +435,14 @@ class Portfolio:
     mass_expiry: bool = False
     expired: int = 0
     live_agents: int = 0
+    branching: bool = False                          # G1025: everything below is empty without settings.branching
+    ledger: dict = field(default_factory=dict)       # id -> trailer entry, overridden by the documents read
+    lines: list = field(default_factory=list)        # [lines.Line]
+    effective: int | None = None
+    cut: dict | None = None                          # {"release", "goals"} when a release_cut item is due
+    release_waiting: list = field(default_factory=list)
+    hotfix_starts: list = field(default_factory=list)
+    duplicates: list = field(default_factory=list)   # [(branch, [goal ids])]
 
 
 def closed_view(doc: dict, graph: Graph | None) -> dict:
@@ -418,9 +504,16 @@ def goal_order(docs: dict) -> tuple:
 
 
 def portfolio(docs: dict, graphs: dict, leases: dict, settings: dict, now: int, invalid: dict | None = None,
-              newer: set | None = None) -> Portfolio:
+              newer: set | None = None, ledger: dict | None = None, upstream: dict | None = None) -> Portfolio:
     """docs: id -> valid document (any state); graphs: name -> Graph; leases: (goal, node) -> Lease (parsed);
-    invalid: id -> errors; newer: ids whose schema is newer than this engine."""
+    invalid: id -> errors; newer: ids whose schema is newer than this engine. G1025, with settings.branching only:
+    `ledger` (id -> trailer entry, §3.1) and `upstream` (id -> {"target", "tip", "behind", "merged_in_target"})."""
+    from engine import lines as ln
+    b = ln.branching(settings)
+    L = ln.merged_ledger(ledger, docs) if b else {}
+    lns = ln.lines_of(L, settings) if b else []
+    effective = ln.effective_release(settings, lns) if b else None
+    upstream = upstream or {}
     invalid = dict(invalid or {})
     newer = set(newer or ())
     order, cyclic = goal_order(docs)
@@ -441,16 +534,36 @@ def portfolio(docs: dict, graphs: dict, leases: dict, settings: dict, now: int, 
             continue
         goal_leases = valid_leases(g, d, graph, leases)
         dep_view = {x: views.get(x, INVALID_VIEW) for x in d.get("depends_on") or []}
-        st, cur, live, notes, stale = frontier(graph, d, dep_view, goal_leases, settings, now)
-        res = GoalResult(g, d, graph, st, cur, live, notes, stale=stale)
+        lctx, target = None, None
+        if b:
+            target = ln.target_of(d, settings, lns)
+            lctx = {"target": target["branch"], "integration": settings["integration_branch"], "effective": effective,
+                    "hotfix_waiting": target.get("name") if target["kind"] == "hotfix" and not target["branch"] else None,
+                    "upstream": upstream.get(g) or {}}
+            flow = d.get("flow") or {}
+            if flow.get("line"):
+                me = next((x for x in lns if x.goal == g), None)
+                lctx["members_open"] = ln.open_members(L, me) if me else []
+                lctx["line_behind"] = bool((upstream.get(g) or {}).get("behind"))
+        st, cur, live, notes, stale = frontier(graph, d, dep_view, goal_leases, settings, now, lctx)
+        res = GoalResult(g, d, graph, st, cur, live, notes, stale=stale, target=target)
         finish_goal(res, goal_leases, now)
         results[g] = res
         stuck = res.stuck is not None
         views[g] = {"kind": d["state"], "state": "stuck" if stuck else d["state"], "cur": cur,
                     "skip": d.get("skip") or {}, "nodes": graph.nodes, "stuck": stuck}
     p = Portfolio(results, views, invalid, newer)
+    if b:
+        p.branching, p.ledger, p.lines, p.effective = True, L, lns, effective
+        if RELEASE_GRAPH_NAME in graphs:
+            p.cut, p.release_waiting = ln.cut_state(L, lns, settings, effective)
+            p.hotfix_starts = ln.hotfix_starts(L, lns)
+        p.duplicates = ln.duplicates(lns)
     lease_guards(p, docs, leases, now)
     return p
+
+
+RELEASE_GRAPH_NAME = "release"
 
 
 def valid_leases(g: int, doc: dict, graph: Graph, leases: dict) -> dict:

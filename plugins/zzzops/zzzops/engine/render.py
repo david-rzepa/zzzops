@@ -51,6 +51,7 @@ class Ctx:
     goal_commits: dict = field(default_factory=dict)     # id -> goal tip commit (for edit --base)
     goal_dates: dict = field(default_factory=dict)       # id -> goal tip committer date (seconds)
     repo: str | None = None                              # worker-facing commands carry --repo <primary> (G1028)
+    targets: dict = field(default_factory=dict)          # G1025: branch -> tip of the production and line branches
 
 
 def command(ctx: Ctx, argv: list) -> dict:
@@ -194,6 +195,8 @@ def action(ctx: Ctx, p: Portfolio, res: GoalResult, n: str) -> dict:
         a["requires_force"] = True
         a["note"] = "possible clock problem; ask the human before --force"
     a["command"] = command(ctx, argv)
+    if res.target is not None:
+        a["target"] = res.target["branch"]
     return a
 
 
@@ -610,6 +613,8 @@ def compact(ctx: Ctx, item: dict) -> dict:
 def goal_actions(ctx: Ctx, p: Portfolio, res: GoalResult) -> tuple:
     """(actions as (key, action), waiting entries) for one goal."""
     acts, waiting = [], []
+    if any(res.goal in gs for _, gs in p.duplicates):
+        return acts, waiting                                  # a duplicate line: no owner until a human picks one
     for n in res.graph.topo:
         s = res.st[n]
         nd = res.graph.nodes[n]
@@ -688,6 +693,8 @@ def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = 
                 wake.append(parse_iso(s["retry_after"]))
             if s["name"] == "running":
                 wake.append(s["lease"].expires_at)
+    if p.branching and scope is None:
+        items += line_items(ctx, p, full)
     acts.sort(key=lambda x: x[0])
     items.sort(key=lambda x: x[0])
     actions = [a for _, a in acts]
@@ -705,6 +712,8 @@ def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = 
            "warnings": warnings}
     if legacy:
         out["legacy"] = legacy
+    if p.branching:
+        out["releases"] = releases_view(ctx, p)
     if scope:
         out["also_pending"] = {"human": out_items, "actions": 0 if paused else out_acts}
     if all_:
@@ -717,6 +726,48 @@ def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = 
         dropped[key] += 1
         out["truncated"] = dict(dropped, hint="next --all")
     return out
+
+
+def line_items(ctx: Ctx, p: Portfolio, full: bool) -> list:
+    """G1025 portfolio items: release_cut, hotfix_start, duplicate_line and a missing line branch."""
+    out = []
+    s = ctx.settings
+    b = s.get("branching") or {}
+    I = s["integration_branch"]
+    template = {"decision": "approved", "quote": "<the human's words, verbatim>", "decided_by": "<name>"}
+    key = (0, 0, 0, 0, 0)
+    if p.cut:
+        N = p.cut["release"]
+        branch = b["release_prefix"] + str(N)
+        tip = ctx.coordinator.get("commit")
+        out.append((key, {"kind": "release_cut", "release": N, "branch": branch, "from": I, "tip": tip,
+                          "goals": list(p.cut["goals"]),
+                          "question": f"Release {N} is complete on {I}. Cut {branch} from {I} at {(tip or '')[:7]}?",
+                          "answer_template": dict(template),
+                          "command": command(ctx, ["release", "cut", str(N), "--answer", FILE])["command"]}))
+    for x in p.hotfix_starts:
+        branch = b["hotfix_prefix"] + x
+        tip = ctx.targets.get(b.get("production"))
+        out.append((key, {"kind": "hotfix_start", "hotfix": x, "branch": branch, "from": b.get("production"), "tip": tip,
+                          "question": f"Start hotfix {x}: create {branch} from {b.get('production')}?",
+                          "answer_template": dict(template),
+                          "command": command(ctx, ["hotfix", "start", x, "--answer", FILE])["command"]}))
+    for branch, gs in p.duplicates:
+        out.append((key, {"kind": "duplicate_line", "branch": branch, "goals": gs,
+                          "question": f"{', '.join(f'G{g}' for g in gs)} all own {branch}; cancel all but one.",
+                          "options": [cancel_option(ctx, g) for g in gs]}))
+    for x in p.lines:
+        if x.open and x.branch in ctx.targets and ctx.targets.get(x.branch) is None:
+            out.append((key, {"kind": "line_branch_missing", "goal": x.goal, "branch": x.branch,
+                              "question": f"{x.branch} is gone from the remote; restore it or cancel G{x.goal}.",
+                              "options": [cancel_option(ctx, x.goal)]}))
+    return out
+
+
+def releases_view(ctx: Ctx, p: Portfolio) -> dict:
+    return {"configured": ctx.settings["releases"]["current"], "effective": p.effective,
+            "lines": {x.name: {"kind": x.kind, "branch": x.branch, "goal": x.goal, "state": x.state} for x in p.lines},
+            "waiting": list(p.release_waiting)}
 
 
 def goal_summary(res: GoalResult, ctx: Ctx) -> dict:

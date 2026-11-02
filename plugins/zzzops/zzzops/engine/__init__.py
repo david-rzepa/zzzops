@@ -4,7 +4,7 @@ from pathlib import Path as _Path
 
 # SPEC §4.5: one file per capability (`capabilities/<name>.txt`), so goals add theirs without touching a shared line.
 CAPABILITIES = frozenset(p.stem for p in (_Path(__file__).parent / "capabilities").glob("*.txt"))
-GOAL_SCHEMAS = (1,)             # goal schemas this engine reads; it writes the last
+GOAL_SCHEMAS = (1, 2)           # goal schemas this engine reads; it writes 2 only for a document with `flow` (G1025)
 WORKFLOW_SCHEMA = 1
 POLICY_SCHEMA = 2
 FP_VERSION = "v1"

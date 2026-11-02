@@ -20,6 +20,7 @@ from engine.leases import lease_ref, message as lease_message
 from engine.render import clip, command, lease_commands, live_lease_entry, restart_command, state_string
 from engine.store import goal_message, parse_commit, push_atomic
 from engine import worktree as wt
+from engine.ops import LINE_OPS
 
 LABEL_ENV = (("CODEX_THREAD_ID", "codex"), ("CLAUDE_CODE_SESSION_ID", "claude"))
 
@@ -260,7 +261,7 @@ def claim(s, res, X, label, state, reclaim, force, extra_updates=()):
                 tip = wt.local_tip(s.git, g)
                 if tip and tip != s.snap.work.get(g):
                     updates.append((f"refs/heads/zzzops/work/g{g}", s.snap.work.get(g), tip))
-        else:
+        elif nd.get("op") not in LINE_OPS:            # a line goal has no work branch: its ops make a detached worktree
             wt.ensure_worktree(s.git, s.snap, g, self_sync=True)
         workspace = wt.worktree_path(s.git, g)
     work = s.snap.work.get(g)
@@ -909,6 +910,7 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
             if old is None and not doc_files:
                 raise Refused("validation", f"G{g} is unreadable: replace it with a whole-document --file")
             d = copy.deepcopy(doc_files[g]) if doc_files else apply_sets(copy.deepcopy(old), set_entries)
+            schemas.normalize_flow(d)                         # G1025 §2: schema 2 only with `flow`
             d = fill_close_fields(sess, old or {}, d)
             d = fill_current_records(sess, d)
             skip_refusal(sess, g, old or {}, d)
@@ -943,7 +945,7 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
     for g, d in new_docs.items():
         errs, _ = schemas.validate_goal(d, s.state.docs.get(g), after_docs, s.state.workflow,
                                         lambda doc, g=g: s.terminals_current(g, doc, after_docs))
-        errs = list(errs) + dependent_release_errors(g, d, after_docs)
+        errs = list(errs) + dependent_release_errors(g, d, after_docs) + s.line_errors(g, d, after_docs)
         if errs:
             raise Refused("too_large" if any("too_large" in e for e in errs) else "validation",
                           f"G{g}: " + "; ".join(errs[:5]), details={"errors": list(errs)})
@@ -1067,7 +1069,7 @@ def fill_current_records(s, d: dict) -> dict:
             tmp = copy.deepcopy(d)
             tmp["records"].pop(n, None)
             docs[d["id"]] = tmp
-            p = pf(docs, s.state.graphs, {}, s.settings, s.now, s.state.invalid, s.state.newer)
+            p = pf(docs, s.state.graphs, {}, s.settings, s.now, s.state.invalid, s.state.newer, **s.pf_kwargs(docs))
             st = p.goals[d["id"]].st[n] if d["id"] in p.goals else None
             if not st or "fp" not in st or st.get("parts") is None and st["name"] != "needs_human":
                 raise Refused("validation", f"records.{n}: its inputs do not resolve, so it cannot be marked current")
