@@ -154,6 +154,43 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T21:57:58Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:aa20a8744d00fc0bc034094524e90fcb9076c9d2",
+          "tests": "v1:sha256:379a795f13d8780f965783a1d8a9d54d7b01bca074cb0459f0192854087ee5d6"
+        },
+        "policy": {},
+        "subject": "v1:sha256:c4e671feba7221795c321c6c8bf4071c7d7c27338eeddcc37475a1f47496c751"
+      },
+      "holder": "codex:takeover/1031-review-tests",
+      "input_fp": "v1:sha256:31f7ea5838d1e1e0566065f8aa7cf3696678540b5cdac6df82ffaac2cd11b5c6",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "f3d7d646dee86be9cb2bd8dca434c7a48b7abceb",
+          "commit": "93e20668c842318752388fce1a0eea2d7f561b7c",
+          "path": ".zzzops/reviews/1031/review_tests.md"
+        },
+        "summary": "Approved: four fast tests cover the branch-setting warning and its best-effort failure/timeout behavior through unit probes and one real CLI matrix; independent red run took 3.236 seconds and failed for the expected absent G1031 implementation."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "de5640d1c5909ea924450aeea6450497a78946f6",
+          "change": "c37bbf03878fa84f4ce40f6d2482921529dcff74",
+          "commit": "ec68183a7e95dfcb46c5a7604bcba61789ffe9da",
+          "tree": "038d3c86c9c212485437c32b7e88302f7dba725c"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 2,
       "correction_runs": 0,
