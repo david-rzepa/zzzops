@@ -110,23 +110,23 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
-          "id": "implement:reopen:1",
+          "id": "implement:2:1",
           "note": null,
           "response": null,
           "rounds": 1,
           "status": "open",
-          "target": "implement",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:c4e22cc8d7d2772363c5fbad0b4d636e85bb404d69e5b60553c93c1c27eb9a5b",
-          "text": "Read-only preliminary review reproduced PowerShell apostrophe quoting failure and advisory notice paths displacing the only ready action. Correct within G1024 before full verification.",
+          "target": "test_design",
+          "target_attempt": 3,
+          "target_fp": "v1:sha256:3f9a307a700f074ced0605f99d2bb93042002db3b3d61f30c103a696bd172962",
+          "text": "The frozen DefaultsCase.run_command helper in .agents/test_engine_defaults.py calls subprocess.run(command, shell=True), which selects cmd.exe on Windows and cannot verify the documented PowerShell command contract. Correct the helper through test_design to run the printed command with PowerShell on Windows (pwsh/powershell -NoProfile -NonInteractive -Command), retaining POSIX behavior elsewhere, and exercise space/apostrophe paths while preserving the substantive assertions. Implementation was temporarily reverted by a normal forward commit before this rerun, so product paths are not accidentally frozen into the new tests checkpoint. Restore source only after these corrected tests are reviewed.",
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-02T22:09:47Z",
+      "finished_at": "2026-11-02T22:19:59Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -136,19 +136,22 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1024-implement",
+      "holder": "codex:takeover/1024-implement-fix",
       "input_fp": "v1:sha256:166c607b9fe85a97d539a26e0f3bca2f64fe05b725036ffb88b42d47426f0f42",
       "ok": true,
       "output": {
         "code": {
           "base": "de5640d1c5909ea924450aeea6450497a78946f6",
-          "change": "6ec18bb202a403d15c40ee32df16535138c26bb5",
-          "commit": "c246e479f7faccd2c55dd4cf112191ef1ba48804",
-          "tree": "ced40fc33305d2f3fc53bf9cdd8ce6601ba87bac"
+          "change": "bb212c1916c4c46d727b683846c680cc3363db53",
+          "commit": "b8d0fc9f6272c1470071a255a9154005240fdd9e",
+          "tree": "ccf4d5fa6f7ce8a558f47a3afa66099515bf18a7"
         },
-        "summary": "Explicit next and all valid validate forms now report advisory shipped-default drift from separate TEMPLATE.json provenance, including local edits, quoted diff/three-way merge advice, inferred/reviewed records, unknown-base downgrade protection and removed-file tombstones; writes never carry the notice and no policy is applied automatically. The plugin bundles 60 normalized, content-addressed template versions from published dev history with an append-only upkeep script; bootstrap/execute guidance, migration/CLI references and SPEC/DESIGN/HISTORY cover reviewed adoption and record-only declines. Frozen feature tests pass (16 in 2.909 s), history tests pass (2 in 0.003 s), design docs pass (35 in 0.561 s), environment regressions pass (11 in 1.416 s), agent-plugin tests pass (14 in 0.315 s), marketplace bundle tests pass (12 in 4.666 s), and prompt budgets/diff checks pass; missing-history degradation was directly checked. No installed policy, host cache or repository host setting was changed."
+        "responses": {
+          "implement:reopen:1": "disputed: the reproduced product concerns are accepted, but publication of their prepared source corrections is intentionally deferred until test_design corrects its Windows shell launcher. The normal forward rollback checkpoint preserves the test-before-code boundary; after corrected tests are independently reviewed, restore the implementation and apply the prepared fixes."
+        },
+        "summary": "Implementation is deliberately incomplete: the published default-policy source was reverted through a forward commit so the Windows test launcher can be corrected and independently reviewed before source restoration. The advisory-priority and PowerShell source corrections plus a separate regression module are prepared privately, with 3 regression tests passing in 1.043 s before rollback; they are not applied at this checkpoint. The required feature/history commands were rerun after rollback and fail as expected because the implementation/history store is absent; no green-feature or completion claim is made."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
