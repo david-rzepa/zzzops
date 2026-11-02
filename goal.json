@@ -117,30 +117,33 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-02T03:59:56Z",
+      "finished_at": "2026-11-02T04:35:06Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
-          "base": "v1:sha256:8a2e8ac0217a3e46b72c1e3ce2d2c6f98e60949f5743134ece85574f6cb677e3",
+          "base": "v1:sha256:8b4a36505e2c062e308b1242d8257779ed10ed7638f92c8846e2941d1dc7ac6f",
           "doc": "v1:blob:0c556c21045dcada61dcaab09a6d222e0cdd7d4f",
-          "tests": "v1:sha256:ca54375d1da83017c96dcacaec1f842576a30d3130f34f13bdbb0476f84f8322"
+          "tests": "v1:sha256:1138f98973239d0cdff442a3242ce3b6909360c1c4b0b62ddc77d916469f2c52"
         },
         "policy": {}
       },
       "holder": "claude:e6ad/root",
-      "input_fp": "v1:sha256:88eb86f4714a80379ec3dfda3415a324f54632d595448c46283c2c8113565105",
+      "input_fp": "v1:sha256:439812be60d0dd86e4d0394c6e02570d40bbece26703bc714af96330d647d9ca",
       "ok": true,
       "output": {
         "code": {
-          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "b264b41e027031ebcb3fe626ded59bc746e59f63",
-          "commit": "4859124849638ab510aaecb85359028b5a8dadf5",
-          "tree": "60da5a97d14a3278f4449a06d68156a95bf9f0dd"
+          "base": "5288bf7ed3f8373dad773e2de48f6c7603afd985",
+          "change": "2cc2e5cf8f76a30baac4482024f015bae9be6549",
+          "commit": "9db68f6bad380ce3961ac03adec818b019b88098",
+          "tree": "7d541ba1b5e60237f5dd7988779bcd426ab9a825"
         },
-        "summary": "Capabilities replace ENGINE_VERSION and engine.min (commit 4859124, unchanged from attempt 1; now placed after the corrected tests checkpoint 1a15ad2). One file per capability under engine/capabilities/ (lens_findings); CAPABILITIES and build_id() in __init__.py; settings.engine.requires with engine_too_old naming missing capabilities while reads still work; engine.min optional and deprecated with a fixed version map (1.0.0 none, 1.1.0 lens_findings) and a validate warning; engine_too_new removed; Engine: trailer, --version and validate's engine key show the build id; legacy.DETECTOR hashes the detector sources; template requires lens_findings; CLI_USAGE, MIGRATING, REPAIR, SPEC, DESIGN amended, HISTORY row added, pending row deleted. With the test count fix (implement:1:1, resolved in test_design) the full suite of 698 tests passes."
+        "responses": {
+          "run_tests:failed": "fixed: the only full-suite failure was test_design_docs' pending-row check (G1028 had merged while G1027 still carried its row); after the rebase onto dev the row is gone and the test passes"
+        },
+        "summary": "Resubmit after base rebased G1027 onto dev 5288bf7 (G1028 merged first). Conflicts resolved per both designs: ENGINE_VERSION/FOLLOWS_SINCE/REQUIRES_MIN removed; new capability finding_follows (engine/capabilities/finding_follows.txt); LEGACY_VERSIONS maps 1.2.0 -> lens_findings, finding_follows; required_caps(settings) = requires + legacy_caps(min); G1028's follows gate is now the finding_follows capability check (submit refusal names it); SPEC §4.5/§3.6, CLI_USAGE, MIGRATING, DESIGN §3.10 and HISTORY (G1027 row last) updated; README pending rows for G1027 and G1028 deleted. Tests line (frozen) gained finding_follows in SHIPPED at rebase (review_tests approved). Targeted modules pass, including test_design_docs, the failure behind run_tests:failed (G1028's stale pending row, gone after the rebase)."
       },
       "reason": "stale",
       "status": "done"
