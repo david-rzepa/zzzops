@@ -366,14 +366,29 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 2,
-      "correction_runs": 1,
-      "findings": [],
-      "finished_at": "2026-11-02T17:56:39Z",
+      "attempt": 3,
+      "correction_runs": 2,
+      "findings": [
+        {
+          "carrier_fp": "v1:sha256:d72b76822fcd423e1e80ef5d52e06b227a159fd1f0bc9121f68712b3320cd72b",
+          "id": "run_tests:failed",
+          "note": null,
+          "repeats": 1,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "implement",
+          "target_attempt": 4,
+          "target_fp": "v1:sha256:da80a643b006c36a38d7c9dfc546ff26f61842aeeb8212f03b418c5161713ad1",
+          "text": "`python3 -m unittest discover -s .agents` exited 1:\n:0: ResourceWarning: unclosed file <_io.BufferedReader name=19>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=16>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=17>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=14>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=15>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=12>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=13>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-02T18:37:25Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:9984a445978c1bd195c2e06036716e43ba093a6f47b05b2254beeb8f5ae0107b",
+          "code": "v1:sha256:298fe7526b2c4758123ad981a9759439d94cff5b857419c55ba51a2c3073f4c1",
           "commands": "v1:sha256:1a49860642a1a9841d224f5cd2004947cef5170b1d0601ec9896cb266259ea2b"
         },
         "policy": {
@@ -383,26 +398,26 @@
         }
       },
       "holder": "claude:e6ad/op",
-      "input_fp": "v1:sha256:5bb2f81e2dfaa75134d34c234e51783a1f653e00fb7e2c035bb4646492a76bd1",
-      "ok": true,
+      "input_fp": "v1:sha256:d72b76822fcd423e1e80ef5d52e06b227a159fd1f0bc9121f68712b3320cd72b",
+      "ok": false,
       "output": {
         "result": {
           "details": [
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_branching.py'",
               "exit": 0,
-              "seconds": 230,
-              "tail": "........................................................\n----------------------------------------------------------------------\nRan 56 tests in 230.333s\n\nOK\n"
+              "seconds": 218,
+              "tail": "........................................................\n----------------------------------------------------------------------\nRan 56 tests in 218.566s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents",
-              "exit": 0,
-              "seconds": 1108,
-              "tail": "-----\nRan 911 tests in 1108.560s\n\nOK\nZzzOps legacy cleanup preview\nTarget: /tmp/tmpshjsljv7\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=28>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=29>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=26>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=27>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=24>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=25>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=22>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=23>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=20>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=21>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=18>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=19>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=16>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=17>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=14>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=15>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=12>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=13>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
+              "exit": 1,
+              "seconds": 1103,
+              "tail": ".351s\n\nFAILED (failures=1, errors=1)\nZzzOps legacy cleanup preview\nTarget: /tmp/tmprmxm26tk\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=22>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=23>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=30>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=31>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=28>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=29>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=26>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=27>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=20>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=21>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=18>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=19>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=16>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=17>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=14>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=15>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=12>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=13>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
             }
           ],
-          "passed": true,
-          "tree": "0b4971ef1b8eb092a31799bcfb14893a3511ad2e"
+          "passed": false,
+          "tree": "25af3951e1524c78f0bccc6f76f90b5dd510826d"
         }
       },
       "reason": "stale",
