@@ -1,0 +1,13 @@
+# G1031 independent implementation review
+
+Decision: **approved**. No findings.
+
+The official card names the same approved design blob `aa20a8744d00fc0bc034094524e90fcb9076c9d2`, tests checkpoint `ec68183a7e95dfcb46c5a7604bcba61789ffe9da` and implementation checkpoint `6d2c50c2dcb9dcaaa3a6a8761d31396df056d8ac` inspected during the preliminary independent review. I reconciled those exact inputs, read the full card and checks blob, and rechecked the implementation's warning/helper code and test preservation. The complete feature range is `de5640d1c5909ea924450aeea6450497a78946f6..6d2c50c2dcb9dcaaa3a6a8761d31396df056d8ac`.
+
+Correctness and scope: the extra repository API read runs only in repository-form validate, with usable gh and a loaded settings.branching key. The helper accepts only a JSON boolean, returns unknown for absent/malformed output or GhError (including timeouts), and overrides the existing wrapper's unchanged 60-second default with a 10-second deadline. Only true adds the explanatory warning; validation's ok calculation is unaffected. Directory validation returns before this path, and next and mutating verbs gain no probe. No policy/record format or authority change is introduced, and no host setting is changed automatically.
+
+Bootstrap, initialization, setup and migration consistently recommend auto-delete on without branching and off with it, explaining both kept release/hotfix branches and stacked-PR retarget races. Recovery documentation correctly uses the actual `goal.records.sync.output.merged` field. I checked that field against the shipped release workflow and line operations: finish consumes the approved sync SHA and uses it for back-merges after branch deletion; its own output does not contain a line-tip field. SPEC, DESIGN, HISTORY and the pending-goal table reflect the warning and its API cost.
+
+Verification: both frozen paths (`.agents/engine_fake_gh.py` and `.agents/test_engine_auto_delete.py`) are byte-identical to the accepted tests checkpoint. The card's checks bind tree `8312d3a85fb4b8d257c9ee7c49f2c0ac72296aa7`, exactly the implementation record's code tree. The focused four tests passed in **3.537 seconds**, and the complete **925-test suite passed in 2258.675 seconds**; both commands exited zero. The earlier independent red test review established the focused tests fail for the missing behavior. `git diff --check` is clean. No suite was rerun during official review because the exact inputs and passing evidence were unchanged.
+
+The code is a small extension of the existing wrapper and validate warning path, with no unrelated cleanup. No prior open implementation findings exist. The implementation is ready for integrate's separate required-CI gate.
