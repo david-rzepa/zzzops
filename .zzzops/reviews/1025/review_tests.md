@@ -1,29 +1,24 @@
-# G1025 review_tests, attempt 4
+# Review of the G1025 tests, round 5 (sync onto dev 262d780)
 
-Subject: tests checkpoint 848e66c (base b452cd7). Previous checkpoint 67a38f5. Design: `.zzzops/reviews/1025/design.md` revision 3.
+Decision: **approved**. No findings open.
 
-## Verdict: approved
+The tests were approved in round 4. This round checks only what changed when the tests were rebased onto dev 262d780 (G1027 capabilities, G1026 and G1041 merged). I compared the two lines with `git range-diff b452cd7e..848e66c4 262d7807..28990205`.
 
-848e66c changes only `.agents/test_engine_branching.py` (plus the review file). It fixes five test setups that implement raised (implement:1:1 to 1:5). None of the changes weakens what a test asserts. Each one corrects a setup that implement could not satisfy without editing the frozen tests.
+## Changes and how I checked them
 
-## Fixes checked against the design
+1. **`.agents/test_engine_capabilities.py`: `SHIPPED` gains `release_lines`.** G1027 §3.1 says that a goal adding a capability appends its name to this set. G1025's capability is `release_lines`, which replaces the old `engine.min 1.2.0` gate. The implementation ships `engine/capabilities/release_lines.txt`, so this test fails without it. Correct.
+2. **`.agents/test_engine_branching.py`, `ValidationTests.test_validate_policy_dir_needs_a_release_graph_with_branching`.** The copied template's `integration_branch` is now set to `"dev"` before `branching` is added. Two parts of the design require this:
+   - Design §1: "The shipped `POLICY.json` template does not gain the block" and "The POLICY template is unchanged". dev's template keeps `integration_branch: "main"`, and the implementation diff (28990205..HEAD) does not touch `templates/default/POLICY.json`.
+   - Design §1 validation: "a production branch equal to `integration_branch`" is refused. `BRANCHING.production` is `"main"`, so the test has to move integration to `dev`.
 
-- **implement:1:1 (§5.3, §13 item 5, a ready workspace op is blocked while base restacks).** On graph12, every agent workspace node feeds `run_tests`, so a ready agent never sits beside a ready `run_tests`. The old setup (reopening `test_design`) therefore could not hold. The fixture now adds a workspace agent `notes` that reads `base.base_commit`, so it is downstream of `base`, and `run_tests` does not read it. `BSim` gains a `workflow=` parameter for this. Before the target moves, the test asserts that `base` is current and that both `notes` and `run_tests` are ready. After `behind()`, it asserts `base` ready(upstream) and both nodes blocked with `restack`. This matches §5.3: pass 3 blocks every ready or reclaimable workspace node downstream of `base`, agents and ops alike. The `if current: reopen` guard only normalises the fixture's state. The precondition asserts that follow it keep the test strict.
-- **implement:1:2 (§5.5, §13 item 7, release_sync ends on its own).** G1001's `integrate` is now stepped with a PR output shaped like the real one (`base: release/1`), so the dependent's heads input resolves. The asserts are unchanged: first `waiting(release_sync)`, then `ready` once only `merged_in_target` flips. This matches "the next evaluation with no other change makes base ready".
-- **implement:1:3 (§7, hotfix member).** After `hotfix start`, the test continues from `base` through `merge`, rather than calling `done()`, which would re-run discovery. It still asserts that the merge closes the goal as done and that the PR base is `hotfix/<x>`.
-- **implement:1:4 (ledger, corrupt document).** The seed fetches the goal ref before `commit-tree`. This is a fixture fix only.
-- **implement:1:5 (§4 legacy fallback, one batch).** A warm-up `next` keeps the one-time policy download out of both counts. The equality `n1 == n3`, which checks for no git call per closed legacy goal, and the batch bound are unchanged. The count is still falsifiable: a per-goal `cat-file` would make n3 larger than n1, because the legacy set shrinks from 3 goals to 1.
+   The test still checks what it is meant to: validation passes with a release graph and fails without one. Reverting the template change and fixing the test setup was the right choice.
+3. **`.agents/test_design_docs.py` (commit 7).** The only difference is conflict context. dev's `AMENDMENT_SENTINELS` now has the G1022 row where the G1020 row was. G1025's sentinel row is unchanged. No action needed.
+4. **Post-implementation commit `28b1a103 test: count the new conflict exit code`.** It changes the exit-1 count in `.agents/test_engine_schemas.py` to 28, which is dev's 27 (after G1027 removed `engine_too_new`) plus G1025's new `conflict` refusal. This file is not frozen. The new count matches `EXIT` at HEAD.
 
-## Run
+Every other commit on the tests line is identical in the range-diff.
 
-In `/home/dave/Work/dev/zzzops/.zzzops/worktrees/g1025` at 5061b79 (implementation 2f583cf, on top of tests 848e66c):
-`python3 -m unittest discover -s .agents -p 'test_engine_branching.py'` ran 56 tests in 223 s with result OK.
-`git diff 848e66c 5061b79 -- .agents/test_engine_branching.py` is empty, so implement did not edit the frozen tests. 5061b79 touches only `.agents/test_engine_schemas.py`.
+## Verification (worktree g1025, HEAD a08254c6)
 
-## Prior findings
-
-review_tests:1:2 was already resolved, and no prior finding is open.
-
-## New findings
-
-None.
+- `python3 -m unittest discover -s .agents -p test_engine_branching.py`: 56 tests, OK
+- `python3 -m unittest discover -s .agents -p test_engine_capabilities.py`: 27 tests, OK
+- `python3 -m unittest discover -s .agents -p test_engine_schemas.py`: 35 tests, OK
