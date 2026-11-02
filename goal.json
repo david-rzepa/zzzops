@@ -143,51 +143,15 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [
-        {
-          "id": "review_tests:1:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:89d68a02c0c2510f593fb5061fbc5cae3e28370affb66bac4c6144d7cf9387a8",
-          "text": "test_cards_carry_the_instruction_and_stay_within_the_limit cannot pass after implementation: it abandons the review_design and adversary_design leases and then calls until_ready(g, 'review_impl'); on read_dev abandon makes a node reclaimable and the Pilot's plain start is refused with not_ready 'the lease expired; pass --reclaim' (reproduced with the same sequence on read_dev; hidden today because the test stops at line 363). Implement cannot fix a frozen test. Fix: finish the review runs (card, _ = self.p.run(g, node)) and check those cards, or restart with --reclaim.",
-          "upheld": false
-        },
-        {
-          "id": "review_tests:1:2",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:89d68a02c0c2510f593fb5061fbc5cae3e28370affb66bac4c6144d7cf9387a8",
-          "text": "The same test asserts card_size <= CARD_LIMIT for review_impl, which the design's own text makes impossible: review_impl is 3,948 bytes on read_dev in this world, and 4,219 bytes after shrink once the design's section 2 instruction, the review sentence and the four instruction listings are added (scratch copy; design 3,134, review_design 3,985, adversary_design 3,699). The new instruction view adds about 270 bytes that no existing shrink step can recover, and design section 9 already allows a review card above the target. Implement could pass only by changing fixed instruction text or adding shrink steps the design lacks. Fix: keep the limit for design, review_design and adversary_design; for review_impl assert growth of at most one view reference over the card without the instruction (or no limit), and note that design section 10 test 1 is relaxed for review_impl as section 9 allows.",
-          "upheld": false
-        },
-        {
-          "id": "review_tests:1:3",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 6,
-          "target_fp": "v1:sha256:277b5f7e356a93f3436f63555fbe2c2aab4e0d48e807e733bb7b3a879b751ab0",
-          "text": "The approve-item node set conflicts with OpDecisionTests: section 5 and D5 say approve items (and the PR body) read human_decisions over the item's ancestor nodes, but in the shipped graph integrate is not an ancestor of approve_merge (its ancestors are adversary_design, approve_design, base, design, filter_design, filter_impl, implement, review_design, review_impl, review_tests, run_tests, test_design), nor of itself for the PR body, and merge is an op. Under the rule an answered integrate question is shown nowhere, contrary to section 1 step 5 ('approve_merge and the PR body list every answered question') and D5/revision 3 (op questions appear in the list). test_an_answered_integrate_question_is_listed_with_kind_op asserts it on approve_merge, so an implementation following section 5 fails a frozen test and one passing it departs from the design. State the node set (for example, for approve_merge every graph node except its descendants, or ancestors plus the op nodes beside it; and whether the PR body includes integrate's own answers), then align the test.",
-          "upheld": false
-        },
         {
           "id": "review_tests:2:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 3,
           "target_fp": "v1:sha256:e10723f61e0b013cc22128218cc703ecaaec7977d7fcb925d30dda9dc080f3b3",
@@ -195,35 +159,35 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-02T05:39:32Z",
+      "finished_at": "2026-11-02T05:44:10Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:3ddfcf819109e6587559b34b5f61a295c331a1db",
-          "tests": "v1:sha256:762ec2a1f1ccabd80102cb7a36dbaa9af81f0bd10faefe18c48f03d314afa0e0"
+          "tests": "v1:sha256:49f91d77072f572f3e519083063b73dbbce38291dd02ddef6a780015487b73e5"
         },
         "policy": {},
-        "subject": "v1:sha256:e10723f61e0b013cc22128218cc703ecaaec7977d7fcb925d30dda9dc080f3b3"
+        "subject": "v1:sha256:1081a4ce6ae5aeb92d40ac831d81a6a699574f8b3476dff5eb04d4d57fbd616c"
       },
-      "holder": "claude:e6ad/rt1026b",
-      "input_fp": "v1:sha256:d9344f078cb0da057d4db6df43b68077c52f488a5d9b82865a054b7f31076e44",
-      "ok": false,
+      "holder": "claude:e6ad/rt1026c",
+      "input_fp": "v1:sha256:f81d811b8dedb13e11119102b21688fbf6d9b18a342a911829dad78c9cdbb240",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "b441a9464fcfcf82b295fdf71ee95516cc4bdaa1",
-          "commit": "348a901d4bd1784065d93596749b8e1440bfb5cf",
+          "blob": "c0c0e614356a12e68589967762d06c07c01c578f",
+          "commit": "53ecb0e64e27fee7137ffe7127c8b2cd0b686163",
           "path": ".zzzops/reviews/1026/review_tests.md"
         },
-        "summary": "Findings 1:1 (reviews now submitted; verified the flow reaches review_impl on read_dev), 1:2 (limit kept for design/review_design/adversary_design; review_impl bounded to one view over the limit; verified with a scratch policy: 4,219 bytes with the view, 3,948 without) and 1:3 (revision 7 states the non-descendant node set, which agrees with the frozen op test) are resolved. One new finding: no test checks that the PR body includes integrate's own answer, the case revision 7 fixed, so an implementation using integrate's ancestors would pass. Recorded commands: owner_questions 41 tests, 22F/7E, all at the missing feature; design_docs 35 OK; prompt_stats PASS."
+        "summary": "2:1 resolved: the integrate test now asserts the PR body has '## Human decisions' with exactly one integrate line of kind op, and the regex matches design revision 7's D5 line format; it fails at the missing feature on the current engine. Recorded commands: owner-questions suite 41 tests, 23 failures, 6 errors (all at the missing feature); test_design_docs OK; prompt_stats --check PASS. No new findings."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "25186a5ee98282b3f380ff48a06b014aae34aa10",
-          "change": "b76ff8ec99b9330059d54e207952147f1364c44a",
-          "commit": "8b973821f0c89cbad19b69c5476cb49ab98c8ac1",
-          "tree": "fce605870e2388550d979fa08a9167d3f7351c10"
+          "change": "132aec3ef9d9a1153bf6abbcb33df7a06542736b",
+          "commit": "3974afd0d95b3cab03cdd35b54e601d962d305ce",
+          "tree": "2dde809cf6b6bd1b51312b883bd6bce7fa39c712"
         }
       },
       "status": "done"
