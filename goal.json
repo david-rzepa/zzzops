@@ -118,33 +118,30 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-02T04:35:06Z",
+      "finished_at": "2026-11-02T04:59:16Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
-          "base": "v1:sha256:8b4a36505e2c062e308b1242d8257779ed10ed7638f92c8846e2941d1dc7ac6f",
+          "base": "v1:sha256:d9614375612aa84a1ef00859c569613411cad1f36127912c1e554a122aae7ee5",
           "doc": "v1:blob:0c556c21045dcada61dcaab09a6d222e0cdd7d4f",
-          "tests": "v1:sha256:1138f98973239d0cdff442a3242ce3b6909360c1c4b0b62ddc77d916469f2c52"
+          "tests": "v1:sha256:c355bb701fe53674d4f6e44c80da585d5c3f8c5b3ade31fd8fcef168168f4d77"
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/root",
-      "input_fp": "v1:sha256:439812be60d0dd86e4d0394c6e02570d40bbece26703bc714af96330d647d9ca",
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:e75d67c8d3fb39dc99b7d29275a891fc75a467863d72008f83e479328f3fcfe7",
       "ok": true,
       "output": {
         "code": {
-          "base": "5288bf7ed3f8373dad773e2de48f6c7603afd985",
-          "change": "2cc2e5cf8f76a30baac4482024f015bae9be6549",
-          "commit": "9db68f6bad380ce3961ac03adec818b019b88098",
-          "tree": "7d541ba1b5e60237f5dd7988779bcd426ab9a825"
+          "base": "25186a5ee98282b3f380ff48a06b014aae34aa10",
+          "change": "d0b2a7994200ac96a895208029094f373759daee",
+          "commit": "234b6cacb4f38a171fbc29de38bc2bd02f5e8f73",
+          "tree": "4bc9a4a0d4e31106c98b0fb07cc02a7a8dd4a9c2"
         },
-        "responses": {
-          "run_tests:failed": "fixed: the only full-suite failure was test_design_docs' pending-row check (G1028 had merged while G1027 still carried its row); after the rebase onto dev the row is gone and the test passes"
-        },
-        "summary": "Resubmit after base rebased G1027 onto dev 5288bf7 (G1028 merged first). Conflicts resolved per both designs: ENGINE_VERSION/FOLLOWS_SINCE/REQUIRES_MIN removed; new capability finding_follows (engine/capabilities/finding_follows.txt); LEGACY_VERSIONS maps 1.2.0 -> lens_findings, finding_follows; required_caps(settings) = requires + legacy_caps(min); G1028's follows gate is now the finding_follows capability check (submit refusal names it); SPEC §4.5/§3.6, CLI_USAGE, MIGRATING, DESIGN §3.10 and HISTORY (G1027 row last) updated; README pending rows for G1027 and G1028 deleted. Tests line (frozen) gained finding_follows in SHIPPED at rebase (review_tests approved). Targeted modules pass, including test_design_docs, the failure behind run_tests:failed (G1028's stale pending row, gone after the rebase)."
+        "summary": "Resubmit after base rebased G1027 onto dev 25186a5 (G1022 merged first). Conflicts resolved per both designs: new capability lenses (engine/capabilities/lenses.txt); LEGACY_VERSIONS maps 1.3.0 -> lens_findings, finding_follows, lenses; default template requires [lens_findings, lenses] because its graph writes the lenses node field; SPEC §4.5, DESIGN §3.10, CLI_USAGE (edit row from G1022, validate row from G1027), MIGRATING (G1022's adoption section now uses settings.engine.requires instead of engine.min) and HISTORY (G1027 row last) updated. Tests line gained lenses in SHIPPED and the template assertions (review_tests round 6 approved). Targeted modules pass: capabilities, review_lenses, findings_rounds, schemas, design_docs, card_budget."
       },
       "reason": "stale",
       "status": "done"
