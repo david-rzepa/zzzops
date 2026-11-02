@@ -40,6 +40,78 @@
       },
       "reason": "stale",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 3,
+          "target_fp": "v1:sha256:8565ba6f26f0cf235eb31b3085e41846b40f87498678d3639763a03742e44d71",
+          "text": "Clean-sync predicate: the -U0 patch id ignores position. With identity.py's DIFF flags at --unified=0 and patch-id --verbatim, the same goal line inserted after line 10 and after line 30 gives an identical id (1b4a7646dfe2 both times; the -U3 ids differ). §3.1 leaves synced.resolved out of the predicate and claims that equal -U0 ids mean 'exactly new trunk plus the goal's own lines'. That is false for hand-resolved files: keeping both sides in a different order, moving the goal's lines elsewhere in the file, or deleting the wrong copy of a duplicated line all keep the id. test_design is then carried and review_tests is skipped although the tests' meaning changed, which contradicts the spec ('conflict resolutions ... stale as today'). A trunk-only merge cannot move goal lines, so the gap is limited to synced.resolved. Fix: for each path in synced.resolved inside the node's scope, also require a position-aware check, for example that the resolved blob equals `git merge-file -p --union` of the B0/onto/tip versions in either side order (this still carries the HISTORY both-rows case); otherwise the node stales. Add tests for a reordered both-sides code resolution and for a moved goal line. Also align §1 ('trunk edits inside the goal's hunks' stale) with test 4, which carries context edits inside the -U3 hunk: say 'trunk edits to the goal's own -/+ lines'.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 3,
+          "target_fp": "v1:sha256:8565ba6f26f0cf235eb31b3085e41846b40f87498678d3639763a03742e44d71",
+          "text": "Sync card size: §3.4 says that over 4,096 bytes 'G1018's shrink steps blob sync.touching', but at f4eaf74 card._steps (and the SPEC §4.20 list) only blobs prompt, instructions, inputs/context/policy, corrections, candidates and notes, so a new top-level `sync` key is never shrunk. Real review_impl re-run cards are already at or over the target because `previous` is never shrunk (G1022 review_impl attempt 2 is about 4.0 KB, G1027 review_impl attempt 2 about 5.6 KB). Adding about 1.3 KB of inline sync, including a roughly 550-byte constant ask, makes about 7 KB. Test 11 ('at most 4,096 bytes after shrink, at real sizes') cannot hold, and it conflicts with test_a_card_over_budget_because_of_previous_is_a_fixed_point. Fix: specify new shrink steps in SPEC §4.20 and card.py (blob sync.touching, keeping more/all, then the rest of sync except from/to/diff/log) and list them in the §4 table. Consider moving the constant ask into review_impl's prompt or a fixed blob. Restate test 11 as a bound on what sync adds after shrink, plus the fixed point for a card over the target because of previous.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:3",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 3,
+          "target_fp": "v1:sha256:8565ba6f26f0cf235eb31b3085e41846b40f87498678d3639763a03742e44d71",
+          "text": "Budget exemption is too broad: §3.5 exempts any record that started stale with all of its stale keys being inputs selecting a git.base node, and calls this 'exactly the clean-sync review_impl re-run'. But test_design and implement also take base.base_commit as a non-context input. When carry rejects them (the sync was not clean for them), they re-run stale only on inputs.base and are exempt. They do raise new material findings (G1027 implement:1:1, G1026 test_design:1:1), and such a round is not caused by a clean sync. Fix: also require that the node has no checkpoint outputs (a checkpointing node stale only on base is one that carry refused), so in practice only review nodes whose subject was carried are exempt. Add a counts() row: implement stale only on inputs.base after a refused carry, raising a new material finding, counts 1.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-02T16:23:07Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:f130aca0cd404c195476bd4a9f36df79bf14ddfd",
+          "spec": "v1:sha256:c3c8269a8b2c0441b4f34016b97cc295747f075760cca82339fce4a699da9326"
+        },
+        "policy": {},
+        "subject": "v1:sha256:8565ba6f26f0cf235eb31b3085e41846b40f87498678d3639763a03742e44d71"
+      },
+      "holder": "claude:e6ad/rd1039",
+      "input_fp": "v1:sha256:ec5e91def1e5b4ca9e674270b2a7da599d4bbcaa258c19d89d4dbe154eb6c084",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "377655b3932a61814c12baff5094b1fcecc05c3e",
+          "commit": "c465f5b6ca81f819f6d6b81083a55d8264307224",
+          "path": ".zzzops/reviews/1039/review_design.md"
+        },
+        "summary": "Changes requested. The split with G1038 is right: §6 is adopted faithfully, with no duplicated carry or relocation work. Rebase mode and the round_budget gating match the merged G1027 code. The G1026 and G1027 budget replays (3/4 and 1/4) check out against the goal refs. Three defects remain. (1) The -U0 patch id ignores position (checked: the same line inserted at line 10 or line 30 gives the same id), so a hand resolution that reorders or moves the goal's lines passes as clean and review_tests is skipped. (2) No shrink step reaches the new top-level `sync` card section, and re-run review_impl cards are already 4.0-5.6 KB, so test 11 cannot hold. (3) The budget exemption also matches test_design and implement re-runs after a non-clean sync."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "f130aca0cd404c195476bd4a9f36df79bf14ddfd",
+          "commit": "53b0e020522b39168a27c7deddea553d85eae336"
+        }
+      },
+      "status": "done"
     }
   },
   "release": 1,
