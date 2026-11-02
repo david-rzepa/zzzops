@@ -110,48 +110,32 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 2,
-      "correction_runs": 1,
-      "findings": [
-        {
-          "id": "implement:2:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "test_design",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:3f9a307a700f074ced0605f99d2bb93042002db3b3d61f30c103a696bd172962",
-          "text": "The frozen DefaultsCase.run_command helper in .agents/test_engine_defaults.py calls subprocess.run(command, shell=True), which selects cmd.exe on Windows and cannot verify the documented PowerShell command contract. Correct the helper through test_design to run the printed command with PowerShell on Windows (pwsh/powershell -NoProfile -NonInteractive -Command), retaining POSIX behavior elsewhere, and exercise space/apostrophe paths while preserving the substantive assertions. Implementation was temporarily reverted by a normal forward commit before this rerun, so product paths are not accidentally frozen into the new tests checkpoint. Restore source only after these corrected tests are reviewed.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-02T22:19:59Z",
+      "attempt": 3,
+      "correction_runs": 2,
+      "findings": [],
+      "finished_at": "2026-11-02T22:25:30Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
           "base": "v1:sha256:0c2a08d0bde69e18e656d474372b82dbd482df44464aef4c1e75be377a0d3fac",
           "doc": "v1:blob:891e284f14d6d39fa3bd3d0854b643b5c887b5a6",
-          "tests": "v1:sha256:9bfa8803a302c0ac8148164eb66dd9d43ba5add37da6477d4dc9c63d6a1a6aa6"
+          "tests": "v1:sha256:4a14579dba6ede7c8614709ae3d23f4b307e5a8b42cdbdcda5f88a511bee96b5"
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1024-implement-fix",
-      "input_fp": "v1:sha256:166c607b9fe85a97d539a26e0f3bca2f64fe05b725036ffb88b42d47426f0f42",
+      "holder": "codex:takeover/1024-implement-restored",
+      "input_fp": "v1:sha256:1f98fd0b107a64380fc7b9e01ca53fd6c0acc71e20d6c22e84d00b9ce07459ea",
       "ok": true,
       "output": {
         "code": {
           "base": "de5640d1c5909ea924450aeea6450497a78946f6",
-          "change": "bb212c1916c4c46d727b683846c680cc3363db53",
-          "commit": "b8d0fc9f6272c1470071a255a9154005240fdd9e",
-          "tree": "ccf4d5fa6f7ce8a558f47a3afa66099515bf18a7"
+          "change": "8adb1635e23220227e4aeef67e4deb9b5f501c27",
+          "commit": "ea690b9ff437e03b721086653421ec2734fdf2c5",
+          "tree": "484b42e621efdbbcf94b714f777f7bee8e9cd536"
         },
-        "responses": {
-          "implement:reopen:1": "disputed: the reproduced product concerns are accepted, but publication of their prepared source corrections is intentionally deferred until test_design corrects its Windows shell launcher. The normal forward rollback checkpoint preserves the test-before-code boundary; after corrected tests are independently reviewed, restore the implementation and apply the prepared fixes."
-        },
-        "summary": "Implementation is deliberately incomplete: the published default-policy source was reverted through a forward commit so the Windows test launcher can be corrected and independently reviewed before source restoration. The advisory-priority and PowerShell source corrections plus a separate regression module are prepared privately, with 3 regression tests passing in 1.043 s before rollback; they are not applied at this checkpoint. The required feature/history commands were rerun after rollback and fail as expected because the implementation/history store is absent; no green-feature or completion claim is made."
+        "summary": "Restored the complete default-policy update implementation after the independently approved source-free test checkpoint, preserving both frozen test files byte-for-byte. Fixed both preliminary review concerns: advisory paths shrink before actionable work or human decisions, rendering preserves caller data, and Windows diff/merge/expand/recheck commands use PowerShell-safe literal arguments and call operators (POSIX behavior retained). The corrected feature tests pass (18 in 2.601 s), new focused regressions pass (3 in 0.889 s, including actual PowerShell diff/merge/Python recheck with space/apostrophe/literal-dollar paths), history tests pass (2 in 0.006 s), design docs pass (35 in 0.486 s), and prompt budgets/diff checks pass. The tested code diff includes the complete restored feature and 60 history blobs; no installed policy, host setting or cache was changed."
       },
-      "reason": "reopened",
+      "reason": "stale",
       "status": "done"
     },
     "review_design": {
