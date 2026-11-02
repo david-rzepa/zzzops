@@ -78,15 +78,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [
         {
           "id": "review_design:3:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 3,
           "target_fp": "v1:sha256:bab05a89d67896b5f4c16526f220fae96b9ffcdaca0e43ee51a4ce899442eaf1",
@@ -98,7 +98,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 3,
           "target_fp": "v1:sha256:bab05a89d67896b5f4c16526f220fae96b9ffcdaca0e43ee51a4ce899442eaf1",
@@ -106,33 +106,33 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-02T22:08:10Z",
+      "finished_at": "2026-11-02T22:12:58Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:23d528659052e96d582576477870d43f2f0b74e1",
+          "doc": "v1:blob:eca59b21dfc8001bc2b8543a9a2593468b3baca1",
           "spec": "v1:sha256:7cacab7d2739a88c2f7c7d9773f294a4064599407fcc553561919fe77916b36c"
         },
         "policy": {},
-        "subject": "v1:sha256:bab05a89d67896b5f4c16526f220fae96b9ffcdaca0e43ee51a4ce899442eaf1"
+        "subject": "v1:sha256:dfed44f260f3d15ad4df96c3d908d3829a265b6007f4965bdb4b2e08cdcacece"
       },
-      "holder": "codex:takeover/1036-review-design",
-      "input_fp": "v1:sha256:bf9791e32780bbf7d0f1f8da96551133bbcee57c927b2902b6f7ceeb41e80916",
-      "ok": false,
+      "holder": "codex:takeover/1036-review-design-2",
+      "input_fp": "v1:sha256:80bf6e620c2cfd4e167c1d1cb77a525fd54a3e82a39b497162d4ee8d99689811",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "8628625d3b97568ac274b6a8616d36035fb9e940",
-          "commit": "7c619dc02e4d0e8f31da1b12616b95392899c475",
+          "blob": "10a5ac7b06f98973d95121b1a4f6620afe00f82a",
+          "commit": "d235c11756ba6f8583159147bc8211df6ec4c814",
           "path": ".zzzops/reviews/1036/review_design.md"
         },
-        "summary": "Changes requested: dependency reconciliation misstates G1039’s clean-sync budget exemption, and the plan still claims a strict card-size bound that the checked engine demonstrably exceeds. WD1–WD8, anonymity, evidence labeling and the merge/report writing gate are preserved."
+        "summary": "Approved revision 4: both prior findings are resolved. Budget wording and evidence checks now preserve G1039’s exact finding-raising clean-sync exemption; card-size claims state the target and measured oversized-previous exception. Owner choices, anonymity and the G1037 merge/report writing gate are unchanged."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "23d528659052e96d582576477870d43f2f0b74e1",
-          "commit": "6bc9fa7934a5451d83dce960a83c4182b811b46d"
+          "blob": "eca59b21dfc8001bc2b8543a9a2593468b3baca1",
+          "commit": "a111bc2929dbfff1953b70d88b99213bdce0d604"
         }
       },
       "status": "done"
