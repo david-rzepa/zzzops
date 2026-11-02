@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from engine.errors import Refused
-from engine.gitrun import Git
+from engine.gitrun import Git, GitError
 from engine.identity import Identity
 
 EXCLUDE = "/.zzzops/worktrees/"
@@ -20,9 +20,12 @@ def branch(g: int) -> str:
 
 
 def registered_worktrees(git: Git) -> list:
-    """Paths from `git worktree list --porcelain` (the parser kept from managed_worktrees.py)."""
-    out = git.run("worktree", "list", "--porcelain").stdout
-    return [line[len("worktree "):] for line in out.splitlines() if line.startswith("worktree ")]
+    """Paths from `git worktree list --porcelain`, retried while a concurrent worktree change makes Git fail
+    (G1041); GitError with Git's last exit code and stderr when every try failed."""
+    paths, rc, stderr = Git.worktree_paths(git.primary)
+    if paths is None:
+        raise GitError(["worktree", "list", "--porcelain"], rc, stderr)
+    return paths
 
 
 def install_ignore(git: Git):
