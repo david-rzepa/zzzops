@@ -39,6 +39,78 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:e0d3e1cb8d2baa7c3c7cc1b2a3a6017b2191d4a8597bb3b58cfbe6a1eb6a9f9b",
+          "text": "Every carrier of a blocked target's findings is a stale carrier (pass 1: fresh[c] is False when its subject or input is the blocked node, because the subject is not done and resolve(recorded) gives Missing), so §3.1's 'carrier rules apply as today' sends the findings through G1028's carry branch. Impact: (a) op carriers are never carried, so run_tests/integrate findings on a blocked implement are still dropped from its retry card, against outcome 2 and the spec, and the design does not say so. (b) Every retry correction gets stale_review: true, and output_schema invites 'disputed: … if the change made it moot' on a retry where nothing changed, which can raise rounds on owner questions and ordinary findings until they escalate. (c) Any edit while the target is blocked lists them in carried_findings with waive lines. Fix: a carrier that is not fresh only because a blocked agent target with last_out_fp hides its output counts as unchanged for that target (not in `stale`, and an op carrier's finding is kept). Otherwise state and pin each exclusion in SPEC §4.9 and §8. Add 'no stale_review' and 'no carried_findings' assertions to tests 2 and 4, and a test for an op finding on a blocked implement.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:e0d3e1cb8d2baa7c3c7cc1b2a3a6017b2191d4a8597bb3b58cfbe6a1eb6a9f9b",
+          "text": "Rollout: G1026 puts its step-4 text only in the template prompt, and installed prompts change through a policy PR. That text says that when a correction starts 'owner question:' the designer must not decide it and must submit --blocked. With blocked_findings required, the answered question is a correction on the retry card, so the designer re-blocks after every answer, and each retry needs another human answer. §3.4's rollout adds only the requires entry, and 'wherever G1026 put its text' leaves the repository prompt open. Fix: the policy PR that requires blocked_findings also carries the new step-4 text (same change, or after it). Say in blocked_findings.txt and in CLI_USAGE or MIGRATING that the capability needs the revised step 4, and pin the pairing with a doc needle.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:3",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:e0d3e1cb8d2baa7c3c7cc1b2a3a6017b2191d4a8597bb3b58cfbe6a1eb6a9f9b",
+          "text": "norm (\\b[0-9a-f]{7,40}\\b|\\d+) misses tokens that vary between runs of one failure. In CPython object addresses (0x7f3a9c0d1e20) there is no word boundary after 'x', so the hex letters remain and differ. Tempfile names (/tmp/tmpk3j_9x2a) are random letters. This repository's git- and tempdir-based test output prints both, so §6's 'rarely print' does not hold. Impact (moderate, bounded by the budget): a real repeat compares as new, gets round 1, never escalates, and implement loops until the correction budget. Fix: also replace 0x[0-9a-fA-F]+ and tmp[a-z0-9_]{8} (or any run of 7 or more hex characters, without \\b), state it in SPEC §4.14, and add both cases to test 9.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-02T15:40:12Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:f8199f751a3d89246230febc975f1caacbfc9d62",
+          "spec": "v1:sha256:77b1ea7deff7c62c46740cea2ad4ef44b2058a52cb809481ba76519d7839c296"
+        },
+        "policy": {},
+        "subject": "v1:sha256:e0d3e1cb8d2baa7c3c7cc1b2a3a6017b2191d4a8597bb3b58cfbe6a1eb6a9f9b"
+      },
+      "holder": "claude:e6ad/rd1040",
+      "input_fp": "v1:sha256:4e4bda48f0a9412a57ed513e21cc4f1be631edbeb023e898500e0d921447802b",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "1540a3c36d6572a124c67913378f65fbd7ed7080",
+          "commit": "1e45d5db3da80e342996f6f6ee2b2f7f5610e59d",
+          "path": ".zzzops/reviews/1040/review_design.md"
+        },
+        "summary": "The approach is right: last_out_fp behind blocked_findings is the smallest exact fix, G1026 is unchanged with the capability off, the stale claim holds at 25186a5, and the frozen integrate test passes under the normalisation. Three changes are needed. The blocked target's carriers are stale by construction, so op findings are dropped and every retry correction is marked stale_review. Enabling the capability before the installed design prompt changes makes the designer re-block on answered owner questions. norm misses 0x addresses and tempfile names."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "f8199f751a3d89246230febc975f1caacbfc9d62",
+          "commit": "bf33a61c7c615642a1a04b9c1c4027acfaef286a"
+        }
+      },
+      "status": "done"
     }
   },
   "release": 1,
