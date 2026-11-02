@@ -78,10 +78,10 @@
       "status": "done"
     },
     "design": {
-      "attempt": 5,
-      "correction_runs": 4,
+      "attempt": 6,
+      "correction_runs": 5,
       "findings": [],
-      "finished_at": "2026-11-02T05:05:51Z",
+      "finished_at": "2026-11-02T05:10:26Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -90,20 +90,19 @@
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/d1026b",
+      "holder": "claude:e6ad/d1026c",
       "input_fp": "v1:sha256:b928580d14fc8d8437259981f52070634f6357cce5bdc32ea98fe41d60adc46b",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "0b1b68b8f7519a10e1b1ca80d1ed56f81425473f",
-          "commit": "80497fd353858b042faf5104a70f663423115dbe",
+          "blob": "817343d7dd4732a43ca259904501a9f2c4a17045",
+          "commit": "775c4d9b5e28362e20eff18394b90cc245611368",
           "path": ".zzzops/reviews/1026/design.md"
         },
         "responses": {
-          "review_design:3:1": "fixed: the revision 5 note lists every frozen-test change. (i) test_design_prompt_step_4_blocks_with_every_owner_question drops the \"fixed: owner chose\" needle and asserts \"give no response\" and \"the review resolves\" instead; design.md step 4 already contains both. (ii) test_the_acceptance_journey: the retry card has corrections == [], the fixed: owner chose A response line is deleted, and a new assertion says rcard carries human_decisions with the one entry (from 3:2). (iii) test_spec_edit_while_blocked_unanswered_keeps_the_owner_question: the stale card has corrections == []. The designer submits done (not --blocked), review_design's card lists fid open under previous.findings and the reviewer keeps it open, the filter runs, design is ready (reopened) with fid in corrections, and block() brings the item back. (iv) The module docstring is updated for the review-card rule and the revision. Nothing else changes: resubmit_design already responds only to live findings. §10 tests 2 and 3 match.",
-          "review_design:3:2": "fixed: took the first option. A card whose node has a subject (graph.subject(n): review_design, adversary_design, filter_design, review_tests, review_impl, filter_impl) carries human_decisions over the subject and its ancestors. It uses the same render.human_decisions helper and the node set approve items use (D5, §5, §6). The owner_questions reviewer text (§2) adds: resolve an owner question only when an entry in human_decisions on your card answers it and the design's ## Owner decisions section quotes it; otherwise keep it open. §10 test 2 asserts the entry on the review_design card. §9 (now 'misquoting or a wrong mapping') and §11 say the reviewer checks the copy against the engine's record. Why: under (b) the re-review is the only step that closes the finding. Without the record on its card, the reviewer could only compare the designer's copy with itself. The fix costs about one line of card.py and one prompt sentence, and stores nothing new. It keeps the review independent and testable. Dropping the claim would leave 'reviewed' resting on the designer's word. The set includes the subject's ancestors because owner questions target the design (D2), and review_impl's subject is implement."
+          "review_design:4:1": "fixed: took the review's fix. §5 adds a card.py shrink step: _steps lists (len(canonical(list)), ('human_decisions',)) among the blob candidates when the card's human_decisions is a list, and _apply blobs it as one view with key summary 'N items' (about 3 lines; the 'unavailable' string and an existing view are never candidates). §6 adds human_decisions to SPEC §3.14's shrink-rule list of values that may be replaced by a view reference. §9 'Card size' now reads 'not clipped on cards; shrink blobs the whole list' and notes that previous.findings stays unshrinkable, as today. §10 test 2b: with a 4,000-character answer, the review_design card's human_decisions is a blob view that decisions_of reads back with the full text, plus a unit check on _steps; recorded as frozen-test change (v). Why this fix: clipping on cards would cut each entry's question, which is how the designer and reviewer map answers to finding ids (D5). One blob keeps everything, and sorting it with the other candidates reuses the existing 'largest first' rule instead of adding a new ordering."
         },
-        "summary": "Revision 5 keeps revision 4's option (b) and answers review_design round 3. It lists every change test_design must make to the frozen a263ee7 tests: the step-4 prompt needle, the journey's retry card and resubmit, the unanswered-stale test's new ending (submit done, the re-review keeps the finding open, the design blocks again from the reopened card), and the docstring. Cards of review and filter nodes now carry `human_decisions` over their subject and its ancestors. The owner_questions reviewer text says to resolve an owner question only when a recorded answer covers it and the design quotes it, so the re-review checks the designer's copy against the engine's record."
+        "summary": "Revision 6 keeps revision 5 and answers review_design round 4. card.shrink gains a step for a card's top-level human_decisions list: _steps adds it as a blob candidate sized by its canonical length and sorted with the other blob candidates, and _apply replaces it with one blob view (key summary 'N items'); the 'unavailable' string is never a candidate. SPEC §3.14's shrink rule names human_decisions among the values that may be blobbed. §9 now says the list is not clipped on cards and shrink blobs it. §10 test 2b checks that a 4,000-character answer turns the review_design card's list into a view that decisions_of reads back unclipped."
       },
       "reason": "reopened",
       "status": "done"
