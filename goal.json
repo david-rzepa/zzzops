@@ -13,34 +13,34 @@
   "priority": "P1",
   "records": {
     "approve_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-01T18:45:38Z",
+      "finished_at": "2026-11-02T05:12:35Z",
       "fp_parts": {
         "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
         "inputs": {
-          "doc": "v1:blob:74488c5f2af52070620cd0061cd2ba2f38e24f71",
-          "summary": "v1:sha256:aeef7d46242e7360a4a2a42c48e3d61c2ca5c5396379c8195e364a136a540326"
+          "doc": "v1:blob:817343d7dd4732a43ca259904501a9f2c4a17045",
+          "summary": "v1:sha256:cf93199519c8a8ffeb94c65acf761d80b07c7ae486288800eabdf69be035621d"
         },
         "policy": {},
-        "subject": "v1:sha256:23f08e05338dc2eb0d741908f6b2e47764c1ffb882202c7a4e944e7367b94a89"
+        "subject": "v1:sha256:0d0793493c4e56198b97933f6c9296b8dc3630468f0ab8721ff58d6ca3995c82"
       },
       "holder": "human",
-      "input_fp": "v1:sha256:c877171ee69b637ca8f12324e9b718c207843b6be5b747ab625414ce08282c26",
+      "input_fp": "v1:sha256:a06385fbd7439c823776607e8e23ef3cb9f5a56c1a0ca0f7ff9771134e3bc51f",
       "ok": true,
       "output": {
-        "decided_at": "2026-11-01T18:45:38Z",
+        "decided_at": "2026-11-02T05:12:35Z",
         "decided_by": "Claude (root agent), delegated by Dave",
         "decision": "approved",
         "quote": "Ok so then we need something in the DAG to cause interviews. My original idea was that during design review, gaps that the human needs to answer should be flagged in the review, and that would stale the design, and require interview to fix it. Could that work simply?",
-        "summary": "Approved G1026 design revision 3: the owner's undo-reach test is one POLICY instruction (`owner_questions`) on design, review_design, adversary_design and review_impl; reviewers raise material `owner question:` findings that always target the design (a non-material one is refused); design.md blocks with every owner question of the round and records the owner's words verbatim under Owner decisions; the card shows `answer` on any blocked-and-answered record. human_decisions are read from the goal's `zzzops: answer G<g> <node>` commits, so no record key or capability is added; approve items and the PR body show them, labelled by node kind. The execute skill batches owner questions across goals and never answers them as the delegate. Depends on 1017 and 1022. Review approved after one round."
+        "summary": "Approved G1026 design revision 6 after five review rounds (round 5 approved, no open findings). Reviews flag `owner question:` findings (always material, only when undoing a wrong choice reaches outside the goal or changes product behaviour/direction and no option clearly dominates); design blocks for an interview; the owner's words are recorded verbatim; the frontier is unchanged (option b): the re-review resolves the question against human_decisions now carried on review/filter cards; card.shrink blobs the unclipped human_decisions list; approve items and the PR body show human decisions. It follows the owner's idea that review gaps needing the human should stale the design and require an interview."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "74488c5f2af52070620cd0061cd2ba2f38e24f71",
-          "commit": "2c5801218391f730da0cf188ba8325f44112e9c7"
+          "blob": "817343d7dd4732a43ca259904501a9f2c4a17045",
+          "commit": "775c4d9b5e28362e20eff18394b90cc245611368"
         }
       },
       "status": "done"
