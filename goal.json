@@ -113,6 +113,35 @@
       "reason": "reopened",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T22:27:44Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:0c2a08d0bde69e18e656d474372b82dbd482df44464aef4c1e75be377a0d3fac",
+          "doc": "v1:blob:ab1153abea2ff217e185a023c66febc2cdc471b2",
+          "tests": "v1:sha256:af416495120811ad2bdbff1e982b776eaa6b0ec6a3901d84576f16c0ca0bb227"
+        },
+        "policy": {}
+      },
+      "holder": "codex:takeover/1038-implement",
+      "input_fp": "v1:sha256:fd387ccd828ad46022503b7324f5681dfc745d11f7bf35e8eec3a67993980604",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "de5640d1c5909ea924450aeea6450497a78946f6",
+          "change": "3ff92b0cfdb04ec756c8b896f639680b663acc51",
+          "commit": "027c07b1ddccbc3ccf825f66b051a405f71e2a05",
+          "tree": "f162a1792023c42403e7b5b38a630a565df92e18"
+        },
+        "summary": "Goal branches can sync forward by merge once the policy requires merge_sync, preserving conflict resolutions and refusing a rollback to rebasing on an already merged branch. Integration builds tests and implementation commits on the recorded synced base with the tested code tree, conventional release-aware messages and increasing dates; frozen-path identities let test fixes follow implementation without reordering. Checkpoints default to HEAD, review views split tests from implementation, and the contract/prompt/legacy-fixture updates preserve the fallback rebase mode. All 42 frozen feature tests pass; capabilities, GitHub, sync/edit, identity, package, docs, prompt checks and a real CLI merge/carry probe also pass."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 3,
       "correction_runs": 2,
