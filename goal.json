@@ -12,7 +12,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 2,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T15:38:13Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:715c01eaee101c3c5912543efc2418760d47db48ee2a2e696417f44acbd34fa7",
+          "spec": "v1:sha256:c3c8269a8b2c0441b4f34016b97cc295747f075760cca82339fce4a699da9326"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1039",
+      "input_fp": "v1:sha256:2fbc591013ff0b15c1d0ce6c596b1ee9e078c389853f3bc76f263d8e44221afb",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "7c8f0f52281711c362a9f824a0bc67cfe2544f67",
+          "commit": "a3c2b1b17be754192cd34d5e8a747cca8718d5ca",
+          "path": ".zzzops/reviews/1039/design.md"
+        },
+        "summary": "A sync carries a node when its own diff has the same zero-context patch id against the old and new trunk. The carried change is kept, so the design and tests reviews stay current; run_tests re-runs, and review_impl re-runs through a new base input with a sync-focused card. The budget becomes a per-stage limit (default 10) on agent rounds that raise new material findings, kept in correction_runs and counted in the stage of the node that raised them. Clean-sync re-runs never count, and capability round_budget gates the change. G1039 widens G1038's single carry predicate and reads its sync record, so it must merge after G1038."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
