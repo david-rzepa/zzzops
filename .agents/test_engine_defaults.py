@@ -13,6 +13,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -45,11 +46,24 @@ def call(*args, env=None):
     return rc, json.loads(out.getvalue())
 
 
+def run_printed_command(command, cwd):
+    if os.name == "nt":
+        powershell = shutil.which("pwsh") or shutil.which("powershell")
+        if powershell is None:
+            raise RuntimeError("PowerShell is required to verify printed Windows commands")
+        # A quoted executable path needs the PowerShell call operator. Applying
+        # it to an unquoted command name is valid too; preserve an existing one.
+        invocation = command if command.lstrip().startswith("&") else "& " + command
+        return subprocess.run([powershell, "-NoProfile", "-NonInteractive", "-Command", invocation],
+                              shell=False, capture_output=True, text=True, cwd=cwd)
+    return subprocess.run(command, shell=True, capture_output=True, text=True, cwd=cwd)
+
+
 class DefaultsCase(unittest.TestCase):
     def setUp(self):
         stack = contextlib.ExitStack()
         self.addCleanup(stack.close)
-        self.tmp = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="default policy ")))
+        self.tmp = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="default policy's ")))
         self.shipped = self.tmp / "plugin defaults"
         self.here = self.tmp / "repository policy"
         self.history = self.tmp / "history store"
@@ -100,8 +114,32 @@ class DefaultsCase(unittest.TestCase):
 
     def run_command(self, command):
         # Commands are an agent-facing contract, so execute their quoted bytes,
-        # including paths containing spaces, rather than reconstructing argv.
-        return subprocess.run(command, shell=True, capture_output=True, text=True, cwd=self.tmp)
+        # including spaces and apostrophes, with their documented platform shell.
+        return run_printed_command(command, self.tmp)
+
+
+class PrintedCommandTests(unittest.TestCase):
+    def test_printed_git_command_preserves_spaces_and_apostrophes(self):
+        with tempfile.TemporaryDirectory(prefix="printed command's ") as tmp:
+            old, new = Path(tmp) / "old file's.md", Path(tmp) / "new file's.md"
+            old.write_text("old guidance\n")
+            new.write_text("new guidance\n")
+            quote = (lambda value: "'" + value.replace("'", "''") + "'") if os.name == "nt" else shlex.quote
+            command = "git diff --no-index -- " + quote(str(old)) + " " + quote(str(new))
+            result = run_printed_command(command, tmp)
+            self.assertEqual(1, result.returncode, result.stderr)
+            self.assertIn("-old guidance", result.stdout)
+            self.assertIn("+new guidance", result.stdout)
+
+    def test_windows_uses_powershell_and_preserves_the_printed_command(self):
+        command = "'C:/Program Files/Git/bin/git.exe' diff -- 'path''s file.md' 'new file.md'"
+        # Check the Windows launch even on POSIX; the command itself is executed
+        # by the native platform shell in the preceding quoting probe.
+        with patch.object(os, "name", "nt"), patch.object(shutil, "which", side_effect=[None, "powershell.exe"]), \
+                patch.object(subprocess, "run") as run:
+            run_printed_command(command, "working directory")
+            run.assert_called_once_with(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "& " + command],
+                                        shell=False, capture_output=True, text=True, cwd="working directory")
 
 
 class DefaultComparisonTests(DefaultsCase):
