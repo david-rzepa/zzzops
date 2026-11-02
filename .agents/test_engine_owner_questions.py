@@ -721,6 +721,13 @@ class OpDecisionTests(OwnerWorld):
         self.gh.set_checks(head, ci=["pass"])
         out = self.op_at(g, "integrate", self.w.now + 60)
         self.assertTrue(out["ran"]["ok"], out["ran"])
+        # revision 7: the PR body reads every node not a descendant of integrate, so it lists integrate's own answer
+        body = next(iter(self.gh.load()["prs"].values()))["body"]
+        self.assertIn("## Human decisions", body)
+        lines = [l for l in body[body.index("## Human decisions"):].splitlines() if l.startswith("- **")]
+        self.assertEqual(1, len(lines), body)
+        self.assertRegex(lines[0], r'^- \*\*%s\*\* \(op; Claude \(root agent\), delegated by Dave, '
+                                   r'\d{4}-\d\d-\d\d[^)]*\): .+ → "Wait for it\."$' % re.escape(self.n("integrate")))
         self.p.drive(g, lambda st: st["approve_merge"] == "needs_human (approve)")
         item = self.p.item(g, "approve_merge")
         self.assertEqual([(self.n("integrate"), "op", commit, "Claude (root agent), delegated by Dave")],
