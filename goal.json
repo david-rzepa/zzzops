@@ -47,10 +47,10 @@
       "status": "done"
     },
     "design": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-02T22:05:17Z",
+      "finished_at": "2026-11-02T22:11:37Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -59,18 +59,22 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1036-design",
+      "holder": "codex:takeover/1036-design-fix",
       "input_fp": "v1:sha256:6cc56f2d92585d5a2cb9746ee92e5c623e3119a092a0e1c23dacd1442b930ffa",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "23d528659052e96d582576477870d43f2f0b74e1",
-          "commit": "6bc9fa7934a5451d83dce960a83c4182b811b46d",
+          "blob": "eca59b21dfc8001bc2b8543a9a2593468b3baca1",
+          "commit": "a111bc2929dbfff1953b70d88b99213bdce0d604",
           "path": ".zzzops/reviews/1036/design.md"
         },
-        "summary": "Revision 3 narrowly reconciles the whitepaper plan with approved G1037 attempt 5: merge-sync/change-based carry, verification plus base-focused implementation review, per-stage finding budgets and findings preserved across answered owner-question blocks. The trace and evaluation now distinguish real observations, cited tests and unobserved cases across A1–A20; writing explicitly waits for G1037 merge/report even if base is stack-ready earlier. WD1–WD8 and the existing binding, ratio-only evidence, anonymity, byline and external-post boundaries are unchanged; no paper or dogfood outcome is produced in this design phase."
+        "responses": {
+          "review_design:3:1": "fixed: §3 item7.6/T8/§7/W15–W16 apply G1039 exact exemption for stale base-only-input nodes with no checkpoint outputs even when they raise material findings; contrast normal charging for refused-carry checkpoint nodes and changed-subject reviews; trace evidence includes stale keys, output types and actual counters.",
+          "review_design:3:2": "fixed: describe4096bytes as target with known oversized-previous fixed point, cite existing test and review8537byte observation, report actual sizes/overruns, add limitation and W18 checked-build evidence requirement. No G1019 prerequisite or engine fix; WD1–WD8 unchanged."
+        },
+        "summary": "Revision4 fixes the two factual review findings without expanding scope: the sync-focused no-checkpoint review is budget-exempt when stale only on git.base-selecting inputs even if it raises material findings, while changed-subject/checkpoint cases count normally. Card4096bytes is a target with the checked build's documented oversized-previous exception; observed sizes, limitations and acceptance evidence replace the unsupported hard-bound claim. WD1–WD8 and the dogfood-merge/report writing gate remain unchanged."
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
