@@ -46,6 +46,39 @@
       },
       "status": "done"
     },
+    "base": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T20:55:55Z",
+      "fp_parts": {
+        "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
+        "inputs": {
+          "heads": "v1:sha256:1ca5e3bd17713a43fbbffda41e8aaa969db10d1c88d7a2f6a19e94bd582fa20d",
+          "merges": "v1:sha256:8ebe79b69b72c70f504702b202c5c420e4d35fe543a12e8a8a0345a34544ec3d"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:7a1b579dcb6e0f316b9d084b63e87f51d0477262a5866b1bf2897cebaf2e426b",
+      "ok": true,
+      "output": {
+        "base_commit": "de5640d1c5909ea924450aeea6450497a78946f6",
+        "branch": "zzzops/work/g1038",
+        "replay_map": {
+          "060abf63a0632d0bddde85868ff5bf7d735775c9": "5c348d1f671c4d83f844a3abf7bf9d4b36340ac4",
+          "452191ee318b5f877a8bff8fc83ee8433a8253dd": "3f3477fb04ea2f6f387c2ea3d0e629f1a7a4021e",
+          "54cc920b553376c7d0c9cef9e731743b4b680fee": "fe760bd6ded1bfad5da01b6211856e0d521af0e7",
+          "980ef3da8421e7f049c984385cfc28478cacd857": "b4c0ed9d5812209b8484c8b040574ae450daf200",
+          "c42892b80dc9dc33a83c47cce5d8343ecfe4c5d9": "602dd4bbf4a201be5b0b9318c31c1747f1fe8fb1",
+          "d6a1c2c8543e40535dbf6ed7d9d3bb1508d49cb1": "3c172841ab1050a4dd572f57cebf625a11692f30"
+        },
+        "replay_pos": {},
+        "stack": []
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "design": {
       "attempt": 3,
       "correction_runs": 2,
