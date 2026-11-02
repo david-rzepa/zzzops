@@ -45,8 +45,29 @@
       "status": "done"
     },
     "base": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "blocked": {
+        "category": "conflict",
+        "commands": {
+          "resume": [
+            "start",
+            "1025",
+            "base",
+            "--as",
+            "<LABEL>"
+          ]
+        },
+        "instructions": "In /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1025: resolve the conflicts in docs/design/HISTORY.md docs/design/SPEC.md plugins/zzzops/zzzops/engine/__init__.py plugins/zzzops/zzzops/engine/errors.py plugins/zzzops/zzzops/engine/fingerprint.py plugins/zzzops/zzzops/engine/frontier.py plugins/zzzops/zzzops/engine/render.py plugins/zzzops/zzzops/engine/schemas.py plugins/zzzops/zzzops/engine/session.py, `git add` them, run `git -c core.editor=true rebase --continue`, then run the resume command. Do not change the meaning of the goal's commits.",
+        "op_state": {
+          "old": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "onto": "262d7807044ab48b616d63611c5c6711d110ef7c",
+          "work": "328366f4e5cc9fdfbce8fb100aae248b702ab9b8"
+        },
+        "reason": "rebase conflict in docs/design/HISTORY.md docs/design/SPEC.md plugins/zzzops/zzzops/engine/__init__.py plugins/zzzops/zzzops/engine/errors.py plugins/zzzops/zzzops/engine/fingerprint.py plugins/zzzops/zzzops/engine/frontier.py plugins/zzzops/zzzops/engine/render.py plugins/zzzops/zzzops/engine/schemas.py plugins/zzzops/zzzops/engine/session.py",
+        "repeats": 1,
+        "waiting_for": "agent"
+      },
+      "correction_runs": 1,
       "findings": [
         {
           "id": "base:reopen:1",
@@ -61,7 +82,7 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T20:38:58Z",
+      "finished_at": "2026-11-02T17:17:42Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
         "inputs": {
@@ -72,23 +93,10 @@
       },
       "holder": "claude:e6ad/op",
       "input_fp": "v1:sha256:d9ef292a6b05a9ee73c1996b6fdc61e05c28301ce8f94d7c5aad2424acad7e3d",
-      "ok": true,
-      "output": {
-        "base_commit": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-        "branch": "zzzops/work/g1025",
-        "replay_map": {
-          "3d17926172ab5e1c7d72015e06f5fad64eb02873": "6cb47c1d77c730ca721591ad65464e2ca627715c",
-          "5f64fd675c917f466237051c5f3a1633292dd667": "85155a90dc9558117b90e83e77c5c0298c1fe7ab",
-          "7d079c38b00beee8dcac960fc81d579056e9794e": "01efb99ce0e0880cedba5b2a5095c355e46c84dd",
-          "a28e2895500a7c0fbf1cee13064e8a49e0100aa4": "e9f0d48af9e6b28b0db3d22ae9368f39591db3fd",
-          "b37c664fcc982367adcc9e2cdb6e6539d13380b8": "460b6b4969ddc1c111a98ba9c508ea6b36f60d7f",
-          "da690e409fa5ef5c60c51db1375b30bf35004888": "bdfe4606553de21a3d5c43e3b207326fdcb4bbaa"
-        },
-        "replay_pos": {},
-        "stack": []
-      },
-      "reason": "new",
-      "status": "done"
+      "ok": false,
+      "output": null,
+      "reason": "reopened",
+      "status": "blocked"
     },
     "design": {
       "attempt": 3,
