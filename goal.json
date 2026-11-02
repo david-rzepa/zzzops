@@ -156,6 +156,41 @@
         }
       },
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 2,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T21:58:41Z",
+      "fp_parts": {
+        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "inputs": {
+          "base": "v1:sha256:0c2a08d0bde69e18e656d474372b82dbd482df44464aef4c1e75be377a0d3fac",
+          "doc": "v1:blob:891e284f14d6d39fa3bd3d0854b643b5c887b5a6"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        ".agents/test_engine_defaults.py",
+        ".agents/test_template_history.py"
+      ],
+      "holder": "codex:takeover/1024-test_design",
+      "input_fp": "v1:sha256:c2c095992d0ee852443017b88f2b709116687f2a8a35f7468ca736d1bc7a354d",
+      "ok": true,
+      "output": {
+        "commands": [
+          "python3 -m unittest discover -s .agents -p 'test_engine_defaults.py'",
+          "python3 -m unittest discover -s .agents -p 'test_template_history.py'"
+        ],
+        "tests": {
+          "base": "de5640d1c5909ea924450aeea6450497a78946f6",
+          "change": "5dca21aa2fb70f47b0f0df300456c68f6361616a",
+          "commit": "bedf97ad36f8b5c0c820ff49802406cc4e3d9948",
+          "tree": "5a13c9d6c88d1a7b39668ff53c117caaff0d1a6b"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
