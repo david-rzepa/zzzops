@@ -43,7 +43,8 @@ def run(ctx):
         return Blocked({"category": "policy", "waiting_for": "human", "reason": "work branch has merge syncs",
                         "question": f"G{g}'s work branch has merge syncs and the policy no longer requires merge_sync. "
                                     "Rebasing would drop them and redo conflicts. Add merge_sync back to "
-                                    "settings.engine.requires through a policy branch, then answer."})
+                                    "settings.engine.requires through a policy branch, then answer.",
+                        "op_state": {"old": old}})
     if merge_mode and rebase_in_progress(git, p):
         git.run("rebase", "--abort", cwd=p)
     # 0. the worktree
