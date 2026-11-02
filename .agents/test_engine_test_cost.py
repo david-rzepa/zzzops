@@ -151,8 +151,10 @@ class ChecksCostTests(unittest.TestCase):
         self.assertEqual(2500, timing["goal_ms"])
         self.assertEqual(1250, timing["verification_ms"])
         self.assertEqual(64, len(timing["plan_sha256"]))
+        self.assertEqual(64, len(timing["verification_plan_sha256"]))
         self.assertEqual("unavailable", timing["baseline"]["status"])
         self.assertEqual("no_prior_run", timing["baseline"]["reason"])
+        self.assertEqual({"status": "unavailable", "reason": "no_prior_run"}, timing["baseline"]["verification"])
         self.assertTrue(result["passed"])
 
     def test_effective_total_is_parent_clamped_before_mode_choice_and_split(self):
@@ -248,6 +250,18 @@ class ChecksCostTests(unittest.TestCase):
             timing = self.timing(self.execute(ctx, parent=parent).output["result"])
             values.append(timing["plan_sha256"])
         self.assertEqual(4, len(set(values)))
+
+    def test_repository_hash_excludes_goal_text_but_tracks_repository_order_mode_and_allocation(self):
+        first = self.timing(self.execute(self.context(goals=("g1",), verification=("v1", "v2"), mode=True), parent=4).output["result"])
+        different_goal = self.timing(self.execute(self.context(goals=("different-goal",), verification=("v1", "v2"), mode=True), parent=4).output["result"])
+        self.assertNotEqual(first["plan_sha256"], different_goal["plan_sha256"])
+        self.assertEqual(first["verification_plan_sha256"], different_goal["verification_plan_sha256"])
+        for ctx, parent in ((self.context(goals=("g1",), verification=("v2", "v1"), mode=True), 4),
+                            (self.context(goals=("g1",), verification=("different-repository",), mode=True), 4),
+                            (self.context(goals=("g1",), verification=("v1", "v2"), mode=False), 4),
+                            (self.context(goals=("g1",), verification=("v1", "v2"), mode=True), 6)):
+            compared = self.timing(self.execute(ctx, parent=parent).output["result"])
+            self.assertNotEqual(first["verification_plan_sha256"], compared["verification_plan_sha256"])
 
     def test_logs_are_trimmed_without_removing_command_cost_or_outcomes(self):
         commands = tuple(f"goal-{i}" for i in range(10))
