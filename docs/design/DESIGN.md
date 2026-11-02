@@ -543,6 +543,10 @@ All of these are visible edits, not ceremonies.
 4. A violation is a submit error (`test_freeze`) naming the files. The route: restore them; if a frozen test is wrong, keep it unchanged and raise a finding on `test_design`.
 5. Carry-forward (§3.16) copies `frozen` unchanged.
 
+**Measured verification (G1043).** checks.run still proves the exact recorded tree and runs every goal/repository command. Default ordering stays serial; optional verification.parallel_commands is an explicit declaration that two ordered lanes can share this checkout safely. It needs capability test_cost, and each checks node declares both verification.commands and verification as policy. A single parent-capped CPU total is divided before starting lanes; single-CPU/empty-lane cases stay sequential. A shared timeout kills/joins every child before one cleanup, and failure reporting keeps original command order. Third-party commands may ignore the exported worker budget; no OS enforcement or automatic shell coverage is claimed.
+
+Durable command/total timing uses integer milliseconds. One bounded lookup of existing accepted goal evidence identifies the newest tested code tree actually merged onto the captured goal target's first-parent history. Independently qualify total workload and repository workload hashes/environment against that same source. Different targeted commands can leave the total comparison unavailable while preserving a useful repository delta; show each qualification/provenance and the machine/concurrent-workload caveat. Missing evidence is unavailable, not zero, and a newer mismatch never selects an older convenient source. Caps/deadline cover Git work too (SPEC §5.3), so informational history cannot hold successful checks indefinitely. No timing database/service/index or second trunk test run is added; timing never renews approval identity or gates regressions.
+
 ### 3.10 Coordinator and policy
 
 **Every invocation runs this preamble** (SPEC §4.2–§4.5). It talks only to the Git remote, never to the GitHub API.
@@ -971,11 +975,17 @@ The worked examples are §4.2 (one dependency) and §4.4 (a chain).
 A repository whose integration branch has no `.zzzops/workflow.json` gets `not_bootstrapped`, naming this skill (§3.10).
 
 
+**Repository local verification (G1043).** `python3 .github/scripts/run_product_validation.py --platform linux --local` reuses CI's canonical discovery, individual-test timing hints and longest-first balancing, with available CPUs by default. Fresh interpreter processes isolate unittest globals; executed/completed IDs must account for the whole inventory exactly once, including failed observations. The runner reports compact totals/worker timings and can write exact reports; hints never select tests. Explicit workers and an inherited ZZZOPS_TEST_WORKERS budget are bounded by available CPUs. The obsolete property-test isolation entry/comment is removed only after source audit found no elapsed-time assertion; every seed/step/semantic assertion stays. Genuine future exclusivity uses sequential policy rather than assuming two local joins coordinate.
+
+The under-five-minute full run on the owner's machine is measured acceptance evidence, with exact-ID accounting, not a fragile unit timeout or guessed speedup. Profile/split genuinely expensive tests only while retaining their scenarios/assertions and representative real integration journeys. Existing CI/native/auxiliary semantics stay distinct; this local command covers the canonical Python suite.
+
 ## 4. Default workflow and worked examples
 
 ### 4.1 Default graph (`graphs.default`, 15 nodes)
 
 **Amended by G1022.** The shipped graph has 15 nodes: `review_design` applies the seven design lenses (`intent`, `simplicity`, `truth`, `adversary`, `concurrency`, `rollout`, `experience`) and runs beside a separate `adversary_design`, and both feed `filter_design`; `review_impl` applies five lenses (`compliance`, `correctness`, `missing`, `tests`, `craft`) and feeds `filter_impl` (§3.8). `intent`, `simplicity`, `compliance`, `missing` and `craft` are not skippable. The G1000 text below describes the 26-node graph it replaces: read `review_design` plus `adversary_design` for the seven `<lens>_design` nodes, and `review_impl` for the seven `<lens>_impl` nodes. The default budget is 3 × 9 agent nodes = 27.
+
+**Measured review configuration (G1043).** The default test writer outputs cost: object, measured against its checkpoint and commands, with integer duration_ms/exit plus the measured changed-test scope and summary. Review_tests and review_impl receive it as context; red runs are labeled failing, incomplete runs need better evidence, and no cost is guessed. Review_tests and the Tests lens assess measured cost, redundant full journeys, sleeps and brittle elapsed-time bounds without weakening tests. Approve_merge consumes the checks result as context and shows total/repository times, each baseline scope's provenance or unavailable reason, and an available repository delta even when total comparison is unavailable. These are template decisions, not universal engine node names or schemas. The shipped policy requires test_cost but leaves parallel_commands absent; repository adoption is a separately reviewed policy PR, with live-worker impact preview and explicit concurrency-safety review.
 
 **The release graph (G1025).** The shipped template has a second graph, `graphs.release`, beside this one: the 4-node graph of release and hotfix line goals (`approve_start` → `sync` → `approve_finish` → `finish`, §3.16a). It adds no node, prompt or lens to the default graph, and a repository without `settings.branching` never uses it.
 

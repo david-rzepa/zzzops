@@ -447,6 +447,13 @@ def _validate_node(e: Errors, where, n, nd, nodes, settings, instructions, promp
             else:
                 for msg in spec.validate(nd):
                     e.add(f"{where}", f"op {nd['op']}: {msg}")
+    verification = settings.get("verification") if isinstance(settings, dict) else None
+    if (kind == "op" and nd.get("op") == "checks.run" and isinstance(verification, dict)
+            and "parallel_commands" in verification):
+        declared = nd.get("policy")
+        if not _strings(declared) or not {"verification.commands", "verification"} <= set(declared):
+            e.add(f"{where}.policy", "checks.run with verification.parallel_commands must declare both "
+                                    "verification.commands and verification")
     if "schedule" in nd and nd["schedule"] != "upstream":
         e.add(f"{where}.schedule", "must be \"upstream\"")
     for b in ("root", "workspace", "release_gate", "skippable", "line_complete"):
@@ -613,7 +620,7 @@ SETTINGS_SHAPE = {
     "engine": {"min": ("optional", "version"), "requires": ("optional", "names")},
     "integration_branch": "branch",
     "verification": {"commands": "strings", "required_ci": "strings", "timeout_minutes": (1, 240),
-                     "ci_timeout_minutes": (10, 1440)},
+                     "ci_timeout_minutes": (10, 1440), "parallel_commands": ("optional", "bool")},
     "releases": {"current": (1, None)},
     "leases": {"ttl_minutes": (10, 1440)},
     "parallelism": {"max_workers": (1, 50)},
@@ -759,6 +766,9 @@ def validate_policy(p) -> list:
             if k in settings:
                 _check_shape(e, f"settings.{k}", settings[k], shape)
         _check_branching(e, settings)
+        verification = settings.get("verification")
+        if isinstance(verification, dict) and "parallel_commands" in verification and "test_cost" not in required_caps(settings):
+            e.add("settings.verification.parallel_commands", "requires capability `test_cost`: add it to settings.engine.requires")
     else:
         _check_shape(e, "settings", settings, SETTINGS_SHAPE)
     ins = p.get("instructions")
