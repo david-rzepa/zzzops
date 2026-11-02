@@ -44,6 +44,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T17:08:30Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:4651ce4237f637dc228cb3aa70b1c1be646126e90a7e4bdc9a00d3c31f9ba61c"
+        },
+        "policy": {},
+        "subject": "v1:sha256:83f21274cb6ebb54d4795ca42d4cd8e0ff1ddb2114d207fabf462e20b369491c"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:ffe035d15fddcd4ecbd2022ab4ed6b74d5cb205c64345ec1d019a434b3863249",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-02T17:08:30Z",
+        "decided_by": "Dave (owner), recorded by Claude (root agent)",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approved merging PR #761 (G1041) at head 5fb2bb4 into dev: Git.worktree_paths trusts `git worktree list --porcelain` only on exit 0 and retries with jittered backoff (worst case under 1 s), used by Git.discover (refusal now carries git's stderr) and worktree.registered_worktrees. Fixes the CI flake on PR #759 (2 of 20 concurrent `next` refused while ZzzOps's own coordinator mirror was being added). Tests, code review and full suite passed; required CI passed. The owner asked to merge everything on the Release 1 stack; merged with --admin because of the dev ruleset's last-push rule."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "f4eaf7465f1d3e95392733d9ba05456702fd41d0",
+          "change": "20fa99d7ff9fcb3f16735e5004deadd71c193d1b",
+          "commit": "210b1ca6210d59f31d741b9f42dd7a8dd175ddee",
+          "tree": "a7a0cb89561713b8f66d19d548f75808635d7642"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 1,
       "correction_runs": 0,
