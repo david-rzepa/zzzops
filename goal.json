@@ -209,51 +209,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 3,
-      "correction_runs": 2,
-      "findings": [
-        {
-          "id": "review_tests:2:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:bc149bfafeee68e7ad136ac98f0bc8e2120545bc75981e756269e1760fa0d866",
-          "text": "Exclude docs/design/IMPLEMENTATION_PLAN.md from test 10, as HISTORY.md already is. At base b452cd7 the grep matches three plan lines: 82 (the engine/__init__.py row naming ENGINE_VERSION), 327 ('SPEC §4.5: the engine floor and ceiling, and requires_min') and 346 (item 21, 'settings.engine.min above ENGINE_VERSION refuses writes'). G1017 moved the plan in as 'a historical record. DESIGN and SPEC win', and G1027's design §4 does not list it among the docs it edits. As written, the test forces the implementation to rewrite a historical record. Fix: add ':(exclude)docs/design/IMPLEMENTATION_PLAN.md' next to the HISTORY.md exclusion, and say in the docstring that both are records.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-01T21:51:32Z",
+      "attempt": 4,
+      "correction_runs": 3,
+      "findings": [],
+      "finished_at": "2026-11-02T03:59:20Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:0c556c21045dcada61dcaab09a6d222e0cdd7d4f",
-          "tests": "v1:sha256:6f8dcfbc9343cd74fcf7061d7ca9bf16ff79e98a45cfdab478674110c94775f3"
+          "tests": "v1:sha256:ca54375d1da83017c96dcacaec1f842576a30d3130f34f13bdbb0476f84f8322"
         },
         "policy": {},
-        "subject": "v1:sha256:ec49bb70430ea9b94a2756e307185358875d15f30bc701fd5618d0a2a6d215ee"
+        "subject": "v1:sha256:74b0bb03f7f824d8fde5df11c01cc9fa25aa0ce758e3deea833b8a9dcf770dfc"
       },
-      "holder": "claude:e6ad/rd1017",
-      "input_fp": "v1:sha256:48a28169e383a86a5f5753cf96dfe5b1d0cfec9fb4e515fb05f4fd4900ffa484",
+      "holder": "claude:e6ad/rt1027",
+      "input_fp": "v1:sha256:eb249c4d64f46006708d33cb2786212c589e399818518a6f1f6b325176a74957",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "3e0b8cd62fd2af9658d0bfab819bf95120eb706b",
-          "commit": "d7276b9ef673d4da6fce26ed71d73f462ccaebee",
+          "blob": "dfc61c6a7f1964f8ed565d6a167512ff5054afe2",
+          "commit": "40336b9cac011fc8a525f6f798ff63c2ed3de740",
           "path": ".zzzops/reviews/1027/review_tests.md"
         },
-        "summary": "Approved. review_tests:2:1 is resolved: test 10 excludes IMPLEMENTATION_PLAN.md next to HISTORY.md, and the docstring says why. Against base, the docs/design matches left are only the DESIGN and SPEC lines G1027 must edit, plus its own README pending-row marker, which its PR deletes. 1:1 and 1:2 were resolved in attempt 2. No new findings."
+        "summary": "Re-review after the tests checkpoint moved from 4c8c5c6 to 1a15ad2. git diff 4c8c5c6 1a15ad2 -- .agents shows exactly one test change: CanonTests.test_errors_have_exit_codes now expects 27 exit-1 error codes instead of 28. This matches design section 4, which removes the engine_too_new code (errors.py, cli.py, store.py, SPEC and DESIGN tables) and was never emitted, so the exit-1 count drops by one. No other test or fixture changed. Prior finding review_tests:2:1 stays resolved."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "e63cf8fbb0da71136303b17fedaec475a0be54e6",
-          "commit": "4c8c5c6147aea89d261c1ee27100f830d088bb99",
-          "tree": "e90a49f542d57355619832fcb6fdb35aaaca79cd"
+          "change": "a07084aa99cae32af65226d6df53fd49d2f74fd2",
+          "commit": "1a15ad2ef045f9129ec4f06f36b638322dd5c38c",
+          "tree": "fe66bd2f6bfb6ffc71c28b78546687e296dff3db"
         }
       },
       "status": "done"
