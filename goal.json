@@ -108,49 +108,36 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 5,
-      "correction_runs": 4,
-      "findings": [
-        {
-          "id": "review_design:4:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 5,
-          "target_fp": "v1:sha256:0f2ad4f5749a304f5025b79cd9dec0beb825527da46aedb02b7bf1dc13b6942e",
-          "text": "human_decisions on cards has no shrink step. D5 and §5 say entries are unclipped on cards and 'shrink turns it into a blob view if needed'; the frozen decisions_of helper also expects a blob view after shrink. But the shipped card._steps (card.py, around line 420) and SPEC 3.14's shrink rule (SPEC.md:1581) can blob only prompt, instructions, inputs/context/policy entries, correction texts and candidates/notes. A top-level human_decisions list is never a candidate. §9 'Card size' also says the list 'is clipped', which contradicts D5. Revision 5 adds the list to all six review and filter cards, which already carry an unshrinkable previous.findings (this review's own card is 7,367 canonical bytes). Fix: in §5, add a card.py shrink step that blobs a top-level human_decisions list (key summary 'N items'). In §6, add it to SPEC 3.14's shrink order. Correct §9 to 'not clipped on cards; shrink blobs it'. Add a test: with a long answer, the review_design card's human_decisions becomes a view that decisions_of reads back.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-02T05:11:58Z",
+      "attempt": 6,
+      "correction_runs": 5,
+      "findings": [],
+      "finished_at": "2026-11-02T05:30:22Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:817343d7dd4732a43ca259904501a9f2c4a17045",
+          "doc": "v1:blob:3ddfcf819109e6587559b34b5f61a295c331a1db",
           "spec": "v1:sha256:712a82bb1586f8af2e21fa5349d31dbf159031609fe366558e0f4003e9911e57"
         },
         "policy": {},
-        "subject": "v1:sha256:0d0793493c4e56198b97933f6c9296b8dc3630468f0ab8721ff58d6ca3995c82"
+        "subject": "v1:sha256:08b31c3788861e56a8974fde0afcaaf36f20ad3f068c7b1f1341e6e4adc286dc"
       },
-      "holder": "claude:e6ad/rd1026c",
-      "input_fp": "v1:sha256:fed603e9b26881d1f81c909b3a821fa9db94123ead4744843cf95cb0cc219110",
+      "holder": "claude:e6ad/rd1026d",
+      "input_fp": "v1:sha256:1ecab82238cd4b8cb38de669080b769e8b3e597b8431c9e0317300a366bb74ba",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "27271c84792e441b3cf9538ac5c6e6e6f90b17e5",
-          "commit": "5b00af4a5c51a98dc472805defd52c4db8003886",
+          "blob": "377f8f6918d891b0701e57864365cfef13478fb3",
+          "commit": "7fc1c09a00c4e162dd071f44855e35d233ab1e05",
           "path": ".zzzops/reviews/1026/review_design.md"
         },
-        "summary": "Revision 6 resolves 4:1, and the r5-to-r6 diff touches only the areas it lists. Checked against card.py on 25186a5: the two-element step needs its own _apply branch, and the design adds one. _blob on a list gives the 'N items' key summary and indented JSON that the frozen decisions_of can read back. The blobbed value is no longer a candidate, and shrink runs last in build. SPEC 3.14's list and §9 are now consistent with D5. No new findings."
+        "summary": "Revision 7 changes only what it claims: approve items and the PR body read the non-descendants of the item's node or of the writing op, and a filter card's subject is graph.subject(n) or graph.filter_subject(n). I checked this on the shipped 15-node graph. approve_design reads its ancestors, while approve_merge and the integrate-written PR body read every node except merge. The frozen tests at aec3870, including test_an_answered_integrate_question_is_listed_with_kind_op, are consistent with it unchanged. No finding."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "817343d7dd4732a43ca259904501a9f2c4a17045",
-          "commit": "775c4d9b5e28362e20eff18394b90cc245611368"
+          "blob": "3ddfcf819109e6587559b34b5f61a295c331a1db",
+          "commit": "29b7c15cae58e5f307c0ff39533eff41bc4a662e"
         }
       },
       "status": "done"
