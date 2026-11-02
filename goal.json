@@ -155,23 +155,23 @@
       "status": "done"
     },
     "integrate": {
-      "attempt": 2,
+      "attempt": 3,
       "blocked": {
         "category": "external",
         "op_state": {
           "head": "92d8a8ab46322d7a3b5e1367aec18a9b49564f46",
           "pending_since": 1793651427,
-          "polls": 1,
+          "polls": 2,
           "rerun_head": null
         },
         "reason": "required checks pending: dev-required-tests (mergeable: MERGEABLE/BLOCKED)",
-        "repeats": 1,
-        "retry_after": "2026-11-02T20:35:27Z",
+        "repeats": 2,
+        "retry_after": "2026-11-02T20:46:38Z",
         "waiting_for": "time"
       },
-      "correction_runs": 1,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-02T20:30:27Z",
+      "finished_at": "2026-11-02T20:36:38Z",
       "fp_parts": {
         "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
         "inputs": {
