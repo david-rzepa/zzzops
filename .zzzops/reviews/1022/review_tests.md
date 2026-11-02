@@ -1,19 +1,5 @@
-# G1022 review_tests (attempt 2)
+# G1022 review_tests (attempt 3)
 
-**Verdict: approved.** review_tests:1:1 is resolved.
+Range-diff of the approved tests (b452cd7..18fdceb) against the rebased tests (5288bf7..07abea9): 5 of 7 commits identical; the only test change is NoFindingLostTests.test_skipping_the_lens_of_an_open_finding_keeps_it (plus a context shift in test_engine_lenses.py from the rebase, no test change there).
 
-- **The change.** Since 73cdb03, the only test change is `test_engine_version_or_capability_marks_the_new_shapes`:
-  - It no longer imports `ENGINE_VERSION`.
-  - When `engine/capabilities/lenses.txt` exists, it requires `lenses` in the template's `settings.engine.requires`.
-  - Otherwise it reads `getattr(engine, "ENGINE_VERSION", None)` and requires at least 1.2.0.
-- **Commands.** They now use `python3`.
-- **G1027-first order, simulated in-process.** I added `lenses.txt` to an extracted tree, deleted `engine.ENGINE_VERSION`, and varied the template's `requires`:
-
-  | Template `requires` | Result |
-  |---|---|
-  | `["lens_findings", "lenses"]` | passes |
-  | `["lens_findings"]` | fails |
-  | key absent | fails |
-
-  There is no import error.
-- **G1022-first order, unchanged tree.** It fails on `1.1.0`, as it should before the implementation's version bump.
+The test keeps every earlier assertion (open id kept, previous finding on the card, skipped lens not applied, new finding added, two open, filter candidate lens tag). The replaced assertion ("ready (stale: lenses)") now asserts G1028 behavior: design reopened, review_design blocked then ready (stale), the finding carried as a stale_review correction. One line `self.p.run(g, "adversary_design")` was added so filter_design can run. Docstring notes the adjustment. Nothing is weakened; the no-finding-lost purpose is kept. Fixtures and imports are unchanged.
