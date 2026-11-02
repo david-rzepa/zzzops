@@ -47,15 +47,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 3,
           "target_fp": "v1:sha256:8565ba6f26f0cf235eb31b3085e41846b40f87498678d3639763a03742e44d71",
@@ -67,7 +67,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 3,
           "target_fp": "v1:sha256:8565ba6f26f0cf235eb31b3085e41846b40f87498678d3639763a03742e44d71",
@@ -79,7 +79,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 3,
           "target_fp": "v1:sha256:8565ba6f26f0cf235eb31b3085e41846b40f87498678d3639763a03742e44d71",
@@ -87,33 +87,33 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-02T16:23:07Z",
+      "finished_at": "2026-11-02T16:34:01Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:f130aca0cd404c195476bd4a9f36df79bf14ddfd",
+          "doc": "v1:blob:48db30e141b058f1e0aa82e4687321fdb6b2dc6e",
           "spec": "v1:sha256:c3c8269a8b2c0441b4f34016b97cc295747f075760cca82339fce4a699da9326"
         },
         "policy": {},
-        "subject": "v1:sha256:8565ba6f26f0cf235eb31b3085e41846b40f87498678d3639763a03742e44d71"
+        "subject": "v1:sha256:8ae00ebf9c7e0665b4636a326856ee9cb1e492a1b264b1bad1d3f40cf17edf69"
       },
-      "holder": "claude:e6ad/rd1039",
-      "input_fp": "v1:sha256:ec5e91def1e5b4ca9e674270b2a7da599d4bbcaa258c19d89d4dbe154eb6c084",
-      "ok": false,
+      "holder": "claude:e6ad/rd1039b",
+      "input_fp": "v1:sha256:b929bcdce48574192a360787b5734ea54f15c9feb9012086ef14342f165d4e58",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "377655b3932a61814c12baff5094b1fcecc05c3e",
-          "commit": "c465f5b6ca81f819f6d6b81083a55d8264307224",
+          "blob": "4b644e45f60cb8a58050f9a3cf73681047fe2af3",
+          "commit": "e935df3eaaf99946b26215ff74a4b3049df4022f",
           "path": ".zzzops/reviews/1039/review_design.md"
         },
-        "summary": "Changes requested. The split with G1038 is right: §6 is adopted faithfully, with no duplicated carry or relocation work. Rebase mode and the round_budget gating match the merged G1027 code. The G1026 and G1027 budget replays (3/4 and 1/4) check out against the goal refs. Three defects remain. (1) The -U0 patch id ignores position (checked: the same line inserted at line 10 or line 30 gives the same id), so a hand resolution that reorders or moves the goal's lines passes as clean and review_tests is skipped. (2) No shrink step reaches the new top-level `sync` card section, and re-run review_impl cards are already 4.0-5.6 KB, so test 11 cannot hold. (3) The budget exemption also matches test_design and implement re-runs after a non-clean sync."
+        "summary": "Revision 3 resolves all three round-1 findings. The union check on hand-resolved paths can only make carry stricter: byte-equal to a --union output or the node stales, and conflicts left at T's content are caught by check 1. It is evaluated once per sync with no loop. The shrink steps match card._steps/_apply at f4eaf74, and the budget exemption is keyed on checkpoint outputs. Three non-blocking notes for implement: a guard for the contained case, the fold condition excluding `detail`, and two more `res.budget.get(\"over\")` readers in render.py (534, 562)."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "f130aca0cd404c195476bd4a9f36df79bf14ddfd",
-          "commit": "53b0e020522b39168a27c7deddea553d85eae336"
+          "blob": "48db30e141b058f1e0aa82e4687321fdb6b2dc6e",
+          "commit": "e121cd29b573b34361c05471655ac94198e1ab84"
         }
       },
       "status": "done"
