@@ -331,14 +331,14 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 5,
-      "correction_runs": 3,
+      "attempt": 6,
+      "correction_runs": 4,
       "findings": [],
-      "finished_at": "2026-11-02T14:33:39Z",
+      "finished_at": "2026-11-02T17:50:58Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
-          "base": "v1:sha256:8a2e8ac0217a3e46b72c1e3ce2d2c6f98e60949f5743134ece85574f6cb677e3",
+          "base": "v1:sha256:dd6dff50e6e7ce8e3dfe93a71cd963eaa173a11decf5c3022d8c467e090ccb28",
           "doc": "v1:blob:f240bd5994202bea10cb430a216b74cce56ace63"
         },
         "policy": {}
@@ -348,27 +348,20 @@
         ".agents/test_engine_branching.py"
       ],
       "holder": "claude:e6ad/op",
-      "input_fp": "v1:sha256:ae31254331bd0437c791dc25f6dc8682d9e0bc88945567d3b6d50728408660f8",
+      "input_fp": "v1:sha256:13fbc984c8aa5b576b2818aefe7abb2746c29c6b1ddeee96fb35945fe973a5bc",
       "ok": true,
       "output": {
         "commands": [
           "python3 -m unittest discover -s .agents -p 'test_engine_branching.py'"
         ],
-        "responses": {
-          "implement:1:1": "fixed: graph12 cannot have a ready agent beside a ready run_tests (every agent workspace node feeds run_tests). The test now adds a fixture workspace agent `notes` (reads design.doc and base.base_commit; run_tests does not read it) to the frozen graph, asserts notes and run_tests are both ready and base current before the target moves, then asserts both are blocked on `restack` with base ready(upstream). It still checks that pass 3 blocks a ready workspace op as well as an agent (§5.3, §13 item 5).",
-          "implement:1:2": "fixed: G1001's integrate is now stepped with a real-shaped pr {number, url, head, tree, base: release/1} and ci {}, so base's heads input resolves once the release_sync wait ends; the test still asserts waiting(release_sync) and then `ready` with no other change (§5.5, §13).",
-          "implement:1:3": "fixed: after `hotfix start`, the test continues from base (op base, test_design, review_tests, implement, run_tests, review_impl, integrate, approve_merge, merge) instead of done(), which re-ran discovery; it still asserts the merge closes the goal as done and the PR base is hotfix/<name>.",
-          "implement:1:4": "fixed: the seed fetches refs/heads/zzzops/goal/g<a> before commit-tree, as suggested.",
-          "implement:1:5": "fixed: one warm-up `next` runs before the first count, so both counted runs exclude the policy download; the equality of the two counts (no git call per closed legacy goal) and the batch bound are unchanged."
-        },
         "tests": {
-          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "e531d85c7456a3a25d96b9d6fe8c693281f89c88",
-          "commit": "848e66c4b4c9e92d1d76f6126e1d54c102fee933",
-          "tree": "70e4a3c822347ac60a02411b35558f77dd9372b0"
+          "base": "262d7807044ab48b616d63611c5c6711d110ef7c",
+          "change": "40a835f9f77202a1d30752f7d103cd5263a9bf1c",
+          "commit": "289902059b268979284d5edec32bc9c2e9beb597",
+          "tree": "177a0b020fdf261f5ca66524c1d20571be47c682"
         }
       },
-      "reason": "reopened",
+      "reason": "stale",
       "status": "done"
     }
   },
