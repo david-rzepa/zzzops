@@ -131,6 +131,40 @@
         }
       },
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T16:14:48Z",
+      "fp_parts": {
+        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "inputs": {
+          "base": "v1:sha256:5de4fe54a2e216adfbc814940714c8d690d961dbbb9d3544d369280d0d2d9cd9",
+          "doc": "v1:blob:cc60eabf6331555c3c73bd5ea08d6311e25f34d3"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        ".agents/test_engine_environment.py"
+      ],
+      "holder": "claude:e6ad/td1041",
+      "input_fp": "v1:sha256:e55ac68beaa00a22ccfcf238d1ea5b9088f524ff6f58b597e1d400456c67fe14",
+      "ok": true,
+      "output": {
+        "commands": [
+          "python3 -m unittest discover -s .agents -p 'test_engine_environment.py'",
+          "cd .agents && for i in $(seq 20); do python3 -m unittest test_engine_environment.ConcurrentWorktreeChangeTests.test_real_concurrent_add_remove || break; done"
+        ],
+        "tests": {
+          "base": "f4eaf7465f1d3e95392733d9ba05456702fd41d0",
+          "change": "5062e267b334ddc715fbfbf95afb379fc7198259",
+          "commit": "61edb9cece8cef936cf006beeee13dc82c8965c4",
+          "tree": "7379ea53d93b90fb3f03ae607784a778b8c69ab6"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
