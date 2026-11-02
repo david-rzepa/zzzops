@@ -224,38 +224,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-02T22:01:15Z",
+      "finished_at": "2026-11-02T22:10:30Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:3f7f884dc1f76f4d638f9e1f8bc3fe5c9aa0d288",
-          "tests": "v1:sha256:09b8d27fa29e6e889184a74ace3e03d0bc37948e0a8e25eae8bf0f4f0be4fb73"
+          "tests": "v1:sha256:0f416aef89d410554ab7b20d3152e5847fb8a751b4997a8f492ba863b4613954"
         },
         "policy": {},
-        "subject": "v1:sha256:fda7df298a60edbbdf5ff6524608c1085911b5e35e5f1a8dc34f3fef5f89ff9b"
+        "subject": "v1:sha256:aff54718e4406758032eee233f1a6179f34fd8b1fca0bb2d51febfadd1eda61d"
       },
-      "holder": "codex:takeover/1040-review-tests",
-      "input_fp": "v1:sha256:719b8abeb99df9798682b86c9a713c2a16010d2476d49e2294f5995a5d7dcdab",
+      "holder": "codex:takeover/1040-review-tests-2",
+      "input_fp": "v1:sha256:c9a9677d48814be049c743314f6a2413fabbffc26498f7a927421e567fd5e995",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "c452e8b4f94b949f8a71ea13eb4f6f3c2a59ba40",
-          "commit": "c1ed0b9b5e6af258bece25668b85bb8bc983d3a1",
+          "blob": "802453e715e07e8cfbb79f473980f40bf9908f28",
+          "commit": "991fb8d3709c6da900d6b50a660e22f977d196db",
           "path": ".zzzops/reviews/1040/review_tests.md"
         },
-        "summary": "Approved: 20 unique tests cover revision-2 held-output liveness, capability-off compatibility, truthful refusal reasons, normalized op recurrence, and two public-card journeys. Independent red run took 14.325 seconds; failures are expected missing G1040 behavior. Python 3.10 syntax and unittest API usage checked."
+        "summary": "Approved the bounded G1040 test fixture correction. The only test change adds required blocked.repeats=1; Python 3.10 now validates the baseline agent and op fixtures when last_output is absent and the focused red test fails solely on the unimplemented last_output key. Prior 20-test behavioral coverage remains unchanged."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "de5640d1c5909ea924450aeea6450497a78946f6",
-          "change": "6cfa32bc36292115c533e7cc946ba7f5535a9239",
-          "commit": "824c48f1a37af827423ad48d858ddd23bb7eda65",
-          "tree": "fe07d782dfb2a6ea201523db6683d8c9f47bf0fb"
+          "change": "83d922720080ac53068e7df8bd04ae43aafc3674",
+          "commit": "7a07144b90eccc5e63336cf7c0286f65737d1499",
+          "tree": "74c402077c712d30b075ec0e98acee25fda62cd6"
         }
       },
       "status": "done"
