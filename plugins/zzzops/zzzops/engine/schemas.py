@@ -1017,6 +1017,19 @@ def validate_goal(doc, old=None, all_docs: dict | None = None, workflow: dict | 
 FLOW_LINE_KEYS = {"line", "name", "branch", "from", "cut"}
 
 
+def normalize_flow(doc: dict) -> dict:
+    """G1025 §2: schema 2 is written only for a document with `flow`. A null `flow` is a cleared one, and a document
+    without `flow` goes back to schema 1 (`flow` is schema 2's only addition). Other schemas are left alone."""
+    if isinstance(doc, dict):
+        if "flow" in doc and doc["flow"] is None:
+            del doc["flow"]
+        if "flow" in doc:
+            doc["schema"] = 2
+        elif doc.get("schema") == 2:
+            doc["schema"] = 1
+    return doc
+
+
 def flow_errors(flow) -> list:
     """G1025 `flow`: {"hotfix": "<name>"} on a hotfix member, or the line form on a line goal."""
     if not isinstance(flow, dict):

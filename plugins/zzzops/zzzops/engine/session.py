@@ -124,16 +124,22 @@ class Session:
 
     def fetch_lines(self):
         """The second fetch round (G1025 design §4): the production branch and every open line's branch, only with
-        settings.branching. Missing branches map to None."""
+        settings.branching and only when the work needs line branches: an open line goal (its sync and finish), or a
+        pending `release_cut` or `hotfix_start` item. Otherwise nothing is fetched here, and `target_tip` fetches a
+        branch lazily if something asks for it. Missing branches map to None."""
         self.snap.targets = {}
         self._anc = {}
         b = self.branching()
         if not b:
             return
-        from engine.lines import lines_of, merged_ledger
-        lns = lines_of(merged_ledger(self.state.ledger, self.state.docs), self.state.settings)
-        branches = sorted({b["production"]} | {x.branch for x in lns if x.open})
-        self.fetch_branches(branches)
+        from engine.lines import cut_state, effective_release, hotfix_starts, lines_of, merged_ledger
+        L = merged_ledger(self.state.ledger, self.state.docs)
+        lns = lines_of(L, self.state.settings)
+        open_lines = {x.branch for x in lns if x.open}
+        if not open_lines and not hotfix_starts(L, lns) \
+                and not cut_state(L, lns, self.state.settings, effective_release(self.state.settings, lns))[0]:
+            return
+        self.fetch_branches(sorted({b["production"]} | open_lines))
 
     def fetch_branches(self, branches):
         R = self.R
@@ -222,13 +228,27 @@ class Session:
         return out
 
     def line_errors(self, g, d, all_docs) -> list:
-        """G1025 §7: a hotfix name is single-use, and a hotfix member depends only on its line or on merged goals."""
-        x = (d.get("flow") or {}).get("hotfix") if isinstance(d, dict) else None
+        """G1025 §2, §7: `flow` needs settings.branching (capability `release_lines`), a line goal's `flow` is immutable
+        and only `release cut` / `hotfix start` create one, a hotfix name is single-use, and a hotfix member depends
+        only on its line or on merged goals."""
+        if not isinstance(d, dict):
+            return []
+        prev = self.state.docs.get(g)
+        flow, pflow = d.get("flow"), (prev or {}).get("flow")
+        if flow != pflow:
+            if isinstance(pflow, dict) and "line" in pflow:
+                return ["goal.flow: flow is immutable on a line goal (cancel it and cut or start a new line instead)"]
+            if isinstance(flow, dict) and "line" in flow:
+                return ["goal.flow: line goals are created only by `release cut` and `hotfix start`"]
+            if flow is not None and not (self.branching()
+                                         and "release_lines" in schemas.required_caps(self.state.settings)):
+                return ["goal.flow: needs settings.branching (capability `release_lines` in settings.engine.requires)"]
+        x = (flow or {}).get("hotfix") if isinstance(flow, dict) else None
         if not x or not self.branching():
             return []
         out = []
         from engine.lines import lines_of, merged_ledger
-        old = (self.state.docs.get(g) or {}).get("flow") or {}
+        old = pflow if isinstance(pflow, dict) else {}
         lns = lines_of(merged_ledger(self.state.ledger, self.state.docs), self.state.settings)
         if old.get("hotfix") != x and any(l.kind == "hotfix" and l.name == x and not l.open for l in lns):
             out.append(f"goal.flow: hotfix {x} is finished; choose a new name")
@@ -380,8 +400,7 @@ class Session:
             all_docs = dict(docs)
             all_docs.update(new)
             for g, d in new.items():
-                if "flow" in d:
-                    d["schema"] = 2
+                schemas.normalize_flow(d)                     # G1025 §2: schema 2 only with `flow`
                 errs, _ = schemas.validate_goal(d, self.state.docs.get(g), all_docs, self.state.workflow,
                                                 lambda doc, g=g: self.terminals_current(g, doc, all_docs))
                 errs = list(errs) + dependent_release_errors(g, d, all_docs) + self.line_errors(g, d, all_docs)

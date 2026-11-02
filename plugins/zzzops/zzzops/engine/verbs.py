@@ -910,6 +910,7 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
             if old is None and not doc_files:
                 raise Refused("validation", f"G{g} is unreadable: replace it with a whole-document --file")
             d = copy.deepcopy(doc_files[g]) if doc_files else apply_sets(copy.deepcopy(old), set_entries)
+            schemas.normalize_flow(d)                         # G1025 §2: schema 2 only with `flow`
             d = fill_close_fields(sess, old or {}, d)
             d = fill_current_records(sess, d)
             skip_refusal(sess, g, old or {}, d)
@@ -942,8 +943,6 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
     s.require_writable(gids)
     from engine.session import dependent_release_errors
     for g, d in new_docs.items():
-        if "flow" in d:
-            d["schema"] = 2
         errs, _ = schemas.validate_goal(d, s.state.docs.get(g), after_docs, s.state.workflow,
                                         lambda doc, g=g: s.terminals_current(g, doc, after_docs))
         errs = list(errs) + dependent_release_errors(g, d, after_docs) + s.line_errors(g, d, after_docs)
