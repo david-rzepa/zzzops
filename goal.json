@@ -1,5 +1,5 @@
 {
-  "budget": null,
+  "budget": 30,
   "closed": null,
   "depends_on": [
     1017
