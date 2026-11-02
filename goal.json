@@ -12,7 +12,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T14:57:10Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:715c01eaee101c3c5912543efc2418760d47db48ee2a2e696417f44acbd34fa7",
+          "spec": "v1:sha256:77b1ea7deff7c62c46740cea2ad4ef44b2058a52cb809481ba76519d7839c296"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/d1040",
+      "input_fp": "v1:sha256:6c07f4780638a22a1dec313d8797407cd054184fd5460c71a2a3274ac42d74d2",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "f8199f751a3d89246230febc975f1caacbfc9d62",
+          "commit": "bf33a61c7c615642a1a04b9c1c4027acfaef286a",
+          "path": ".zzzops/reviews/1040/design.md"
+        },
+        "summary": "Findings on a blocked agent node stay live across the block: its blocked record keeps last_out_fp (the replaced done output's fingerprint, gated by a new G1027 capability blocked_findings), so retry and stale cards list them and submit accepts responses. G1026 option (b) keeps working: with the capability off nothing changes and no G1026 frozen test changes; with it on the re-review still resolves owner questions, and two sentences of G1026's design.md step 4 change inside its frozen needles. The stale half was already fixed by G1028 and is only pinned with a shipped-graph replay test. Refusals for responses that are not live give a per-id reason (details.why) and say to drop them, and an op finding repeats (round 2, dispute) only when its text matches after normalizing numbers and commit ids, with the dispute showing the target's real response."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
