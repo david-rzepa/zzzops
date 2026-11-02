@@ -161,7 +161,7 @@ class ConcurrentWorktreeChangeTests(unittest.TestCase):
 
     def test_real_concurrent_add_remove(self):
         """No mocks: one thread adds and removes a linked worktree (as `next`'s mirror add does) while readers
-        run discover and registered_worktrees. Bounded: 50 cycles or 4 s, whichever comes first."""
+        run discover and registered_worktrees. Bounded: 50 cycles or 3 s, whichever comes first."""
         with fx.env_of(self.repo.env):
             git = Git.discover(self.repo.path, 1)
             linked = os.path.join(git.common, "zzzops", "coordinator")
@@ -169,7 +169,7 @@ class ConcurrentWorktreeChangeTests(unittest.TestCase):
             lock = threading.Lock()
 
             def churn():
-                deadline = time.monotonic() + 4
+                deadline = time.monotonic() + 3
                 try:
                     for _ in range(50):
                         if time.monotonic() > deadline:
@@ -201,7 +201,8 @@ class ConcurrentWorktreeChangeTests(unittest.TestCase):
                 t.start()
             for t in threads:
                 t.join(10)
-        self.assertLess(time.monotonic() - start, 5)
+        self.assertFalse([t for t in threads if t.is_alive()], "a thread hung")
+        self.assertLess(time.monotonic() - start, 20)                # generous: load only slows it, a hang fails above
         self.assertGreater(reads[0], 0)
         self.assertEqual([], errors[:5], f"{len(errors)} failures in {reads[0]} reads")
 
