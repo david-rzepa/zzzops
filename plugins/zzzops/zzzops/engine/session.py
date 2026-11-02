@@ -53,6 +53,19 @@ class GitReader(render.Reader):
     def has(self, oid):
         return self.s.git.exists(oid)
 
+    def human_decisions(self, g, graph, nodes):
+        """Read once per goal tip per session (one `git log` plus one `git show` per answer), then filtered."""
+        tip = self.s.snap.goals.get(g) if self.s.snap is not None else None
+        if not tip:
+            return []
+        cache = self.s.__dict__.setdefault("_human_decisions", {})
+        key = (g, tip)
+        if key not in cache:
+            cache[key] = render.human_decisions(self.s.git, tip, g, graph, list(graph.nodes))
+        found = cache[key]
+        wanted = set(nodes)
+        return None if found is None else [e for e in found if e["node"] in wanted]
+
     def artifact_url(self, commit, path):
         web = self.s.web_base()
         return f"{web}/blob/{commit}/{path}" if web else None

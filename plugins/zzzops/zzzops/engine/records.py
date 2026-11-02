@@ -10,7 +10,7 @@ from engine.canon import iso, parse_iso
 from engine.errors import Refused
 from engine.fingerprint import out_fp
 from engine.frontier import counts
-from engine.schemas import Graph, is_material
+from engine.schemas import Graph, is_material, is_owner_question
 
 SANITIZE = re.compile(r"[^A-Za-z0-9_-]")
 
@@ -144,6 +144,8 @@ def process_findings(graph: Graph, doc: dict, X: str, r0: dict | None, given: li
         if followed:
             nf["follows"] = followed["id"]
         if graph.filter_of(X):
+            if f["material"] is False and is_owner_question(f):
+                raise Refused("validation", "an owner question is always material: set material: true")
             nf.update(impact=f["impact"], material=f["material"])
         if graph.lens_defs(X):
             nf["lens"] = f["lens"]

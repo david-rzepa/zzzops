@@ -36,6 +36,10 @@ class Reader:
     def has(self, oid: str) -> bool:
         return False
 
+    def human_decisions(self, g: int, graph, nodes) -> list | None:
+        """The goal's answered blocked questions on `nodes` (see `human_decisions`); None when history is unreadable."""
+        return []
+
 
 @dataclass
 class Ctx:
@@ -67,6 +71,52 @@ def first_line(text: str, limit: int) -> str:
 
 def clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+# --------------------------------------------------------------------------------------------- human decisions
+
+
+DECISION_CLIP = 300
+
+
+def human_decisions(git, tip: str, g: int, graph, nodes) -> list | None:
+    """Every answered blocked question of goal g on `nodes`, in commit order (G1026, SPEC §3.9): read from the goal's
+    `zzzops: answer G<g> <node>` commits, keeping those whose goal.json has the node's record blocked with an answer
+    (which drops approval and dispute answers). Entries: {node, kind, question, text, quote, decided_by, decided_at,
+    commit}. None when the history cannot be read."""
+    from engine.gitrun import GitError
+    prefix = f"zzzops: answer G{g} "
+    try:
+        log = git.run("log", "--reverse", "--first-parent", "--format=%H%x1f%s", f"--grep=^{prefix}", tip).stdout
+    except (GitError, OSError):
+        return None
+    wanted = set(nodes)
+    out = []
+    for line in log.splitlines():
+        c, _, subject = line.partition("\x1f")
+        if not subject.startswith(prefix):
+            continue
+        node = subject[len(prefix):].strip()
+        if node not in wanted or node not in graph.nodes:
+            continue
+        data = git.cat(f"{c}:goal.json")
+        try:
+            r = (json.loads(data.decode("utf-8")).get("records") or {}).get(node) if data is not None else None
+        except ValueError:
+            r = None
+        if not isinstance(r, dict) or r.get("status") != "blocked" or not isinstance(r.get("answer"), dict):
+            continue
+        a = r["answer"]
+        out.append({"node": node, "kind": graph.nodes[node].get("kind"),
+                    "question": (r.get("blocked") or {}).get("question"), "text": a.get("text"),
+                    "quote": a.get("quote"), "decided_by": a.get("decided_by"), "decided_at": a.get("decided_at"),
+                    "commit": c})
+    return out
+
+
+def not_descendants(graph, n: str) -> list:
+    """Every node of the graph that is not a descendant of n (n included), in topological order."""
+    return [m for m in graph.topo if n not in graph.ancestors(m)]
 
 
 # --------------------------------------------------------------------------------------------- live leases
@@ -284,6 +334,12 @@ def approve_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:
         item["skipped"] = skipped
     item.update(pr_and_stack(res))
     item["facts"] = facts(res)
+    hd = ctx.reader.human_decisions(g, res.graph, not_descendants(res.graph, n))
+    if hd is None:
+        item["human_decisions"] = "unavailable"
+    elif hd:
+        item["human_decisions"] = [dict(e, text=clip(e["text"], DECISION_CLIP)) if isinstance(e.get("text"), str)
+                                   else e for e in hd]
     r = (res.doc.get("records") or {}).get(n)
     if r and r["status"] == "done":
         prev = {"decided_at": (r["output"] or {}).get("decided_at"), "quote": (r["output"] or {}).get("quote")}

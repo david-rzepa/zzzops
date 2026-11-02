@@ -579,6 +579,16 @@ def is_material(f: dict) -> bool:
     return f.get("material", True) is not False
 
 
+OWNER_QUESTION = "owner question:"
+
+
+def is_owner_question(f: dict) -> bool:
+    """A finding that asks the owner a choice (G1026): its text, leading whitespace stripped, starts with exactly
+    `owner question:` (case-sensitive; the prefix is reserved)."""
+    text = f.get("text") if isinstance(f, dict) else None
+    return isinstance(text, str) and text.lstrip().startswith(OWNER_QUESTION)
+
+
 def get_dotted(obj, dotted: str):
     for part in dotted.split("."):
         obj = obj[part]
