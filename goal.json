@@ -121,30 +121,30 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-02T22:25:30Z",
+      "finished_at": "2026-11-02T23:02:24Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
-          "base": "v1:sha256:0c2a08d0bde69e18e656d474372b82dbd482df44464aef4c1e75be377a0d3fac",
+          "base": "v1:sha256:a517aeb92cc9adc5bfaa0dba482802d7f6f0acd71b9b18bd9ea68112a8c4054a",
           "doc": "v1:blob:891e284f14d6d39fa3bd3d0854b643b5c887b5a6",
           "tests": "v1:sha256:4a14579dba6ede7c8614709ae3d23f4b307e5a8b42cdbdcda5f88a511bee96b5"
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1024-implement-restored",
-      "input_fp": "v1:sha256:1f98fd0b107a64380fc7b9e01ca53fd6c0acc71e20d6c22e84d00b9ce07459ea",
+      "holder": "codex:takeover/1024-implement-after-1031",
+      "input_fp": "v1:sha256:3688ac2ebd10888bd6757b3f18b37da550688d7cb8636fa26def0bb78207ee73",
       "ok": true,
       "output": {
         "code": {
-          "base": "de5640d1c5909ea924450aeea6450497a78946f6",
-          "change": "8adb1635e23220227e4aeef67e4deb9b5f501c27",
-          "commit": "ea690b9ff437e03b721086653421ec2734fdf2c5",
-          "tree": "484b42e621efdbbcf94b714f777f7bee8e9cd536"
+          "base": "575015a9831ccd2ce724c3125dd74dd20029c1b5",
+          "change": "8ff28894e4f71e715bdad2047b467c6b76e51720",
+          "commit": "fb5b4fcca659a2758c78f0485a1a629aa4be239e",
+          "tree": "0a8fb5ab1da00504d2ca495f037be55456578ee6"
         },
-        "summary": "Restored the complete default-policy update implementation after the independently approved source-free test checkpoint, preserving both frozen test files byte-for-byte. Fixed both preliminary review concerns: advisory paths shrink before actionable work or human decisions, rendering preserves caller data, and Windows diff/merge/expand/recheck commands use PowerShell-safe literal arguments and call operators (POSIX behavior retained). The corrected feature tests pass (18 in 2.601 s), new focused regressions pass (3 in 0.889 s, including actual PowerShell diff/merge/Python recheck with space/apostrophe/literal-dollar paths), history tests pass (2 in 0.006 s), design docs pass (35 in 0.486 s), and prompt budgets/diff checks pass. The tested code diff includes the complete restored feature and 60 history blobs; no installed policy, host setting or cache was changed."
+        "summary": "Refreshed the complete G1024 implementation checkpoint after syncing onto merged G1031, preserving both goals’ documentation, branch-deletion warning behavior and all corrected frozen tests. The advisory-only default update feature, 60 template-history blobs, version-skew/tombstone handling, PowerShell-safe commands and action-preserving output cap remain complete; the tests checkpoint is explicitly source-free and byte-identical to the accepted tests. Immediately after this same rebase, targeted checks passed: default-policy 18 tests (1.209 s), G1031 warning 4 (1.582 s), followup regressions 3 (0.476 s, actual PowerShell included), history 2 (0.001 s), design docs 35 (0.244 s), prompt budgets and diff checks; no source changes or suite repetitions were needed for this checkpoint refresh."
       },
       "reason": "stale",
       "status": "done"
