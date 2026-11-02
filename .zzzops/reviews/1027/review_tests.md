@@ -1,18 +1,9 @@
-# G1027 review_tests, attempt 3
+# Review of tests, G1027 (attempt 4)
 
-**Verdict: approved.** The tests at `4c8c5c6` have no open findings, and I found nothing new.
+Decision: approved.
 
-## Prior finding
+Scope: delta from the previously approved 4c8c5c6 to 1a15ad2.
 
-- **review_tests:2:1: resolved.** Test 10's grep now excludes `docs/design/IMPLEMENTATION_PLAN.md` alongside `HISTORY.md`. Its docstring says both are historical records.
-  - I re-ran the docs/design part of the grep against base `b452cd7`. The only matches left are in the files G1027 must actually edit: DESIGN.md (3 lines) and SPEC.md (7 lines).
-  - The other match, README.md (1 line), is G1027's own pending-row marker, which its PR deletes.
-
-## Already resolved in attempt 2
-
-- **review_tests:1:1:** test modules are excluded from the grep, so other goals' both-order fallbacks are safe.
-- **review_tests:1:2:** nine targeted module commands replace the full suite.
-
-## Unchanged and still sound
-
-Tests 1-10 cover design revision 2. They fail before the implementation for the right reasons. The edits to existing tests change only what the design changes, and the copied-plugin approach is sound.
+- `git diff 4c8c5c6 1a15ad2 -- .agents` contains one change: in `.agents/test_engine_schemas.py`, `CanonTests.test_errors_have_exit_codes` expects 27 exit-1 codes rather than 28.
+- Design (revision 2, section 4) removes `engine_too_new` from `errors.py`, `cli.py`, `store.py` and the SPEC and DESIGN error and exit-code tables. It had no emitter, so exactly one exit-1 code disappears. 28 to 27 is the correct, minimal update.
+- No other test file changed, so the earlier approval otherwise stands.
