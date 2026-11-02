@@ -242,11 +242,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 3,
-      "carried_by": "base",
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-02T22:54:13Z",
+      "finished_at": "2026-11-02T23:11:33Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -265,7 +264,7 @@
         ".agents/test_engine_test_cost.py",
         ".agents/test_local_validation.py"
       ],
-      "holder": "codex:takeover/1043-test-design-portability",
+      "holder": "codex:takeover/1043-test-design-context",
       "input_fp": "v1:sha256:3a98de38f0c522754e2ed792ba079478a374fe95d61b8945ae3d29864bb798e1",
       "ok": true,
       "output": {
@@ -279,13 +278,13 @@
           "python3 -m unittest discover -s .agents -p 'test_design_docs.py'"
         ],
         "responses": {
-          "review_tests:1:1": "fixed: CostPlumbingJourney now measures its script through the existing checks.shell resolver and a shlex-quoted current sys.executable, using that identical command for measured red and later green execution. The thin launcher is exercised by an actual tiny red-then-green script on the available shell and a Windows shell/interpreter/script-space control. Both controls pass on Python 3.14.7 (0.058 s) and Python 3.10.20 (0.044 s); Python 3.10 canonical collection has 973 unique IDs and no loader errors. Substantive renamed-graph/cost assertions are unchanged; no base sync or broad suite ran."
+          "implement:1:1": "fixed: CostPlumbingJourney reads reviewed.context.cost, matching its context:true declaration and existing card.build contract; an explicit assertion also keeps cost outside identity-bearing card.inputs. Measured red/green launcher, complete cost equality and blob decoding remain unchanged. Analogous approval access already uses item.context correctly. A source-free generic two-node CLI fixture passed in 0.575 s with empty inputs and cost in context, confirming the correction without restoring product implementation or running a broad suite."
         },
         "tests": {
           "base": "575015a9831ccd2ce724c3125dd74dd20029c1b5",
-          "change": "a52a0500536e9b7e5b4e1ae719c13985815f8f2e",
-          "commit": "51edabe503247c4806fe55ea09164a7de1d8de9d",
-          "tree": "72af0e5493de58a5bb6a95983052af8b4cd803e9"
+          "change": "1c5601dd8cb7003ca94e6e1b1dd523b8298f4b7b",
+          "commit": "5907d057e5a713e015635acecf85a33658106f49",
+          "tree": "085adbc9ad63a602f608d00e3742efa73602608b"
         }
       },
       "reason": "reopened",
