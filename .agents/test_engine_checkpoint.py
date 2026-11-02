@@ -1,95 +1,75 @@
-"""Step 2: the suggested checkpoint (SPEC §4.20; REV6 H3, H23, H26, H30), with a dict-backed GitView."""
+"""Checkpoint scope after G1038: HEAD is the default, tests retain path-scoped identity.
 
+The old suggested-checkpoint/replay-map selection API was removed. CLI lifecycle
+checks cover default selection; these small checks cover the identity it preserves.
+"""
 from __future__ import annotations
 
+import shutil
+import tempfile
 import unittest
 
 import engine_fixtures as fx
-from engine.errors import Refused
-from engine.records import GitView, suggested_checkpoint
+from engine.canon import ZERO
+from engine.identity import Identity
+from engine.records import checkpoint_scope
 from engine.schemas import build_graph
 
 
-class Chain(GitView):
-    """A linear history: commits listed oldest first; review commits named 'rv*'."""
+class CheckpointScopeTests(unittest.TestCase):
+    def graph(self, renamed=False):
+        wf = fx.renamed_workflow() if renamed else fx.load_template("workflow.json")
+        return build_graph("default", wf["graphs"]["default"])
 
-    def __init__(self, *commits):
-        self.order = list(commits)
+    def test_preserved_node_scope_is_sorted_without_mutating_frozen_paths(self):
+        record = {"frozen": ["tests/z.py", "tests/a.py"]}
+        self.assertEqual(["tests/a.py", "tests/z.py"], checkpoint_scope(self.graph(), "test_design", record))
+        self.assertEqual(["tests/z.py", "tests/a.py"], record["frozen"])
 
-    def is_ancestor(self, a, b):
-        return a in self.order and b in self.order and self.order.index(a) <= self.order.index(b)
+    def test_scope_follows_preserve_under_renamed_nodes(self):
+        self.assertEqual(["tests/t.py"], checkpoint_scope(self.graph(True), fx.RENAME["test_design"],
+                                                         {"frozen": ["tests/t.py"]}))
 
-    def committed_since(self, work, head):
-        seg = self.order[self.order.index(work) + 1: self.order.index(head) + 1]
-        return any(not c.startswith("rv") for c in seg)
+    def test_legacy_checkpoint_without_frozen_paths_remains_unscoped(self):
+        self.assertIsNone(checkpoint_scope(self.graph(), "test_design", {"output": {"tests": {}}}))
+
+    def test_empty_frozen_set_is_distinct_from_unscoped(self):
+        self.assertEqual([], checkpoint_scope(self.graph(), "test_design", {"frozen": []}))
+
+    def test_implementation_identity_remains_whole_goal(self):
+        self.assertIsNone(checkpoint_scope(self.graph(), "implement", {"frozen": ["tests/t.py"]}))
 
 
-class SuggestedCheckpointTests(unittest.TestCase):
+class ScopedIdentityTests(unittest.TestCase):
     def setUp(self):
-        self.g = build_graph("default", fx.load_template("workflow.json")["graphs"]["default"])
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.repo = fx.make_repo(self.tmp)
+        self.base = self.repo.commit({"src/app.py": "app = 0\n"}, "chore: base")
+        self.tests = self.repo.commit({"tests/t.py": "expected = 1\n"}, "test: expected behavior")
+        self.impl = self.repo.commit({"src/app.py": "app = 1\n"}, "feat: behavior")
+        self.git = fx.engine_git(self.repo)
+        self.ident = Identity(self.git)
 
-    def doc(self, base_out, tests_commit="t1", tests_base="b0", impl_commit=None):
-        recs = {"base": {"status": "done", "output": dict({"base_commit": "b1"}, **base_out)},
-                "test_design": {"status": "done", "output": {"tests": {"commit": tests_commit, "base": tests_base}},
-                                "fp_parts": {"def": "d", "inputs": {"base": "old", "doc": "x"}, "policy": {}}}}
-        if impl_commit:
-            recs["implement"] = {"status": "done", "output": {"code": {"commit": impl_commit, "base": tests_base}}}
-        return {"records": recs, "skip": {}}
+    def test_later_code_and_review_commits_keep_scoped_test_change(self):
+        head = self.repo.commit({".zzzops/reviews/1/review_impl.md": "changes requested\n"},
+                                "docs(review): review_impl for G1")
+        before = self.ident.change(self.base, self.tests, paths=["tests/t.py"])
+        self.assertEqual(before, self.ident.change(self.base, head, paths=["tests/t.py"]))
+        self.assertNotEqual(self.ident.change(self.base, self.tests), self.ident.change(self.base, head))
+        self.assertNotEqual(self.ident.code_tree(self.tests), self.ident.code_tree(head))
 
-    def call(self, doc, X, k, work, head, git, base_value="b1", parts=None):
-        r0 = doc["records"][X]
-        parts = parts or {"def": "d", "inputs": {"base": "new", "doc": "x"}, "policy": {}}
-        return suggested_checkpoint(self.g, doc, X, k, r0, work, parts, base_value, head, git)
+    def test_test_fix_after_code_changes_only_its_scoped_identity(self):
+        fix = self.repo.commit({"tests/t.py": "expected = 2\n"}, "test: revise expected behavior")
+        before = self.ident.change(self.base, self.impl, paths=["tests/t.py"])
+        self.assertNotEqual(before, self.ident.change(self.base, fix, paths=["tests/t.py"]))
+        self.assertEqual(self.ident.change(self.base, self.impl, paths=["src/app.py"]),
+                         self.ident.change(self.base, fix, paths=["src/app.py"]))
+        self.assertTrue(self.git.is_ancestor(self.impl, fix))
 
-    def test_base_move_with_replay_map(self):
-        git = Chain("b1", "t1'", "i1'")
-        d = self.doc({"replay_map": {"t1": "t1'"}, "replay_pos": {}})
-        self.assertEqual("t1'", self.call(d, "test_design", "tests", "i1'", "i1'x", Chain("b1", "t1'", "i1'", "i1'x")))
-
-    def test_base_move_with_only_replay_pos(self):
-        d = self.doc({"replay_map": {}, "replay_pos": {"t1": "t1h"}})
-        git = Chain("b1", "t1h", "i1h", "new")
-        self.assertEqual("t1h", self.call(d, "test_design", "tests", "i1h", "new", git))
-
-    def test_containment_failure_defaults_to_head(self):
-        d = self.doc({"replay_map": {"i1": "i1'"}}, impl_commit="i1")
-        d["records"]["implement"]["fp_parts"] = {"def": "d", "inputs": {"base": "old"}, "policy": {}}
-        d["records"]["test_design"]["output"]["tests"]["commit"] = "t2"           # tests fixed after the restack
-        git = Chain("b1", "i1'", "t2", "w")
-        r = suggested_checkpoint(self.g, d, "implement", "code", d["records"]["implement"], "i1'",
-                                 {"def": "d", "inputs": {"base": "new"}, "policy": {}}, "b1", "w", git)
-        self.assertIsNone(r)
-
-    def test_no_commit_phase_keeps_previous_checkpoint(self):
-        # H26: a dispute after implement committed; base unchanged
-        d = self.doc({}, tests_base="b1")
-        git = Chain("b1", "t1", "i1", "rv1")
-        parts = {"def": "d", "inputs": {"base": "old", "doc": "x"}, "policy": {}}
-        self.assertEqual("t1", self.call(d, "test_design", "tests", "i1", "rv1", git, parts=parts))
-
-    def test_no_commit_phase_after_base_move_maps_or_refuses(self):
-        d = self.doc({"replay_map": {"t1": "t1'"}})
-        git = Chain("b1", "t1'", "i1'")
-        self.assertEqual("t1'", self.call(d, "test_design", "tests", "i1'", "i1'", git))
-        d = self.doc({"replay_map": {}, "replay_pos": {}})
-        with self.assertRaises(Refused) as e:
-            self.call(d, "test_design", "tests", "i1'", "i1'", git)
-        self.assertEqual("checkpoint_required", e.exception.code)
-        self.assertIn("base commit", e.exception.hint)
-        self.assertIn("full 40-hex sha", e.exception.hint)
-        self.assertNotIn('<sha>', e.exception.hint)
-
-    def test_committed_phase_not_stale_on_base_defaults_to_head(self):
-        d = self.doc({"replay_map": {"t1": "t1'"}})
-        git = Chain("b1", "t1", "t2")
-        parts = {"def": "d", "inputs": {"base": "old", "doc": "y"}, "policy": {}}
-        self.assertIsNone(self.call(d, "test_design", "tests", "t1", "t2", git, base_value="b0", parts=parts))
-
-    def test_computed_from_lease_parts_not_the_card(self):
-        # H30: the same answer whatever the card said; only record vs lease parts matter
-        d = self.doc({"replay_map": {"t1": "t1'"}})
-        git = Chain("b1", "t1'", "t2")
-        self.assertEqual("t1'", self.call(d, "test_design", "tests", "t1'", "t2", git))
+    def test_empty_scope_has_zero_change_even_at_implementation_head(self):
+        self.assertEqual(ZERO, self.ident.change(self.base, self.impl, paths=[]))
+        self.assertNotEqual(ZERO, self.ident.change(self.base, self.impl))
 
 
 if __name__ == "__main__":

@@ -162,11 +162,11 @@ class Git:
     def hash_object(self, data: bytes) -> str:
         return self.run("hash-object", "-w", "--stdin", input=data, text=False).stdout.decode().strip()
 
-    def commit_tree(self, tree: str, parents=(), message: str = "") -> str:
+    def commit_tree(self, tree: str, parents=(), message: str = "", env=None) -> str:
         args = ["commit-tree", tree]
         for p in parents:
             args += ["-p", p]
-        return self.out(*args, "-F", "-", input=message, commit=True)
+        return self.out(*args, "-F", "-", input=message, commit=True, env=env)
 
     def cat(self, spec: str) -> bytes | None:
         """One object through a persistent `cat-file --batch` (SPEC §4.1)."""

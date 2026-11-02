@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from engine.canon import EMPTY_TREE, ZERO
 from engine.errors import EngineError, Refused
 from engine.gitrun import Git
@@ -16,6 +18,19 @@ DIFF = ["--binary", "--full-index", "--no-color", "--no-ext-diff", "--no-textcon
 CFG = ["-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false", "-c", "core.quotePath=true",
        "-c", "core.attributesFile=", "-c", "diff.suppressBlankEmpty=false"]
 PATHSPEC = ["--", ":/", ":(top,exclude).zzzops/reviews"]
+CONVENTIONAL_TYPES = {"feat", "fix", "perf", "revert", "docs", "style", "chore", "refactor", "test", "build", "ci"}
+CONVENTIONAL = re.compile(r"^(" + "|".join(sorted(CONVENTIONAL_TYPES)) + r")(?P<scope>\([^()\r\n]+\))?(?P<bang>!)?: (?P<summary>\S.*)$")
+
+
+def conventional(subject: str):
+    m = CONVENTIONAL.fullmatch(subject)
+    return (m.group(1), m.group("scope"), m.group("bang")) if m else None
+
+
+def view_paths(scope=None, exclude=None):
+    paths = [":(top,literal)" + p for p in scope] if scope is not None else [":/"]
+    return [*paths, ":(top,exclude).zzzops/reviews", *[":(exclude,top,literal)" + p for p in exclude or []]]
+
 
 
 class Identity:
@@ -64,8 +79,10 @@ class Identity:
         return self._trees[commit]
 
     # ------------------------------------------------------------------ change and patch ids
-    def change(self, base: str, commit: str) -> str:
-        d = self.git.run(*CFG, f"--attr-source={commit}", "diff", *DIFF, base, commit, *PATHSPEC, identity=True,
+    def change(self, base: str, commit: str, paths: list[str] | None = None) -> str:
+        if paths == []:
+            return ZERO
+        d = self.git.run(*CFG, f"--attr-source={commit}", "diff", *DIFF, base, commit, "--", *view_paths(paths), identity=True,
                          check=False, text=False)
         if d.returncode != 0:
             raise EngineError(f"git diff failed: {d.stderr.decode('utf-8', 'replace').strip().splitlines()[:1]}")
@@ -108,14 +125,34 @@ class Identity:
         return (self.subject(c).startswith(REVIEW_PREFIX)
                 and all(p.startswith(REVIEW_PATH + "/") for p in self.changed_paths(c)))
 
+    def own_commits(self, base, tip, merges=False):
+        """First-parent work history, excluding all previous synced bases (G1038)."""
+        syncs = self.git.out("rev-list", "--first-parent", "--merges", tip, *( ["^" + base] if base else [])).split()
+        exclude = [base] if base else []
+        for c in syncs:
+            ps = self.git.out("rev-list", "--parents", "-n", "1", c).split()[1:]
+            exclude.extend(ps[1:])
+            body = self.git.out("show", "-s", "--format=%B", c)
+            exclude.extend(re.findall(r"^Zzzops-Old-Base: ([0-9a-f]{40})$", body, re.M))
+        return self.git.out("rev-list", "--reverse", "--first-parent", *([] if merges else ["--no-merges"]),
+                            tip, *("^" + b for b in dict.fromkeys(exclude))).split()
+
+    def sync_merges(self, base, tip):
+        return [c for c in self.git.out("rev-list", "--reverse", "--first-parent", "--merges", tip,
+                                       *(["^" + base] if base else [])).split()
+                if self.subject(c).startswith("chore(sync): ") and
+                re.search(r"^Zzzops-Old-Base: [0-9a-f]{40}$", self.git.out("show", "-s", "--format=%B", c), re.M)]
+
     def check_i1_i2(self, a: str | None, b: str):
-        rng = f"{a}..{b}" if a else b
-        for c in self.git.out("rev-list", "--reverse", "--topo-order", rng).split():
+        for c in self.own_commits(a, b, merges=True):
             parents = self.git.out("rev-list", "--parents", "-n", "1", c).split()[1:]
-            if len(parents) > 1:
-                raise Refused("validation", f"merge commit {c[:12]}: work branches are linear",
-                              hint="rebase the merge away (git rebase), then submit again")
             subject = self.subject(c)
+            if len(parents) > 1:
+                if len(parents) != 2 or not subject.startswith("chore(sync): "):
+                    raise Refused("validation", f"merge commit {c[:12]}: only base makes merge commits in a work branch")
+                if self.entry(c, REVIEW_PATH) != self.entry(parents[0], REVIEW_PATH):
+                    raise Refused("validation", f"I2 violated by {c[:12]}: a sync merge changes {REVIEW_PATH}")
+                continue
             paths = self.changed_paths(c)
             if subject.startswith(REVIEW_PREFIX) and any(not p.startswith(REVIEW_PATH + "/") for p in paths):
                 raise Refused("validation", f"I1 violated by {c[:12]}: a docs(review): commit touches code",
@@ -138,6 +175,35 @@ class Identity:
     def entry(self, commit: str, path: str) -> str | None:
         p = self.git.run("rev-parse", "--verify", "--quiet", f"{commit}:{path}", check=False)
         return p.stdout.strip() or None if p.returncode == 0 else None
+
+    def set_entry(self, tree, parts, entry):
+        E = self.ls_tree(tree) if tree else {}
+        name = parts[0].encode("utf-8", "surrogateescape")
+        if len(parts) == 1:
+            if entry is None:
+                E.pop(name, None)
+            else:
+                E[name] = entry
+        else:
+            sub = E[name][2] if name in E and E[name][1] == "tree" else None
+            result = self.set_entry(sub, parts[1:], entry)
+            if result == EMPTY_TREE:
+                E.pop(name, None)
+            else:
+                E[name] = ("040000", "tree", result)
+        return self.mktree(E)
+
+    def path_entry(self, tree, path):
+        parts = path.split("/")
+        for i, part in enumerate(parts):
+            e = self.ls_tree(tree).get(part.encode("utf-8", "surrogateescape"))
+            if e is None:
+                return None
+            if i == len(parts) - 1:
+                return e
+            if e[1] != "tree":
+                return None
+            tree = e[2]
 
     def artifact_commit(self, tip: str | None, integration: str, goal: int, node: str, data: bytes) -> tuple:
         """(new tip, artifact value). The first artifact of a goal is born at the integration tip."""

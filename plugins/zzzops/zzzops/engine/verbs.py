@@ -15,7 +15,7 @@ from engine.canon import EMPTY_TREE, iso, parse_iso
 from engine.errors import Refused
 from engine.fingerprint import out_fp, stale_keys
 from engine.frontier import live_input_changes, recorded_out, resolve
-from engine.identity import Identity
+from engine.identity import Identity, conventional
 from engine.leases import lease_ref, message as lease_message
 from engine.render import clip, command, lease_commands, live_lease_entry, restart_command, state_string
 from engine.store import goal_message, parse_commit, push_atomic
@@ -54,24 +54,6 @@ def pushed_summary(updates) -> dict:
         short = ref[len("refs/heads/"):] if ref.startswith("refs/heads/") else ref
         out[short] = "deleted" if not new else ("created" if not old else f"{old[:12]}..{new[:12]}")
     return out
-
-
-class GitAncestry(rec.GitView):
-    def __init__(self, git, ident):
-        self.git, self.ident = git, ident
-
-    def is_ancestor(self, a, b):
-        return self.git.is_ancestor(a, b)
-
-    def committed_since(self, work, head):
-        if work == head:
-            return False
-        if not self.git.is_ancestor(work, head):
-            return True
-        for c in self.git.out("rev-list", f"{work}..{head}").split():
-            if not self.ident.is_review(c):
-                return True
-        return False
 
 
 # --------------------------------------------------------------------------------------------- shared lookups
@@ -193,13 +175,7 @@ def start(s, g: int, X: str, label: str, reclaim=False, force=False) -> dict:
         return start_op(s, res, X, label, state, reclaim, force)
     lease, workspace = claim(s, res, X, label, state, reclaim, force)
     from engine import card
-    suggested = None
-    try:
-        if workspace and lease["kind_state"].get("parts"):
-            suggested = suggestion_for_card(s, res, X, lease, workspace)
-    except Refused:
-        suggested = None
-    return card.build(s, res, X, lease["kind_state"], lease, suggested)
+    return card.build(s, res, X, lease["kind_state"], lease)
 
 
 def dependency_ids(s, g):
@@ -307,22 +283,6 @@ def staleness(s, st0, state, r, parts) -> dict:
         since = [x for x in since if x is not None]
         out["changed_from"] = {"parts": old, "since": min(since) if since else None}
     return out
-
-
-def suggestion_for_card(s, res, X, lease, workspace):
-    graph = res.graph
-    cps = graph.checkpoint_outputs(X)
-    if not cps:
-        return None
-    k = cps[0]
-    r0 = (res.doc.get("records") or {}).get(X)
-    vals, _ = resolve(graph, res.doc, X, lambda p: recorded_out(res.doc, p), s.portfolio().views)
-    head = wt.local_tip(s.git, res.goal)
-    if not head:
-        return None
-    sug = rec.suggested_checkpoint(graph, res.doc, X, k, r0, None, lease["parts"], vals.get("base"), head,
-                                   GitAncestry(s.git, Identity(s.git)))
-    return {k: sug} if sug else None
 
 
 # --------------------------------------------------------------------------------------------- submit (§4.14)
@@ -503,12 +463,29 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
         if wt.sync(s.git, ident, s.snap, g, "clean", X, L.attempt) == "ahead":
             new_tip = wt.local_tip(s.git, g)
         head = wt.local_tip(s.git, g)
-        ident.check_i1_i2(s.snap.work.get(g) or s.snap.integration, head)
+        origin = s.snap.work.get(g) or s.snap.integration
+        for c in s.git.out("rev-list", "--reverse", f"{origin}..{head}").split():
+            if len(s.git.out("rev-list", "--parents", "-n", "1", c).split()) > 2:
+                raise Refused("validation", f"merge commit {c[:12]}: only base makes merge commits in a work branch")
+            subject = ident.subject(c)
+            parsed = conventional(subject)
+            if parsed is None:
+                raise Refused("commit_subject", f"commit {c[:12]} has a non-conventional subject: {subject}",
+                              details={"commit": c, "subject": subject},
+                              hint="Reword your unpushed commits with git commit --amend or git rebase -i, then submit again.")
+            if any(n2.get("preserve") == X for n2 in graph.nodes.values()) and parsed[0] != "test":
+                raise Refused("test_commit_type", f"{X} commits must use type test; commit {c[:12]} is {parsed[0]}: {subject}",
+                              details={"commit": c, "subject": subject, "type": parsed[0]})
+            if nd.get("preserve"):
+                accepted = (doc.get("records") or {}).get(nd["preserve"]) or {}
+                bad = sorted(set(accepted.get("frozen") or []) & set(ident.changed_paths(c)))
+                if bad:
+                    raise Refused("test_freeze", f"commit {c[:12]} changed accepted test paths: " + ", ".join(bad))
+        ident.check_i1_i2(origin, head)
         for k in graph.checkpoint_outputs(X):
             cp_key = k
             given = (out.get(k) or {}).get("commit")
-            c = given or rec.suggested_checkpoint(graph, doc, X, k, r0, L.work, L.fp_parts, vals_rec.get("base"), head,
-                                                  GitAncestry(s.git, ident)) or head
+            c = given or head
             full = s.git.rev_parse(c)
             if not full:
                 raise Refused("validation", f"checkpoint commit {c!r} does not exist")
@@ -516,11 +493,13 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
             if not (c == head or s.git.is_ancestor(c, head)):
                 raise Refused("validation", f"checkpoint {c[:12]} is not in the work branch (HEAD {head[:12]})")
             base = vals_rec["base"]
-            out[k] = {"commit": c, "base": base, "tree": ident.code_tree(c), "change": ident.change(base, c)}
+            out[k] = {"commit": c, "base": base, "tree": ident.code_tree(c)}
+            if any(n2.get("preserve") == X for n2 in graph.nodes.values()):
+                frozen = frozen_paths(s, r0, L, out[k], ident)
+            scope = rec.checkpoint_scope(graph, X, {"frozen": frozen} if frozen is not None else (r0 or {}))
+            out[k]["change"] = ident.change(base, c, paths=scope)
         if nd.get("preserve") and cp_key:
             preserve_check(s, res, doc, X, out[cp_key], ident)
-    if cp_key and any(n2.get("preserve") == X for n2 in graph.nodes.values()):
-        frozen = frozen_paths(s, r0, L, out[cp_key], ident)
     arts = graph.artifact_outputs(X)
     if arts:
         if artifact is None:
