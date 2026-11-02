@@ -439,6 +439,8 @@ Uniqueness is not a correctness requirement: claims carry a nonce, every lease v
 
 ### 3.8 Reviews, findings and corrections
 
+- **Findings are judged against their target, not their carrier (G1028).** An open finding of a review whose own inputs changed (a spec or `depends_on` edit, a sibling finding that reopened an upstream node) stays live while the output it names is unchanged, marked `stale_review` on the target's card; only op findings, which re-observe, are dropped. A partly fixed finding is resolved and followed by a new one (`follows`), which keeps the dispute count but never `upheld`.
+
 **Review output** (agent or human): `{decision: approved|changes_requested, summary, findings: [...], report?: artifact}`. The record's `ok` is `decision == approved`.
 - Agent reviewers also pass `--artifact report.md`.
 - Human review nodes (`approve_design`, `approve_merge`) use the same shape, plus the decision record fields `decided_by`, `quote` and `decided_at`. So **a human rejection reopens the subject through the same rule as an agent review**, with the human's words as the correction (R2 #28/#29). Cancelling outright is an `edit` that closes the goal.

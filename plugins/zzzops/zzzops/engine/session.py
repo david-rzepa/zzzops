@@ -59,9 +59,9 @@ class GitReader(render.Reader):
 
 
 class Session:
-    def __init__(self, cwd=None, remote=None, integration=None, now=None, policy_ref=None):
+    def __init__(self, cwd=None, remote=None, integration=None, now=None, policy_ref=None, repo_flag=False):
         self.now = now if now is not None else read_now()
-        self.git = Git.discover(cwd or os.getcwd(), self.now)
+        self.git = Git.discover(cwd or os.getcwd(), self.now, flag=repo_flag)
         self.remote_arg, self.integration_arg = remote, integration
         self.policy_ref = policy_ref
         self.R = self.I = None
@@ -119,13 +119,15 @@ class Session:
             self._portfolio = p
         return p
 
-    def ctx(self) -> render.Ctx:
+    def ctx(self, worker: bool = False) -> render.Ctx:
+        """`worker`: output read by a phase's worker (cards, renew, abandon), whose commands carry --repo."""
         st = self.state
         settings = st.settings or {"parallelism": {"max_workers": 0}, "scheduling": {"order": "stage_first"},
                                    "releases": {"current": 1}}
         return render.Ctx(prefix=cli_prefix(), now=self.now, settings=settings, coordinator=st.coordinator,
                           reader=GitReader(self), goal_commits=dict(self.snap.goals),
-                          goal_dates={g: c.committer_date for g, c in st.goal_commits.items()})
+                          goal_dates={g: c.committer_date for g, c in st.goal_commits.items()},
+                          repo=self.git.primary if worker else None)
 
     def warnings(self, p) -> list:
         st = self.state

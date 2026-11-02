@@ -7,6 +7,7 @@ import hashlib
 import json
 
 from engine.canon import canonical, iso
+from engine import schemas
 from engine.schemas import SHA, get_dotted, is_material
 from engine.frontier import recorded_out, resolve
 from engine.render import clip, command, first_line, run_capability
@@ -108,7 +109,7 @@ def value_of(session, res, n, name, v):
 def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = None) -> dict:
     g, graph, doc = res.goal, res.graph, res.doc
     nd = graph.nodes[n]
-    ctx = session.ctx()
+    ctx = session.ctx(worker=True)
     reader = ctx.reader
     settings = session.settings
     vals, _ = resolve(graph, doc, n, lambda p: res.cur[p] if p in res.cur else recorded_out(doc, p),
@@ -155,8 +156,7 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
                 cmds += vals[name]
         if cmds:
             card["commands_to_run"] = {"from": "commands", "list": cmds, "note": "Run these in the workspace before you submit."}
-    card["corrections"] = [{"id": f["id"], "from": _carrier(res, f), "text": f["text"], "rounds": f["rounds"],
-                            "upheld": f["upheld"]} for f in s.get("corrections") or []]
+    card["corrections"] = [correction(res, f) for f in s.get("corrections") or []]
     notes = notes_for(res, n)
     if notes:
         card["notes"] = notes
@@ -177,7 +177,8 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
     card["read_dev"] = {"commit": I, "show": f"git show {I}:<path>", "grep": f"git grep <pattern> {I}",
                         "mirror": session.mirror_path()}
     card["workspace"] = lease.get("workspace")
-    card["output_schema"] = output_schema(graph, n, s)
+    card["output_schema"] = output_schema(graph, n, dict(s, corrections=card["corrections"]),
+                                          follows=schemas.follows_required(settings))
     arts = graph.artifact_outputs(n)
     if arts:
         card["artifact"] = {"output": arts[0], "path": f".zzzops/reviews/{g}/{n}.md"}
@@ -187,9 +188,32 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
                           + (["--artifact", "<A>"] if arts else [])),
         "blocked": command(ctx, ["submit", str(g), n, "--attempt", N, "--as", holder, "--blocked", "<F>"]),
         "renew": dict(command(ctx, ["renew", str(g), n, "--attempt", N]),
-                      when=f"every {every} minutes (timeout {timeout}); after any pause, renew first"),
+                      when=f"every {every} minutes (timeout {timeout}); renew first after a pause"),
         "abandon": command(ctx, ["abandon", str(g), n, "--attempt", N])}
     return shrink(card, reader)
+
+
+def correction(res, f) -> dict:
+    """One card correction: `stale_review` when its carrier is stale (a carried finding), `follows`/`follows_text`
+    when it narrows an earlier finding (G1028)."""
+    c = _carrier(res, f)
+    out = {"id": f["id"], "from": c, "text": f["text"], "rounds": f["rounds"], "upheld": f["upheld"]}
+    if c in res.stale:
+        out["stale_review"] = True
+    if f.get("follows"):
+        out["follows"] = f["follows"]
+        old = finding_by_id(res.doc, f["follows"])
+        if old is not None:
+            out["follows_text"] = clip(old["text"], 120)
+    return out
+
+
+def finding_by_id(doc, fid):
+    for r in (doc.get("records") or {}).values():
+        for x in r.get("findings") or []:
+            if x["id"] == fid:
+                return x
+    return None
 
 
 def notes_for(res, n) -> list:
@@ -262,26 +286,32 @@ def finding_effect(graph, n) -> str:
     """What a finding from this phase does (one place for G1000's filtered-review branch)."""
     if graph.is_review(n):
         return "Each open finding reopens its target: it re-runs and must answer it in responses."
-    return "a finding reopens that ancestor; this phase re-runs if that ancestor's output changes."
+    return "it reopens that ancestor; this phase re-runs if that ancestor's output changes."
 
 
-def output_schema(graph, n, s) -> dict:
+def output_schema(graph, n, s, follows: bool = False) -> dict:
+    """`follows`: the policy requires the finding key `follows` (only then is it offered, G1028)."""
     out = {}
     if graph.is_review(n):
         out["decision"] = ("approved | changes_requested (changes_requested only with a material finding open; "
                            "approve with notes)" if graph.filter_of(n)
                            else "approved | changes_requested (approved only with no finding open)")
         out["summary"] = "text: your verdict"
-        out["findings"] = ("[{\"id\": <prior id>, \"status\": \"open\"|\"resolved\"} for every prior open finding, "
-                           "{\"target\"?: <node>, \"text\": …} for new ones]. " + finding_effect(graph, n))
+        if follows:
+            out["findings"] = ("[{\"id\": <id>, \"status\": \"open\"|\"resolved\"} for every finding in previous.findings, "
+                               "{\"target\"?: <node>, \"text\": …, \"follows\"?: <id>} for new ones]. Ids in "
+                               "previous.resolved need no status. When a prior finding is partly fixed, resolve it and "
+                               "raise what remains with \"follows\": <its id>. " + finding_effect(graph, n))
+        else:
+            out["findings"] = ("[{\"id\": <id>, \"status\": \"open\"|\"resolved\"} for every finding in previous.findings, "
+                               "{\"target\"?: <node>, \"text\": …} for new ones]. Ids in previous.resolved need no "
+                               "status. " + finding_effect(graph, n))
     else:
         for k, t in graph.output_types[n].items():
             if t == "checkpoint":
-                out[k] = ("checkpoint (optional): omit the key to default to the suggested checkpoint if any, else your "
-                          "work branch's HEAD (a phase that adds no commit keeps its previous checkpoint). To override, "
-                          "give {\"commit\": \"<full 40-hex sha>\"}; ref names such as HEAD and short shas are refused. "
-                          "If a restack rewrote the previous checkpoint, submit refuses with checkpoint_required and asks "
-                          "for one.")
+                out[k] = ("checkpoint (optional): omit the key to default to the suggested checkpoint, else your work "
+                          "branch's HEAD (no new commit keeps the previous one). Override: {\"commit\": \"<full 40-hex "
+                          "sha>\"}, no refs or short shas. A restack may require one.")
             elif t == "artifact":
                 out[k] = "artifact: write it to a local file and pass that file with --artifact; artifact.path is where submit stores it."
             else:
@@ -289,6 +319,10 @@ def output_schema(graph, n, s) -> dict:
         out["findings"] = "optional: [{\"target\": <ancestor node>, \"text\": …}]; " + finding_effect(graph, n)
     if s.get("corrections"):
         out["responses"] = "required for: " + ", ".join(f["id"] for f in s["corrections"])
+        if any(f.get("stale_review") for f in s["corrections"]):
+            out["responses"] += (". A stale_review finding came from a review whose inputs have since changed: answer "
+                                 "it fixed: if your output handles it, or disputed: with the reason if the change made "
+                                 "it moot.")
     return out
 
 
@@ -301,9 +335,15 @@ def previous(session, res, n, s) -> dict | None:
         subj = res.graph.subject(n)
         sr = (res.doc.get("records") or {}).get(subj) or {}
         from engine.records import response_of
-        prev["findings"] = [{"id": f["id"], "target": f["target"], "text": f["text"], "status": f["status"],
-                             "response": response_of(res.doc, f["target"], f["id"]) or f.get("response")}
-                            for f in r.get("findings") or [] if f["target"] != n]
+        mine = [f for f in r.get("findings") or [] if f["target"] != n]
+        prev["findings"] = [dict({"id": f["id"], "target": f["target"], "text": f["text"], "status": f["status"],
+                                  "response": response_of(res.doc, f["target"], f["id"]) or f.get("response")},
+                                 **({"follows": f["follows"]} if f.get("follows") else {}))
+                            for f in mine if f["status"] == "open"]
+        closed = [{"id": f["id"], "status": f["status"], "text": clip(f["text"], 120)}
+                  for f in mine if f["status"] != "open"]
+        if closed:
+            prev["resolved"] = closed
         for k, old in (r.get("reviewed") or {}).items():
             cur = (sr.get("output") or {}).get(k)
             if "blob" in old:                                   # an artifact: what changed since the last review

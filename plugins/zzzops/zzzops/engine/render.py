@@ -45,11 +45,16 @@ class Ctx:
     reader: Reader = field(default_factory=Reader)
     goal_commits: dict = field(default_factory=dict)     # id -> goal tip commit (for edit --base)
     goal_dates: dict = field(default_factory=dict)       # id -> goal tip committer date (seconds)
+    repo: str | None = None                              # worker-facing commands carry --repo <primary> (G1028)
 
 
 def command(ctx: Ctx, argv: list) -> dict:
-    return {"argv": list(argv), "command": ctx.prefix + " " + " ".join(shlex.quote(a) if a not in (LABEL, FILE) else a
-                                                                      for a in argv)}
+    """A printed command (SPEC §1.6). With `ctx.repo` (worker-facing output) it ends `--repo <dir>`, so it runs from
+    any directory."""
+    repo = getattr(ctx, "repo", None)
+    argv = list(argv) + (["--repo", repo] if repo else [])
+    return {"argv": argv, "command": ctx.prefix + " " + " ".join(shlex.quote(a) if a not in (LABEL, FILE) else a
+                                                                 for a in argv)}
 
 
 def first_line(text: str, limit: int) -> str:
@@ -209,8 +214,12 @@ def facts(res: GoalResult) -> str:
     waived = [f["id"] for r in records.values() for f in r.get("findings") or [] if f["status"] == "waived"]
     disputed = [f["id"] for r in records.values() for f in r.get("findings") or []
                 if f["status"] == "open" and (f.get("response") or "").startswith("disputed: ")]
+    follows = sorted({(f["id"], f["follows"]) for r in records.values() for f in r.get("findings") or []
+                      if f.get("follows")})
     parts.append("waived: " + (", ".join(sorted(waived)) or "none"))
     parts.append("disputed: " + (", ".join(sorted(disputed)) or "none"))
+    if follows:
+        parts.append("follows: " + ", ".join(f"{a} ← {b}" for a, b in follows))
     ci = "not run yet"
     for n in res.graph.topo:
         if res.graph.nodes[n].get("op") == "git.integrate" and n in records and records[n]["status"] == "done":

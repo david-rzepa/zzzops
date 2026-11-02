@@ -312,6 +312,8 @@ class SubmitTests(Journey):
                   "output_schema"):
             self.assertIn(k, c)
         argv = ["submit", str(g), self.n("implement"), "--attempt", "1", "--as", self.A.label, "--output", "<F>"]
+        argv += ["--repo", c["commands"]["submit"]["command"].rsplit(" --repo ", 1)[-1]]   # G1028
+        self.assertTrue(os.path.samefile(self.w.clones["a"].path, argv[-1]), argv)
         self.assertEqual("zzzops " + " ".join(argv), c["commands"]["submit"]["command"])
         if "argv" in c["commands"]["submit"]:
             self.assertEqual(argv, c["commands"]["submit"]["argv"])

@@ -77,7 +77,8 @@
 - **Commands are stored and emitted as verb-relative argv** (`["start", "1002", "base", "--as", "<LABEL>"]`). Records and other durable data hold argv only, never a prefix or a path. At print time every command is an object `{"argv": [...], "command": "<prefix> <argv, shell-quoted>"}`, where the prefix `$Z` is `ZZZOPS_PREFIX` when set, otherwise `"<sys.executable>" "<absolute path of zzzops.py>"`. PowerShell users prefix `& ` (the skills say so).
 - **No embedded JSON quoting.** Printed commands never contain JSON inside shell quotes. Edit options are printed as `edit G --file <F> --base C` together with the file content to write (§4.18); answers use `--file` (§3.12).
 - **Holder labels.** `--as` defaults to `codex:<CODEX_THREAD_ID[:8]>` or `claude:<CLAUDE_CODE_SESSION_ID[:8]>`, whichever is set. The dispatcher mints worker labels `<root label>/<node>-<k>` and passes them in the worker's prompt; Claude Code subagents share the parent's session id, so only the dispatcher-minted form is portable.
-- Global flags, accepted before or after the verb: `--remote R`, `--integration B`.
+- Global flags, accepted before or after the verb: `--remote R`, `--integration B`, `--repo DIR` (G1028).
+- **`--repo DIR` (G1028).** The repository is found from DIR instead of the working directory: any directory inside the repository or one of its linked worktrees (a goal workspace included). The process does not change directory, so file arguments (`--output`, `--artifact`, `--file`) stay relative to the caller; `validate --policy` without `--dir` reads `<DIR>/.zzzops`. **Worker-facing commands** (the task card's `commands`, `renew`'s `abandon`/`restart`, `abandon`'s `restart`) end with `--repo <primary worktree>`, so a worker can run them from any directory; `next`, items, `show`, `edit` and `validate` print none. Run outside any repository, every verb refuses with `environment`, "not inside a Git repository: <cwd>", hint "Run zzzops from the repository, or pass --repo <a directory inside it>. Task-card commands already carry --repo."; a `--repo` outside any repository gives "--repo <DIR> is not inside a Git repository".
 - Environment variables: `ZZZOPS_NOW` (fixed `now`, tests only), `ZZZOPS_TRACE=<file>` (append one JSON line per network Git command and per `gh` call: `{"cmd": [...], "rc": n, "ms": n}`; used by the cost budgets in DESIGN §10), `ZZZOPS_PREFIX` (set by the launcher).
 
 ### 1.7 Identity
@@ -368,6 +369,8 @@ A done record with `ok == false` must carry at least one open finding; submit re
                                     // with the same input_fp (§4.9 op-finding cap)
  "impact"?: "…",                    // filtered lenses only (G1000): what goes wrong if this is ignored
  "material"?: true,                 // filtered lenses only (G1000): false = a note; a missing key counts as material
+ "follows"?: "review_impl:1:2",     // review findings only (G1028): the prior finding of the same reviewer this one
+                                    // narrows (a partly fixed finding); inherits its target and rounds, never upheld
  "carrier_fp"?: "v1:sha256:…"}      // op findings only: the input_fp of the done record that raised this id; a Blocked
                                     // op record's copy keeps it unchanged (§4.14)
 ```
@@ -450,14 +453,16 @@ State: <open|held|closed>
 // Agent review node:
 {"decision": "approved",                          // "approved" | "changes_requested"
  "summary": "…",
- "findings": [{"id": "review_impl:1:1", "status": "resolved"},   // every prior open finding, by id
-              {"target": "implement", "text": "…"}],              // new findings (target defaults to the subject)
+ "findings": [{"id": "review_impl:1:1", "status": "resolved"},   // every finding in previous.findings (the open ones), by id
+              {"target": "implement", "text": "…", "follows"?: "review_impl:1:1"}],   // new findings (target defaults to the
+                                                                  // subject, or to the followed finding's target)
  "responses"?: {}}
 ```
 Strings in `responses` start with `fixed: ` or `disputed: ` followed by non-empty text.
 
 - **Checkpoint overrides (G1016)** must be a full 40-hex sha; ref names such as `HEAD` and short shas are refused with `validation`. `edit`'s `{"commit"}`-only record completion (§4.18) applies the same rule, and a missing commit is refused instead of stored as null.
 - **Responses that do not match (G1016).** When the keys of `responses` differ from the live correction ids, `submit` refuses with `validation` and `details: {"respond_to": [{"id", "from", "target", "text", "upheld", "full"?}], "no_longer_live": [ids]}`, hint: "Findings arrived while you ran: answer each in `responses` … (drop the ones under no_longer_live), then resubmit." Texts longer than the inline limit are clipped, with `full` as a view.
+- **Closed ids and `follows` (G1028).** An id from `previous.resolved` (resolved or waived) restated as `resolved` is a no-op; restated as `open` it is refused with `validation`, "already resolved: <ids>" (or "already waived"), hint: a closed finding cannot be reopened by status; raise a new finding with `"follows": "<id>"`. An id the reviewer's latest record does not hold is refused with "unknown finding ids: …" and `details.needs_status` (the open ids). A new finding's `follows` must name a finding of this reviewer's latest record; if that finding is open, this submit must resolve it. Submit refuses `follows` unless the policy keeps older engines away from the key (capability `finding_follows`; in this engine: `settings.engine.min` ≥ 1.2.0, §4.5), and a non-review node's finding with `follows` is refused.
 - **Lens findings (G1000).** A review with a `filter` (§3.1) gives each new finding `impact` (non-empty text: what goes wrong if it is ignored) and `material` (bool). A filter node's output file gives `verdicts`: `{"<finding id>": {"verdict": "keep" | "note", "reason": "…"}}` for exactly the non-material `candidates` on its card.
 
 ### 3.11 Blocked file (`submit --blocked F`)
@@ -524,8 +529,11 @@ Every text field of an answer file is at most 4,096 bytes (`too_large` otherwise
  "inputs":  {"<name>": <value view>},                    // fingerprinted inputs
  "context": {"<name>": <value view>},                    // context inputs
  "commands_to_run"?: {"from": "commands", "list": ["…"], "note": "Run these in the workspace before you submit."},
- "corrections": [{"id": "run_tests:failed", "from": "run_tests", "text": "…", "rounds": 1, "upheld": false}],
- "previous"?: {"findings": [ /* the reviewer's own previous findings with the target's responses */ ],
+ "corrections": [{"id": "run_tests:failed", "from": "run_tests", "text": "…", "rounds": 1, "upheld": false,
+                  "stale_review"?: true,                // carried from a stale carrier (§4.9, G1028)
+                  "follows"?: "<id>", "follows_text"?: "…"}],   // the finding it narrows, text clipped to 120 (G1028)
+ "previous"?: {"findings": [ /* the reviewer's own previous OPEN findings with the target's responses (and follows) */ ],
+               "resolved"?: [{"id", "status", "text"}],   // its resolved and waived ones; they need no status (G1028)
                "interdiff"?: "git range-diff <old base>..<old commit> <new base>..<new commit>",
                "changed"?: "git diff <old blob> <new blob>",   // an artifact subject changed since the last review (G1000)
                "output"?: { /* stale_because == ["def"]: the previous output */ },
@@ -536,15 +544,15 @@ Every text field of an answer file is at most 4,096 bytes (`too_large` otherwise
  "read_dev": {"commit": "<I tip>", "show": "git show <I tip>:<path>", "grep": "git grep <pattern> <I tip>",
               "mirror": "/abs/.git/zzzops/coordinator"},
  "workspace": "/abs/.zzzops/worktrees/g1002" | null,
- "output_schema": {"code": "checkpoint (optional): omit the key to default to the suggested checkpoint if any, else your work branch's HEAD (a phase that adds no commit keeps its previous checkpoint). To override, give {\"commit\": \"<full 40-hex sha>\"}; ref names such as HEAD and short shas are refused.",
+ "output_schema": {"code": "checkpoint (optional): omit the key to default to the suggested checkpoint, else your work branch's HEAD (no new commit keeps the previous one). Override: {\"commit\": \"<full 40-hex sha>\"}, no refs or short shas. A restack may require one.",
                    "responses": "required for: run_tests:failed"},
  "artifact"?: {"output": "doc", "path": ".zzzops/reviews/1002/design.md"},
- "commands": {"submit":  {"argv": ["submit", "1002", "implement", "--attempt", "2", "--as", "claude:0a02/implement-1", "--output", "<F>"], "command": "$Z submit …"},
+ "commands": {"submit":  {"argv": ["submit", "1002", "implement", "--attempt", "2", "--as", "claude:0a02/implement-1", "--output", "<F>"], "command": "$Z submit … --repo /abs/primary"},
               "blocked": {"argv": ["submit", "1002", "implement", "--attempt", "2", "--as", "…", "--blocked", "<F>"], "command": "…"},
-              "renew":   {"argv": ["renew", "1002", "implement", "--attempt", "2"], "command": "…", "when": "every 30 minutes (timeout 120); after any pause, renew first"},
+              "renew":   {"argv": ["renew", "1002", "implement", "--attempt", "2"], "command": "…", "when": "every 30 minutes (timeout 120); renew first after a pause"},
               "abandon": {"argv": ["abandon", "1002", "implement", "--attempt", "2"], "command": "…"}}}
 ```
-A **value view** is the value itself when its canonical form is at most 600 bytes; otherwise `{"summary": "<first 200 chars>", "blob": "<sha>", "read": "git cat-file -p <sha>"}` (§4.20). Artifact values are always shown as `{"path", "blob", "summary"?, "read"}`; checkpoint values as `{"commit", "base", "tree", "change", "diff": "git diff <base> <commit> -- ':/' ':(top,exclude).zzzops/reviews'"}`. A sub-field selector `.change` or `.tree` shows the same view, `{"commit", "base", "change", "diff"}`, plus `tree` only for `.tree` (G1018). `deps.` values are maps of views. The top-level `renew` sentence of revision 6.3 is replaced by `commands.renew.when` (G1016).
+A **value view** is the value itself when its canonical form is at most 600 bytes; otherwise `{"summary": "<first 200 chars>", "blob": "<sha>", "read": "git cat-file -p <sha>"}` (§4.20). Artifact values are always shown as `{"path", "blob", "summary"?, "read"}`; checkpoint values as `{"commit", "base", "tree", "change", "diff": "git diff <base> <commit> -- ':/' ':(top,exclude).zzzops/reviews'"}`. A sub-field selector `.change` or `.tree` shows the same view, `{"commit", "base", "change", "diff"}`, plus `tree` only for `.tree` (G1018). `deps.` values are maps of views. The top-level `renew` sentence of revision 6.3 is replaced by `commands.renew.when` (G1016). Every command's `argv` and `command` end with `--repo <primary worktree>` (§1.6, G1028).
 
 ### 3.15 `next` output (at most 8,192 bytes unless `--all`)
 
@@ -612,7 +620,7 @@ With `--all`, the output also carries `"goals": [{"id", "title", "state", "stage
 | `abandon` | `{"ok", "coordinator", "expired": "<lease ref>", "restart": <command: start G X --as <LABEL> --reclaim>, "hint", "note"?: "…"}` (G1016) |
 | `answer` | `{"ok", "coordinator", "recorded": {…}, "preview": <impact preview>, "next": <next --goal G>}` |
 | `reopen` | `{"ok", "coordinator", "finding": {…}, "waived": ["<finding id>", …], "preview": <impact preview>}` |
-| `edit` | `{"ok", "coordinator", "applied": true\|false, "goal_commits": {"<id>": "<sha>"}, "preview": <impact preview>, "stale_agent_phases": n, "live_leases_on_changed_nodes": [<live lease entry>], "warning"?: "…", "follow_up"?: [<command>, …]}`, in the preview and the applied result alike (G1014) |
+| `edit` | `{"ok", "coordinator", "applied": true\|false, "goal_commits": {"<id>": "<sha>"}, "preview": <impact preview>, "stale_agent_phases": n, "live_leases_on_changed_nodes": [<live lease entry>], "carried_findings": [<carried finding>], "warning"?: "…", "follow_up"?: [<command>, …]}`, in the preview and the applied result alike (G1014). `carried_findings` (G1028): every finding live after the edit only because it is carried (§4.9), `{"goal", "id", "from": <carrier>, "target", "text": <clipped to 120>, "waive": "--set 'records.<carrier>.findings[<i>].status=\"waived\"' --set 'records.<carrier>.findings[<i>].note=\"<who waived it, and why>\"'"}`; adding those lines to the same edit waives it. The applied result adds to `warning` "N open finding(s) stay live on their targets after this edit; see carried_findings" when the list is non-empty. |
 | `show --json` | `{"ok", "coordinator", "goal": <doc>, "goal_commit": "<sha>", "states": {"<node>": "<state and reason>"}, "leases": {...}, "rewritten"?: {...}}`. Without `--json`: a header line (`G<id> <title> — <state>, goal commit <sha>`), then one line per node: `<node>  <state> (<reason>)  attempt <n>  <holder>  since <iso>`. |
 | `validate` | `{"ok", "coordinator", "goals": {"<id>": ["<error>"]}, "policy": ["<error>"], "environment": ["<error>"], "warnings": [...], "legacy"?: <legacy item with the counted set>, "impact"?: <policy impact>}` |
 
@@ -761,7 +769,8 @@ def write_goals(verb, ids, mutate, extra=None, retry=True):
 - **Floor first.** Before strict validation, POLICY.json is parsed as plain JSON and only `schema_version` and `settings.engine.min` are read. If `settings.engine.min` > the engine version, or `schema_version` is newer than the engine supports, the engine reports only `engine_too_old` ("upgrade the plugin"), never `policy_invalid`. Writes are refused (exit 1); reads still work, and `next` shows the blocker.
 - **`engine_version_check()`** applies the floor and the ceiling before every write.
 - **Ceiling.** While `settings.engine.min` < `REQUIRES_MIN`, writes are refused with `engine_too_new` ("waiting for policy to raise engine.min to `<REQUIRES_MIN>`"). A newer engine installed early reads but does not write.
-- **What ships with an `engine.min` bump** (one list): a new goal schema; any change to fingerprint, canonical-JSON, `code_tree` or `change` semantics; any op `version`; the lease message format; any new POLICY or workflow key, field or op.
+- **What ships with an `engine.min` bump** (one list): a new goal schema; any change to fingerprint, canonical-JSON, `code_tree` or `change` semantics; any op `version`; the lease message format; any new POLICY or workflow key, field or op; any new record or finding key.
+- **`follows` (G1028, engine 1.2.0).** The finding key `follows` (§3.6) is read only by engines 1.2.0 and later, so `submit` writes it only while `settings.engine.min` ≥ 1.2.0; the policy branch that raises the floor comes first. When declared capabilities replace the floor (G1027), this is the capability `finding_follows` (1.2.0 maps to it), and the gate becomes "`finding_follows` is required".
 - **Goal schemas.** An engine reads every goal schema it has shipped and writes the newest when it writes a goal (a lazy migration). Known schemas today: `{1}`. A goal whose schema is newer than the engine knows is *newer*: writes to it are refused with `engine_too_old`, and its dependents show `waiting: engine upgrade`, never a stuck item.
 - **Fingerprint versions** (§4.8): a record's fingerprint is compared only in the version it carries. An engine computes only its own version, so a record in another version is stale. A version is bumped only when the old one is unsafe (it missed changes), together with an `engine.min` bump; the cost is that every open goal re-runs its nodes. There is no multi-version support.
 - **Upgrade and rollback** are REPAIR.md recipes (§8.4).
@@ -950,7 +959,10 @@ def frontier(g, doc, graph, dep_view, leases, settings, now):
              and input_fp(fp_parts(N[c], vals, R.get(subj))) == R[c].input_fp)
     for f in R[c].findings:
       t = f.target
-      if not fresh and t != c: continue              # a finding on its own carrier (reopen) needs no carrier fingerprint
+      if not fresh and t != c and N[c].kind == "op": continue   # G1028: an op re-observes; its stale findings are never
+                                                     # carried. A stale agent or human carrier's finding is CARRIED: it stays
+                                                     # live while its target's output is unchanged (the test below); c is in
+                                                     # `stale`, and cards mark it stale_review
       if (f.status == "open" and f.target_fp is not None and t in N and t in R
           and R[t].status == "done" and f.target_fp == out_fp(R[t])
           and not (N[t].kind == "op" and t != c and R[t].attempt > f.target_attempt)):
@@ -1020,6 +1032,8 @@ def escalates(target, carrier, f):
 - **`deps_conflict`.** A `git.base` record `Blocked {waiting_for: dependency}` keeps the node `waiting` while its fingerprint matches. Whenever any dependency's PR head or merge commit changes, the inputs change, the node is `ready (stale)` and runs again; the wait ends when the stack set combines cleanly (§5.2).
 - **Held goals** are evaluated the same way. Their states are reported, their leases show as running, and they offer no actions or human items.
 - **Closed goals** are not evaluated; dependents read them through `dep_view` (§4.10).
+
+**Carried findings (G1028).** `frontier` also returns `stale`, the carriers with a done record that is not fresh. A finding of such a carrier on another node is *carried*: it is live while open and while its `target_fp` equals the target's current `out_fp`, for agent and human carriers; op carriers' findings are not carried. A stale filtered lens uses its filter's latest done record, fresh or not: a material finding is carried, a non-material one only with the verdict `keep` (a `note` stays a note; an unjudged non-material finding is not carried). The carry ends when the target produces a new output; the stale review then re-runs and gives the finding a status.
 
 **Filtered lenses (G1000).**
 - **Liveness:** a finding carried by a filtered lens is live only once the filter's latest record is done and fresh (its input fingerprint, from recorded values and the current candidates, equals the record's). While the filter is stale, its lenses' findings wait for it: the filter is the join, so the subject reopens once per round. Once the filter is fresh, a finding is live unless it is non-material **and** the filter gave it the verdict `note`; a non-material finding with no verdict counts as kept. A note never reopens work and never counts against the budget, and it carries forward while the lens keeps it open.
@@ -1149,7 +1163,7 @@ def next(scope_goals=None, all=False):
 - **Retry actions** (`reason: retry`) carry the blocked record's `instructions` and the advisory `capability: "reasoning"` (op nodes included), so a dispatcher sends a conflict to a worker with the goal's design and the conflicted files instead of running the op blind.
 - **Policy-branch blocker message:** "A policy change is in progress on `zzzops/policy/<topic>` (last commit <date> by <author>, <age> old). New work is paused everywhere: <n> actions paused. To resolve it, land the branch on `<I>` and delete it, or delete the branch to abandon the change. Running phases may still submit."
 - **Human items** (full form; the compact form of §3.15 keeps `goal`, `node`, `kind`, `question`, `since` and an `expand` command `next --goal <g>`):
-  - `approve`: `question` = the first non-empty line of the node's prompt file with a leading `#` and spaces removed, and with `{id}`, `{title}` and `{<input name>}` (any input whose value is a string or integer) substituted. `context` = a view (≤ 400 characters) of every input, context inputs included, labeled by selector. Checkpoint-valued inputs (whole checkpoints, `.change` and `.tree`) render as `{"diffstat", "diff"}` (`git diff --stat` and the checkpoint `diff` command of §3.14), never as a bare hash; artifact views carry a web URL on the work branch when the remote is GitHub (`https://<host>/<owner>/<repo>/blob/<commit>/<path>`, derived from the remote URL, no API call). `options` = approve, request changes (the human's words become the correction), cancel the goal. `facts` = one line computed from the goal's records: per agent review node its record's attempt ("3 reviews"), waived and disputed findings by id, and the CI result from any `git.integrate` record (`passed`, `failed: …`, `stacked`, or `not run yet`). `fp` = the node's current input fingerprint; `answer_template` = §3.12 human review shape.
+  - `approve`: `question` = the first non-empty line of the node's prompt file with a leading `#` and spaces removed, and with `{id}`, `{title}` and `{<input name>}` (any input whose value is a string or integer) substituted. `context` = a view (≤ 400 characters) of every input, context inputs included, labeled by selector. Checkpoint-valued inputs (whole checkpoints, `.change` and `.tree`) render as `{"diffstat", "diff"}` (`git diff --stat` and the checkpoint `diff` command of §3.14), never as a bare hash; artifact views carry a web URL on the work branch when the remote is GitHub (`https://<host>/<owner>/<repo>/blob/<commit>/<path>`, derived from the remote URL, no API call). `options` = approve, request changes (the human's words become the correction), cancel the goal. `facts` = one line computed from the goal's records: per agent review node its record's attempt ("3 reviews"), waived and disputed findings by id, `follows: <new> ← <old>, …` when any finding follows another (G1028), and the CI result from any `git.integrate` record (`passed`, `failed: …`, `stacked`, or `not run yet`). `fp` = the node's current input fingerprint; `answer_template` = §3.12 human review shape.
   - `approve` also shows, for display only and never as an input: `pr` = `{number, url}` from the latest record of any `git.integrate` node of the goal that has an `output.pr`; and `stack` = "stacked on G1001 (PR #n, not merged yet)" from the `stack` output of the goal's `git.base` node when it is non-empty.
   - `previous` (any human item on a node with a previous done human record): `{decided_at, quote, stale_because, interdiff?}`; `interdiff` per §4.20: omitted when the subject checkpoint's `change` equals the recorded `reviewed[k].change`; otherwise `git range-diff <reviewed base>..<reviewed commit> <current base>..<current commit>` when the old commit exists locally.
   - `blocked`: `question`, `options` (with `commands` rendered) and `recommendation` from the blocked record; `fp` = the record's `input_fp`; `answer_template` = §3.12 blocked shape.
@@ -1321,9 +1335,13 @@ def process_findings(X, r0, out, L):
   result = []
   if N[X].review (agent):
     prior = [f for f in (r0.findings if r0 else []) if f.status == "open" and f.target != X]
+    closed = {f.id: f.status for f in (r0.findings if r0 else []) if f.status != "open" and f.target != X}
     ids = {f["id"] for f in given if "id" in f}
-    unknown = ids - {f.id for f in prior}; missing = {f.id for f in prior} - ids
-    refuse validation if unknown ("unknown finding ids") or missing ("give a status (open|resolved) for: …")
+    unknown = ids - {f.id for f in prior} - closed; missing = {f.id for f in prior} - ids
+    refuse validation if unknown ("unknown finding ids", details.needs_status = the prior ids)
+    refuse validation if a closed id is given "open" ("already resolved" / "already waived", hint: raise a new finding
+        with "follows"); a closed id given "resolved" is a no-op and is not copied (G1028)
+    refuse validation if missing ("give a status (open|resolved) for: …")
     for f in prior:
       s = status given for f.id   (∈ "open", "resolved")
       if s == "resolved": result.append(f | {"status": "resolved"})
@@ -1334,11 +1352,15 @@ def process_findings(X, r0, out, L):
         result.append(f | {"response": r, "rounds": f.rounds + (1 if disputed else 0), "target_fp": tf, "target_attempt": ta})
   new = [f for f in given if "id" not in f]
   for k, f in enumerate(new, 1):
-    T = f.get("target") or (N[X].review.subject if N[X].review else None)
+    F = r0's finding f["follows"] if "follows" in f else None   # G1028: review nodes only; F in X's latest record, and
+                                                     # resolved by this submit if it was open
+    T = f.get("target") or (F.target if F else None) or (N[X].review.subject if N[X].review else None)
     require T is an ancestor of X (transitive producer, including the subject), T not skipped, T != X
     tf, ta = fence(T)
+    rounds = 1 if not F or F.target != T else F.rounds + (1 if resp(T, F.id).startswith("disputed:") and N[T].kind == "agent" else 0)
     result.append({"id": f"{X}:{N}:{k}", "target": T, "target_fp": tf, "target_attempt": ta, "text": f["text"], "status": "open",
-                   "response": None, "rounds": 1, "upheld": False, "note": None})
+                   "response": None, "rounds": rounds, "upheld": False, "note": None} | ({"follows": F.id} if F else {}))
+    # upheld is never inherited: the human never saw this text, so it stays disputable (and escalates at rounds ≥ 2)
   if N[X].review:
     ok = out["decision"] == "approved"
     if ok and filter_of(X) and any(f.status == "open" and is_material(f) for f in result):         # G1020
@@ -1471,7 +1493,7 @@ def edit(gids, files, sets, bases):
   print {applied: true, goal_commits, preview: prev, stale_agent_phases: stale, follow_up?}
 ```
 - **Applying needs `--base`** for every edited goal; without it, `edit` is a dry run that prints the preview. A concurrent change to an edited goal is always refused (`goal_changed`), never re-applied. There is no `--yes` and no threshold.
-- **PATH grammar:** `seg ("." seg)*`, `seg := name | name "[" id "]"`, `name := [A-Za-z0-9_]+`; `[id]` selects the element with that `id` in an array of objects (findings). `JSON` is parsed with `json.loads`. Setting a key under `skip` or `records` to `null` removes the key; elsewhere `null` is stored as a value. Every goal in `gids` receives every set.
+- **PATH grammar:** `seg ("." seg)*`, `seg := name | name "[" id "]"`, `name := [A-Za-z0-9_]+`; `[id]` selects the element with that `id` in an array of objects (findings); when no element has that id and it is all digits, it selects by 0-based position (`carried_findings` waive lines, G1028). `JSON` is parsed with `json.loads`. Setting a key under `skip` or `records` to `null` removes the key; elsewhere `null` is stored as a value. Every goal in `gids` receives every set.
 - **Printed edit options** always use a set file (`edit G --file <F> --base C`) and give its content in the item's `file` field, so no command embeds JSON in shell quotes (§1.6). `--set` remains for humans.
 - **Typical sets:** hold `{"state": "held"}`; unhold `{"state": "open"}`; depend `{"depends_on": [1001, 1003]}`; close `{"state": "closed", "closed.reason": "cancelled", "closed.note": "…"}`; skip `{"skip.approve_design": "docs only; agreed"}`; waive `{"records.review_impl.findings[review_impl:2:1].status": "waived", "records.review_impl.findings[review_impl:2:1].note": "…"}`; raise the budget `{"budget": 36}`. Reopening a goal closed as `done` is refused (§3.3 rule 5).
 - **`fill_current_records`:** a record whose `input_fp` is the string `"current"` gets the node's current fingerprint and `fp_parts`, computed by the frontier on the new document (validation error if its inputs do not resolve); a checkpoint output given as `{"commit": sha}` is completed with `base`, `tree` and `change`.
@@ -1537,7 +1559,8 @@ def view(v, label):
   - **A phase that committed nothing.** When `<L's Work trailer>..HEAD` holds no commit other than `docs(review):` commits and the node has a previous record `r0`, the suggestion is `r0`'s checkpoint commit `c`, followed through the `base` producer's `replay_map`, else `replay_pos`, when the node's `base` input differs from `r0`'s, whatever `stale_because` holds: a dispute, a `fixed:` answer without a change, or a re-run stale on a document or on `def`. The containment rule above applies; when it fails, the default is HEAD, which then holds the producer's newer checkpoint. When `base` moved and `c` is in neither map, `submit` refuses with `checkpoint_required` ("this phase added no commit; name the checkpoint: `{"<key>": {"commit": "<full 40-hex sha>"}}`, your rebased checkpoint commit, or the `base` commit when the rebase dropped your commits as already applied") instead of defaulting to HEAD, which would hold a later node's code (`m5:N1`).
 - **Routine re-records:** when the record's own staleness is exactly `["inputs.base"]` and the node has no live corrections, `run.capability` is `"routine"` (advisory); otherwise it is the node's own capability, including a plain start of a reopened node after `base` moved (G1016). With carry-forward (§4.21) this is rare.
 - **Stale explanation (G1016):** `stale_because` is shown on every started card, reclaim cards included (the union of the lease's and the record's staleness), and `changed` gives one local, never-fetching pointer per stale key that has one: a goal-field input gets a `goal.json` diff since the record, an artifact input a blob diff.
-- **Output schema text (G1016):** says what a finding does ("a finding reopens that ancestor; this phase re-runs if that ancestor's output changes"), that checkpoint keys are optional (omit the key to take the default), and how an artifact is passed (`--artifact`, `artifact.path` content).
+- **Output schema text (G1016):** says what a finding does ("it reopens that ancestor; this phase re-runs if that ancestor's output changes"), that checkpoint keys are optional (omit the key to take the default), and how an artifact is passed (`--artifact`, `artifact.path` content).
+- **Review `findings` text (G1028):** "every finding in previous.findings" gets a status; "Ids in previous.resolved need no status". Only when the policy allows `follows` (§4.5) does it add `"follows"?: <id>` and "When a prior finding is partly fixed, resolve it and raise what remains with \"follows\": <its id>." `responses` adds a sentence on `stale_review` corrections: answer `fixed:` if the output handles it, or `disputed:` with the reason if the change made it moot.
 - **`read_dev`:** always present, so discovery nodes read the integration tip with `git show`/`git grep` or the mirror, with no worktree.
 - **Commands:** `submit` and `blocked` carry `--as <holder>` so a worker's lost response is recognized (§4.14).
 - **Size (shrink steps, G1018):** 4,096 bytes is a target. While `len(canonical(card)) > 4096`, apply the first of these steps that makes the card smaller: drop `argv` from `commands` (each keeps its runnable `command` string); point `context.commands` at `commands_to_run` (`"see commands_to_run"`); clip blob summaries to 120 characters (a blobbed correction's `full` carries no `summary`; a blobbed dict or list gets a key summary); then replace the largest inline text value (prompt, instructions, inputs, context, correction texts; ties by key order) with a view reference, and if none above 100 bytes remains, cut each correction `text` to 200 characters with its full text under `corrections[i].full`. Checkpoint views are never blobbed, and a card never leaves larger than it entered. Cards under 4,096 bytes are unchanged.
@@ -2045,7 +2068,7 @@ def merged(v):                                                   # the merge is 
 
 ## 6. CLI reference
 
-Every verb prints one JSON object on stdout (`show` prints text unless `--json`). Global flags: `--remote R`, `--integration B`, `--policy-ref REF`. "Fetch" means the coordinator fetch of §4.2; verbs naming a goal also fetch its work, PR and stack branches, and `start` on a `git.base` node also its dependencies' PR branches (§4.2). Any verb may exit 1 with `environment`; every mutating verb may exit 2 (`remote`, `push_refused`).
+Every verb prints one JSON object on stdout (`show` prints text unless `--json`). Global flags: `--remote R`, `--integration B`, `--policy-ref REF`, `--repo DIR` (§1.6, G1028). "Fetch" means the coordinator fetch of §4.2; verbs naming a goal also fetch its work, PR and stack branches, and `start` on a `git.base` node also its dependencies' PR branches (§4.2). Any verb may exit 1 with `environment`; every mutating verb may exit 2 (`remote`, `push_refused`).
 
 | Verb | Flags | Preconditions and effect | Stdout | Exit |
 |---|---|---|---|---|

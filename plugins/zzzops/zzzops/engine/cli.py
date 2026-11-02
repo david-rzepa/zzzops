@@ -79,7 +79,7 @@ class Args:
         return self.opts.get(name, default)
 
 
-GLOBAL = {"remote": "value", "integration": "value", "policy-ref": "value"}
+GLOBAL = {"remote": "value", "integration": "value", "policy-ref": "value", "repo": "value"}
 PREVIEW_VERBS = "next, show and validate"
 
 
@@ -98,7 +98,8 @@ def session(args, environment=True, preview=False):
     from engine.session import Session
     if args.get("policy-ref") and not preview:
         raise Refused("usage", f"--policy-ref is a read-only preview: it works with {PREVIEW_VERBS}")
-    s = Session(remote=args.get("remote"), integration=args.get("integration"), policy_ref=args.get("policy-ref"))
+    s = Session(cwd=args.get("repo"), remote=args.get("remote"), integration=args.get("integration"),
+                policy_ref=args.get("policy-ref"), repo_flag=bool(args.get("repo")))
     if environment:
         s.check_environment()
     return s
@@ -250,7 +251,7 @@ def package_check() -> str | None:
 
 
 def validate_policy_dir(a) -> int:
-    d = Path(a.get("dir") or os.path.join(os.getcwd(), ".zzzops"))
+    d = Path(a.get("dir") or os.path.join(a.get("repo") or os.getcwd(), ".zzzops"))
     errors = []
 
     def load(name):

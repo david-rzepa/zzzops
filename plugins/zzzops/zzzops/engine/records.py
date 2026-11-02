@@ -80,14 +80,24 @@ def process_findings(graph: Graph, doc: dict, X: str, r0: dict | None, given: li
     """Agent submits (review or not). Returns (findings, ok)."""
     result = []
     N = graph.nodes
+    latest = {f["id"]: f for f in ((r0 or {}).get("findings") or [])}
     if graph.is_review(X):
-        prior = [f for f in ((r0 or {}).get("findings") or []) if f["status"] == "open" and f["target"] != X]
+        prior = [f for f in latest.values() if f["status"] == "open" and f["target"] != X]
+        closed = {f["id"]: f["status"] for f in latest.values() if f["status"] != "open" and f["target"] != X}
         status = {f["id"]: f["status"] for f in given if "id" in f}
         prior_ids = {f["id"] for f in prior}
-        unknown = sorted(set(status) - prior_ids)
+        unknown = sorted(set(status) - prior_ids - set(closed))
+        reopened = sorted(i for i in status if i in closed and status[i] != "resolved")
         missing = sorted(prior_ids - set(status))
         if unknown:
-            raise Refused("validation", "unknown finding ids: " + ", ".join(unknown))
+            raise Refused("validation", "unknown finding ids: " + ", ".join(unknown),
+                          details={"needs_status": sorted(prior_ids)},
+                          hint="Give a status to each finding in previous.findings (needs_status).")
+        if reopened:
+            words = sorted({"already waived" if closed[i] == "waived" else "already resolved" for i in reopened})
+            raise Refused("validation", " / ".join(words) + ": " + ", ".join(reopened),
+                          hint="A closed finding cannot be reopened by status. Raise a new finding with "
+                               "\"follows\": \"<id>\" for what remains.")
         if missing:
             raise Refused("validation", "give a status (open|resolved) for: " + ", ".join(missing))
         for f in prior:
@@ -103,16 +113,36 @@ def process_findings(graph: Graph, doc: dict, X: str, r0: dict | None, given: li
         for f in given:
             if "id" in f:
                 raise Refused("validation", "only review nodes give prior findings a status")
+            if "follows" in f:
+                raise Refused("validation", "only review nodes give a finding `follows`")
     new = [f for f in given if "id" not in f]
+    for f in new:
+        if "follows" not in f:
+            continue
+        fid = f["follows"]
+        if fid not in latest or latest[fid]["target"] == X:
+            raise Refused("validation", f"follows: {fid} is not a finding of {X}'s previous review")
+        if latest[fid]["status"] == "open" and status.get(fid) != "resolved":
+            raise Refused("validation", f"follows: {fid} is still open; resolve it, and let the new finding carry "
+                                        "what remains")
     anc = graph.ancestors(X)
     skip = doc.get("skip") or {}
     for k, f in enumerate(new, 1):
-        T = f.get("target") or graph.subject(X)
+        followed = latest.get(f["follows"]) if "follows" in f else None
+        T = f.get("target") or (followed["target"] if followed else None) or graph.subject(X)
         if not T or T == X or T not in anc or T in skip:
             raise Refused("validation", f"finding target {T!r} must be a non-skipped ancestor of {X}")
         tf, ta = fence(T)
+        rounds = 1
+        if followed and followed["target"] == T:
+            # the same defect continued: keep its dispute count (never `upheld`: the human never saw this text)
+            r = response_of(doc, T, followed["id"]) or followed.get("response") or ""
+            rounds = followed["rounds"] + (1 if r.startswith("disputed:") and N.get(T, {}).get("kind") == "agent"
+                                           else 0)
         nf = {"id": f"{X}:{attempt}:{k}", "target": T, "target_fp": tf, "target_attempt": ta,
-              "text": f["text"], "status": "open", "response": None, "rounds": 1, "upheld": False, "note": None}
+              "text": f["text"], "status": "open", "response": None, "rounds": rounds, "upheld": False, "note": None}
+        if followed:
+            nf["follows"] = followed["id"]
         if graph.filter_of(X):
             nf.update(impact=f["impact"], material=f["material"])
         result.append(nf)

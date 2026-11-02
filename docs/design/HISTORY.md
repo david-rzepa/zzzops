@@ -260,5 +260,6 @@ One row per change to the contract after revision 6.3 was approved, in merge ord
 | G1034 | this PR | DESIGN §7 | Migration assigns each goal an owner-confirmed release (skill and MIGRATING; no engine change). |
 | G1017 | this PR | all files | Moved into the repository from the external design folder, scrubbed of private data, with this history; the amendments above applied. No other semantic change. |
 | G1029 | this PR | DESIGN §3.12 | Capture-time intent check (skill only); the Intent lens honours a departure recorded with the owner's dated words; `approve_design` shows it. |
+| G1028 | this PR | SPEC §1.6, §3.6, §3.10, §3.14, §3.16, §4.5, §4.9, §4.11, §4.14, §4.18, §4.20, §6; DESIGN §3.8 | Carried findings (`stale_review`, `edit` `carried_findings`); closed ids on review cards (`previous.resolved`) and restatement ("already resolved"); `follows` (engine 1.2.0, capability `finding_follows` under G1027); global `--repo` on worker commands. |
 
 Worked examples in DESIGN §4 and SPEC (finding ids such as `review_impl:2:1`, the 12-node walkthroughs) still use revision 6.3's node names. They illustrate mechanisms that the lens graph keeps unchanged.

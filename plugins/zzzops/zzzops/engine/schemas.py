@@ -550,8 +550,21 @@ PLACEHOLDER = "TODO:"
 
 
 # Optional settings keys: absent from the shipped template and undeclared, so changing one stales nothing. Any new
-# optional key must raise ENGINE_VERSION, so that `engine.min` can keep older engines away from it.
+# optional key (and any new record or finding key, such as G1028's `follows`) must raise ENGINE_VERSION, so that
+# `engine.min` can keep older engines away from it.
 OPTIONAL_SETTINGS = {"legacy": {"ignore": "bool"}}
+
+
+def follows_required(settings: dict | None) -> bool:
+    """Whether the policy keeps every writing engine able to read the finding key `follows` (SPEC §4.5, G1028):
+    `engine.min` at least the engine that ships it."""
+    from engine import FOLLOWS_SINCE
+    from engine.canon import version_tuple
+    mn = ((settings or {}).get("engine") or {}).get("min")
+    try:
+        return isinstance(mn, str) and version_tuple(mn) >= version_tuple(FOLLOWS_SINCE)
+    except (ValueError, TypeError):
+        return False
 
 
 def policy_floor(raw) -> tuple:
@@ -919,7 +932,7 @@ def validate_record(r) -> list:
 
 
 FINDING_KEYS = {"id", "target", "target_fp", "target_attempt", "text", "status", "response", "rounds", "upheld",
-                "note", "repeats", "carrier_fp", "impact", "material"}
+                "note", "repeats", "carrier_fp", "impact", "material", "follows"}
 
 
 def validate_finding(f) -> list:
@@ -962,6 +975,8 @@ def validate_finding(f) -> list:
         e.add("finding.impact", "must be text")
     if "material" in f and not isinstance(f["material"], bool):
         e.add("finding.material", "must be a boolean")
+    if "follows" in f and not (isinstance(f["follows"], str) and FINDING_ID.match(f["follows"])):
+        e.add("finding.follows", "must be a finding id")
     return e
 
 
@@ -1026,7 +1041,9 @@ def _check_new_findings(e: Errors, findings, review: bool, lens: bool = False):
             if f.get("status") not in ("open", "resolved"):
                 e.add(f"{w}.status", "must be open or resolved")
         else:
-            e.unknown(w, f, {"target", "text", "impact", "material"} if lens else {"target", "text"})
+            e.unknown(w, f, {"target", "text", "impact", "material", "follows"} if lens else {"target", "text", "follows"})
+            if "follows" in f and not (isinstance(f["follows"], str) and FINDING_ID.match(f["follows"])):
+                e.add(f"{w}.follows", "must be the id of a prior finding")
             if lens:
                 if not isinstance(f.get("impact"), str) or not f["impact"].strip():
                     e.add(f"{w}.impact", "required on a lens finding: what goes wrong if it is ignored")
