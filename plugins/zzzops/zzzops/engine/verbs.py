@@ -447,8 +447,30 @@ def blocked_record(s, res, doc, X, L, r0, b, ident, work):
     for k in ("instructions", "question", "options", "recommendation"):
         if k in b:
             blocked[k] = b[k]
+    last = (r0["output"] if r0 and r0["status"] == "done" else (r0 or {}).get("last_output"))
+    extra = {"last_output": last} if nd["kind"] == "agent" and "blocked_findings" in schemas.required_caps(s.settings) else {}
     return rec.record("blocked", False, L.attempt, L.holder, L.reason, r0, L.input_fp, L.fp_parts, None, [], s.now,
-                      prompt=L.prompt, blocked=blocked)
+                      prompt=L.prompt, blocked=blocked, **extra)
+
+
+def response_why(graph, doc, X, fid):
+    """Explain an obsolete response from the latest loaded records (G1040)."""
+    records = doc.get("records") or {}
+    f = next((f for r in records.values() for f in r.get("findings") or [] if f["id"] == fid), None)
+    if f is None:
+        return "superseded"
+    if f["status"] in ("resolved", "waived"):
+        return f["status"]
+    if f["target"] != X:
+        return "other_target"
+    r = records.get(X)
+    if r and r["status"] == "blocked":
+        if "last_output" not in r:
+            return "target_blocked"
+        r = dict(r, status="done", output=r["last_output"])
+    if not r or f["target_fp"] is None or f["target_fp"] != out_fp(graph, X, r):
+        return "target_changed"
+    return "not_live"
 
 
 def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
@@ -469,7 +491,8 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
                            "branch adding `finding_follows` to settings.engine.requires.")
     corr = corrections_of(res, X)
     carriers = {f["id"]: c for c, f in res.live.get(X, [])}
-    rec.check_responses(out.get("responses", {}), corr, carriers, s.ctx().reader.blob_view)
+    rec.check_responses(out.get("responses", {}), corr, carriers, s.ctx().reader.blob_view,
+                        lambda fid: response_why(res.graph, doc, X, fid))
     if not out.get("responses"):
         out.pop("responses", None)
     vals_rec, _ = resolve(graph, doc, X, lambda p: recorded_out(doc, p), s.portfolio().views)

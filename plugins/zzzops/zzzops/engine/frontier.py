@@ -185,15 +185,25 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
     def recorded(p):
         return recorded_out(doc, p)
 
+    # Pass 1 alone reads the output a blocked agent held. Pass 2 must still wait for its retry.
+    H = {n: dict(r, status="done", output=r["last_output"]) if r["status"] == "blocked" and "last_output" in r
+         else r for n, r in R.items()}
+
+    def held_recorded(p):
+        if p in skip:
+            return SKIPPED
+        r = H.get(p)
+        return r["output"] if r and r["status"] == "done" else Missing("no_record")
+
     # ---- pass 1: liveness, from recorded values only
     fresh = {}
     for c in topo:
         if c not in R or R[c]["status"] != "done":
             continue
-        vals, missing = resolve(graph, doc, c, recorded, dep_view)
+        vals, missing = resolve(graph, doc, c, held_recorded, dep_view)
         subj = graph.subject(c)
-        fresh[c] = (not missing and not (subj and (subj not in R or R[subj]["status"] != "done"))
-                    and input_fp(fp_parts(graph, c, vals, R.get(subj), settings, R, skip)) == R[c]["input_fp"])
+        fresh[c] = (not missing and not (subj and (subj not in H or H[subj]["status"] != "done"))
+                    and input_fp(fp_parts(graph, c, vals, H.get(subj), settings, H, skip)) == R[c]["input_fp"])
     live = {n: [] for n in topo}
     notes = {}
     stale = {c for c in fresh if not fresh[c]}
@@ -226,7 +236,7 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
             if carry and t != c and N[c]["kind"] == "op":
                 continue    # an op re-observes: its findings are rebuilt when it re-runs, never carried (SPEC §4.9, G1028)
             if (f["status"] == "open" and f["target_fp"] is not None and t in N and t in R
-                    and R[t]["status"] == "done" and f["target_fp"] == out_fp(graph, t, R[t])
+                    and H[t]["status"] == "done" and f["target_fp"] == out_fp(graph, t, H[t])
                     and not (N[t]["kind"] == "op" and t != c and R[t]["attempt"] > (f.get("target_attempt") or 0))):
                 live[t].append((c, f))
 
