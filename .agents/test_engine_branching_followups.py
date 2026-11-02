@@ -14,11 +14,12 @@ import unittest
 from types import SimpleNamespace
 
 import engine_fixtures as fx  # noqa: F401  (puts the engine on sys.path)
-from test_engine_branching import BSim, Branching, FrontierTests, ledger_of
+import test_engine_branching as tb  # module import: a module-level TestCase import would be collected twice
+from test_engine_branching import BSim, Branching, ledger_of
 
 
 class HotfixWaitFrontierTests(unittest.TestCase):
-    drive_to_ready = FrontierTests.drive_to_ready
+    drive_to_ready = tb.FrontierTests.drive_to_ready
 
     def test_current_base_waits_once_the_goal_moves_onto_an_unstarted_hotfix_line(self):
         s = BSim()
