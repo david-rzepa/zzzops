@@ -247,29 +247,14 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 4,
-      "correction_runs": 3,
-      "findings": [
-        {
-          "carrier_fp": "v1:sha256:ab15c4a8cd3405e6e2620084e7d58954f8e71cef6421d36d37e48332ece37536",
-          "id": "run_tests:failed",
-          "note": null,
-          "repeats": 1,
-          "response": null,
-          "rounds": 2,
-          "status": "open",
-          "target": "implement",
-          "target_attempt": 5,
-          "target_fp": "v1:sha256:eb3bc9031b6efcb13fdfaeb2fcb1e424c37267ca8d10dc329e9d417414807f2d",
-          "text": "`python3 -m unittest discover -s .agents -p 'test_engine_capabilities.py'` exited 1:\nst_engine_capabilities.py\", line 182, in test_policy_dir_validate_warns_too\n    self.assertIn(\"engine_min_deprecated\", self.kinds(out[\"warnings\"]))\n    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'engine_min_deprecated' not found in []\n\n----------------------------------------------------------------------\nRan 26 tests in 5.287s\n\nFAILED (failures=1)\n",
-          "upheld": true
-        }
-      ],
-      "finished_at": "2026-11-02T05:25:58Z",
+      "attempt": 5,
+      "correction_runs": 4,
+      "findings": [],
+      "finished_at": "2026-11-02T05:51:33Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:46bb0e48793a38398aa113b48dd543318b7e1eaf3d86e8cdca4693323a2422c9",
+          "code": "v1:sha256:61abac2eb9279f1a7c444e0a63ffb7a8f405cdb2a68a0d32b00713479e92029e",
           "commands": "v1:sha256:417a50661c4fdc88c22c070ab0943a6f4a2c52e73d96f6fde626ea4444ba8596"
         },
         "policy": {
@@ -279,16 +264,16 @@
         }
       },
       "holder": "claude:e6ad/op",
-      "input_fp": "v1:sha256:ab15c4a8cd3405e6e2620084e7d58954f8e71cef6421d36d37e48332ece37536",
-      "ok": false,
+      "input_fp": "v1:sha256:e99c8ae654c217fac0cfa7edede3bceae0ed8b5f039ee6cd81b1773a5abf3ed1",
+      "ok": true,
       "output": {
         "result": {
           "details": [
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_capabilities.py'",
-              "exit": 1,
+              "exit": 0,
               "seconds": 5,
-              "tail": "st_engine_capabilities.py\", line 182, in test_policy_dir_validate_warns_too\n    self.assertIn(\"engine_min_deprecated\", self.kinds(out[\"warnings\"]))\n    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'engine_min_deprecated' not found in []\n\n----------------------------------------------------------------------\nRan 26 tests in 5.287s\n\nFAILED (failures=1)\n"
+              "tail": "..........................\n----------------------------------------------------------------------\nRan 26 tests in 5.314s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_store.py'",
@@ -300,59 +285,59 @@
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_review_fixes.py'",
               "exit": 0,
               "seconds": 13,
-              "tail": "eWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n"
+              "tail": "....\n----------------------------------------------------------------------\nRan 19 tests in 13.591s\n\nOK\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_schemas.py'",
               "exit": 0,
               "seconds": 0,
-              "tail": "...................................\n----------------------------------------------------------------------\nRan 35 tests in 0.017s\n\nOK\n"
+              "tail": "...................................\n----------------------------------------------------------------------\nRan 35 tests in 0.018s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_legacy.py'",
               "exit": 0,
               "seconds": 9,
-              "tail": "..................................................\n----------------------------------------------------------------------\nRan 50 tests in 9.815s\n\nOK\n"
+              "tail": "..................................................\n----------------------------------------------------------------------\nRan 50 tests in 9.865s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_identity.py'",
               "exit": 0,
               "seconds": 0,
-              "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.537s\n\nOK\n"
+              "tail": "..........\n----------------------------------------------------------------------\nRan 10 tests in 0.519s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_design_docs.py'",
               "exit": 0,
               "seconds": 0,
-              "tail": "...................................\n----------------------------------------------------------------------\nRan 35 tests in 0.227s\n\nOK\n"
+              "tail": "...................................\n----------------------------------------------------------------------\nRan 35 tests in 0.225s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_sync_edit.py'",
               "exit": 0,
               "seconds": 19,
-              "tail": "..............\n----------------------------------------------------------------------\nRan 14 tests in 19.284s\n\nOK\n"
+              "tail": "..............\n----------------------------------------------------------------------\nRan 14 tests in 19.702s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_lenses.py'",
               "exit": 0,
-              "seconds": 210,
-              "tail": "rning: Enable tracemalloc to get the object allocation traceback\n...../home/dave/Work/dev/zzzops/.zzzops/worktrees/g1027/.agents/test_engine_lenses.py:128: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp48tcnwur/tpl/POLICY.json' mode='r' encoding='UTF-8'>\n  p = json.loads(open(os.path.join(d, \"POLICY.json\")).read())\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 62 tests in 210.808s\n\nOK\n"
+              "seconds": 211,
+              "tail": "rning: Enable tracemalloc to get the object allocation traceback\n...../home/dave/Work/dev/zzzops/.zzzops/worktrees/g1027/.agents/test_engine_lenses.py:128: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpw63kvg7x/tpl/POLICY.json' mode='r' encoding='UTF-8'>\n  p = json.loads(open(os.path.join(d, \"POLICY.json\")).read())\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 62 tests in 211.916s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_review_lenses.py'",
               "exit": 0,
               "seconds": 75,
-              "tail": "...........................................................\n----------------------------------------------------------------------\nRan 59 tests in 75.246s\n\nOK\n"
+              "tail": "...........................................................\n----------------------------------------------------------------------\nRan 59 tests in 75.382s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents",
-              "exit": 1,
-              "seconds": 766,
+              "exit": 0,
+              "seconds": 779,
               "tail": " file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
             }
           ],
-          "passed": false,
-          "tree": "1ac1a0bd2f85a330f64260a029faddb15f45a224"
+          "passed": true,
+          "tree": "ad5e3200ca12d321508739d89b23c815e8498034"
         }
       },
       "reason": "stale",
