@@ -45,44 +45,10 @@
       "status": "done"
     },
     "base": {
-      "attempt": 2,
-      "blocked": {
-        "category": "conflict",
-        "commands": {
-          "resume": [
-            "start",
-            "1025",
-            "base",
-            "--as",
-            "<LABEL>"
-          ]
-        },
-        "instructions": "In /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1025: resolve the conflicts in docs/design/HISTORY.md docs/design/SPEC.md plugins/zzzops/zzzops/engine/__init__.py plugins/zzzops/zzzops/engine/errors.py plugins/zzzops/zzzops/engine/fingerprint.py plugins/zzzops/zzzops/engine/frontier.py plugins/zzzops/zzzops/engine/render.py plugins/zzzops/zzzops/engine/schemas.py plugins/zzzops/zzzops/engine/session.py, `git add` them, run `git -c core.editor=true rebase --continue`, then run the resume command. Do not change the meaning of the goal's commits.",
-        "op_state": {
-          "old": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "onto": "262d7807044ab48b616d63611c5c6711d110ef7c",
-          "work": "328366f4e5cc9fdfbce8fb100aae248b702ab9b8"
-        },
-        "reason": "rebase conflict in docs/design/HISTORY.md docs/design/SPEC.md plugins/zzzops/zzzops/engine/__init__.py plugins/zzzops/zzzops/engine/errors.py plugins/zzzops/zzzops/engine/fingerprint.py plugins/zzzops/zzzops/engine/frontier.py plugins/zzzops/zzzops/engine/render.py plugins/zzzops/zzzops/engine/schemas.py plugins/zzzops/zzzops/engine/session.py",
-        "repeats": 1,
-        "waiting_for": "agent"
-      },
-      "correction_runs": 1,
-      "findings": [
-        {
-          "id": "base:reopen:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "base",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:1714690629bd6d43c21a9f2f21d3faab154ec5fddbdaf3674a352c197f6fdae9",
-          "text": "dev moved (G1027 #759, G1026 #760, G1041 #761 merged); run_tests failed on test_design_docs pending rows of now-closed goals — sync onto dev",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-02T17:17:42Z",
+      "attempt": 3,
+      "correction_runs": 2,
+      "findings": [],
+      "finished_at": "2026-11-02T17:50:37Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
         "inputs": {
@@ -93,10 +59,35 @@
       },
       "holder": "claude:e6ad/op",
       "input_fp": "v1:sha256:d9ef292a6b05a9ee73c1996b6fdc61e05c28301ce8f94d7c5aad2424acad7e3d",
-      "ok": false,
-      "output": null,
-      "reason": "reopened",
-      "status": "blocked"
+      "ok": true,
+      "output": {
+        "base_commit": "262d7807044ab48b616d63611c5c6711d110ef7c",
+        "branch": "zzzops/work/g1025",
+        "replay_map": {
+          "01efb99ce0e0880cedba5b2a5095c355e46c84dd": "20db66340bee29e500ea05ed26eaeb82b0ad0ce8",
+          "328366f4e5cc9fdfbce8fb100aae248b702ab9b8": "a08254c60731a0d358dce7c9e663c19646ecedc8",
+          "460b6b4969ddc1c111a98ba9c508ea6b36f60d7f": "3c7d14a0781bc4844a184e4b4e6b07cefdade855",
+          "67a38f5dc5a49c90bbb6c722865451b41bdb1fce": "af2644dbeca1f9242452abb68dd4f6f66edb2901",
+          "6cb47c1d77c730ca721591ad65464e2ca627715c": "16f1a65baef36d1ce6b585e89ac081e423bdd78e",
+          "7be26ffce62e755926f2ec48b32d35ace421967f": "8399b3c6a2ac91f58b1acb2a7031db2d3c6a2540",
+          "82a353236911f498e59a13ec1269301ee4a6b78b": "1dc123a15e1fb82430a8aacb55c215af01304b29",
+          "85155a90dc9558117b90e83e77c5c0298c1fe7ab": "c0e6e480d08dffb87adecab3bc5a558017750200",
+          "9352cf2a2e4d6661e4bb1972a9624fe12dc7e761": "c6bfbb1090b6c1c9febc79048eab4cf61f700995",
+          "bdfe4606553de21a3d5c43e3b207326fdcb4bbaa": "aaae1e11c90ecac342952706b468993f1eedf28c",
+          "d863ad01d9e448096aa61a8313afb8f47477a7cb": "9d86255859dc5623742eaf3f550f5467662cad48",
+          "dfaea9c95b372bb51e8ee311b09ea9193c5cb6a5": "986d8bfa1ab48d4b669e666b6a2cd7775021bb2f",
+          "e9f0d48af9e6b28b0db3d22ae9368f39591db3fd": "9aa3961d1f2c86bb2fd0e8241a08076a0f450ef3"
+        },
+        "replay_pos": {
+          "2f583cf4e8eb2c2c3e68f0746f8e9bd3cc504767": "e841985b282ba41be9388a23b820969056ba25e5",
+          "5061b79c8e70a45db36898a79318ee9dac5eec30": "28b1a10326c90517561b1fbc2e72bb9e2e47ddb2",
+          "848e66c4b4c9e92d1d76f6126e1d54c102fee933": "289902059b268979284d5edec32bc9c2e9beb597",
+          "e4e9334e6e48682763b4df19d7966c3af5ce4347": "64a2159d6f0bd010cc3a962ea48eee842a85d5a6"
+        },
+        "stack": []
+      },
+      "reason": "retry",
+      "status": "done"
     },
     "design": {
       "attempt": 3,
