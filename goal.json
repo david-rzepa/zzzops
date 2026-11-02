@@ -1,6 +1,11 @@
 {
   "budget": 30,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-02T15:58:06Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [
     1017
   ],
@@ -220,6 +225,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T15:58:06Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:a594edd81138cf7d9ba4394e5aec15fc599732cc548c35a8dca2a6e39a81c87b"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:cc83e7c259deba6e5142a0fada1cc922461c42fbb1fd3d22e71bb9bc41e51ed6",
+      "ok": true,
+      "output": {
+        "merge_commit": "f4eaf7465f1d3e95392733d9ba05456702fd41d0",
+        "merged_at": "2026-11-02T15:58:04Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -523,6 +550,6 @@
   "schema": 1,
   "skip": {},
   "spec": "The owner's question (2026-11-01): \"what is engine.min? I don't see how it can work off of dev branch because we only compute semantic version on merge to main\". Today the engine carries a hand-maintained ENGINE_VERSION (engine/__init__.py, 1.1.0 since G1000), POLICY has settings.engine.min, and the CLI refuses writes when engine.min > ENGINE_VERSION (store.py:457). The number is unrelated to the product's semantic-release version, and it fails in three ways: builds installed from dev report whatever __init__.py says, so one number covers different engines (CLI_USAGE already notes a pre-G1015 dev build also reports 1.0.0); goals in flight race for the next number (G1022 and G1024 both had to say \"whichever merges second takes the next minor\"); and the owner has to track two version numbers. The owner chose capabilities instead.\n\n1. The engine declares a set of capability names (e.g. `lens_findings`, `lens_skips`, `policy_update`, `release_lines`), one per format or behaviour that an older engine must not touch. A goal that adds such a format adds its capability name in its own PR; no ordering between goals.\n2. POLICY declares `settings.engine.requires: [names]`. The CLI refuses writes, as engine_too_old does today, when any required capability is missing, and the message names the missing ones and says to upgrade the plugin.\n3. Migration: `engine.min` keeps working for repositories that have it (map 1.0.0 and 1.1.0 to their capability sets, or keep the comparison during a transition; decide in the design) and validate warns that it is deprecated. ENGINE_VERSION is removed or kept only as display, and goal commits record the capabilities (or a build id) instead of `Engine: <version>`. Legacy detection's cache key (legacy.py) stops depending on ENGINE_VERSION.\n4. The goals that would raise ENGINE_VERSION (G1022, G1024, G1025, and any later one) declare capabilities instead; this goal names theirs if they merge after it, and G1000's 1.1.0 becomes the capability `lens_findings` (impact/material, filters, notes).\n5. This repository: the lens policy branch (G1000 rollout step 3, after G1022) requires the capabilities its graph needs instead of raising engine.min. The owner confirmed the Codex agent on the 15b59a5 plugin is finished, so locking out 1.0 engines is approved.\n\nAcceptance:\n- Engine tests: a policy requiring a capability the engine lacks refuses writes with the names; one it has proceeds; engine.min still works per the migration rule with a deprecation warning; two goals adding different capabilities merge without conflict.\n- CLI_USAGE, MIGRATING and REPAIR (\"Upgrade the engine\" recipe) describe requires.\n- This PR edits docs/design for its contract changes and adds a HISTORY §4 row (G1017's rule).",
-  "state": "open",
+  "state": "closed",
   "title": "Replace ENGINE_VERSION and engine.min with declared engine capabilities"
 }
