@@ -206,38 +206,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 4,
-      "correction_runs": 3,
+      "attempt": 5,
+      "correction_runs": 4,
       "findings": [],
-      "finished_at": "2026-11-02T03:59:20Z",
+      "finished_at": "2026-11-02T04:34:34Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:0c556c21045dcada61dcaab09a6d222e0cdd7d4f",
-          "tests": "v1:sha256:ca54375d1da83017c96dcacaec1f842576a30d3130f34f13bdbb0476f84f8322"
+          "tests": "v1:sha256:1138f98973239d0cdff442a3242ce3b6909360c1c4b0b62ddc77d916469f2c52"
         },
         "policy": {},
-        "subject": "v1:sha256:74b0bb03f7f824d8fde5df11c01cc9fa25aa0ce758e3deea833b8a9dcf770dfc"
+        "subject": "v1:sha256:7d9ffe7f80a135aa93051732040e4787eff34b399de87833ee9b1a3f87a0a356"
       },
       "holder": "claude:e6ad/rt1027",
-      "input_fp": "v1:sha256:eb249c4d64f46006708d33cb2786212c589e399818518a6f1f6b325176a74957",
+      "input_fp": "v1:sha256:5c38b453640a9325c6ef053ecdbcbcc4bb2e5fe4af38ec43fea449048a90fdb6",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "dfc61c6a7f1964f8ed565d6a167512ff5054afe2",
-          "commit": "40336b9cac011fc8a525f6f798ff63c2ed3de740",
+          "blob": "333323fffca7e21077515443f3e274a76b9e49ab",
+          "commit": "3b49062439aae463d3535551c16deec8ae80175d",
           "path": ".zzzops/reviews/1027/review_tests.md"
         },
-        "summary": "Re-review after the tests checkpoint moved from 4c8c5c6 to 1a15ad2. git diff 4c8c5c6 1a15ad2 -- .agents shows exactly one test change: CanonTests.test_errors_have_exit_codes now expects 27 exit-1 error codes instead of 28. This matches design section 4, which removes the engine_too_new code (errors.py, cli.py, store.py, SPEC and DESIGN tables) and was never emitted, so the exit-1 count drops by one. No other test or fixture changed. Prior finding review_tests:2:1 stays resolved."
+        "summary": "Approved. The range-diff shows commits 1-10 unchanged. Commit 11 differs only by the semantic-conflict resolution in .agents/test_engine_capabilities.py: SHIPPED = {\"lens_findings\", \"finding_follows\"}, which makes the pinned set include G1028's capability. The 27 exit-1 code count change is intact. No assertion was removed or weakened, and the SHIPPED set was widened rather than narrowed. Tests still fail without the implementation, as intended."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
-          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "a07084aa99cae32af65226d6df53fd49d2f74fd2",
-          "commit": "1a15ad2ef045f9129ec4f06f36b638322dd5c38c",
-          "tree": "fe66bd2f6bfb6ffc71c28b78546687e296dff3db"
+          "base": "5288bf7ed3f8373dad773e2de48f6c7603afd985",
+          "change": "018e7f10bd7b9c6001dc4cc0aa264d8664d810b1",
+          "commit": "e1e8d0f7dc4246cc50907ab2750e22dfbb897802",
+          "tree": "d05b335b6ab3ae41fd23f5c8ec76d88057164424"
         }
       },
       "status": "done"
