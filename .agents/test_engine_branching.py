@@ -124,8 +124,8 @@ def ledger_of(docs: dict) -> dict:
 class BSim(Sim):
     """The simulator with the release graph, branching settings, the ledger and an `upstream` map."""
 
-    def __init__(self, branching=True):
-        super().__init__(workflow=release_workflow(), policy=branching_policy() if branching else None)
+    def __init__(self, branching=True, workflow=None):
+        super().__init__(workflow=release_workflow(workflow), policy=branching_policy() if branching else None)
         self.upstream = {}
 
     def eval(self):
@@ -183,17 +183,29 @@ class FrontierTests(unittest.TestCase):
         self.assertEqual(before["implement"]["name"], s.st(1001, "implement")["name"])
 
     def test_a_ready_workspace_op_is_blocked_while_base_restacks(self):
-        s = BSim()
+        # In graph12 every agent workspace node feeds run_tests, so a ready agent there never sits beside a ready
+        # run_tests. This fixture adds a workspace agent `notes` downstream of `base` that run_tests does not read.
+        wf = fx.load_template("workflow.json")
+        wf["graphs"]["default"]["nodes"]["notes"] = {
+            "description": "Write release notes on the goal's code.", "kind": "agent", "capability": "reasoning",
+            "prompt": "notes.md", "workspace": True, "stage": "delivery",
+            "inputs": {"doc": {"from": "design.doc"}, "base": {"from": "base.base_commit"}},
+            "outputs": {"notes": "checkpoint"}}
+        s = BSim(workflow=wf)
         s.line(9000)
         s.goal(1001, release=1)
         self.drive_to_ready(s, 1001, "review_impl")
+        if s.st(1001, "notes")["name"] == "current":
+            s.reopen(1001, "notes")                                   # an agent workspace node is ready
         s.settings["verification"]["commands"] = ["make check"]       # run_tests is ready (stale policy)
-        s.reopen(1001, "test_design")                                 # an agent workspace node is ready
-        self.assertEqual("ready", s.st(1001, "run_tests")["name"])
+        before = s.st(1001)
+        self.assertEqual("current", before["base"]["name"])
+        for n in ("notes", "run_tests"):
+            self.assertEqual("ready", before[n]["name"], n)
         s.behind(1001)
         st = s.st(1001)
         self.assertEqual("upstream", st["base"]["reason"])
-        for n in ("test_design", "run_tests"):
+        for n in ("notes", "run_tests"):
             self.assertEqual("blocked", st[n]["name"], n)
             self.assertIn("restack", [m["reason"] for m in st[n]["missing"]], n)
 
@@ -266,6 +278,9 @@ class FrontierTests(unittest.TestCase):
         s = BSim()
         s.line(9000)
         s.goal(1001, release=1)
+        self.drive_to_ready(s, 1001, "integrate")
+        s.step(1001, "integrate", outputs={"pr": {"number": 1, "url": "u", "head": s.sha(), "tree": s.sha(),
+                                                  "base": "release/1"}, "ci": {}})
         s.drive(1001, until="merge")
         s.close(1001)
         s.goal(1002, release=2, deps=[1001])
@@ -418,6 +433,7 @@ class ValidationTests(unittest.TestCase):
         d = os.path.join(tmp, "tpl")
         shutil.copytree(fx.SHIPPED, d)
         pol = shipped("POLICY.json")
+        pol["settings"]["integration_branch"] = "dev"      # the shipped template keeps "main" (design §1); git flow integrates on dev
         pol["settings"]["branching"] = dict(BRANCHING)
         require_release_lines(pol)
         with open(os.path.join(d, "POLICY.json"), "w") as fh:
@@ -642,6 +658,7 @@ class LedgerTests(Branching):
         a = self.goal(release=1)
         tip = self.goal_tip(a)
         s = self.w.seed
+        s.git("fetch", "-q", "origin", f"refs/heads/zzzops/goal/g{a}")
         blob = s.git("hash-object", "-w", "--stdin", input="not json\n")
         tree = s.git("mktree", input=f"100644 blob {blob}\tgoal.json\n")
         c = s.git("commit-tree", tree, "-p", tip, "-m",
@@ -680,6 +697,7 @@ class LedgerTests(Branching):
                 lines = [l for l in fh if "built-in: git" in l or "run_command:" in l]
             return out, len(lines), sum(1 for l in lines if "cat-file" in l and "--batch" in l)
 
+        self.w.ok("a", "next")                                        # warm up: download the new policy commit
         out, n3, batches = git_commands()
         it = find_kind(out, "release_cut")
         self.assertEqual(1, len(it), out)
@@ -1122,7 +1140,22 @@ class HotfixTests(Branching):
         self.assertEqual({"line": "hotfix", "name": self.X, "branch": f"hotfix/{self.X}", "from": "main", "cut": main},
                          self.show(line)["goal"]["flow"])
         self.assertEqual([], find_kind(self.nxt(), "hotfix_start"))
-        self.done(m)
+        # discovery already ran: continue from base (deliver() would re-run discovery)
+        self.assertEqual("done", self.op(m, "base")["ran"]["outcome"])
+        wtd = self.A.worktree(m)
+        c = self.A.start(m, "test_design")
+        wtd.commit({f"tests/t{m}.txt": "t1\n"}, f"test: G{m}")
+        self.A.submit(m, "test_design", c, {"commands": ["true"]})
+        self.review(self.B, m, "review_tests")
+        c = self.A.start(m, "implement")
+        wtd.commit({f"src/m{m}.py": "x = 1\n"}, f"feat: G{m}")
+        self.A.submit(m, "implement", c, {"summary": "Built."})
+        self.assertTrue(self.op(m, "run_tests")["ran"]["ok"])
+        self.review(self.B, m, "review_impl")
+        self.op(m, "integrate")
+        self.approve(m, "approve_merge")
+        out = self.op(m, "merge")
+        self.assertEqual("done", (out.get("closed") or {}).get("reason"), out)
         pr = [p for p in self.gh.load()["prs"].values() if p["headRefName"] == f"zzzops/pr/g{m}"][0]
         self.assertEqual(f"hotfix/{self.X}", pr["baseRefName"])
 
