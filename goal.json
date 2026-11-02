@@ -253,10 +253,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 3,
-      "correction_runs": 1,
+      "attempt": 4,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-02T22:01:11Z",
+      "finished_at": "2026-11-02T22:22:17Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -269,7 +269,7 @@
         ".agents/test_engine_defaults.py",
         ".agents/test_template_history.py"
       ],
-      "holder": "codex:takeover/1024-test-design-fix",
+      "holder": "codex:takeover/1024-test-design-portability",
       "input_fp": "v1:sha256:c2c095992d0ee852443017b88f2b709116687f2a8a35f7468ca736d1bc7a354d",
       "ok": true,
       "output": {
@@ -278,13 +278,13 @@
           "python3 -m unittest discover -s .agents -p 'test_template_history.py'"
         ],
         "responses": {
-          "review_tests:1:1": "fixed: DefaultsCase now manages TemporaryDirectory and patches with contextlib.ExitStack plus addCleanup(stack.close), supported on Python 3.10. python3.10 runs reach the intended missing engine.defaults/history/docs red results, with no enterContext or AttributeError setup failure. Defaults: 16 tests in 0.042 s (0.156 s wall), history: 2 in 0.002 s (0.064 s wall). A temporary empty-module fixture probe confirms setup and committed-repo wiring also reach absent-notice assertions under 3.10."
+          "implement:2:1": "fixed: printed commands now run with pwsh or powershell -NoProfile -NonInteractive -Command on Windows, shell=False, with a call operator for quoted executable paths. POSIX behavior is unchanged. All comparison fixture roots now include spaces and an apostrophe. Two focused Python 3.10 launcher/quoting tests pass in 0.007 s; a real pwsh quoted-executable probe also passed (git diff exit 1 with expected diff, 0.271 s). A source-free repository control reaches the expected missing-notice assertion. Product source remains reverted: checkpoint diff against base contains only the two test files."
         },
         "tests": {
           "base": "de5640d1c5909ea924450aeea6450497a78946f6",
-          "change": "bb212c1916c4c46d727b683846c680cc3363db53",
-          "commit": "7e87834287753eb6808c1750fe98f88e7333b23a",
-          "tree": "ccf4d5fa6f7ce8a558f47a3afa66099515bf18a7"
+          "change": "4413bb2a68fc441f200a857c87263d9bc072f90f",
+          "commit": "7b18dbe704b32fe310a2421df2dd641f66c46036",
+          "tree": "8e76e8d0269df3327d8fa53424f5c0ce1220cc7f"
         }
       },
       "reason": "reopened",
