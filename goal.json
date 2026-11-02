@@ -203,51 +203,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 2,
-      "correction_runs": 1,
-      "findings": [
-        {
-          "id": "review_tests:1:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:47f104349342d70827692e933fbbf90f03c8262d983c13de62574738b39b4897",
-          "text": "DefaultsCase.setUp in .agents/test_engine_defaults.py calls self.enterContext at lines 50, 66 and 67, but unittest.TestCase.enterContext is unavailable in Python 3.10, which required CI runs. Reproduced with python3.10 -m unittest discover -s .agents -p test_engine_defaults.py: 14 setup AttributeErrors before behavior assertions (16 tests, 0.003 s). Replace it with Python-3.10-compatible cleanup management, such as contextlib.ExitStack plus addCleanup(stack.close), and rerun under 3.10 so the red result reaches the intended absent feature.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-02T22:02:08Z",
+      "attempt": 3,
+      "correction_runs": 2,
+      "findings": [],
+      "finished_at": "2026-11-02T22:23:33Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:891e284f14d6d39fa3bd3d0854b643b5c887b5a6",
-          "tests": "v1:sha256:9bfa8803a302c0ac8148164eb66dd9d43ba5add37da6477d4dc9c63d6a1a6aa6"
+          "tests": "v1:sha256:4a14579dba6ede7c8614709ae3d23f4b307e5a8b42cdbdcda5f88a511bee96b5"
         },
         "policy": {},
-        "subject": "v1:sha256:d1de01ed2b0a6252e8a0210f2ff9de2fb9c8b8f73dc6b95eb60db35af2d21189"
+        "subject": "v1:sha256:4e2823d6066d5a0601e4c31c33ff9c77fb76481872906ba035e99f1cd1e34b00"
       },
-      "holder": "codex:takeover/1024-review-tests-2",
-      "input_fp": "v1:sha256:bdc8984c55a3fa4fd5b8d2bad11313139fce748d579e9530063db8823985cdd7",
+      "holder": "codex:takeover/1024-review-tests-portability",
+      "input_fp": "v1:sha256:e6cc8cb66d1f6e1c75bd0619b786ee0f0e5d9c765f0fceb486401f532cff17e7",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "0fff344da7ab5f07d1fbcea27aa149b0d47eeac5",
-          "commit": "aea2288b118e5a442acea30845a17364e49914c4",
+          "blob": "403fbbef5c87ae74f20968bbdce7ff08f6b93cc0",
+          "commit": "a827679968c3c42dd787e3f5610efdccef46317a",
           "path": ".zzzops/reviews/1024/review_tests.md"
         },
-        "summary": "Approved: Python 3.10 cleanup compatibility fixed with ExitStack/addCleanup; the targeted 3.10 run now reaches intended absent-feature errors. Behavioral assertions are unchanged and substantive."
+        "summary": "Approved: source-free tests checkpoint contains only the two test files; explicit PowerShell launcher follows the documented call-operator rule and preserves quoting. Original behavioral assertions remain intact; two launcher checks pass on Python 3.10."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "de5640d1c5909ea924450aeea6450497a78946f6",
-          "change": "bb212c1916c4c46d727b683846c680cc3363db53",
-          "commit": "7e87834287753eb6808c1750fe98f88e7333b23a",
-          "tree": "ccf4d5fa6f7ce8a558f47a3afa66099515bf18a7"
+          "change": "4413bb2a68fc441f200a857c87263d9bc072f90f",
+          "commit": "7b18dbe704b32fe310a2421df2dd641f66c46036",
+          "tree": "8e76e8d0269df3327d8fa53424f5c0ce1220cc7f"
         }
       },
       "status": "done"
