@@ -135,13 +135,21 @@ class ApprovalTimingContextTests(unittest.TestCase):
         baseline = {"status": "available", "goal": 1001, "node": "prove", "goal_commit": "a" * 40,
                     "merge_commit": "b" * 40, "tree": "c" * 40, "target": "hotfix/repair",
                     "finished_at": "2026-11-02T11:00:00Z", "total_ms": 2000, "verification_ms": 1600,
-                    "delta_ms": -500, "verification_delta_ms": -500}
+                    "delta_ms": -500, "verification_delta_ms": -500,
+                    "verification": {"status": "available", "verification_ms": 1600, "delta_ms": -500,
+                        "verification_plan_sha256": "e" * 64,
+                        "source": {"goal": 1001, "node": "prove", "goal_commit": "a" * 40,
+                                   "merge_commit": "b" * 40, "tree": "c" * 40, "target": "hotfix/repair",
+                                   "finished_at": "2026-11-02T11:00:00Z"},
+                        "caveat": "informational; machine load and concurrent goal-command workload may differ"}}
         result = {"passed": True, "tree": "c" * 40,
-                  "details": [{"cmd": "verbose", "exit": 0, "seconds": 1, "milliseconds": 1100,
+                  "details": [{"cmd": "targeted", "exit": 0, "seconds": 0, "milliseconds": 400, "source": "goal", "tail": ""},
+                              {"cmd": "verbose", "exit": 0, "seconds": 1, "milliseconds": 1100,
                                "source": "verification", "tail": "long command output " * 500}],
                   "timing": {"total_ms": 1500, "goal_ms": 400, "verification_ms": 1100,
                              "baseline": baseline, "parallel_commands": True, "cpu_budget": 4,
                              "workers": {"goal": 2, "verification": 2}, "plan_sha256": "d" * 64,
+                             "verification_plan_sha256": "e" * 64,
                              "environment": {"platform": "linux", "python": "3.10", "cpus": 20}}}
         entry, blobs = self.context(result)
         summary = entry["summary"].lower()
@@ -153,14 +161,47 @@ class ApprovalTimingContextTests(unittest.TestCase):
         self.assertIn("blob", entry, "large evidence remains readable outside the compact summary")
         self.assertEqual(result, json.loads(blobs[entry["blob"]]))
 
+    def test_repository_delta_is_visible_when_only_whole_run_comparison_is_unavailable(self):
+        nested = {"status": "available", "verification_ms": 1600, "delta_ms": -500,
+                  "verification_plan_sha256": "e" * 64,
+                  "source": {"goal": 1001, "node": "prove", "goal_commit": "a" * 40,
+                             "merge_commit": "b" * 40, "tree": "c" * 40, "target": "hotfix/repair",
+                             "finished_at": "2026-11-02T11:00:00Z"},
+                  "caveat": "informational; machine load and concurrent goal-command workload may differ"}
+        result = {"passed": True, "tree": "c" * 40,
+                  "details": [{"cmd": "goal-specific", "exit": 0, "seconds": 0, "milliseconds": 400,
+                               "source": "goal", "tail": "verbose evidence " * 500},
+                              {"cmd": "canonical-repository", "exit": 0, "seconds": 1, "milliseconds": 1100,
+                               "source": "verification", "tail": ""}],
+                  "timing": {"total_ms": 1500, "goal_ms": 400, "verification_ms": 1100,
+                             "parallel_commands": True, "cpu_budget": 4, "workers": {"goal": 2, "verification": 2},
+                             "plan_sha256": "d" * 64, "verification_plan_sha256": "e" * 64,
+                             "environment": {"platform": "linux", "python": "3.10", "cpus": 20},
+                             "baseline": {"status": "unavailable", "reason": "changed_commands_or_allocation",
+                                          "verification": nested}}}
+        entry, blobs = self.context(result)
+        summary = entry["summary"].lower()
+        self.assertIn("changed_commands_or_allocation", summary)
+        self.assertIn("verification", summary)
+        self.assertTrue("-0.5" in summary or "-500" in summary)
+        self.assertIn("1001", summary)
+        self.assertIn("hotfix/repair", summary)
+        self.assertIn("informational", summary)
+        self.assertIn("load", summary)
+        self.assertIn("concurrent", summary)
+        self.assertNotRegex(summary, r"total\s+delta\s+-")
+        self.assertEqual(result, json.loads(blobs[entry["blob"]]))
+
     def test_unavailable_and_legacy_results_never_invent_a_total_or_baseline(self):
         for reason in ("no_prior_run", "changed_environment", "lookup_budget_exhausted"):
             with self.subTest(reason=reason):
                 result = {"passed": True, "tree": "c" * 40, "details": [],
                           "timing": {"total_ms": 1500, "verification_ms": 1100,
-                                     "baseline": {"status": "unavailable", "reason": reason},
+                                     "baseline": {"status": "unavailable", "reason": reason,
+                                                  "verification": {"status": "unavailable", "reason": reason}},
                                      "goal_ms": 400, "parallel_commands": True, "cpu_budget": 4,
                                      "workers": {"goal": 2, "verification": 2}, "plan_sha256": "d" * 64,
+                                     "verification_plan_sha256": "e" * 64,
                                      "environment": {"platform": "linux", "python": "3.10", "cpus": 20}}}
                 entry, _ = self.context(result)
                 self.assertIn(reason, entry["summary"])

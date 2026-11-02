@@ -25,10 +25,10 @@ def sha(value):
     return hashlib.sha1(str(value).encode()).hexdigest()
 
 
-def measured(total=1000, verification=800, plan="a" * 64, cpus=20):
+def measured(total=1000, verification=800, plan="a" * 64, cpus=20, verification_plan="c" * 64):
     return {"total_ms": total, "goal_ms": 200, "verification_ms": verification,
             "parallel_commands": True, "cpu_budget": 4, "workers": {"goal": 2, "verification": 2},
-            "plan_sha256": plan, "environment": {"platform": "linux", "python": "3.10", "cpus": cpus}}
+            "plan_sha256": plan, "verification_plan_sha256": verification_plan, "environment": {"platform": "linux", "python": "3.10", "cpus": cpus}}
 
 
 class BaselineTests(unittest.TestCase):
@@ -103,6 +103,9 @@ class BaselineTests(unittest.TestCase):
         self.assertEqual(800, value["verification_ms"])
         self.assertEqual(500, value["delta_ms"])
         self.assertEqual(300, value["verification_delta_ms"])
+        self.assertEqual("available", value["verification"]["status"])
+        self.assertEqual(300, value["verification"]["delta_ms"])
+        self.assertEqual(1, len(self.lookups), "both scopes reuse the same source-tree comparison")
         self.current = measured(500, 300)
         self.assertEqual(-500, self.select([c])["delta_ms"])
         self.assertEqual(-500, self.select([c])["verification_delta_ms"])
@@ -127,6 +130,73 @@ class BaselineTests(unittest.TestCase):
                 old, new = self.candidate(1001), self.candidate(1002, timing=timing)
                 out = self.select([old, new], history=[self.target["tip"], sha("merge-1002"), sha("merge-1001")])
                 self.unavailable(out, reason)
+
+    def test_different_goal_plan_keeps_repository_delta_from_the_same_newest_source(self):
+        old = self.candidate(1001)
+        newer = self.candidate(1002, timing=measured(2000, 900, plan="b" * 64))
+        out = self.select([old, newer], history=[self.target["tip"], sha("merge-1002"), sha("merge-1001")])
+        self.unavailable(out, "changed_commands_or_allocation")
+        self.assertNotIn("verification_delta_ms", out)
+        verification = out["verification"]
+        self.assertEqual("available", verification["status"])
+        self.assertEqual(900, verification["verification_ms"])
+        self.assertEqual(200, verification["delta_ms"])
+        self.assertEqual("c" * 64, verification["verification_plan_sha256"])
+        self.assertEqual({"goal": 1002, "node": "verify", "goal_commit": newer["goal_commit"],
+                          "merge_commit": sha("merge-1002"), "tree": sha("tree-1002"), "target": "release/1",
+                          "finished_at": "2026-11-02T10:00:00Z"}, verification["source"])
+        caveat = verification["caveat"].lower()
+        for term in ("informational", "load", "concurrent"):
+            self.assertIn(term, caveat)
+
+    def test_newest_repository_mismatch_never_falls_back_to_an_older_matching_source(self):
+        old = self.candidate(1001)
+        newer = self.candidate(1002, timing=measured(plan="b" * 64, verification_plan="d" * 64))
+        out = self.select([old, newer], history=[self.target["tip"], sha("merge-1002"), sha("merge-1001")])
+        self.unavailable(out, "changed_commands_or_allocation")
+        self.unavailable(out["verification"], "changed_commands_or_allocation")
+        if "source" in out["verification"]:
+            self.assertEqual(1002, out["verification"]["source"]["goal"])
+
+    def test_missing_hash_metadata_qualifies_each_scope_independently(self):
+        narrow_missing = measured()
+        narrow_missing.pop("verification_plan_sha256")
+        out = self.select([self.candidate(timing=narrow_missing)])
+        self.assertEqual("available", out["status"])
+        self.assertEqual(500, out["delta_ms"])
+        self.assertEqual(800, out["verification_ms"])
+        self.assertNotIn("verification_delta_ms", out, "flat verification delta only mirrors available narrow evidence")
+        self.unavailable(out["verification"], "legacy_timing")
+        whole_missing = measured()
+        whole_missing.pop("plan_sha256")
+        out = self.select([self.candidate(timing=whole_missing)])
+        self.unavailable(out, "legacy_timing")
+        self.assertEqual("available", out["verification"]["status"])
+        self.assertEqual(300, out["verification"]["delta_ms"])
+        self.assertNotIn("verification_delta_ms", out)
+
+    def test_environment_and_incomplete_lookup_make_both_scopes_unavailable(self):
+        c = self.candidate(timing=measured(cpus=4))
+        out = self.select([c])
+        self.unavailable(out, "changed_environment")
+        self.unavailable(out["verification"], "changed_environment")
+        for reason_case in ("no source", "document cap", "history cap", "deadline"):
+            with self.subTest(case=reason_case):
+                if reason_case == "no source":
+                    value = self.select([], history=[self.target["tip"]])
+                    reason, limit = "no_prior_run", None
+                elif reason_case == "document cap":
+                    value = self.select([self.candidate(1000+i) for i in range(65)])
+                    reason, limit = "lookup_budget_exhausted", "documents"
+                elif reason_case == "history cap":
+                    value = self.select([self.candidate()], history=[sha(f"history-{i}") for i in range(257)])
+                    reason, limit = "lookup_budget_exhausted", "history"
+                else:
+                    ticks = iter((0.0, 0.0, 2.1))
+                    value = self.select([self.candidate()], clock=lambda: next(ticks, 2.1))
+                    reason, limit = "lookup_budget_exhausted", "deadline"
+                self.unavailable(value, reason, limit)
+                self.unavailable(value["verification"], reason, limit)
 
     def test_failed_unmerged_wrong_target_second_parent_and_mismatched_tree_are_not_baselines(self):
         for case in ("failed record", "failed result", "failed merge", "unmerged", "wrong target", "second parent", "actual tree mismatch"):
@@ -173,6 +243,7 @@ class BaselineTests(unittest.TestCase):
         self.assertEqual("available", out["status"])
         self.assertEqual(1500, out["delta_ms"])
         self.assertEqual(1100, out["verification_delta_ms"])
+        self.assertEqual(1100, out["verification"]["delta_ms"])
         self.assertFalse(any("percent" in k for k in out))
 
     def test_release_and_hotfix_targets_are_never_reinterpreted_as_dev(self):
@@ -197,6 +268,7 @@ class BaselineTests(unittest.TestCase):
         out = self.select(candidates, history=[sha(f"merge-{2000+i}") for i in range(17)], trees=trees)
         self.unavailable(out, "lookup_budget_exhausted", "trees")
         self.assertLessEqual(len(self.lookups), 16)
+        self.unavailable(out["verification"], "lookup_budget_exhausted", "trees")
 
     def test_fake_clock_deadline_is_checked_before_additional_git_work(self):
         ticks = iter((0.0, 0.0, 2.1, 2.1, 2.1))
@@ -233,6 +305,8 @@ class LookupSupervisionTests(unittest.TestCase):
         out = self.api()(["python", "readonly-lookup"], popen=launch, kill_group=kill, clock=lambda: 0.0)
         self.assertEqual(("unavailable", "lookup_budget_exhausted", "deadline"),
                          (out["status"], out["reason"], out["limit"]))
+        self.assertEqual(("unavailable", "lookup_budget_exhausted", "deadline"),
+                         (out["verification"]["status"], out["verification"]["reason"], out["verification"]["limit"]))
         self.assertLessEqual(events[0][1], 2.0)
         self.assertIn(("kill", None), events)
         for kind, timeout in events[events.index(("kill", None)) + 1:]:
@@ -255,6 +329,7 @@ class LookupSupervisionTests(unittest.TestCase):
         self.assertEqual("unavailable", out["status"])
         self.assertIn(out["reason"], ("invalid_evidence", "missing_history"))
         self.assertNotIn("passed", out, "baseline lookup cannot change a command outcome")
+        self.assertEqual("unavailable", out["verification"]["status"])
 
 
 if __name__ == "__main__":
