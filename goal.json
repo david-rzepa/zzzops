@@ -107,6 +107,48 @@
       "reason": "reopened",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "implement:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 4,
+          "target_fp": "v1:sha256:ace278a807dfaf040afcc63c0ed1e1e28fa4b31c4ae6d1db8b1c6bed20d7b671",
+          "text": "Frozen-test conflict: test_engine_review_lenses.ReviewerCardTests.test_review_impl_card_searches_the_goals_own_commit still asserts that the shipped review_impl card is within CARD_LIMIT. Design §1 and D1 list `owner_questions` on review_impl. The frozen test_engine_owner_questions requires its text to be over 600 bytes, so it is a blob view, and the test's own comment says design §9 lets this card go over the target (3,948 bytes before this goal, plus one view reference). The card is now 4,219 bytes. Even an empty summary would leave it at about 4,097, so no change to the instruction text can satisfy both tests. Every other text on that card is already blobbed or too short to shrink. Fix: make that assertion match test_cards_carry_the_instruction_and_stay_within_the_limit, i.e. assert that the card without instructions.owner_questions is within CARD_LIMIT. Implement cannot edit this frozen file. Everything else passes: owner_questions (41), card_budget, findings_rounds, design_docs, prompt_stats --check, and the other 58 review_lenses tests.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-02T06:12:39Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:d9614375612aa84a1ef00859c569613411cad1f36127912c1e554a122aae7ee5",
+          "doc": "v1:blob:3ddfcf819109e6587559b34b5f61a295c331a1db",
+          "tests": "v1:sha256:49f91d77072f572f3e519083063b73dbbce38291dd02ddef6a780015487b73e5"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/im1026",
+      "input_fp": "v1:sha256:aa293f6337f786b389b4d546485e47bd8f26c3cf12aa125b355f8047fa1f5680",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "25186a5ee98282b3f380ff48a06b014aae34aa10",
+          "change": "871a83e4b894cd413a5a34231bd59baef53d553d",
+          "commit": "6f649c0c649726c40f7f53d029bcf0b0ca3885a6",
+          "tree": "1062586b12ec51af58a9ca96d98167cd2fd37332"
+        },
+        "summary": "Owner questions are now part of the review loop. A reviewer raises them as material `owner question:` findings (the engine refuses a non-material one from a filtered lens). The design blocks for the owner's answer, and the re-review resolves each one against `human_decisions`, which the engine reads from the goal's `zzzops: answer` commits. Cards (own node, or a review's or filter's subject and its ancestors, blobbed whole by a new shrink step), approve items (every node that is not a descendant) and the PR body's `## Human decisions` section list every answered blocked question with who decided it. The shipped template gains the `owner_questions` instruction and the prompt edits, the execute skill and EXECUTION.md gain the batching paragraph, and SPEC, DESIGN and HISTORY carry the amendment. No record or format change."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 6,
       "correction_runs": 5,
