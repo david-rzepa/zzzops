@@ -3,13 +3,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import shlex
+import sys
 
 TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "templates/default"
 HISTORY_DIR = TEMPLATE_DIR.parent / "history"
 OID = re.compile(r"[0-9a-f]{40}")
+POWERSHELL = sys.platform == "win32"
 UNKNOWN = "recorded by a newer or unreleased plugin: upgrade the plugin to compare"
 
 
@@ -112,7 +115,17 @@ def compare(record, local, ids, known):
 
 
 def shell(*args):
+    if POWERSHELL:
+        return "& " + " ".join("'" + str(a).replace("'", "''") + "'" for a in args)
     return " ".join(shlex.quote(str(a)) for a in args)
+
+
+def cli_shell(prefix, *args):
+    if POWERSHELL and not os.environ.get("ZZZOPS_PREFIX"):
+        return shell(sys.executable, Path(__file__).resolve().parents[1] / "zzzops.py", *args)
+    # An explicit ZZZOPS_PREFIX is trusted caller-supplied shell syntax.
+    tail = (" ".join("'" + str(a).replace("'", "''") + "'" for a in args) if POWERSHELL else shell(*args))
+    return prefix + " " + tail
 
 
 def item(local, raw_record, prefix, directory, full):
@@ -123,7 +136,7 @@ def item(local, raw_record, prefix, directory, full):
     template = hashlib.sha256("".join(f"{p}\0{oid}\n" for p, oid in sorted(ids.items())).encode()).hexdigest()[:12]
     if kind == "newer_record":
         return {"kind": kind, "message": "Default record written by a newer engine: upgrade the plugin to see default updates.",
-                "template": template, **({} if full else {"expand": prefix + " validate"})}
+                "template": template, **({} if full else {"expand": cli_shell(prefix, "validate")})}
     inferred_record = inferred(local, known) if record is None else None
     record = record or inferred_record
     rows = compare(record, local, ids, known)
@@ -141,7 +154,7 @@ def item(local, raw_record, prefix, directory, full):
     result = {"kind": kind, "message": message, "template": template}
     if not full:
         result.update(counts={"files": len(rows), "edited_here": edited}, files=[str(Path(directory) / p) for p, *_ in rows[:10]],
-                      expand=prefix + " validate")
+                      expand=cli_shell(prefix, "validate"))
         return result
     result["files"] = []
     for path, upstream, state, base in rows:
@@ -173,7 +186,7 @@ def item(local, raw_record, prefix, directory, full):
     if errors:
         result["errors"] = errors
     result["see"] = str(Path(__file__).resolve().parents[1] / "references/MIGRATING.md") + " (read the workflow.json section before merging)"
-    result["recheck"] = prefix + " validate --policy --dir " + shell(directory)
+    result["recheck"] = cli_shell(prefix, "validate", "--policy", "--dir", directory)
     return result
 
 

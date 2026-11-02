@@ -834,7 +834,9 @@ def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = 
     if legacy:
         out["legacy"] = legacy
     if policy_update:
-        out["policy_update"] = policy_update
+        out["policy_update"] = dict(policy_update)
+        if "files" in policy_update:
+            out["policy_update"]["files"] = list(policy_update["files"])
     if p.branching:
         out["releases"] = releases_view(ctx, p)
     if scope:
@@ -842,17 +844,17 @@ def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = 
     if all_:
         out["goals"] = [goal_summary(res, ctx) for g, res in sorted(p.goals.items())]
         return out
+    # Shrink optional advisory detail before hiding work or human decisions.
+    if policy_update:
+        notice = out["policy_update"]
+        while len(canonical(out)) > NEXT_LIMIT and notice.get("files"):
+            notice["files"].pop()
     dropped = {"actions": 0, "needs_human": 0}
     while len(canonical(out)) > NEXT_LIMIT and (out["actions"] or out["needs_human"]):
         key = "actions" if len(out["actions"]) >= len(out["needs_human"]) else "needs_human"
         out[key] = out[key][:-1]
         dropped[key] += 1
         out["truncated"] = dict(dropped, hint="next --all")
-    # Record paths are not bounded by the workflow schema. Keep advisory paths
-    # expandable without allowing unusually long names to consume the cap.
-    if policy_update:
-        while len(canonical(out)) > NEXT_LIMIT and policy_update.get("files"):
-            policy_update["files"].pop()
     return out
 
 
