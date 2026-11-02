@@ -1,4 +1,4 @@
-"""G1026: design review flags owner questions; the design blocks for an interview to answer them (design revision 6).
+"""G1026: design review flags owner questions; the design blocks for an interview to answer them (design revision 7).
 
 These tests run on the SHIPPED template (`fx.SHIPPED`, G1022's 15-node graph) unless they say otherwise. They are
 written before the implementation and define these contracts (design §2-§6, §10):
@@ -13,16 +13,19 @@ written before the implementation and define these contracts (design §2-§6, §
   (`git log --reverse --first-parent --grep='^zzzops: answer G<g> '`), keeps those whose `goal.json` has
   `records[node]` blocked with an `answer`, for a node in `nodes`, and returns, in commit order,
   [{node, kind, question, text, quote, decided_by, decided_at, commit}]; None when the log fails.
-- Approve items (full form) gain `human_decisions` over their ancestor nodes (text clipped to 300 characters), omitted
-  when empty, and the string "unavailable" when the history cannot be read. An agent card gains `human_decisions` for
-  its own node, or, on a card whose node has a subject (a review or filter), for the subject and its ancestors (a
-  list with unclipped entries, or one blob view of it after shrink: `card._steps` adds `("blob", "human_decisions")`
+- Approve items (full form) gain `human_decisions` over every node of the goal's graph that is not a descendant of the
+  item's node (revision 7: `approve_design` reads its ancestors, `approve_merge` every node except `merge`, so
+  `integrate`'s answers are listed), text clipped to 300 characters, omitted when empty, and the string "unavailable"
+  when the history cannot be read. An agent card gains `human_decisions` for its own node, or, on a card whose node
+  has a subject (`graph.subject(n) or graph.filter_subject(n)`: a review or filter), for the subject and its
+  ancestors (a list with unclipped entries, or one blob view of it after shrink: `card._steps` adds `("blob", "human_decisions")`
   sorted with the other blob candidates; the string "unavailable" is never a candidate). The card's `answer` is shown
   for any card whose node's record is blocked and answered, not only on a retry card.
 - Option (b) of `test_design:1:1`: after a blocked round the owner-question finding is not live on the design card
   (`corrections == []`); the designer gives no response for it, and the re-review resolves it against the
   `human_decisions` on its own card and the design's `## Owner decisions` section.
-- The PR body gains `## Human decisions` after `## Reviews`, only when non-empty, one line per entry:
+- The PR body gains `## Human decisions` after `## Reviews`, over every node that is not a descendant of the op
+  writing it (so `integrate`'s own answers are included), only when non-empty, one line per entry:
   `- **<node>** (<kind>; <decided_by>, <date>): <question, one line> → "<quote, one line>"`.
 - Nothing new is stored: the record schema, fingerprints and node_def_fp values are unchanged.
 """
@@ -371,16 +374,24 @@ class OwnerJourneyTests(OwnerWorld):
         self.assertLessEqual(card_size(dcard), CARD_LIMIT)
         ag.submit(g, self.n("design"), dcard, self.p.output(self.n("design"), dcard), artifact="# design\n")
         for node in ("review_design", "adversary_design"):
-            _, card = self.p.start(g, node, avoid=(ag.label,))
+            # submit (not abandon): an abandoned lease is reclaimable and a plain start is then refused
+            rag, card = self.p.start(g, node, avoid=(ag.label,))
             self.assertIn("owner_questions", card["instructions"], node)
             self.assertIn(TARGETING, self.instruction_text(card, "review"), node)
             self.assertLessEqual(card_size(card), CARD_LIMIT, node)
-            self.w.ok("a", "abandon", str(g), self.n(node), "--attempt", str(card["lease"]["attempt"]))
+            self.submit(rag, g, node, card, self.p.output(self.n(node), card))
         self.until_ready(g, "review_impl")
         _, card = self.p.start(g, "review_impl")
         self.assertIn("owner_questions", card["instructions"])
         self.assertIn(TARGETING, self.instruction_text(card, "review"))
-        self.assertLessEqual(card_size(card), CARD_LIMIT)
+        # design §9 allows a review card above the target: review_impl (3,948 bytes before this goal) grows by at
+        # most the one view reference of the new instruction; without it the card is still within the limit
+        oq = card["instructions"]["owner_questions"]
+        self.assertIsInstance(oq, dict)
+        self.assertIn("blob", oq)
+        rest = copy.deepcopy(card)
+        del rest["instructions"]["owner_questions"]
+        self.assertLessEqual(card_size(rest), CARD_LIMIT)
 
     def test_the_acceptance_journey(self):
         g = self.goal()
