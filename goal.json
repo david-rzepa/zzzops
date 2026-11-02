@@ -44,6 +44,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T20:55:12Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:970884d8a1f4d7f760beaa25bb8a2ce3d55539caae358284ad9a977336a3daf5"
+        },
+        "policy": {},
+        "subject": "v1:sha256:86de5cf70622b33fcdb703616e357e98996d90468899853c79bf4043fde76f1e"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:b1602aae8aca75de0cd99030266a4e73696ffe85232f4ef57fa64d9af98a51fe",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-02T20:55:12Z",
+        "decided_by": "Dave (owner), recorded by Claude (root agent)",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approved merging PR #762 (G1025) at head 92d8a8a into dev: git-flow release lines behind optional settings.branching, gated by capability release_lines. Line goals own release and hotfix branches on a shipped release graph (git.line_sync, git.line_finish); `release cut` and `hotfix start`; goal targets and goal schema 2 (`flow`); the effective release gate; frontier-computed waits and the scheduled restack (pass 3). Owner decisions followed: goal branches keep rebasing, merges only release->dev; dev moves on after the cut; finish merges release/N into main, back-merges dev, keeps the branch, supports hotfix branches; cut when all release-N goals merged; CI/deploy agnostic. Without settings.branching the engine behaves as before; the shipped POLICY.json template is unchanged. Synced onto dev after G1027/G1026/G1041; code review 2 rounds; full suite and required CI passed (macOS job re-run after a cancel). The owner asked to merge everything on the Release 1 stack; merged with --admin because of the dev ruleset's last-push rule."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "262d7807044ab48b616d63611c5c6711d110ef7c",
+          "change": "f0bf32b6cc62611fa2a0067c7c6cd9725c2d8956",
+          "commit": "40221676d4ce0e94c60a54e4bf868a50212f94e2",
+          "tree": "26f73f01f3cb8f3be6a5ad4c6d6a23ac3c85f218"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 3,
       "correction_runs": 2,
