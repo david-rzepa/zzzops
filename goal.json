@@ -261,7 +261,20 @@
     "test_design": {
       "attempt": 4,
       "correction_runs": 3,
-      "findings": [],
+      "findings": [
+        {
+          "id": "test_design:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 4,
+          "target_fp": "v1:sha256:0e2c6ee46e20a28c313b46a6573a49292cc8a9ade16e25c8d3d55d9269ee4fd2",
+          "text": "work branch reordered (owner force-push): the tests checkpoint must be 1a15ad2, before the implementation commit 4859124",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-01T22:17:24Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
