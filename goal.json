@@ -43,7 +43,20 @@
     "base": {
       "attempt": 1,
       "correction_runs": 0,
-      "findings": [],
+      "findings": [
+        {
+          "id": "base:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "base",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:50958ecc14971e563213a1677f2e19fbe7f63a4fdff6315dca030edc7484997e",
+          "text": "dev moved: G1028 merged (also ENGINE_VERSION 1.2.0); rebase and take 1.3.0",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-01T20:38:52Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
