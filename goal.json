@@ -272,10 +272,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 2,
-      "correction_runs": 0,
+      "attempt": 3,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-02T22:04:58Z",
+      "finished_at": "2026-11-02T22:10:36Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -285,6 +285,7 @@
         "policy": {}
       },
       "frozen": [
+        ".agents/engine_fake_gh.py",
         ".agents/fixtures/g1038_fingerprints.json",
         ".agents/merge_sync_fixtures.py",
         ".agents/test_design_docs.py",
@@ -292,7 +293,7 @@
         ".agents/test_engine_conventional.py",
         ".agents/test_engine_merge_sync.py"
       ],
-      "holder": "codex:takeover/1038-test_design",
+      "holder": "codex:takeover/1038-test-design-fix",
       "input_fp": "v1:sha256:2cac815836be9e1b317cb7a82362c71727ba398f39167b1e7615d39584598dfd",
       "ok": true,
       "output": {
@@ -302,14 +303,18 @@
           "python3 -m unittest discover -s .agents -p 'test_engine_capabilities.py'",
           "python3 -m unittest discover -s .agents -p 'test_design_docs.py'"
         ],
+        "responses": {
+          "review_tests:1:1": "fixed: fake gh now forwards --subject/--body into merge and squash commits, and uses Git rebase in a temporary worktree for rebase mode. A direct fake-only 3-method probe verifies actual trunk messages, bodies, parent counts, PR commit messages and code/trunk content (1.062 s, passed); the existing default squash merge smoke test also passes (7.686 s). Product-facing method/argument/trunk assertions are retained.",
+          "review_tests:1:2": "fixed: added a lightweight carry integration case with a checkpoint on a separate history but an identical code tree. With the shared predicate forced to accept, the real carry loop must carry the valid ancestor tests checkpoint, reject the unrelated implementation checkpoint, and leave that record untouched. It uses the explicit fixture session.git, not ambient Git. The current engine fails red in 0.550 s because it has no merge carry path yet."
+        },
         "tests": {
           "base": "de5640d1c5909ea924450aeea6450497a78946f6",
-          "change": "9da28c93bc7e8639527f93fe1b1c91b7e1a4631e",
-          "commit": "74cfb14f2ddcf24a3477c1f7b89c5b6c1443e039",
-          "tree": "f8c9dc7c951001483556960c0e2438e6f2b9b9ff"
+          "change": "62750f89fc47652724460b0fd48c97e3a4f25acd",
+          "commit": "e8549b403cede28935ec00d74456a5e31d5e063e",
+          "tree": "7ff07a94b02a4794ecdec347ddc96c04e722667d"
         }
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     }
   },
