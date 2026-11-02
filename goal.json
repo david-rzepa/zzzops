@@ -1,0 +1,22 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [
+    1025,
+    1026,
+    1027
+  ],
+  "graph": "default",
+  "id": 1038,
+  "links": {
+    "issue": null
+  },
+  "priority": "P1",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Found while dogfooding Release 1. Two pieces of machinery caused most of the friction in the G1022–G1028 run:\n- Syncing a goal with the integration branch is a rebase. Conflict resolutions are not kept, so each later rebase redoes them, and a rebase rewrites the work branch.\n- The frozen tests are the diff up to the tests checkpoint, and the implementation is everything after it, so a test fix found after implement has to be inserted before the implementation commits. That needs a history rewrite and a force-push of the work branch, which only the owner could run. It happened four times (G1025, G1026, G1027 twice).\n\nOwner decisions (verbatim):\n- \"For updating the branch with the trunk, I think merges might work better as conflict resolution doesn't get lost. Then maybe a final rebase when integrating in order to clean up the history?\"\n- On the integrate history, the owner chose \"Squash to tests + code\" over rebasing with reused resolutions or keeping the merges: integrate collapses the goal into two commits (tests, implementation) on the trunk tip.\n- \"I think we may as well get these done now, before dogfooding again\"\n\nScope:\n- `base` (and any scheduled sync) brings trunk into the goal's work branch with a merge commit, never a rebase or force-push. A conflicting merge becomes a base finding as G1021 does today.\n- test_design may add tests commits after implementation commits. Which tests are frozen, and which diff is the implementation, are computed from paths and checkpoints rather than commit order, so no history rewrite is ever needed during a goal.\n- integrate produces the PR branch as exactly two commits on the integration tip: the goal's tests and its implementation (plus the review records the engine already carries, if they must stay separate). The work branch is left as is.\n- No owner-run force-push is needed at any point in a goal's normal flow.\n\nAcceptance:\n- A goal whose trunk moves twice during delivery syncs by two merges; the second sync does not redo the first sync's conflict resolution.\n- A test fix submitted by test_design after implement committed is accepted without any rewrite; implement may not edit it; review_impl sees only implementation changes.\n- The PR for such a goal has exactly the tests commit and the implementation commit on the trunk tip, and its tree equals the work branch merged with trunk.\n- This PR edits docs/design/SPEC.md and DESIGN.md for every contract change it makes and adds a HISTORY §4 row.",
+  "state": "open",
+  "title": "Sync goal branches with trunk by merge, squash at integrate, and let test fixes land after implementation"
+}
