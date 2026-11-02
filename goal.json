@@ -252,51 +252,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 2,
-      "correction_runs": 1,
-      "findings": [
-        {
-          "id": "review_tests:1:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:c237ea3cc4c65d0b317e62c6e0b04fe174b08c15135eea5523dbe1602a9f600c",
-          "text": "F1: test_engine_review_lenses.py test_engine_version_or_capability_marks_the_new_shapes does `from engine import ENGINE_VERSION`, then accepts either a version >= 1.2.0 or engine/capabilities/lenses.txt. G1027's approved design deletes ENGINE_VERSION, which is exactly the order in which lenses.txt is the expected form (G1027 section 5). So in that order the test raises ImportError instead of passing. In that order the 15-node template should also require `lenses` (G1027 makes the template declare what its graph needs: requires lens_findings), and nothing checks it. Fix: use `getattr(engine, 'ENGINE_VERSION', None)`; check lenses.txt first and, when present, assert shipped('POLICY.json')['settings']['engine']['requires'] contains 'lenses'; otherwise assert the version bump.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-01T21:47:48Z",
+      "attempt": 3,
+      "correction_runs": 2,
+      "findings": [],
+      "finished_at": "2026-11-02T04:17:55Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:496ddd5a4af997072a6592b0a8c591ece5625b54",
-          "tests": "v1:sha256:ab4587ed9a9ccbce97138a167701b6cb6f77e23c735bc427c074110e3425c3a1"
+          "tests": "v1:sha256:6cfde671d789d6ab6f77e4aee9ef2fb5c0d24aaa7ca0ce3f86d23241097b51be"
         },
         "policy": {},
-        "subject": "v1:sha256:f93333589780ce16e56c706254ab805b2252433ecf7c0d46e8598bdeec1a29ae"
+        "subject": "v1:sha256:2a1855d809fe177c36697cc20f47785f5235d2387bdb2a91ea3de5faaa8e3560"
       },
-      "holder": "claude:e6ad/rd1022",
-      "input_fp": "v1:sha256:149487279427b389be0320a7493fe718facd9c77e123e41f913903a83c9cee50",
+      "holder": "claude:e6ad/rt1022",
+      "input_fp": "v1:sha256:21e6acf08058e1cf6866ebe14de77793a843f74e6bd444a91dcced2efc552683",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "bb9ba9e3920877674b3b03e331ab332a91effa86",
-          "commit": "132788e9c3c204c51de65cf7823145eb2d7a74fd",
+          "blob": "70e0f028a36262d6d3b2236efd8de8be6c604fb0",
+          "commit": "4a42317b0e7ff54788ad92985c3458a60d0ccdc3",
           "path": ".zzzops/reviews/1022/review_tests.md"
         },
-        "summary": "The capability test no longer imports ENGINE_VERSION: it checks lenses.txt first and then requires `lenses` in the template, otherwise getattr version >= 1.2.0. Simulated G1027-first in-process: it passes only when the template requires lenses, with no import error. G1022-first fails on 1.1.0 as expected pre-implementation. Commands use python3. review_tests:1:1 resolved."
+        "summary": "Approved after the rebase onto dev with G1028. The range-diff shows exactly one test changed (test_skipping_the_lens_of_an_open_finding_keeps_it), updated to G1028's stale-review carry; all other assertions kept and no-finding-lost purpose intact; no fixture or import changes."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
-          "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "2aae91270fddb06d14ec81f624e75e5afadf615a",
-          "commit": "18fdceb5b257202f44b9beaf1967f6e55a47bfdc",
-          "tree": "1f8363b0befef2d65d131ec52edc8373c86ae47e"
+          "base": "5288bf7ed3f8373dad773e2de48f6c7603afd985",
+          "change": "c7e732be045863f9a3555d42a2854f75d9d06474",
+          "commit": "07abea9a5bed16199105a33f476824cdf41a5fa8",
+          "tree": "e8c0038a1020e481515d3f412bf80689f564c5ad"
         }
       },
       "status": "done"
