@@ -46,8 +46,29 @@
       "status": "done"
     },
     "base": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "blocked": {
+        "category": "conflict",
+        "commands": {
+          "resume": [
+            "start",
+            "1026",
+            "base",
+            "--as",
+            "<LABEL>"
+          ]
+        },
+        "instructions": "In /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1026: resolve the conflicts in docs/design/HISTORY.md, `git add` them, run `git -c core.editor=true rebase --continue`, then run the resume command. Do not change the meaning of the goal's commits.",
+        "op_state": {
+          "old": "25186a5ee98282b3f380ff48a06b014aae34aa10",
+          "onto": "f4eaf7465f1d3e95392733d9ba05456702fd41d0",
+          "work": "8ac5a9976e7319721cef3ef7fa925fa2bc26b083"
+        },
+        "reason": "rebase conflict in docs/design/HISTORY.md",
+        "repeats": 1,
+        "waiting_for": "agent"
+      },
+      "correction_runs": 1,
       "findings": [
         {
           "id": "base:reopen:1",
@@ -62,7 +83,7 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-02T04:47:33Z",
+      "finished_at": "2026-11-02T16:20:45Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
         "inputs": {
@@ -73,22 +94,10 @@
       },
       "holder": "claude:e6ad/op",
       "input_fp": "v1:sha256:505ec83f61622254bc886c625e2f09c8651cdad66b7db00464c9adf261d6f816",
-      "ok": true,
-      "output": {
-        "base_commit": "25186a5ee98282b3f380ff48a06b014aae34aa10",
-        "branch": "zzzops/work/g1026",
-        "replay_map": {
-          "2c5801218391f730da0cf188ba8325f44112e9c7": "db5b05a7cf1f6f396d62c309a3d5e8fd0d3535d8",
-          "52bf0d486f7b0c43d5d041b420bf489f22683dca": "1d5798beb6e2ca57bdfcb15d0b62f3a93f532196",
-          "767eebcb1674af6465f3635fd7f5ed8135e4b38c": "3b266414fb3151d7a9a81cf0a6369a1cfe6ed584",
-          "eb45ace1421963948b37a50e7a4a7f6be5fc8215": "93a2e4a4da24350258ca380b595d6ba0f346a121",
-          "fb32839cce563447d90301fc00620c14cf2f0e4b": "2eb313f27193cfecb01c5324480cb95bdc3d372e"
-        },
-        "replay_pos": {},
-        "stack": []
-      },
-      "reason": "new",
-      "status": "done"
+      "ok": false,
+      "output": null,
+      "reason": "reopened",
+      "status": "blocked"
     },
     "design": {
       "attempt": 7,
