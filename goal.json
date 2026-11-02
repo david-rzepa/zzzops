@@ -97,6 +97,35 @@
       "reason": "new",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T16:43:54Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:5de4fe54a2e216adfbc814940714c8d690d961dbbb9d3544d369280d0d2d9cd9",
+          "doc": "v1:blob:cc60eabf6331555c3c73bd5ea08d6311e25f34d3",
+          "tests": "v1:sha256:404b296af52c6cc4adc0c30a6cdd7796393e8ac5a8d5601d8d919b0c9c81c05f"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/im1041",
+      "input_fp": "v1:sha256:ded65982d6c2da1b51e578e5d267f9661575a91e06670382e7715ef0d9cd75b0",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "f4eaf7465f1d3e95392733d9ba05456702fd41d0",
+          "change": "20fa99d7ff9fcb3f16735e5004deadd71c193d1b",
+          "commit": "210b1ca6210d59f31d741b9f42dd7a8dd175ddee",
+          "tree": "a7a0cb89561713b8f66d19d548f75808635d7642"
+        },
+        "summary": "Added Git.worktree_paths (engine/gitrun.py): it runs `git worktree list --porcelain`, trusts its output only on exit 0, retries up to 6 times with jittered exponential backoff (about 1.3 s worst case), and returns (paths, last rc, last stderr). Git.discover uses it and still refuses `environment` \"cannot find the primary worktree\" when every try fails, now with details[\"git\"] = Git's last stderr (at most 500 chars, additive, like the not-a-repository refusal); registered_worktrees (engine/worktree.py) uses it and raises the same GitError with rc and stderr on exhaustion. No CLI, output, stored-format or SPEC contract change, so no SPEC/HISTORY edit, as the design states. Verified: test_engine_environment.py (11 OK), the real race test 20/20, test_engine_store.py (55 OK), test_twenty_concurrent_next_after_dev_moves 50/50, test_design_docs.py OK."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 1,
       "correction_runs": 0,
