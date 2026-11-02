@@ -155,23 +155,10 @@
       "status": "done"
     },
     "integrate": {
-      "attempt": 4,
-      "blocked": {
-        "category": "external",
-        "op_state": {
-          "head": "92d8a8ab46322d7a3b5e1367aec18a9b49564f46",
-          "pending_since": 1793652439,
-          "polls": 0,
-          "rerun_head": "92d8a8ab46322d7a3b5e1367aec18a9b49564f46"
-        },
-        "reason": "required checks failed (dev-required-tests); re-ran once",
-        "repeats": 1,
-        "retry_after": "2026-11-02T20:52:19Z",
-        "waiting_for": "time"
-      },
-      "correction_runs": 3,
+      "attempt": 5,
+      "correction_runs": 4,
       "findings": [],
-      "finished_at": "2026-11-02T20:47:19Z",
+      "finished_at": "2026-11-02T20:53:30Z",
       "fp_parts": {
         "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
         "inputs": {
@@ -186,10 +173,28 @@
       },
       "holder": "claude:e6ad/op",
       "input_fp": "v1:sha256:44a603d420b05c094e43ff0c14e65e45f537e7cf7a44982c7dc732887ce35e7b",
-      "ok": false,
-      "output": null,
+      "ok": true,
+      "output": {
+        "ci": {
+          "failed": [],
+          "passed": [
+            "dev-required-tests"
+          ],
+          "required": [
+            "dev-required-tests"
+          ],
+          "stacked": false
+        },
+        "pr": {
+          "base": "dev",
+          "head": "92d8a8ab46322d7a3b5e1367aec18a9b49564f46",
+          "number": 762,
+          "tree": "26f73f01f3cb8f3be6a5ad4c6d6a23ac3c85f218",
+          "url": "https://github.com/david-rzepa/zzzops/pull/762"
+        }
+      },
       "reason": "retry",
-      "status": "blocked"
+      "status": "done"
     },
     "review_design": {
       "attempt": 3,
