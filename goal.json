@@ -1,0 +1,20 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [
+    1027
+  ],
+  "graph": "default",
+  "id": 1041,
+  "links": {
+    "issue": null
+  },
+  "priority": "P2",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Found while dogfooding Release 1. CI for G1027 (PR #759, Linux Python 3.10 shard 1) failed test_engine_store.PolicyTests.test_twenty_concurrent_next_after_dev_moves: 2 of 20 concurrent `zzzops next` calls returned `environment: cannot find the primary worktree`. The test passed locally and on the other shards, so it is a race.\n\n`Git.discover` (engine/gitrun.py) takes the primary worktree from the first `worktree` line of `git worktree list --porcelain` and ignores its exit status. When another process is adding, pruning or locking a worktree at the same moment, that command can fail or print nothing, and discovery refuses. Parallel workers running `next`, `start` and `submit` at once is the normal case, so this can refuse real calls, not only the test.\n\nScope:\n- Discovery tolerates a transient `git worktree list` failure: check its exit status, retry briefly, or derive the primary worktree from the common git directory (its parent, when the common directory is the primary's `.git`) without depending on the worktree list.\n- A genuinely missing primary worktree is still refused with the current message.\n\nAcceptance:\n- The concurrent `next` test passes reliably, for example 50 repeated runs in CI-like conditions.\n- A test simulates a failing `git worktree list` and shows discovery still finds the primary worktree.\n- If the change alters a contract, this PR edits docs/design/SPEC.md and adds a HISTORY §4 row.",
+  "state": "open",
+  "title": "Primary worktree discovery survives concurrent git worktree changes"
+}
