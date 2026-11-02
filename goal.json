@@ -210,15 +210,15 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_tests:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:45ad22dc792017797dead3f55afe2d6eafd3abbd2925d7b7d422c3d4a06fc6b9",
@@ -230,7 +230,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:45ad22dc792017797dead3f55afe2d6eafd3abbd2925d7b7d422c3d4a06fc6b9",
@@ -238,35 +238,35 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-02T22:07:31Z",
+      "finished_at": "2026-11-02T22:11:40Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:ab1153abea2ff217e185a023c66febc2cdc471b2",
-          "tests": "v1:sha256:68d189ae38c4881113f658d4f1b573afe90778125be9dfdde54d34ae46e540c5"
+          "tests": "v1:sha256:af416495120811ad2bdbff1e982b776eaa6b0ec6a3901d84576f16c0ca0bb227"
         },
         "policy": {},
-        "subject": "v1:sha256:45ad22dc792017797dead3f55afe2d6eafd3abbd2925d7b7d422c3d4a06fc6b9"
+        "subject": "v1:sha256:fd9fc8829e0f5f2e90f4c02ae164b964712b3467bb3719b41d09dc464364e628"
       },
-      "holder": "codex:takeover/1038-review-tests",
-      "input_fp": "v1:sha256:198947383129cf2625eb6ebd583fcb5afac75230446a27eb320cb1f9672f2088",
-      "ok": false,
+      "holder": "codex:takeover/1038-review-tests-2",
+      "input_fp": "v1:sha256:73b8f77bf7bd8ee5ecc08ee864270de67496731ed0d699d9e01f7711bec9cb8c",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "dd5b1749f25bae31eaf5529c8f5aaff3a97801b5",
-          "commit": "e43b7de4b416cb66d3774e63ecca3496dbce9162",
+          "blob": "b2e6903758bd8374f73449dbd20705c2c5694ea2",
+          "commit": "09bf971915f8aa6e2d68136ecd715ba0b1ccba4c",
           "path": ".zzzops/reviews/1038/review_tests.md"
         },
-        "summary": "Broad behavioral coverage is substantive, but the fake GitHub cannot satisfy the asserted merge/rebase results, and relocation needs one off-history checkpoint rejection case."
+        "summary": "Approved: fake merge/squash messages and real rebase behavior now directly verified on Python 3.10; negative carry case rejects identical-tree checkpoints outside synced work history. Both prior findings resolved."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "de5640d1c5909ea924450aeea6450497a78946f6",
-          "change": "9da28c93bc7e8639527f93fe1b1c91b7e1a4631e",
-          "commit": "74cfb14f2ddcf24a3477c1f7b89c5b6c1443e039",
-          "tree": "f8c9dc7c951001483556960c0e2438e6f2b9b9ff"
+          "change": "62750f89fc47652724460b0fd48c97e3a4f25acd",
+          "commit": "e8549b403cede28935ec00d74456a5e31d5e063e",
+          "tree": "7ff07a94b02a4794ecdec347ddc96c04e722667d"
         }
       },
       "status": "done"
