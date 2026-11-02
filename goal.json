@@ -158,15 +158,15 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_tests:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:47f104349342d70827692e933fbbf90f03c8262d983c13de62574738b39b4897",
@@ -174,35 +174,35 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-02T22:00:26Z",
+      "finished_at": "2026-11-02T22:02:08Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:891e284f14d6d39fa3bd3d0854b643b5c887b5a6",
-          "tests": "v1:sha256:5bc8e41627ee752da995398bb5d97bacfd82a0603bb1af1db5066c5b73616d2a"
+          "tests": "v1:sha256:9bfa8803a302c0ac8148164eb66dd9d43ba5add37da6477d4dc9c63d6a1a6aa6"
         },
         "policy": {},
-        "subject": "v1:sha256:47f104349342d70827692e933fbbf90f03c8262d983c13de62574738b39b4897"
+        "subject": "v1:sha256:d1de01ed2b0a6252e8a0210f2ff9de2fb9c8b8f73dc6b95eb60db35af2d21189"
       },
-      "holder": "codex:takeover/1024-review-tests",
-      "input_fp": "v1:sha256:0d7be983bbef8819a443ca52d7b16db52ea015794f72fc34936f02be4f797172",
-      "ok": false,
+      "holder": "codex:takeover/1024-review-tests-2",
+      "input_fp": "v1:sha256:bdc8984c55a3fa4fd5b8d2bad11313139fce748d579e9530063db8823985cdd7",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "4fc25623943b0f8345beed9b441ce171bb2a9e41",
-          "commit": "5ada9fd3181f93c1dac8eb814edc58fbfc7a5c59",
+          "blob": "0fff344da7ab5f07d1fbcea27aa149b0d47eeac5",
+          "commit": "aea2288b118e5a442acea30845a17364e49914c4",
           "path": ".zzzops/reviews/1024/review_tests.md"
         },
-        "summary": "Behavioral coverage is substantive and lightweight, but replace TestCase.enterContext: it fails before assertions on the required Python 3.10 CI matrix."
+        "summary": "Approved: Python 3.10 cleanup compatibility fixed with ExitStack/addCleanup; the targeted 3.10 run now reaches intended absent-feature errors. Behavioral assertions are unchanged and substantive."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "de5640d1c5909ea924450aeea6450497a78946f6",
-          "change": "5dca21aa2fb70f47b0f0df300456c68f6361616a",
-          "commit": "bedf97ad36f8b5c0c820ff49802406cc4e3d9948",
-          "tree": "5a13c9d6c88d1a7b39668ff53c117caaff0d1a6b"
+          "change": "bb212c1916c4c46d727b683846c680cc3363db53",
+          "commit": "7e87834287753eb6808c1750fe98f88e7333b23a",
+          "tree": "ccf4d5fa6f7ce8a558f47a3afa66099515bf18a7"
         }
       },
       "status": "done"
