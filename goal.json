@@ -44,15 +44,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:aecc02250f284b1013796126d126c73e18b793071bb5538b66e3b3847307ea3e",
@@ -64,7 +64,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:aecc02250f284b1013796126d126c73e18b793071bb5538b66e3b3847307ea3e",
@@ -76,7 +76,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:aecc02250f284b1013796126d126c73e18b793071bb5538b66e3b3847307ea3e",
@@ -84,33 +84,33 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-02T22:06:15Z",
+      "finished_at": "2026-11-02T22:11:15Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:d345f69af806b834872d8b37f710c3255ea95283",
+          "doc": "v1:blob:4f9af989059cfa941d80e35d7bcee2094bea961c",
           "spec": "v1:sha256:a696c0b7e3e8448ebb71dd9d0df065f69d7225b378bc9635ed1d03a30f475d7e"
         },
         "policy": {},
-        "subject": "v1:sha256:aecc02250f284b1013796126d126c73e18b793071bb5538b66e3b3847307ea3e"
+        "subject": "v1:sha256:c1b4afe193a4f607db60f76672dfd8b3ba37038b3cd3c3a70f7db33e0f48500c"
       },
-      "holder": "codex:takeover/1043-review-design",
-      "input_fp": "v1:sha256:4c547ac951d02690a20376bcc803e0565ce6dba779be35521f4aadb2ea7cea9a",
-      "ok": false,
+      "holder": "codex:takeover/1043-review-design-2",
+      "input_fp": "v1:sha256:5ec79592f9aa463941a0e5213f063a6568a754921e3f93fbe08178d575852635",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "1b138377bfa06986662274538baf67b09e0dae6a",
-          "commit": "8f71fb98bbe6d242932344190200fd5e379caff1",
+          "blob": "ff8bc859a3c1dbca4d82ac26609ef47c276d939f",
+          "commit": "5a11596e33f5b509d15d196f45ac66560a5c6325",
           "path": ".zzzops/reviews/1043/review_design.md"
         },
-        "summary": "Reuse of the existing per-ID runner and measured timing evidence is sound. Three scheduling/bounded-work corrections remain: clamp the shared CPU total before dividing lanes, preserve exclusive-phase semantics across simultaneous lanes, and bound best-effort historical baseline work after command completion. No owner-only question."
+        "summary": "Revision 2 resolves all three findings: one parent-capped CPU budget precedes lane allocation; source-audited removal of the stale exclusive property entry preserves every semantic assertion; bounded read-only baseline lookup returns unavailable on incomplete evidence rather than an older partial match. No new finding or owner-only question."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "d345f69af806b834872d8b37f710c3255ea95283",
-          "commit": "750bb8d540533824de9743cb94a057c9aed96970"
+          "blob": "4f9af989059cfa941d80e35d7bcee2094bea961c",
+          "commit": "ad50f593d101fa85db6e44f86d9837f4abf8d2b4"
         }
       },
       "status": "done"
