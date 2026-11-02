@@ -222,6 +222,65 @@ def prompt_question(ctx: Ctx, res: GoalResult, n: str) -> str:
     return line or f"G{res.goal} {n}?"
 
 
+def checks_summary(result: dict) -> str:
+    """Measured checks context, with independently qualified comparison scopes (G1043)."""
+    def milliseconds(value, signed=False):
+        if type(value) is not int or (not signed and value < 0):
+            return None
+        return f"{value / 1000:+.3f} s" if signed else f"{value / 1000:.3f} s"
+
+    timing = result.get("timing")
+    if not isinstance(timing, dict):
+        durations = []
+        details = result.get("details")
+        for detail in details if isinstance(details, list) else []:
+            if not isinstance(detail, dict):
+                continue
+            duration = milliseconds(detail.get("milliseconds"))
+            if duration is None and type(detail.get("seconds")) is int and detail["seconds"] >= 0:
+                duration = f"{detail['seconds']} s"
+            if duration is not None:
+                durations.append(duration)
+        recorded = ", ".join(durations[:6]) or "unavailable"
+        return f"Legacy local checks: recorded command times {recorded}; total and baseline unavailable (legacy_timing)."
+
+    def provenance(scope):
+        source = scope.get("source", scope)
+        if not isinstance(source, dict) or source.get("goal") is None:
+            return ""
+        goal = clip(str(source["goal"]), 20)
+        node = clip(str(source.get("node", "?")), 24)
+        target = clip(str(source.get("target", "?")), 48)
+        merge = clip(str(source.get("merge_commit", "?")), 12)
+        return f" vs recorded merged G{goal}/{node} {target}@{merge}"
+
+    def comparison(label, scope):
+        if not isinstance(scope, dict):
+            scope = {"status": "unavailable", "reason": "legacy_timing"}
+        delta = milliseconds(scope.get("delta_ms"), signed=True)
+        if scope.get("status") == "available" and delta is not None:
+            return f"{label} delta {delta}" + provenance(scope)
+        reason = scope.get("reason") or ("invalid_evidence" if scope.get("status") == "available" else "legacy_timing")
+        qualifier = clip(str(reason), 64)
+        if scope.get("limit"):
+            qualifier += f" ({clip(str(scope['limit']), 24)})"
+        return f"{label} comparison unavailable: {qualifier}" + provenance(scope)
+
+    total = milliseconds(timing.get("total_ms"))
+    verification = milliseconds(timing.get("verification_ms"))
+    if total is None:
+        reason = clip(str(timing.get("reason") or "invalid_evidence"), 64)
+        return f"Local checks timing unavailable: {reason}; repository verification and baseline unavailable."
+    baseline = timing.get("baseline")
+    parts = [f"Local checks {total}", f"repository verification {verification or 'unavailable'}",
+             comparison("Total", baseline),
+             comparison("Repository verification", baseline.get("verification") if isinstance(baseline, dict) else None)]
+    # Keep the qualifications ahead of verbose command logs and preserve the
+    # caveat even if unusual source names need clipping. Full evidence is separate.
+    caveat = "; informational: machine load and concurrent goal-command workload may differ."
+    return clip("; ".join(parts), 600 - len(caveat)) + caveat
+
+
 def approve_context(ctx: Ctx, res: GoalResult, n: str, vals: dict) -> list:
     out = []
     nd = res.graph.nodes[n]
@@ -242,6 +301,16 @@ def approve_context(ctx: Ctx, res: GoalResult, n: str, vals: dict) -> list:
             url = ctx.reader.artifact_url(v.get("commit"), v.get("path")) if v.get("commit") else None
             if url:
                 entry["url"] = url
+        elif (t == "object" and isinstance(v, dict) and not sel.path and sel.kind == "node"
+              and (nd.get("inputs") or {}).get(name, {}).get("context") is True
+              and res.graph.nodes.get(sel.node, {}).get("kind") == "op"
+              and res.graph.nodes.get(sel.node, {}).get("op") == "checks.run"):
+            text = json.dumps(v, sort_keys=True, ensure_ascii=False)
+            if len(text) > 400:
+                entry.update(ctx.reader.blob_view(text))
+            else:
+                entry["value"] = v
+            entry["summary"] = checks_summary(v)
         else:
             entry["summary"] = value_view(v)
         out.append(entry)
