@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-02T20:55:19Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [
     1017
   ],
@@ -228,6 +233,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T20:55:19Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:bf34adb7f0b566796b1af51e33cdc18be3f554b6a764581e26501b2e9cecbb90"
+        },
+        "policy": {}
+      },
+      "holder": "claude:e6ad/op",
+      "input_fp": "v1:sha256:0269d4225a21a53a1d1b4b7eddd3d29c4543149896ed8aa53bde34609bac862c",
+      "ok": true,
+      "output": {
+        "merge_commit": "de5640d1c5909ea924450aeea6450497a78946f6",
+        "merged_at": "2026-11-02T20:55:18Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -520,6 +547,6 @@
   "schema": 1,
   "skip": {},
   "spec": "The owner's direction (2026-11-01), verbatim: \"Ok I do want release management in R1. Here's how I see it working, we base it on git flow. When all R* goals are complete, we ask the user for approval to create a release branch according to git flow. When a release branch exists for a goal, the CLI should branch off of that tip, not dev. Constant rebasing can be avoided by the use of scheduled downstream merges. I'd propose that before starting work on a tip, the upstream tips are checked for changes, and if they exist a downstream merge is scheduled. All of this should be deploy/CI/actual release flow agnostic, it's just a branching strategy.\"\n\nToday the engine has one integration branch (settings.integration_branch, here dev), every goal bases on it, a goal's release only gates its `merge` node (release_gate while release > settings.releases.current), and every move of dev makes `base` rebase the work branch. Nothing cuts or tracks a release.\n\nBuild a git-flow branching strategy into the engine:\n1. Release cut. When every goal of release N is complete (closed done, or only waiting at a release gate), `next` shows a human item asking to create the release branch for N (git-flow naming, e.g. release/<N>, configurable) from the integration branch tip. Approving creates the branch and records it. Release N+1 goals then pass the release gate on the integration branch (decide in the design whether this is `releases.current` advancing or the release branch existing).\n2. Base per goal. A goal whose release has a release branch bases on, integrates into and merges into that branch's tip, not the integration branch. Goals of later releases keep using the integration branch. Show each goal's target on cards, in `next` and in `show`.\n3. Release finish. Finishing a release (git flow: merge the release branch into the production branch and back into the integration branch, then retire the release branch) is a human-approved item. Tags, versions, CI and deployment stay outside the engine.\n4. Scheduled downstream merges instead of constant rebasing. Before work starts on a tip (a node of a goal, or a release branch), the engine checks the upstream tips for changes: the release branch's changes flow down to the integration branch, and a goal's target changes flow into its work branch. If upstream has new commits, a downstream merge is scheduled (a graph node or op that merges upstream into the downstream branch, with conflicts going to an agent as base conflicts do now), instead of rebasing on every move. Decide in the design how this replaces or coexists with `base`'s rebase, how checkpoints, `change` and staleness behave on merge commits (today's identity rules assume a rebased linear history), and how stacked goals (G1020-style) fit.\n5. Branching only. No deploy, CI or release-publication behaviour: the engine creates, targets and merges branches, and leaves version tags, semantic-release, changelogs and deploys to the project.\n6. Policy. Production branch name, release branch pattern and whether release branches are used at all are POLICY settings; a project without them keeps today's single-integration-branch behaviour.\n\nAcceptance:\n- Engine tests: the release-cut item appears only when release N is complete; approving creates the branch; a release-N goal created afterwards bases on and opens its PR against the release branch while a release-N+1 goal targets the integration branch; an upstream change schedules a downstream merge instead of a rebase, and a conflicting one becomes an agent item; finishing merges into production and back into the integration branch.\n- A repository without the new settings behaves exactly as today (existing tests unchanged).\n- This PR edits docs/design/SPEC.md and DESIGN.md for every contract change it makes and adds a HISTORY §4 row (G1017's rule).\n- Release 1 of this repository is cut through this mechanism.",
-  "state": "open",
+  "state": "closed",
   "title": "Release branching: git-flow release branches, goals based on their release's tip, scheduled downstream merges"
 }
