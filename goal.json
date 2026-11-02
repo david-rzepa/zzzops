@@ -50,15 +50,15 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_design:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:d6454014d6870b4e68e82d27758e04ba4d07688822c9edf2f97ace0f80495301",
@@ -70,7 +70,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:d6454014d6870b4e68e82d27758e04ba4d07688822c9edf2f97ace0f80495301",
@@ -82,7 +82,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:d6454014d6870b4e68e82d27758e04ba4d07688822c9edf2f97ace0f80495301",
@@ -94,7 +94,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:d6454014d6870b4e68e82d27758e04ba4d07688822c9edf2f97ace0f80495301",
@@ -106,7 +106,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:d6454014d6870b4e68e82d27758e04ba4d07688822c9edf2f97ace0f80495301",
@@ -116,55 +116,91 @@
         {
           "id": "review_design:1:6",
           "note": null,
-          "response": null,
+          "response": "fixed: the resume (4.2) refuses when git status --untracked-files=all shows any path outside the listed files (re-blocks listing them), and then stages only the listed files with git add -A --literal-pathspecs -- <files>. Test 1 covers an untracked scratch file, a *.orig file and an edit to a non-listed file.",
           "rounds": 1,
           "status": "open",
           "target": "design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:d6454014d6870b4e68e82d27758e04ba4d07688822c9edf2f97ace0f80495301",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:860a9d1d42f3058fc27186eae07680402c74b02f1a64fa07655794364d5766e5",
           "text": "The conflict resume (§4.2) runs 'git add -A', so anything in the worktree goes into the merge commit, and from there into the goal's code and its squashed PR: untracked scratch files, *.orig files from mergetool, build output, edits to files that did not conflict. Fix: stage only the listed files (git add -A -- <files>); re-block if any other path differs from T, listing those paths, and refuse untracked or modified files outside the list. Cover this in test 1.",
           "upheld": false
         },
         {
           "id": "review_design:1:7",
           "note": null,
+          "response": "fixed: adopted the owner's decision, recorded verbatim in 2.1, in 4.8 and D10. Covered: every commit on work, stack and PR branches, agent- and engine-made. Exempt: record commits on goal refs (zzzops: answer G<g> ..., parsed by G1026) and lease refs, because they are machine-parsed and never reach trunk. Submit refuses non-conventional subjects (commit_subject) and non-test commits from the preserved node (test_commit_type), and implement commits touching frozen paths (test_freeze, now per commit); codes, texts and the SPEC §4.14 text are given. Engine subjects become chore(sync): merge <onto> into G<g> and chore(stack): combine/partial combine for G<g>; integrate's commits are test: and the derived type (4.5.2). Test 10 covers both refusals and the engine subjects; test 5 covers the type derivation.",
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:860a9d1d42f3058fc27186eae07680402c74b02f1a64fa07655794364d5766e5",
+          "text": "Owner decision, relayed by the root (material). Owner, verbatim: \"Yeah, we should ensure we always use conventional commit messages\". This was in reply to the root's proposal: keep the tests/implementation split by recorded frozen paths and per-phase submit ranges, not by commit message; (1) submit refuses commits whose subjects are not conventional commits, test_design's commits must be test:, and implement's commits must not touch frozen paths; (2) integrate's squashed tests commit is 'test: ...' and the implementation commit's type is derived from the goal's commits. The design must adopt this and state which commits the rule covers. The root recommends: every commit on work and PR branches, agent-made and engine-made (docs(review): commits already comply); engine record commits on goal refs ('zzzops: answer G<g> ...', which G1026 parses) keep their machine subjects because they never reach trunk; justify any other scope. G1038's own engine commits do not comply: the sync merge 'Merge <onto> into zzzops/work/g<g> (zzzops base)' (§4.1), and the combine commits 'zzzops: stack for G<g> ...' / 'zzzops: partial stack' (base.py combine) on the stack branches PRs target. Give them conventional subjects (for example chore(sync): ..., chore(stack): ...) or exclude them with a reason. Add the submit refusal codes and texts, the SPEC §4.14 text, tests for both refusals and for the engine subjects, and the type derivation from the implementation commits' conventional types.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:2:1",
+          "note": null,
           "response": null,
           "rounds": 1,
           "status": "open",
           "target": "design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:d6454014d6870b4e68e82d27758e04ba4d07688822c9edf2f97ace0f80495301",
-          "text": "Owner decision, relayed by the root (material). Owner, verbatim: \"Yeah, we should ensure we always use conventional commit messages\". This was in reply to the root's proposal: keep the tests/implementation split by recorded frozen paths and per-phase submit ranges, not by commit message; (1) submit refuses commits whose subjects are not conventional commits, test_design's commits must be test:, and implement's commits must not touch frozen paths; (2) integrate's squashed tests commit is 'test: ...' and the implementation commit's type is derived from the goal's commits. The design must adopt this and state which commits the rule covers. The root recommends: every commit on work and PR branches, agent-made and engine-made (docs(review): commits already comply); engine record commits on goal refs ('zzzops: answer G<g> ...', which G1026 parses) keep their machine subjects because they never reach trunk; justify any other scope. G1038's own engine commits do not comply: the sync merge 'Merge <onto> into zzzops/work/g<g> (zzzops base)' (§4.1), and the combine commits 'zzzops: stack for G<g> ...' / 'zzzops: partial stack' (base.py combine) on the stack branches PRs target. Give them conventional subjects (for example chore(sync): ..., chore(stack): ...) or exclude them with a reason. Add the submit refusal codes and texts, the SPEC §4.14 text, tests for both refusals and for the engine subjects, and the type derivation from the implementation commits' conventional types.",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:860a9d1d42f3058fc27186eae07680402c74b02f1a64fa07655794364d5766e5",
+          "text": "Still open on review_design:1:6: the 4.2 resume check 2 (`git status --porcelain=v1 -z --untracked-files=all` lists no path outside the listed files) always re-blocks. After `git read-tree -u --reset T` the index is T and HEAD stays at the tip, so status reports every path where T differs from the tip (every trunk-side change) as a staged modification. Verified on Git 2.55.0: trunk changes a.txt and t.txt, the goal changes a.txt; after read-tree and editing a.txt, status prints `MM a.txt` and `M  t.txt`, while `git diff --name-only T` prints only a.txt. Fix: compare against T: `git diff --name-only -z T --` (worktree vs T, whatever the agent staged) plus `git ls-files --others --exclude-standard -z` for untracked paths, and refuse any path outside the listed files. Add a test-1 case where trunk also changes a non-conflicting file and the resume is accepted.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:2:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:860a9d1d42f3058fc27186eae07680402c74b02f1a64fa07655794364d5766e5",
+          "text": "Still open on review_design:1:7, one residual: D10 and 4.8 justify the scope with 'these are the only branches whose commits reach trunk', which is false. The merge op runs `gh pr merge --<method>` (merge.py:92), which writes a trunk commit whose subject is the PR title, not a conventional subject. dev's tip f4eaf74 'Replace ENGINE_VERSION and engine.min with declared engine capabilities (G1027) (#759)' is one. Under merge.method `merge` this adds a non-conventional commit per goal to dev and main, against the owner's 'always'. Under `squash`, which the policy allows and section 3 mentions, GitHub writes one commit titled with the PR title, so semantic-release sees no conventional commit and c2's derived type and release are lost, which breaks the 4.5.2 claim. Fix: the merge op passes --subject/--body to gh pr merge: for squash, c2's subject and a body with c1's and c2's bodies and the breaking footers; for merge, a conventional subject such as `chore(merge): <PR title> (#n)`; for rebase, nothing. Add this to 4.8's covered list, SPEC §4.14/§5.5 and a test-10 case per method, or exempt trunk merge commits with a true reason and still fix the squash case.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:2:3",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:860a9d1d42f3058fc27186eae07680402c74b02f1a64fa07655794364d5766e5",
+          "text": "N1: D9's 'no older engine can ever see a merge-synced branch' fails on the documented rollback. SPEC's upgrade procedure at f4eaf74 says 'Rollback is the same procedure removing the names'. Once merge_sync is removed from settings.engine.requires, the new engine's mode becomes rebase (4.1) and older engines un-pause, and both run today's `rebase -q --onto onto old` on a work branch with chore(sync): merges: the merges are dropped, every resolved conflict is redone and the branch is force-pushed. That is the review_design:1:5 hazard again. Fix: make merge mode sticky per branch. If W's first-parent history above base_commit has an engine sync merge and the policy does not require merge_sync, base blocks with a policy item ('the work branch has merge syncs; the policy must require merge_sync') and pushes nothing. merge_sync.txt and SPEC §4.5/§8 state that removing merge_sync is not supported while an open goal's work branch has merge syncs. Add a test-8 case.",
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-02T15:50:48Z",
+      "finished_at": "2026-11-02T16:04:08Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:52f38899ce6deb56e209a274f6daab31522daafe",
+          "doc": "v1:blob:6ee2d01e1256782a0812919ad27503a786f891cd",
           "spec": "v1:sha256:4596edb8db8e0919aa8d3e7ee71551c9beb2a95d2894d7c8bf51877cb236186e"
         },
         "policy": {},
-        "subject": "v1:sha256:d6454014d6870b4e68e82d27758e04ba4d07688822c9edf2f97ace0f80495301"
+        "subject": "v1:sha256:1d1be9eeec45aa62831e991ec9748f11fcb9f84a1e98701989990c068471af7e"
       },
-      "holder": "claude:e6ad/rd1038",
-      "input_fp": "v1:sha256:d4ec58f132603ee399d3ac5d425b3f825552a5f193d0f742512cbd5ecad7e063",
+      "holder": "claude:e6ad/rd1038b",
+      "input_fp": "v1:sha256:a794e216d866d30c9f29cfe6344b2bbc994676350ce22b8c48a28b750313c5f7",
       "ok": false,
       "output": {
         "decision": "changes_requested",
         "report": {
-          "blob": "eb5aef930049c3331bdc1cf22d9f05b2f4a8bc5c",
-          "commit": "c42892b80dc9dc33a83c47cce5d8343ecfe4c5d9",
+          "blob": "e6d729a40eaa3427e6e1233dc3fd4acb9c9d1fae",
+          "commit": "452191ee318b5f877a8bff8fc83ee8433a8253dd",
           "path": ".zzzops/reviews/1038/review_design.md"
         },
-        "summary": "The core mechanism is sound: a merge-tree sync with the old base_commit as merge base, a read-tree conflict checkout, the preserved checkpoint scoped to its frozen paths, a tree-overlay squash, and no fingerprint change on upgrade. Seven findings block approval: §6 does not match G1039 rev 1 §5 (name, signature, a stored scope key, the synced/sync keys, the interdiff form); the own-commit walk P..W includes foreign commits when onto does not descend from the old base; c2's type derivation does not follow the release rules (revert) and counts test commits; R1's premise is wrong; the claim that old engines fail closed is false for base; the resume's git add -A absorbs stray files; and the owner's conventional-commit decision is not yet in the design."
+        "summary": "Round 2: F1-F5 resolved. The section 6 G1039 contract can be adopted as written; the own-commit walk via Zzzops-Old-Base trailers, the release-ranked c2 type, the restated R1 and the merge_sync precondition were all checked against f4eaf74 (G1027 merged). The new date and idempotence rule is sound. Still open: F6, because the resume's git status check compares against HEAD (the tip), so every trunk-side change in T counts as an unlisted path and the resume always re-blocks (verified on Git 2.55); F7, because trunk merge commits from the merge op (PR-title subjects) are outside the conventional scope on a false premise, and under merge.method squash c2's type is lost. New: N1, the documented rollback (removing merge_sync from requires) puts the new and older engines back to rebasing merge-synced branches."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "52f38899ce6deb56e209a274f6daab31522daafe",
-          "commit": "980ef3da8421e7f049c984385cfc28478cacd857"
+          "blob": "6ee2d01e1256782a0812919ad27503a786f891cd",
+          "commit": "060abf63a0632d0bddde85868ff5bf7d735775c9"
         }
       },
       "status": "done"
