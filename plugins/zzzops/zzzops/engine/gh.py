@@ -47,11 +47,11 @@ class Gh:
             e["GH_REPO"] = self.repo
         return e
 
-    def run(self, *args, input=None, check=True) -> str:
+    def run(self, *args, input=None, check=True, timeout=TIMEOUT) -> str:
         start = time.monotonic()
         try:
             p = subprocess.run(["gh", *args], input=input.encode("utf-8") if isinstance(input, str) else input,
-                               capture_output=True, env=self.env(), timeout=TIMEOUT, cwd=self.s.git.primary)
+                               capture_output=True, env=self.env(), timeout=timeout, cwd=self.s.git.primary)
             p.stdout = p.stdout.decode("utf-8", "replace")      # bytes on the pipes: no "\r\n" on Windows
             p.stderr = p.stderr.decode("utf-8", "replace")
         except subprocess.TimeoutExpired:
@@ -67,6 +67,18 @@ class Gh:
     def json(self, *args):
         out = self.run(*args)
         return json.loads(out) if out.strip() else None
+
+
+def head_branch_auto_delete(session) -> bool | None:
+    """Best-effort host setting for validate; an unreadable or absent field is unknown."""
+    gh = Gh(session)
+    if not gh.repo:
+        return None
+    try:
+        value = json.loads(gh.run("api", f"repos/{gh.repo}", "--jq", ".delete_branch_on_merge", timeout=10))
+    except (GhError, ValueError):
+        return None
+    return value if isinstance(value, bool) else None
 
 
 def gh_problems(session) -> list:
