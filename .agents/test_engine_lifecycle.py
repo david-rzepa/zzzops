@@ -260,8 +260,8 @@ class SubmitTests(Journey):
         rc, err = self.A.submit(g, self.n("implement"), c, {"summary": "Built."}, ok=False)
         self.assertEqual(("test_freeze", "tests/test_cut.py"), (err["error"]["code"], err["error"]["details"]["paths"][0]["path"]))
 
-    def test_dispute_with_no_commit_keeps_tests_checkpoint(self):
-        """H26: a reopened test_design that disputes and commits nothing keeps its tests; implement stays current."""
+    def test_dispute_with_no_commit_uses_head_and_keeps_scoped_test_identity(self):
+        """G1038: a no-commit test rerun uses HEAD; unchanged frozen paths keep implement current."""
         g = self.goal()
         self.through_impl(g)
         before = self.show(g)["goal"]["records"][self.n("test_design")]["output"]["tests"]
@@ -269,16 +269,19 @@ class SubmitTests(Journey):
                     [{"target": self.n("test_design"), "text": "add an empty-input test"}])
         c = self.A.start(g, self.n("test_design"))
         fid = c["corrections"][0]["id"]
+        head = self.A.worktree(g).git("rev-parse", "HEAD")
+        self.assertNotIn("suggested_checkpoint", c)
         self.A.submit(g, self.n("test_design"), c, {"commands": ["python -m pytest tests"],
                                                      "responses": {fid: "disputed: covered by test_cut"}})
         doc = self.show(g)
         after = doc["goal"]["records"][self.n("test_design")]["output"]["tests"]
-        self.assertEqual(before["commit"], after["commit"])
+        self.assertEqual(head, after["commit"])
+        self.assertNotEqual(before["commit"], after["commit"])
         self.assertEqual(before["change"], after["change"])
         self.assertEqual("current", doc["states"][self.n("implement")])
 
-    def test_checkpoint_required_after_a_base_move_with_no_commit(self):
-        """H26: after a restack without a commit map, a no-commit re-run must name its checkpoint."""
+    def test_head_checkpoint_after_a_base_move_needs_no_replay_map_or_override(self):
+        """G1038: a restacked no-commit rerun uses HEAD and the moved base without a map."""
         g = self.goal()
         self.through_impl(g)
         moved = self.w.push_dev({"other.txt": "1\n"})
@@ -292,14 +295,14 @@ class SubmitTests(Journey):
         self.A.submit(g, self.n("base"), c, {"base_commit": moved, "stack": [], "branch": f"zzzops/work/g{g}",
                                              "responses": {c["corrections"][0]["id"]: "fixed: restacked"}})
         c = self.A.start(g, self.n("test_design"))
-        rc, err = self.A.submit(g, self.n("test_design"), c, {"commands": ["python -m pytest tests"]}, ok=False)
-        self.assertEqual("checkpoint_required", err["error"]["code"], err)
-        self.assertIn("base commit", err["error"]["hint"])
-        tests_commit = wtd.git("log", "--format=%H", "-1", "--grep", "^test: cut")
-        self.A.submit(g, self.n("test_design"), c, {"commands": ["python -m pytest tests"],
-                                                     "tests": {"commit": tests_commit}})
+        head = wtd.git("rev-parse", "HEAD")
+        self.assertNotIn("suggested_checkpoint", c)
+        self.A.submit(g, self.n("test_design"), c, {"commands": ["python -m pytest tests"]})
         rec = self.show(g)["goal"]["records"][self.n("test_design")]["output"]["tests"]
-        self.assertEqual((tests_commit, moved), (rec["commit"], rec["base"]))
+        self.assertEqual((head, moved), (rec["commit"], rec["base"]))
+        from engine.identity import Identity
+        expected = Identity(fx.engine_git(wtd)).change(moved, head, paths=["tests/test_cut.py"])
+        self.assertEqual(expected, rec["change"])
 
     def test_card_shape_and_size(self):
         g = self.goal()

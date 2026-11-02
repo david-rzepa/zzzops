@@ -20,6 +20,8 @@ class Autopilot:
         self.agents = [fx.Agent(w, "a", "claude:aaaa/w-1"), fx.Agent(w, "b", "codex:bbbb/w-2")]
         self.turn = 0
         self.log = []
+        self.preserved = {nd.get("preserve") for graph in w.workflow["graphs"].values()
+                          for nd in graph["nodes"].values() if nd.get("preserve")}
 
     def agent_for(self, g, card_or_action):
         self.turn += 1
@@ -45,7 +47,8 @@ class Autopilot:
                 if t.startswith("checkpoint"):
                     if card["workspace"]:
                         wtd = fx.GitDir(card["workspace"], self.w.env)
-                        wtd.commit({f"work/{node}.txt": f"{node} {self.turn}\n"}, f"feat: {node}")
+                        kind = "test" if node in self.preserved else "feat"
+                        wtd.commit({f"work/{node}.txt": f"{node} {self.turn}\n"}, f"{kind}: {node}")
                 elif t == "strings":
                     out[k] = ["true"]
                 elif t in ("text", "string"):

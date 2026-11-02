@@ -25,6 +25,7 @@ class Done:
     findings: list = field(default_factory=list)       # [{"key", "input", "text"}]
     ref_updates: list = field(default_factory=list)    # [(ref, expected, new)]
     replayed: dict | None = None                       # {"old", "onto", "map", ...} (§4.21)
+    synced: dict | None = None
     after_push: Callable | None = None
     summary: str = ""
 
@@ -250,7 +251,7 @@ def finish(s, g, X, label, lease, result, spec, ctx, retry=True) -> dict:
             info["outcome"] = "done"
         doc["records"][X] = record
         info["record"] = record
-        if isinstance(result, Done) and result.replayed:
+        if isinstance(result, Done) and (result.replayed or result.synced):
             info["carried"] = carry_forward(sess, graph, doc, X, record, result.replayed, res.live)
         return {g: doc}
 

@@ -14,7 +14,7 @@
 3. Schemas
    - 3.1 `workflow.json` · 3.2 `POLICY.json` · 3.3 Goal document · 3.4 Record · 3.5 Checkpoint and artifact values · 3.6 Finding · 3.7 Blocked record · 3.8 Lease commit · 3.9 Goal commit · 3.10 Submit output file · 3.11 Blocked file · 3.12 Answer files · 3.13 New-goal file · 3.14 Task card (`start` output) · 3.15 `next` output · 3.16 Other verb outputs · 3.17 Error envelope and exit codes
 4. Algorithms
-   - 4.1 Git runner and environment · 4.2 Fetch and snapshot · 4.3 Reading goals and policy · 4.4 Per-goal compare-and-swap write · 4.5 Engine capabilities, floor and schemas · 4.6 (deleted in revision 6) · 4.7 `code_tree`, `change`, artifact commits and the I1/I2 checks · 4.8 Fingerprints · 4.9 Frontier (two passes, `ok` semantics) · 4.10 Portfolio, stuck, budgets and lease guards · 4.11 Ordering and `next` rendering · 4.12 Leases: claim, renew, reclaim, abandon, orphans, capacity · 4.13 Sync rule and goal worktree · 4.14 Submit · 4.15 Answer · 4.16 Preserve (test-freeze) · 4.17 Goal creation and id allocation · 4.18 Edit, reopen and the impact preview · 4.19 Generic close · 4.20 Task card construction · 4.21 Carry-forward across a clean replay
+   - 4.1 Git runner and environment · 4.2 Fetch and snapshot · 4.3 Reading goals and policy · 4.4 Per-goal compare-and-swap write · 4.5 Engine capabilities, floor and schemas · 4.6 (deleted in revision 6) · 4.7 `code_tree`, `change`, artifact commits and the I1/I2 checks · 4.8 Fingerprints · 4.9 Frontier (two passes, `ok` semantics) · 4.10 Portfolio, stuck, budgets and lease guards · 4.11 Ordering and `next` rendering · 4.12 Leases: claim, renew, reclaim, abandon, orphans, capacity · 4.13 Sync rule and goal worktree · 4.14 Submit · 4.15 Answer · 4.16 Preserve (test-freeze) · 4.17 Goal creation and id allocation · 4.18 Edit, reopen and the impact preview · 4.19 Generic close · 4.20 Task card construction · 4.21 Carry-forward across a clean sync
 5. Operations
    - 5.1 Op interface · 5.2 `git.base` (stacked delivery) · 5.3 `checks.run` · 5.4 `git.integrate` · 5.5 `github.merge` · 5.6 The `gh` wrapper
 6. CLI reference
@@ -108,7 +108,7 @@
 | Branch | Holds | Written by | Deleted |
 |---|---|---|---|
 | `zzzops/goal/g<id>` | One file, `goal.json` (§3.3). The branch log is the goal's history. | Every goal write (§4.4), as a child commit of the fetched tip. | Never. The recommended ruleset on `zzzops/goal/**` blocks deletion and force-push. |
-| `zzzops/work/g<id>` | Code commits and `docs(review):` artifact commits. Linear. | Created by the first artifact submit or by `git.base`; advanced by workspace submits and `git.base` (the only rewrite). | Kept by default. Deletable by hand (REPAIR.md recipe) once the goal is closed and no open goal depends on it. |
+| `zzzops/work/g<id>` | Code and `docs(review):` artifact commits; engine sync merges when the policy requires `merge_sync`. | Created by the first artifact submit or `git.base`; submits advance it. Merge-mode `base` is fast-forward only; otherwise `base` retains the legacy rebase path (§5.2). | Kept by default. Deletable by hand (REPAIR.md recipe) once the goal is closed and no open goal depends on it. |
 | `zzzops/pr/g<id>` | The review-free PR head built by `git.integrate`. Dependents may stack on it. | `git.integrate` only. | By GitHub's automatic head-branch deletion after the merge. `github.merge` retargets the PRs based on it to `I` (G1025: to each dependent's own target) once it observes the merge (§5.5); it deletes no branch itself. With `settings.branching`, turning automatic deletion off is recommended (§8.3 item 7), and the branch is then kept until deleted by hand. |
 | `zzzops/stack/g<id>` | One combine commit of the goal's stack set (k ≥ 2), the stack base of the goal's PR. | `git.base` (§5.2). | By `git.base` when k drops below 2 (after its push and its `gh` calls, §5.2), and by the goal's close (§4.19). |
 | `zzzops/lease/g<id>/<node>` | One empty-tree commit per phase in progress (§3.8). | `start`, `renew`, `abandon` (an expired renewal). | `submit`, an op's finishing push, and the goal's close. Orphans are never deleted by the engine (§4.12). |
@@ -126,7 +126,7 @@ Display form of a goal id: `G<id>`. Ref forms: `refs/heads/zzzops/goal/g1002`, `
 | `refs/remotes/<R>/<I>`, `refs/remotes/<R>/zzzops/lease/…`, `…/policy/…`, `…/work/g<id>`, `…/pr/g<id>`, `…/stack/g<id>` | Remote-tracking refs updated by the coordinator fetch. Correctness never reads them; the snapshot is the fetch output. Humans and the repair recipes use them (`origin/zzzops/work/g<id>`). `start` on a `git.base` node also fetches its dependencies' `…/pr/g<dep>` here, in the same fetch (§4.2). |
 | `refs/remotes/<R>/pull/<n>` | A merged PR's head, fetched only to compare code trees (§5.4, §5.5). |
 | `refs/heads/zzzops/work/g<id>` | Local branch checked out in the goal worktree. |
-| `refs/heads/zzzops-tmp/g<id>` | Temporary branch of `git.integrate`; deleted at the end of every run. |
+| `refs/heads/zzzops-tmp/g<id>` | Legacy temporary integrate branch, cleaned if found; the squash uses tree/commit plumbing (§5.4). |
 | `refs/heads/zzzops-salvage/g<id>-<node>-a<attempt>` | Created only by the human or agent following the salvage commands (§4.13). |
 
 Developer clones that do not run ZzzOps may add the negative refspec `git config --add remote.origin.fetch '^refs/heads/zzzops/*'` (Git ≥ 2.29); the engine's explicit refspecs are unaffected.
@@ -342,7 +342,7 @@ There is no `review_path` field: the review path is the constant `.zzzops/review
   "answer"?: {"text": "…", "quote": "…", "decided_by": "…", "decided_at": "…"},   // human answer to a blocked record
   "reviewed"?: {"<output>": {"commit": "<sha>", "base": "<sha>", "tree": "<sha>", "change": "<40 hex>"}},   // review nodes: the subject's checkpoints at review time
   "frozen"?: ["tests/test_cut.py"],     // nodes named by some node's `preserve`: frozen paths (§4.16); never fingerprinted
-  "carried_by"?: "base",                // set when a clean replay rewrote the checkpoints (§4.21)
+  "carried_by"?: "base",                // set when a clean sync carried checkpoints (§4.21)
   "prompt"?: "<blob sha>",              // provenance: prompt blob at start; never fingerprinted
   "finished_at": "2026-11-02T10:35:12Z"
 }
@@ -364,10 +364,12 @@ A done record with `ok == false` must carry at least one open finding; submit re
 {"commit": "<sha>",   // the checkpoint commit on the work branch (a locator, not identity)
  "base":   "<sha>",   // the value of the node's `base` input (the stack base in the default graph)
  "tree":   "<sha>",   // code_tree(commit) (§4.7); compared by id only, recomputed locally when objects are needed
- "change": "<40 hex>"}// change(base, commit) (§4.7)
+ "change": "<40 hex>"}// change(base, commit, paths=checkpoint_scope(...)) (§4.7, §4.16)
 // artifact (filled by the CLI from --artifact)
 {"path": ".zzzops/reviews/<id>/<node>.md", "blob": "<sha>", "commit": "<sha>"}   // commit: the docs(review) commit, or the tip that already held the blob
 ```
+
+The preserved node's checkpoint change is scoped to its `frozen` paths (§4.16); other checkpoint changes remain unscoped. The scope is derived from the node and record, never stored on the checkpoint. The default checkpoint at submit is HEAD, including a phase that commits nothing; an explicit override still needs a full 40-hex ancestor commit. Thus a test fix may follow implementation commits without rewriting the branch. `base`'s extra, undeclared output `synced` is null or `{old, onto, work, tip, merge, resolved}` (§5.2); it is not fingerprinted.
 
 ### 3.6 Finding
 
@@ -405,7 +407,7 @@ A done record with `ok == false` must carry at least one open finding; submit re
 ### 3.7 Blocked record (`records.<node>.blocked`)
 
 ```jsonc
-{"category": "conflict",            // "conflict" | "external" | "decision" | "dependency" | "capability"
+{"category": "conflict",            // "conflict" | "external" | "decision" | "dependency" | "capability" | "policy" | "policy"
  "waiting_for": "agent",            // "agent" | "human" | "time" | "dependency"
  "reason": "one line",              // string
  "instructions"?: "text",           // required when waiting_for is "agent"
@@ -564,11 +566,11 @@ Every text field of an answer file is at most 4,096 bytes (`too_large` otherwise
                   "follows"?: "<id>", "follows_text"?: "…"}],   // the finding it narrows, text clipped to 120 (G1028)
  "previous"?: {"findings": [ /* the reviewer's own previous OPEN findings with the target's responses (and follows) */ ],
                "resolved"?: [{"id", "status", "text"}],   // its resolved and waived ones; they need no status (G1028)
-               "interdiff"?: "git range-diff <old base>..<old commit> <new base>..<new commit>",
+               "interdiff"?: "<same-base diff, merge-mode first-parent log or legacy range-diff; §4.20>",
+               "syncs"?: ["git show --remerge-diff <sync commit>"],
                "changed"?: "git diff <old blob> <new blob>",   // an artifact subject changed since the last review (G1000)
                "output"?: { /* stale_because == ["def"]: the previous output */ },
                "hint"?: "If it still holds, resubmit it."},
- "suggested_checkpoint"?: {"tests": "<sha>"},            // after a base move: from base's replay map (§4.20); the default checkpoint (§4.14)
  "answer"?: {"text": "…", "quote": "…", "decided_by": "…"},   // the node's record is blocked and answered (any reason, G1026)
  "human_decisions"?: [{"node", "kind", "question", "text", "quote", "decided_by", "decided_at", "commit"}] | <blob view> | "unavailable",
                                                          // G1026: answered blocked questions (§3.9) of the node itself, or on a
@@ -578,7 +580,7 @@ Every text field of an answer file is at most 4,096 bytes (`too_large` otherwise
  "read_dev": {"commit": "<I tip>", "show": "git show <I tip>:<path>", "grep": "git grep <pattern> <I tip>",
               "mirror": "/abs/.git/zzzops/coordinator"},
  "workspace": "/abs/.zzzops/worktrees/g1002" | null,
- "output_schema": {"code": "checkpoint (optional): omit the key to default to the suggested checkpoint, else your work branch's HEAD (no new commit keeps the previous one). Override: {\"commit\": \"<full 40-hex sha>\"}, no refs or short shas. A restack may require one.",
+ "output_schema": {"code": "checkpoint (optional): omit the key to default to your work branch's HEAD, including a phase that adds no commit. Override: {\"commit\": \"<full 40-hex sha>\"}, no refs or short shas.",
                    "responses": "required for: run_tests:failed"},
  "artifact"?: {"output": "doc", "path": ".zzzops/reviews/1002/design.md"},
  "commands": {"submit":  {"argv": ["submit", "1002", "implement", "--attempt", "2", "--as", "claude:0a02/implement-1", "--output", "<F>"], "command": "$Z submit … --repo /abs/primary"},
@@ -593,7 +595,7 @@ Every text field of an answer file is at most 4,096 bytes (`too_large` otherwise
 
 Cards gain `target: {"branch", "kind": "integration"|"release"|"hotfix", "commit"}` and their `read_dev` names the target tip; `show` prints `, target <branch>` in its header (G1025, branching only).
 
-A **value view** is the value itself when its canonical form is at most 600 bytes; otherwise `{"summary": "<first 200 chars>", "blob": "<sha>", "read": "git cat-file -p <sha>"}` (§4.20). Artifact values are always shown as `{"path", "blob", "summary"?, "read"}`; checkpoint values as `{"commit", "base", "tree", "change", "diff": "git diff <base> <commit> -- ':/' ':(top,exclude).zzzops/reviews'"}`. A sub-field selector `.change` or `.tree` shows the same view, `{"commit", "base", "change", "diff"}`, plus `tree` only for `.tree` (G1018). `deps.` values are maps of views. The top-level `renew` sentence of revision 6.3 is replaced by `commands.renew.when` (G1016). Every command's `argv` and `command` end with `--repo <primary worktree>` (§1.6, G1028).
+A **value view** is the value itself when its canonical form is at most 600 bytes; otherwise `{"summary": "<first 200 chars>", "blob": "<sha>", "read": "git cat-file -p <sha>"}` (§4.20). Artifact values are always shown as `{"path", "blob", "summary"?, "read"}`; checkpoint values as `{"commit", "base", "tree", "change", "diff": "<scoped git diff command per §4.20>"}`. A sub-field selector `.change` or `.tree` shows the same view, `{"commit", "base", "change", "diff"}`, plus `tree` only for `.tree` (G1018). `deps.` values are maps of views. The top-level `renew` sentence of revision 6.3 is replaced by `commands.renew.when` (G1016). Every command's `argv` and `command` end with `--repo <primary worktree>` (§1.6, G1028).
 
 **Measured context (G1043).** Generic object outputs can carry observed test cost (integer milliseconds, command/exit/checkpoint and measured scope) into review cards as context. They use the ordinary view/blob/shrink rules; no universal test-writer node name or duration schema is imposed by the engine. A failing red measurement is not green test evidence. Shipped graph/prompt adoption is configuration, described in DESIGN §4.1.
 
@@ -641,7 +643,7 @@ A **value view** is the value itself when its canonical form is at most 600 byte
  "pr"?: {"number": 1187, "url": "https://github.com/o/r/pull/1187"},   // display only (§4.11)
  "stack"?: "stacked on G1001 (PR #1180, not merged yet)",
  "facts"?: "review_tests: 1 review; review_impl: 3 reviews; waived: review_impl:2:1; disputed: none; CI: not run yet",
- "previous"?: {"decided_at": "iso", "quote": "…", "stale_because": ["inputs.code"], "interdiff"?: "git range-diff <old base>..<old commit> <new base>..<new commit>"},
+ "previous"?: {"decided_at": "iso", "quote": "…", "stale_because": ["inputs.code"], "interdiff"?: "<command per §4.20>", "syncs"?: ["git show --remerge-diff <M>"]},
  "human_decisions"?: [{"node", "kind", "question", "text", "quote", "decided_by", "decided_at", "commit"}] | "unavailable",
                                                   // approve items (G1026): answered blocked questions (§3.9) on every node
                                                   // that is not a descendant of this one, in commit order, text clipped to 300
@@ -693,7 +695,7 @@ With `--all`, the output also carries `"goals": [{"id", "title", "state", "stage
 | Exit | Meaning | Codes |
 |---|---|---|
 | 0 | Success | — |
-| 1 | Refused: validation or precondition | `usage`, `validation`, `not_found`, `not_ready`, `independence`, `workspace_busy`, `capacity`, `budget_exceeded`, `crash_loop`, `mass_expiry`, `goal_held`, `goal_closed`, `lease_held`, `dirty_worktree`, `sync_refused`, `test_freeze`, `checkpoint_required`, `goal_changed`, `fp_mismatch`, `goal_rewritten`, `goal_deleted`, `too_large`, `wrong_integration_branch`, `engine_too_old`, `engine_bug`, `op_error`, `environment`, `conflict` (G1025: a line branch exists and cannot be adopted) |
+| 1 | Refused: validation or precondition | `usage`, `validation`, `not_found`, `not_ready`, `independence`, `workspace_busy`, `capacity`, `budget_exceeded`, `crash_loop`, `mass_expiry`, `goal_held`, `goal_closed`, `lease_held`, `dirty_worktree`, `sync_refused`, `test_freeze`, `commit_subject`, `test_commit_type`, `checkpoint_required` (retained compatibility code; no longer emitted for checkpoint suggestions), `goal_changed`, `fp_mismatch`, `goal_rewritten`, `goal_deleted`, `too_large`, `wrong_integration_branch`, `engine_too_old`, `engine_bug`, `op_error`, `environment`, `conflict` (G1025: a line branch exists and cannot be adopted) |
 | 2 | Remote or Git unavailable, or the remote refused the push | `remote`, `push_refused` |
 | 3 | Lost a race | `claim_lost`, `superseded`, `contention` |
 | 4 | Policy blocked | `policy_branch`, `policy_invalid`, `not_bootstrapped`, `legacy_policy` (a pre-reset `.zzzops/POLICY.json`; G1015) |
@@ -818,6 +820,8 @@ def write_goals(verb, ids, mutate, extra=None, retry=True):
 ### 4.5 Engine capabilities, floor and schemas
 - **Capabilities.** The engine declares a set of capability names, one file each under `engine/capabilities/<name>.txt` (one paragraph: the format or behaviour it guards and the goal that added it). A capability is never removed. Shipped: `lens_findings` (G1000: finding keys `impact` and `material`, filters and their verdicts, notes, skippable review nodes) `finding_follows` (G1028: the finding key `follows`) and `lenses` (G1022: the node field `lenses`, skip keys `<node>:<lens>` and the finding key `lens`) and `release_lines` (G1025: `settings.branching`, the `release` graph's line ops and node fields `schedule` and `line_complete`, goal schema 2 and the `target` fingerprint part).
 - **`test_cost` (G1043).** Optional boolean `verification.parallel_commands` is permitted only with this capability, including an explicit false value; `checks.run` nodes then declare `verification.commands` and `verification` policy dependencies. Integer timing/baseline observations are additive fields in generic result objects. `FP_VERSION` and the checks.run op version do not change; measured-review wiring remains shipped configuration.
+
+- **`merge_sync` (G1038).** Merge syncs in work history, scoped preserved checkpoint changes, and the extra `synced` base output. `base` merges only while the policy requires it; absent it, legacy rebase behavior remains. Removing `merge_sync` is unsupported while any open goal has sync merges: the new engine blocks `base` before any rebase or push, and older engines cannot preserve that history. Merge/cancel those goals before rollback (§5.2, §8.4).
 - **Build id** is `<plugin version> <package revision, 12 hex>` (`package_provenance()`), or `unknown` when it cannot be read. It is the `Engine:` trailer (§3.9) and `zzzops --version`; `validate` shows `engine: {build, capabilities}`. It identifies one build, so a bad build's writes can be found (§8.4).
 - **Floor first.** Before strict validation, POLICY.json is parsed as plain JSON and only `schema_version`, `settings.engine.requires` and `settings.engine.min` are read. The required set is `requires` plus the capabilities of the deprecated `min` (`LEGACY_VERSIONS`: `1.0.0` → none, `1.1.0` → `lens_findings`, `1.2.0` → `lens_findings` and `finding_follows`, `1.3.0` → `lens_findings`, `finding_follows` and `lenses`; a version maps to the highest entry not above it; a version above every entry requires `engine_min_<min>`, which no engine has, and the message says to replace it with `requires`). If a required capability is missing, or `schema_version` is newer than the engine supports, the engine reports only `engine_too_old` ("upgrade the plugin"), with `missing` (sorted) on the blocker and in the error `details`, never `policy_invalid`. Writes are refused (exit 1); reads still work, and `next` shows the blocker. `validate` warns `engine_min_deprecated` while `min` is present.
 - **`engine_version_check()`** applies the floor before every write. There is no ceiling: an engine never refuses a policy for requiring too little.
@@ -827,7 +831,7 @@ def write_goals(verb, ids, mutate, extra=None, retry=True):
 - **`follows` (G1028, capability `finding_follows`).** The finding key `follows` (§3.6) is read only by engines with `finding_follows`, so `submit` writes it only while the policy's required set contains `finding_follows`; the policy branch that adds it to `settings.engine.requires` comes first.
 - **Goal schemas.** An engine reads every goal schema it has shipped. Known schemas today: `{1, 2}`. Schema 2 (G1025, capability `release_lines`) adds only the optional `flow` (§3.3), so a write picks the schema from the document instead of always writing the newest: schema 2 for a document with `flow`, schema 1 otherwise (clearing `flow` writes schema 1). `flow` is set only while the policy has `settings.branching`, which requires `release_lines`; so an older engine sees as *newer* only line goals and hotfix members, and every other goal is unaffected. A goal whose schema is newer than the engine knows is *newer*: writes to it are refused with `engine_too_old`, and its dependents show `waiting: engine upgrade`, never a stuck item.
 - **Fingerprint versions** (§4.8): a record's fingerprint is compared only in the version it carries. An engine computes only its own version, so a record in another version is stale. A version is bumped only when the old one is unsafe (it missed changes), always together with a new capability; the cost is that every open goal re-runs its nodes. There is no multi-version support.
-- **Upgrade and rollback** are REPAIR.md recipes (§8.4).
+- **Upgrade and rollback** are REPAIR.md recipes (§8.4). Removing `merge_sync` is unsupported while open goals have sync merges; merge/cancel those goals first.
 - **Tests, not self-tests.** The identity fixtures (blobs, the `B`/`C` commit pair with review files at `.zzzops/reviews/` and a top-level `reviews` directory path, a gitlink entry, a binary change, a mode-only change and a blank context line) are ordinary unit tests in CI, which pin `code_tree`, `change` and `input_fp` values. CI also runs them under a hostile global configuration (`diff.suppressBlankEmpty=true`, `diff.submodule=log`, a `core.attributesFile` marking files `-diff`) and expects identical values. The engine runs no self-test.
 
 ### 4.6 (Deleted in revision 6)
@@ -861,8 +865,10 @@ DIFF = ["--binary", "--full-index", "--no-color", "--no-ext-diff", "--no-textcon
 CFG  = ["-c", "diff.noprefix=false", "-c", "diff.mnemonicPrefix=false", "-c", "core.quotePath=true",
         "-c", "core.attributesFile=", "-c", "diff.suppressBlankEmpty=false"]
 ID_ENV = {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_ATTR_NOSYSTEM": "1"}   # §4.1
-def change(base, commit):                                 # runs with ID_ENV
-  d = git *CFG --attr-source=<commit> diff *DIFF <base> <commit> -- ':/' ':(top,exclude).zzzops/reviews'
+def change(base, commit, paths=None):                     # runs with ID_ENV
+  if paths == []: return ZERO
+  scope = [':/', ':(top,exclude).zzzops/reviews'] if paths is None else [f':(top,literal){p}' for p in paths]
+  d = git *CFG --attr-source=<commit> diff *DIFF <base> <commit> -- *scope
   if d.rc != 0: raise EngineError(f"git diff failed: {d.stderr first line}")    # never ZERO on failure
   out = git patch-id --verbatim   (stdin = d.stdout)
   if out.rc != 0: raise EngineError(...)
@@ -872,20 +878,23 @@ def change(base, commit):                                 # runs with ID_ENV
 - `--submodule=short --ignore-submodules=none` keep a gitlink change visible whatever `diff.submodule` or `diff.ignoreSubmodules` say.
 - `$GIT_DIR/info/attributes` cannot be disabled; `validate` warns when it exists.
 - `change` is stable when review commits are dropped, when the PR branch is rebuilt, and across a clean rebase. It changes when a rebase alters the diff (conflict resolution).
-- **Per-commit patch ids** (used by the sync rule, the suggested checkpoint and the carry-forward) use the same flags and environment: `git *CFG log -p --no-merges *DIFF <range> | git patch-id --verbatim` prints `<patch-id> <commit>` per commit; `patch_ids(range)` is that list in `--reverse --topo-order` order.
+- **Per-commit patch ids** (used by the local sync rule and legacy rebase carry-forward) use the same flags and environment: `git *CFG log -p --no-merges *DIFF <range> | git patch-id --verbatim` prints `<patch-id> <commit>` per commit; `patch_ids(range)` is that list in `--reverse --topo-order` order.
 
 ```text
 def is_review(c):
   subject(c) starts with "docs(review): " and
   every path of `git diff-tree -r --no-commit-id --no-renames --name-only -z --root <c>` starts with ".zzzops/reviews/"
 def check_i1_i2(a, b):                                    # commits in a..b (a None: all ancestors of b)
-  for c in git rev-list --reverse --topo-order <a>..<b>:
-    if len(parents(c)) > 1: error("merge commit <c>: work branches are linear")
+  for c in git rev-list --reverse --first-parent <a>..<b>:
+    if len(parents(c)) > 1:
+      require exactly two parents, subject starts 'chore(sync): ',
+              and review_subtree(c) == review_subtree(first_parent(c))
+      continue                                               # do not walk the target's second-parent history
     paths = changed paths of c (as above)
     if subject(c) starts with "docs(review): " and any(not p.startswith(".zzzops/reviews/") for p in paths): error("I1 violated by <c>")
     if not subject(c).startswith("docs(review): ") and any(p.startswith(".zzzops/reviews/") for p in paths): error("I2 violated by <c>")
 ```
-The range `a..b` never includes the stack base's own commits (dependency code, combine commits), because the stack base is always `a`.
+The first-parent range excludes the target's second-parent history. Agents may not submit their own merge commits; only `base` creates work-branch merges (§4.14). The `Zzzops-Old-Base:` trailer records the explicit base used by a sync (§5.2).
 
 ```text
 def put(tree, parts, blob):                               # add or replace a file, creating subtrees
@@ -1238,7 +1247,7 @@ def next(scope_goals=None, all=False):
 - **Human items** (full form; the compact form of §3.15 keeps `goal`, `node`, `kind`, `question`, `since` and an `expand` command `next --goal <g>`):
   - `approve`: `question` = the first non-empty line of the node's prompt file with a leading `#` and spaces removed, and with `{id}`, `{title}` and `{<input name>}` (any input whose value is a string or integer) substituted. `context` = a view (≤ 400 characters) of every input, context inputs included, labeled by selector. Checkpoint-valued inputs (whole checkpoints, `.change` and `.tree`) render as `{"diffstat", "diff"}` (`git diff --stat` and the checkpoint `diff` command of §3.14), never as a bare hash; artifact views carry a web URL on the work branch when the remote is GitHub (`https://<host>/<owner>/<repo>/blob/<commit>/<path>`, derived from the remote URL, no API call). `options` = approve, request changes (the human's words become the correction), cancel the goal. `facts` = one line computed from the goal's records: per agent review node its record's attempt ("3 reviews"), waived and disputed findings by id, `follows: <new> ← <old>, …` when any finding follows another (G1028), and the CI result from any `git.integrate` record (`passed`, `failed: …`, `stacked`, or `not run yet`). `fp` = the node's current input fingerprint; `answer_template` = §3.12 human review shape.
   - `approve` also shows, for display only and never as an input: `pr` = `{number, url}` from the latest record of any `git.integrate` node of the goal that has an `output.pr`; and `stack` = "stacked on G1001 (PR #n, not merged yet)" from the `stack` output of the goal's `git.base` node when it is non-empty.
-  - `previous` (any human item on a node with a previous done human record): `{decided_at, quote, stale_because, interdiff?}`; `interdiff` per §4.20: omitted when the subject checkpoint's `change` equals the recorded `reviewed[k].change`; otherwise `git range-diff <reviewed base>..<reviewed commit> <current base>..<current commit>` when the old commit exists locally.
+  - `previous` (any human item on a node with a previous done human record): `{decided_at, quote, stale_because, interdiff?}`; `interdiff` and merge-resolution `syncs` follow §4.20: scoped same-base diff, first-parent merge-mode log with separate remerge-diffs, or legacy range-diff; omitted/unavailable as specified there.
   - `blocked`: `question`, `options` (with `commands` rendered) and `recommendation` from the blocked record; `fp` = the record's `input_fp`; `answer_template` = §3.12 blocked shape.
   - `dispute`: `question` = "`<carrier>` and `<target>` disagree on <id>: '<text>'. `<target>` answered: '<response>'. Uphold the finding (the target must fix it) or waive it?"; `fp` = the carrier record's `input_fp`; the command is `answer <g> <carrier> --fp <fp> --file <F>`; `answer_template` = §3.12 dispute shape. When the carrier is an op, the options are uphold (the answer file), `reopen <g> <carrier> --note "<why>"` (re-observe, for example a flaky check, §4.18), skip the op (`edit`, `{"set": {"skip.<carrier>": "<reason>"}}`; omitted when the op is terminal, §3.3 rule 3) or cancel; never waive, because waiving cannot make a check pass.
   - `crash_loop`, `budget`, `stuck`, `close`: as in §4.10; no `fp` (they are answered with `start`, `edit` or `reopen`).
@@ -1331,6 +1340,7 @@ def sync(g, mode):                          # mode "clean" (submit, ops) or "dir
                                   "remote_only": [{commit, subject, author}], "merge_base": …},
          hint=salvage(g, X, attempt))
 ```
+- This local worktree reconciliation is distinct from target sync (§5.2): merge-mode base records target movement with a forward-only sync merge; local rebasing over remote-only review commits reconciles unpushed agent work, not target history.
 - Rows are evaluated in order. `patch_id` is the per-commit `git patch-id --verbatim` of §4.7, so a whitespace-only difference (semantic in Python) is never treated as equivalent.
 - "ahead" means the caller adds `(refs/heads/zzzops/work/g<g>, snap.work or "", <local tip>)` to its own atomic push.
 - **Salvage commands** in the `sync_refused` hint (and in `REPAIR.md`), with `<node>` and `<attempt>` from the invocation:
@@ -1366,13 +1376,15 @@ def submit(g, X, N, label, output=None, artifact=None, blocked=None):
     if sync(g, "clean") == "ahead": new_tip = local tip
     check_i1_i2(snap.work or snap.integration, HEAD)
     for k in checkpoint outputs of node:                               # exactly one (§3.1 rule 8)
-      c = out.get(k, {}).get("commit") or suggested_checkpoint(X, k, r0, L) or HEAD   # §4.20, computed here from r0 and L (None unless usable)
-      # suggested_checkpoint raises checkpoint_required when the phase committed nothing and r0's checkpoint cannot be followed (§4.20)
+      c = out.get(k, {}).get("commit") or HEAD       # no suggested-checkpoint/map lookup, including no-commit reruns
       require c == HEAD or is_ancestor(c, HEAD)
       base = vals_rec["base"]
-      out[k] = {"commit": c, "base": base, "tree": code_tree(c), "change": change(base, c)}
+      record_with_frozen = dict(r0 or {})
+      if X is named by some node's preserve:
+        frozen = frozen_paths(X, r0, L, {commit: c}); record_with_frozen["frozen"] = frozen
+      scope = checkpoint_scope(graph, X, record_with_frozen)       # §4.16; frozen is computed first
+      out[k] = {"commit": c, "base": base, "tree": code_tree(c), "change": change(base, c, paths=scope)}
     if node.preserve: preserve_check(X, out[k])                       # §4.16
-  if X is named by some node's preserve: frozen = frozen_paths(X, r0, L, out[k])   # §4.16
   if node has an artifact output A (declared, or the implicit report of an agent review):
     require artifact file (agent reviews: required; others: required iff A is declared)
     new_tip, out[A] = artifact_commit(new_tip, g, X, bytes(artifact))  # on the local tip (workspace) or the fetched tip
@@ -1388,6 +1400,7 @@ def submit(g, X, N, label, output=None, artifact=None, blocked=None):
   print {recorded, pushed, closed?, next: next(scope=[g])}            # lease re-checked (superseded), sync redone,
                                                                      # artifact commit rebuilt on the new tip
 ```
+- **Agent commit checks (G1038).** Check new commits in `remote W..head` in this order: agent merges are refused with `validation` (only base makes merge commits); a non-conventional subject gives `commit_subject`; a preserved node's non-`test` commit gives `test_commit_type`; a preserving node's commit touching frozen paths gives `test_freeze`, even if another commit restores the final tree. Old commits already on W are not rechecked. The conventional grammar is `^(feat|fix|perf|revert|docs|style|chore|refactor|test|build|ci)(\([^()\r\n]+\))?!?: \S`. Refusals name the commit and subject/paths; reword only unpushed commits, or raise a finding on the preserved node. `test(scope):` and `test!:` are valid tests subjects. Work, stack and PR commits use this grammar; goal/lease record subjects keep their machine format because consumers parse them and they never reach trunk.
 - **Superseded is fenced by the push itself:** a reclaim between this fetch and the push changes the lease tip, so the atomic push is rejected and the retry sees a different `Attempt`.
 - **Lost responses** are recognized only for the same holder (`r0.holder == label`). A different holder that finds the lease gone is told `superseded`, never `applied`.
 - **`submit_blocked`**: validate §3.11; `rec = {"status": "blocked", "ok": false, "attempt": N, "holder": L.holder, "reason": L.reason, "correction_runs": <as above>, "input_fp": L.input_fp, "fp_parts": L.fp_parts, "output": null, "findings": [], "blocked": {category, waiting_for, reason, instructions?, question?, options?, recommendation?, "repeats": r}, "prompt": L.prompt, "finished_at": …}`, where `r = r0.blocked.repeats + 1` if `r0` is blocked with the same `waiting_for` and, unless that is `agent`, the same `reason`; else 1. For agent waits the reason is the agent's own wording, so it is ignored (§4.9 repeat cap). Workspace nodes run `sync(g, "dirty_ok")` and push committed local work if "ahead" (no checkpoint is recorded). Same push as a normal submit. With `blocked_findings` required, an agent stores `last_output = r0.output` when the replaced record is done, else copies `r0.last_output`, omitting the key when there is no prior output. Other node kinds never store it (G1040).
@@ -1509,7 +1522,9 @@ def preserve_check(X, new_cp):
                           "findings: [{\"target\": \"<P>\", \"text\": \"…\"}] to your output."})
 ```
 - The frozen set holds only the paths the preserved node's own phases committed: the previous set plus the commits this phase added (`Work..checkpoint`). A tests fix made after `implement` has committed sits on top of `implement`'s commits, but only its own paths are added, so `implement` can still fix its own files.
-- Both diffs are O(changed paths). `frozen` is carried unchanged by a clean replay (§4.21).
+- `checkpoint_scope(graph, node, record)` returns `sorted(record["frozen"])` for a node named by a `preserve`, when the record has `frozen`, else None. Submit, carry and views use that same derived scope. `change(..., paths=[])` is ZERO; None keeps the unscoped diff. Literal pathspecs preserve filenames containing Git pathspec syntax.
+- The final-tree check above remains, and every new commit by a preserving node is also checked against frozen paths (§4.14); modifying and reverting a frozen test is still refused.
+- Both diffs are O(changed paths). `frozen` is carried unchanged by a clean sync (§4.21). A no-commit test_design rerun at HEAD keeps its scoped change when those paths did not change, even if HEAD includes implementation commits.
 
 ### 4.17 Goal creation and id allocation
 
@@ -1628,14 +1643,10 @@ def view(v, label):
 - **Timing observations (G1043):** measured cost objects remain ordinary context values and can be blobbed whole without changing fingerprints. The configured checks result in a full human item's context gets a concise total/repository timing and independently qualified baseline summary; retain a blob/read pointer to the full evidence when summarized. Recognize it through its declared input/producer, never a default node id. Missing/legacy evidence and lookup limits are displayed truthfully (§5.3).
 - **Commands to run:** for workspace nodes, every input (context included) of type `strings` is listed under `commands_to_run` with the note "Run these in the workspace before you submit."
 - **Corrections:** every live finding targeting the node (every ready or reclaimable state carries them), with `from` = carrier, `rounds`, `upheld`.
-- **Previous (review nodes re-running):** the node's previous findings with the target's responses. The interdiff compares the reviewed version of each subject checkpoint `k` with the current one:
-  - omitted when the current `change` equals `reviewed[k].change` (the goal's own diff is identical, for example after a clean restack);
-  - otherwise, when the old commit exists locally (`git cat-file -e`), `interdiff` = `git range-diff <reviewed[k].base>..<reviewed[k].commit> <current base>..<current commit>`, which shows only the goal's own changes, not the movement of the stack base;
-  - otherwise it is omitted with the note "previous version not available; review in full".
+- **Checkpoint views:** a preserved node's tests view includes only frozen paths F. A preserving node's implementation view excludes F as well as review files; this does not exclude F from the stored code.change, so approvals still bind the delivered tests. Up to 12 paths are inline; a larger set is stored in a readable blob and commands read that list into literal pathspecs. `git diff` has no `--pathspec-from-file` option.
+- **Previous (review nodes re-running):** previous findings with target responses, plus the reviewed/current checkpoint interdiff. Same base: `git diff <old.commit> <new.commit> -- <view paths>`. Moved base in merge mode: `git log -p --first-parent --no-merges <old.commit>..<new.commit> -- <view paths>` for the goal's new commits. Moved base in legacy rebase mode: `git range-diff <old.base>..<old.commit> <new.base>..<new.commit>`. An identical change omits interdiff; a missing old object says to review in full. In merge mode `previous.syncs` separately lists `git show --remerge-diff <M>` for each sync on that first-parent path, oldest first, so conflict resolutions remain visible even though range-diff skips merges. The same truthful interdiff rule is used on approval items.
 - **Previous (definition change):** when `stale_because == ["def"]`, `previous.output` is the previous output and `previous.hint` says "If it still holds, resubmit it." An identical artifact blob makes no new commit (§4.7), so consumers stay current.
-- **Suggested checkpoint:** for a workspace node that is `stale` with `inputs.base` among `stale_because`: its previous checkpoint commit `c` looked up in the `replay_map` output of the node's `base` producer, and otherwise in its `replay_pos` output (§5.2), which `git.base` records for clean and hand-resolved replays alike; omitted if `c` is in neither (there is no patch-id search and no subject-line fallback). `replay_pos` pairs by position the commits whose patch ids changed, so after a conflict in the node's own commits the suggestion is the hand-rebased commit at its checkpoint's position: for `test_design`, its own checkpoint below `implement`'s rebased commits, not HEAD (`x2:M5`, `m4:F5`). It is shown, and is the default checkpoint at submit (§4.14), only when it contains the current checkpoint commit of every checkpoint producer the node consumes (`is_ancestor(<producer's checkpoint commit>, suggestion)`; for `implement`, `test_design.tests.commit`). Otherwise the default is HEAD: a tests fix committed after the restack is then never left out.
-  - **Computed at submit** (§4.14) from `stale_keys(r0.fp_parts, L.fp_parts)`, the record's and the lease's parts, never from the card or the claim-time state, so a reclaimed phase (whose `reclaimable` state carries no `stale_because`) keeps it (`m5:N5`).
-  - **A phase that committed nothing.** When `<L's Work trailer>..HEAD` holds no commit other than `docs(review):` commits and the node has a previous record `r0`, the suggestion is `r0`'s checkpoint commit `c`, followed through the `base` producer's `replay_map`, else `replay_pos`, when the node's `base` input differs from `r0`'s, whatever `stale_because` holds: a dispute, a `fixed:` answer without a change, or a re-run stale on a document or on `def`. The containment rule above applies; when it fails, the default is HEAD, which then holds the producer's newer checkpoint. When `base` moved and `c` is in neither map, `submit` refuses with `checkpoint_required` ("this phase added no commit; name the checkpoint: `{"<key>": {"commit": "<full 40-hex sha>"}}`, your rebased checkpoint commit, or the `base` commit when the rebase dropped your commits as already applied") instead of defaulting to HEAD, which would hold a later node's code (`m5:N1`).
+- **Checkpoint default:** HEAD; there is no `suggested_checkpoint` field or map-following refusal. Explicit ancestor overrides retain the full-sha rule (§4.14).
 - **Routine re-records:** when the record's own staleness is exactly `["inputs.base"]` and the node has no live corrections, `run.capability` is `"routine"` (advisory); otherwise it is the node's own capability, including a plain start of a reopened node after `base` moved (G1016). With carry-forward (§4.21) this is rare.
 - **Stale explanation (G1016):** `stale_because` is shown on every started card, reclaim cards included (the union of the lease's and the record's staleness), and `changed` gives one local, never-fetching pointer per stale key that has one: a goal-field input gets a `goal.json` diff since the record, an artifact input a blob diff.
 - **Output schema text (G1016):** says what a finding does ("it reopens that ancestor; this phase re-runs if that ancestor's output changes"), that checkpoint keys are optional (omit the key to take the default), and how an artifact is passed (`--artifact`, `artifact.path` content).
@@ -1653,44 +1664,27 @@ def view(v, label):
 - **`lenses`** (multi-lens reviewers, G1022): `apply`, the node's declared lenses less the goal's `<node>:<lens>` skips, in order; `skipped`, the removed lenses with their reasons; and `text`, the applied lenses' prompt files concatenated in order (`{"text"}` up to 600 bytes, otherwise a blob view, as for `prompt`). `apply` and `skipped` are always inline. The `output_schema.findings` hint names `"lens"` with every declared lens.
 - **`previous.changed`:** for a changed artifact subject, `git diff <old blob> <new blob>`, built only from validated 40-hex ids. If the old blob is missing after one fetch of the work branch, or `reviewed` is absent (records from before 1.1), the card says "previous version not available; review in full". Checkpoint subjects keep `interdiff`.
 
-### 4.21 Carry-forward across a clean replay
-With stacked delivery, restacks are frequent. A replay that changes no diff of a node's commits carries that node's checkpoints to the rebased commits instead of re-running it. The decision is made per node.
+### 4.21 Carry-forward across a clean sync
+
+Carry is decided per workspace agent node that consumes the base op X and has a done record with checkpoint outputs on the old base. It is generic over nodes; no node names are special.
+
+**Merge mode:** `Done.synced` and the base record's extra output `synced` have `{old, onto, work, tip, merge, resolved}` (§5.2). For every checkpoint key:
 
 ```text
-def selector_node(s): sel = parse(s["from"]); return sel.node if sel.kind == "node" else None   # the producer an input names
-def select(output, s): sel = parse(s["from"]); return get_path(output, [sel.output] + sel.path)   # the value it takes from it
-
-def carry_forward(g, X, new_output, replayed, doc, live):   # X: the op node that replayed; inside X's finishing write
-  if replayed is None: return {}                      # nothing was replayed
-  old, M = replayed["old"], replayed["map"]          # M: {old commit: rebased commit}, only pairs with identical patch ids
-  open_ids = {f.id for r in doc.records.values() for f in r.findings if f.status == "open"}
-  carried = {}
-  for n in topo:
-    node = N[n]
-    if node.kind != "agent" or not node.workspace: continue
-    via = [k for k, s in node.inputs.items() if not s.get("context") and selector_node(s) == X]   # inputs that consume X
-    cps = [k for k, t in node.outputs.items() if t == "checkpoint"]
-    r = doc.records.get(n)
-    if not via or not cps or not r or r.status != "done": continue
-    if any(r.output[k]["base"] != old for k in cps): continue
-    if any(c not in M for k in cps for c in rev_list(f"{old}..{r.output[k]['commit']}")): continue
-                                                      # the checkpoint and every goal commit below it map exactly
-    o = dict(r.output); parts = deepcopy(r.fp_parts)
-    for k in via: parts["inputs"][k] = fp_selected(select(new_output, node.inputs[k]), node.inputs[k])
-    for k in cps:
-      c2, b2 = M[r.output[k]["commit"]], select(new_output, node.inputs["base"])
-      o[k] = {"commit": c2, "base": b2, "tree": code_tree(c2), "change": change(b2, c2)}
-    if not live[n] and o.get("responses"):            # drop responses whose findings are gone
-      o["responses"] = {i: v for i, v in o["responses"].items() if i in open_ids} or None
-      if o["responses"] is None: del o["responses"]
-    carried[n] = r | {"output": o, "fp_parts": parts, "input_fp": input_fp(parts), "carried_by": X}
-  return carried
+scope = checkpoint_scope(graph, n, r)               # frozen paths of preserved node, else None
+c2 = relocate(old_cp, synced, git)                  # synced.tip only if old_cp.commit is synced.work or its ancestor
+if c2 is None: do not carry this node
+new_cp = {commit: c2, base: synced.onto, tree: code_tree(c2), change: old_cp.change}
+carry iff unchanged(ident, n, k, old_cp, new_cp, scope) for every checkpoint key
 ```
-- **The map.** `git.base` records the old → new commit map of its own replay in its record (`output.replay_map`, §5.2): commits are paired by position, and only pairs with identical verbatim patch ids are kept. That also holds after a hand-resolved conflict, where the map pairs `op_state.old..W` (the conflict's old commits, then any review commits re-applied since, §5.2) with `onto..H`. A commit changed by a conflict resolution, or shifted by a dropped or emptied commit, is not in the map. Carry-forward reads `replay_map` only, never `replay_pos`.
-- **When a node is carried.** For every workspace agent node that consumes `X` and outputs checkpoints, with a done record whose checkpoints sit on the old base, when each checkpoint commit and every goal commit below it (`old..<checkpoint>`) is in the map. So after a conflict in `implement`'s commits, `test_design`, whose commits lie below the conflict, is still carried, and `implement` re-runs. A node that does not qualify re-runs as before.
-- **What is written.** The mapped `{commit, base, tree, change}`, and a recomputed `input_fp` in which only the parts of the inputs that consume `X` are replaced. `responses` whose finding id is no longer open on any record of the goal (resolved, waived, or no longer raised by its carrier) are dropped, so an old `fixed:` does not make a later failure of the same check a recurrence; when the node has live findings, its responses are kept unchanged, because dropping them would change its `out_fp` and end those findings. Everything else (other outputs, `commands`, findings, `attempt`, `holder`, `correction_runs`, `finished_at`, `frozen`) is unchanged, and the record gains `carried_by: "<X>"`. It is written in `X`'s own atomic push (§5.1); the goal commit's outcome lists the carried nodes.
-- **Effect.** If nothing else changed, the carried node is current, so change-bound consumers (reviews, `approve_merge`) stay current: `out_fp` fingerprints a checkpoint by its `change`, which an exact mapping keeps, and a review's subject part ignores `responses`. Tree-bound consumers (`run_tests`, `integrate`) re-run because the tree changed. If another input of the node changed too, the recomputed fingerprint still differs and the node re-runs. Live findings on the node stay live.
-- This is generic over node shapes, not tied to node names. It skips no judgment: an identical patch-id sequence is an identical diff, and every tree-bound check re-runs.
+
+`carry.relocate(cp, synced, git=None)` uses the supplied Git seam to prove ancestry; an equal commit is sufficient without a lookup. `carry.unchanged(ident, node, key, old_cp, new_cp, scope)` currently returns `ident.change(new_cp.base, new_cp.commit, paths=scope) == old_cp.change`. The result alone decides carry. G1039 may widen that predicate without changing relocation, the writer or these signatures. Checkpoints never store a scope key. A candidate checkpoint outside the synced work history is never carried, even when its tree matches.
+
+**Legacy rebase mode:** `synced` is null and `replay_map` pairs the replay's old/new commits with identical verbatim per-commit patch ids. Carry only when every goal commit below each checkpoint (`old..cp.commit`) is in that map. `replay_pos` never authorizes carry. A checkpoint's new change is computed with the same derived scope. No merge-mode predicate is used on this path.
+
+**Write:** recompute only fingerprint inputs that consume X, write the relocated `{commit, base, tree, change}`, and set `carried_by: X` in X's atomic finishing push. Keep frozen paths, attempts, holder, correction count, finish time, commands and other outputs. Prune responses whose ids are no longer open only when there are no live findings on the node; otherwise retain them to preserve finding liveness.
+
+If no other input changed, the carried node is current. Change-bound consumers retain their judgments; tree-bound checks/integrate re-run on the new tree. A conflict resolution or target change that changes a node's own scoped diff stales that node; tests can carry when only implementation files differ. Tree comparisons and preserve checks use the actual sync commit, never a virtual checkpoint. G1039's wider carry and sync-focused review are separate changes.
 
 ---
 
@@ -1720,7 +1714,8 @@ class Done:
     ok: bool
     findings: list = ()     # [{"key": str, "input": "<input name>", "text": str}] -> target = producers[input]
     ref_updates: list = ()  # [(ref, expected, new)] pushed atomically with the record
-    replayed: dict | None = None   # a replay: {"old", "onto", "map"} (§4.21)
+    replayed: dict | None = None   # legacy replay: {"old", "onto", "map"} (§4.21)
+    synced: dict | None = None     # merge sync: {old, onto, work, tip, merge, resolved}; extra base output, not declared/fingerprinted
     after_push: Callable | None = None   # GitHub side effects, run only after the finishing push succeeded
     summary: str = ""
 
@@ -1733,7 +1728,7 @@ OPS = {"git.base": Op(version=1, gh=False, self_sync=True, ...), "checks.run": O
 ```
 - Each op declares `version` (an integer in `node_def_fp`, bumped only when its output semantics change, and always together with a new capability, §4.5), whether it needs `gh`, whether it does its own work-branch reconciliation (`self_sync`), and a validator for the node's inputs and outputs. `git.base` uses `gh` only to close a stack PR, through the wrapper (§5.6); it is not checked up front.
 - **Findings** from an op get the id `<node>:<sanitize(key)>` and target the producer of the named input. A failing op that returns no finding is an engine bug and refuses with `engine_bug`.
-- Ops never write goal lifecycle (`state`, `closed`) and never name another node except through `producers`. They read a dependency's lifecycle only through `dep_kinds`. The carry-forward (§4.21) is done by the engine, from `replayed`.
+- Ops never write goal lifecycle (`state`, `closed`) and never name another node except through `producers`. They read a dependency's lifecycle only through `dep_kinds`. The carry-forward (§4.21) is done by the engine, from `synced` or legacy `replayed`.
 - **Text caps.** Ops cap their own texts: `checks.run` keeps `details` ≤ 4,096 bytes in total, cutting tails first; summaries, reasons and questions are cut to 1,024 bytes.
 - **Time waits** (`ctx.wait`). Every op wait that is not CI polling (§5.4 keeps its own) goes through one helper:
   ```text
@@ -1762,7 +1757,7 @@ def start_op(g, X, label, reclaim, force):
   finish exactly like submit (§4.14) with holder = label: Done -> status "done" (ok, output, findings, auto-responses),
          Blocked -> status "blocked" (repeats filled; findings = the previous record's findings, unchanged);
          extra = lease deletion + ref_updates;
-         mutate also writes carry_forward(g, X, output, result.replayed, doc, live) (§4.21);
+         mutate also writes carry_forward(g, X, output, result.replayed or result.synced, doc, live) (§4.21);
          the lease attempt is re-checked on every retry; the finish reuses this invocation's snapshot (§4.2)
   git.base only: if the finish is rejected, the lease is unchanged, and every commit on the work branch since the run's W
          is_review (a concurrent docs(review) submit), call run(ctx) again in-process on the re-fetched snapshot
@@ -1778,10 +1773,25 @@ An op that crashes or hangs leaves its lease to expire; `start --reclaim` retrie
 | | |
 |---|---|
 | Inputs | `heads` (required, normally `optional`): a `deps.<node>.pr.head` selector yielding the dependencies' PR heads (`{"<dep id>": sha or null}`); `merges` (required, normally `optional` and `pending`): a `deps.<node>.<output>` selector yielding merge commits (`{"<dep id>": sha or null}`); `prs` (optional, context): `deps.<node>.pr`, read only for PR numbers in `stack` |
-| Outputs | `branch` (`string`), `base_commit` (`sha`), `stack` (`list`): `[{"goal": int, "head": sha, "pr": int}]`, display only; `replay_map` (`object`): `{"<old commit>": "<rebased commit>"}` of this run's replay, `{}` when nothing was replayed; `replay_pos` (`object`): the same shape, the positional pairs `replay_map` lacks (patch ids differ), recorded only when the old and new commit lists have equal length, else `{}`. No consumer selects either, so neither enters an input fingerprint; the engine reads `replay_map` for carry-forward (§4.21) and both for the suggested checkpoint (§4.20). |
+| Outputs | `branch` (`string`), `base_commit` (`sha`), `stack` (`list`): `[{"goal": int, "head": sha, "pr": int}]`, display only; `replay_map` (`object`): `{"<old commit>": "<rebased commit>"}` of this run's replay, `{}` when nothing was replayed; `replay_pos` (`object`): the same shape, the positional pairs `replay_map` lacks (patch ids differ), recorded only when the old and new commit lists have equal length, else `{}`. Neither map is selected/fingerprinted; legacy carry uses `replay_map` (§4.21), never `replay_pos`. Checkpoints now default to HEAD. Merge mode writes both maps as `{}` and its extra `synced` output separately. |
 | Node | `workspace: true` required |
 
 A dependency `d` is **merged** when `merges[d]` is a sha, **unmerged** when it is not merged, is open or held (`ctx.dep_kinds[d]`), and `heads[d]` is a sha, and contributes nothing otherwise (closed without delivery, or skipping delivery). `base` is ready when every dependency is merged or has a current, ok `integrate` record; it does not wait for a dependency's `approve_merge`. For a dependency whose PR targets `I`, "ok" means its required checks passed (§5.4); a stacked dependency's `integrate` is ok without CI. So only the chain root's CI delays stacking. While a dependency's `integrate` is missing, re-running or polling CI, the dependent's `base` is a named wait ("waiting: G1001 integrate", §4.9), and so is its whole delivery chain: its recorded approvals are kept but not shown, and they are current again, unasked, once the dependency's `integrate` is ok with the same PR head.
+
+**Mode (G1038).** Merge iff the policy requires `merge_sync`; otherwise the legacy rebase algorithm below remains. Stack-set construction, target selection, dependency waits and scheduled restacks (G1025) are unchanged. Merge-mode outputs retain declared `replay_map`/`replay_pos` as `{}` to avoid changing node fingerprints; `synced` is extra, undeclared and unfingerprinted.
+
+**Sticky mode:** before any legacy rebase, abort or push, inspect the remote work branch's first-parent sync merges (subject `chore(sync): ` plus trailer `Zzzops-Old-Base:`). If any exist and `merge_sync` is no longer required, block with category `policy`, waiting_for human, reason `work branch has merge syncs`, asking for the capability to be restored through a policy branch. Leave work branch, worktree and record untouched by the rebase. Older engines cannot enforce this: removing `merge_sync` is unsupported until all such goals are merged or cancelled.
+
+**Merge algorithm:** old is the recorded base, onto the new stack base/target, and work the reconciled work tip. An unused branch starts at onto; an unchanged base does nothing (`synced=null`). Only if onto is an ancestor of work **and old is an ancestor of onto**, record `{old, onto, work, tip: work, merge: null, resolved: []}` without a merge. The second guard prevents a dropped dependency/older target from leaving dependency content in work. Otherwise B0 is old if it is an ancestor of work, else `merge-base onto work`. Compute `T = git merge-tree --write-tree --merge-base B0 onto work`.
+
+- Clean: keep work's reviews subtree; make M from T with parents work, onto, fixed committer and dates from the newest parent. Message: `chore(sync): merge <target label> into G<g>` and trailer `Zzzops-Old-Base: <B0>`. The label is the target branch, `G<dep>` or `stack`. The work update must be a fast-forward. Record `base_commit=onto`, `synced={old, onto, work, tip: M, merge: M, resolved: []}`, and carry eligible checkpoints (§4.21) in the same push. Move the worktree to M only after the push succeeds.
+- Conflict: check out conflicted tree T with `read-tree -u --reset T`, leaving HEAD at work and no MERGE_HEAD. Block for an agent with `op_state={work, onto, old, files, tree: T}` and conflict kinds/instructions. Resolve only listed files, keeping/deleting modify-delete paths as intended; do not commit or run rebase/merge continue.
+- Resume: the target must be unchanged and remote work may have advanced only by review commits. Reject remaining marker lines in listed paths. Compare the worktree against T (`git diff --name-only -z T --` plus untracked `ls-files --others --exclude-standard -z`), not against HEAD; any changed/untracked path outside files re-blocks. Build T' in a temporary index from T and `git --literal-pathspecs add -A -- <files>`; ignore whatever the agent staged in its own index. Preserve the latest remote reviews subtree, create M with latest work and onto as parents, and record resolved=files. Push first; then reset worktree/index to M.
+- If onto moves while conflict edits are pending, reset to remote work and recompute; the new blocker states that those pending edits were discarded. A previous engine's in-progress rebase is aborted when switching to merge mode. A later sync uses the last onto as explicit base, preserving the recorded resolution.
+
+Combine subjects are `chore(stack): combine <names> for G<g>` (intermediate: `chore(stack): partial combine for G<g>`) in both modes. No op-version or declared-output change is made. `git.base`'s record and finishing hooks retain their existing atomicity and contention recovery.
+
+**Legacy rebase algorithm (only without merge_sync and without sync merges on W):**
 
 ```text
 def run(ctx):
@@ -1825,7 +1835,7 @@ def run(ctx):
   if len(S) < 2 and SB:                                # k dropped below 2: GitHub is touched only after the push
     target = I if S == [I] else f"zzzops/pr/g{stack[0]['goal']}"
     post = lambda: retire_stack(sb, SB, target)
-  out = {"branch": br, "base_commit": onto, "stack": stack, "replay_map": {}, "replay_pos": {}}
+  out = {"branch": br, "base_commit": onto, "stack": stack, "replay_map": {}, "replay_pos": {}, "synced": None}
   # 2. no artifact yet: the branch is born on the stack base
   if W is None:
     git -C <p> reset --keep <onto>                     # the local branch too (ensure_worktree created it at I, §4.13)
@@ -1889,15 +1899,15 @@ def retire_stack(sb, SB, target):                       # Done.after_push: the s
 - **Stack set.** S = the PR head of every unmerged dependency, plus `I` when S would otherwise be empty, or when some merged dependency's merge commit is not an ancestor of every head in S. Without that second case, after one of two dependencies merges, the goal would stack on the other's head without the merged code. Then every member that is an ancestor of another member is dropped: with a transitive dependency (G3 on G1 and G2, G2 on G1), S is G2's head alone, with no combine commit and no stack PR. `stack` lists only the dependencies whose heads remain in S.
 - **Stack base.** |S| = 1: that single commit (`I`, or one dependency's PR head `zzzops/pr/g<dep>`). |S| ≥ 2: a combine commit on `zzzops/stack/g<id>`, with S as parents (`I` first if present, then the heads in goal-id order) and the message `zzzops: stack for G<id> (combines G<a>, G<b>[, <I>])`, pushed in `base`'s atomic push with an explicit expected value. A stack branch whose parents are already S is reused, so a re-run does not move `base_commit`.
 - **Inter-dependency conflicts.** When S does not combine cleanly, `base` records `Blocked {waiting_for: dependency, reason: deps_conflict}`. It is a named wait, never a stuck item. It is re-evaluated whenever any dependency's PR head or merge commit changes (those are `base`'s inputs, §4.9), and ends when S combines cleanly. In the worst case that is when the remaining dependency rebases onto `I`, which its own merge requires; `integrate` finds that dependency's conflict with `I` itself (§5.4). v1 does not resolve inter-dependency conflicts.
-- **Rebase.** `base` always replays only the goal's own commits: `git rebase --onto <onto> <previous base_commit> W`. On the first run, `old` is where the lazily created branch was born (`merge_base(W, I)`), so delivery starts on the current stack base; there is no "nothing to do" shortcut. When `base` creates the remote work branch at the stack base, it moves the local branch there too (`reset --keep <onto>`), so the next workspace sync sees equal tips.
-- **The replay map.** Every replay records `replay_map`: the old commits (`old..W`; after a hand-resolved conflict, `op_state.old..W`, ending with any review commits re-applied since) paired by position with the rebased ones (`onto..H`), keeping only pairs with identical verbatim patch ids. When both lists have the same length it also records `replay_pos`, the other positional pairs, whose patch ids differ (a conflict-resolved commit and its original). Carry-forward is decided per node from `replay_map` alone (§4.21); the suggested checkpoint follows both (§4.20, `x2:M5`).
+- **Legacy rebase.** Without `merge_sync`, `base` replays only the goal's own commits: `git rebase --onto <onto> <previous base_commit> W`. On the first run, `old` is where the lazily created branch was born (`merge_base(W, I)`), so delivery starts on the current stack base; there is no "nothing to do" shortcut. When `base` creates the remote work branch at the stack base, it moves the local branch there too (`reset --keep <onto>`), so the next workspace sync sees equal tips.
+- **The replay map.** Every replay records `replay_map`: the old commits (`old..W`; after a hand-resolved conflict, `op_state.old..W`, ending with any review commits re-applied since) paired by position with the rebased ones (`onto..H`), keeping only pairs with identical verbatim patch ids. When both lists have the same length it also records `replay_pos`, the other positional pairs, whose patch ids differ (a conflict-resolved commit and its original). Carry-forward is decided per node from `replay_map` alone (§4.21); `replay_pos` is retained for compatibility but no checkpoint suggestion is made (G1038).
 - **Restacking.** The inputs fingerprint each unmerged dependency's PR head (`pr.head` only: a change of a dependency PR's base or number does not restack) and each merged dependency's merge commit. When a dependency is corrected (its PR head moves), restacked, or merged, `base` goes stale and re-runs. A clean replay carries the delivery records forward (§4.21), so only tree-bound nodes re-run. A conflicting replay takes the conflict path.
 - **Conflicts.** The conflict's Blocked record carries `op_state {work, onto, old}`. After the agent resolves the rebase in the worktree and runs the resume command, `base` accepts the local branch when the remote work tip has not moved since (`W == op_state.work`), the local tip descends from `op_state.onto`, and I1/I2 hold; it then replays onto the current stack base if that moved meanwhile. It also accepts the branch when W has moved only by review commits (every commit in `op_state.work..W` is `is_review`: a review submitted while the agent resolved the conflict). It first cherry-picks those commits onto the local branch, skipping any whose patch id is already there (so the in-process re-run of §5.1 does not apply them twice); under I1/I2 they apply without conflict, so this race never ends in `sync_refused` (`x2:M4`). There is no patch-id comparison for acceptance: a resolution changes the patch. The map still pairs the unchanged commits, so nodes whose commits lie below the conflict are carried. A repeated "rebase in progress" reaches the repeat cap (§4.9).
 - **Restack racing a review commit.** A review node may submit a `docs(review):` commit to W while `base` restacks. `base`'s finish is then rejected; when the only new commits on W are review commits, the engine re-runs `run()` in-process from the new W, within the contention deadline (§5.1). On a later run (after a crash, or after the deadline), a local branch that is an unpushed replay of an earlier run (`unpushed_replay`) is reset with `git reset --keep W` and replayed again, instead of reaching `sync_refused`.
 - **GitHub after the push.** `base` makes its `gh` calls (retargeting the PRs based on the stack branch, closing the stack PR) only on a `Done` outcome, after its push succeeded (`Done.after_push`), and deletes the stack branch only after those calls. If a call fails, the branch stays until the next `base` run or the goal's close, and the failure is reported as a warning.
 - **Review binds only the goal's own diff.** `change` is computed against `base_commit`, the stack base, so `review_tests`, `review_impl` and `approve_merge` never see a dependency's code.
 - **Cost.** `start` on `base` fetches the dependencies' PR branches in its one coordinator fetch (§4.2); only a dependency added since the locally accepted goal document adds a fetch. Retiring a stack PR adds two to four `gh` calls and one push of the stack ref.
-- Discovery artifacts are review-path only, so the first rebase after design is trivially clean.
+- Discovery artifacts are review-path only, so their first base sync preserves code in either mode.
 
 **Targets** (G1025): `base` stacks on the goal's target tip in place of `I`; discovery artifacts are still born on `I`, so the first replay starts from their merge base with `I`. The "merge commit not in integration" question uses the target.
 
@@ -1972,8 +1982,8 @@ def run(ctx):
   errors from check_i1_i2(B, W) -> fail("history", <errors>)
   if git diff --name-only <B> <W> -- .zzzops/POLICY.json .zzzops/workflow.json .zzzops/prompts is not empty:
       return fail("policy-paths", "goal diffs must not touch policy files; change policy through a zzzops/policy/* branch")
-  commits = git rev-list --reverse --topo-order <B>..<W>
-  if all(is_review(c) for c in commits):
+  commits = own(W, B)    # first-parent, no merges, excluding reviews and every earlier base (below)
+  if code_tree(W) == tree(B):
       return Blocked({"category": "decision", "waiting_for": "human", "reason": "no code commits",
                       "question": f"G{g} has no code commits to integrate. Close it as superseded (nothing to deliver)?",
                       "options": ["close as superseded", "reopen implement"],
@@ -1981,16 +1991,15 @@ def run(ctx):
                                    "reopen implement": ["reopen", str(g), "implement", "--note", "<why>"]}})
                       # the item's `file` gives {"set": {"state": "closed", "closed.reason": "superseded", "closed.note": "no code"}}
                       # (not "done": a goal closes done only when its terminals are current, §3.3 rule 8)
-  # 2. deterministic rebuild: drop review commits
-  todo = "".join(f"{'drop' if is_review(c) else 'pick'} {c} {subject(c)}\n" for c in commits)
-  write it to <git -C p rev-parse --absolute-git-dir>/zzzops-todo
-  git -C <p> switch -c <tmp> <W>
-  env GIT_SEQUENCE_EDITOR='"<sys.executable>" -c "import shutil,sys; shutil.copyfile(sys.argv[1], sys.argv[2])" "<abs todo>"'
-      GIT_COMMITTER_NAME, GIT_COMMITTER_EMAIL = git config zzzops.committer (default "ZzzOps", "zzzops@localhost")
-  git -C <p> -c commit.gpgSign=false rebase -i --no-autosquash --no-update-refs --committer-date-is-author-date <B>
-  H = rev_parse("HEAD"); git -C <p> switch <br>; git branch -D <tmp>
-  assert code_tree(H) == T                                        # else refuse engine_bug
-  assert git diff --name-only <B> <H> -- .zzzops/reviews is empty   # diff-based: review files already on the stack base do not matter
+  # 2. squash tests then implementation onto B (the last recorded sync, not the live target tip)
+  X = code_tree(W); F = frozen paths of the graph's preserved node, else []
+  tests_tree = tree(B) with F's entries replaced/deleted from X, using a temporary index
+  c1 = commit_tree(tests_tree, [B], tests_message) if tests_tree != tree(B) else B
+  H = commit_tree(X, [c1], implementation_message) if X != tree(c1) else c1
+  # author/message/date rules below; if neither part changes B, use the no-code human item
+  # before assigning new dates, reuse the existing PR head when trees/parents/messages/authors match
+  assert code_tree(H) == T
+  assert git diff --name-only <B> <H> -- .zzzops/reviews is empty
   # 3. push the PR head; expected value = THIS invocation's fetched tip, never the recorded head
   r = push_atomic([(f"refs/heads/zzzops/pr/g{g}", snap.pr or "", H)])
   if r != "ok": refuse("contention")                              # the lease stays; the next run rebuilds the same H
@@ -2010,10 +2019,10 @@ def run(ctx):
         return Blocked({"category": "external", "waiting_for": "human", "reason": "PR merged other code",
                         "question": f"PR #{pr.number} for G{g} was merged with code other than the reviewed checkpoint ({T[:7]}). Open a follow-up goal for the difference, then cancel G{g}."})
       return Done({"pr": pr_out(I), "ci": {"stacked": False, "required": [], "passed": [], "failed": []}}, ok=True)
-  if pr is None: pr = gh pr create --head zzzops/pr/g<g> --base <target> --title "<title> (G<g>)" --body-file -   (body below)
+  if pr is None: pr = gh pr create --head zzzops/pr/g<g> --base <target> --title <H subject> --body-file -   (body below)
   else:
     if pr.baseRefName != target: gh pr edit <n> --base <target>   # explicit whenever ZzzOps changes a target; after a merge GitHub may already have retargeted (§5.5)
-    gh pr edit <n> --body-file -                                  (only when the body changed)
+    gh pr edit <n> --title <H subject> --body-file -            (only changed title/body fields)
   if target == f"zzzops/stack/g{g}": stack_pr(g, pr.number, stack, B)   # below
   out_pr = pr_out(target)
   v = gh pr view <n> --json headRefOid,statusCheckRollup,mergeable,mergeStateStatus
@@ -2026,11 +2035,11 @@ def run(ctx):
   files = git merge-tree --write-tree --name-only --no-messages <snap.integration> <H>    # exit 1 = conflict; other non-zero: EngineError
   if files is not None:
     return Done({"pr": out_pr, "ci": None}, ok=False,
-                findings=[{"key": "conflict", "input": "base", "text": f"PR #{pr.number} conflicts with {I} (merging into {I} ({tip[:7]}) conflicts in <files>); rebase the work branch"}])
+                findings=[{"key": "conflict", "input": "base", "text": f"PR #{pr.number} conflicts with {I} (merging into {I} ({tip[:7]}) conflicts in <files>); sync the work branch (base merges the target in merge mode)"}])
   if v.headRefOid != H: return ctx.wait("GitHub has not seen the PR head yet", 60)
   if v.mergeable == "CONFLICTING" or v.mergeStateStatus == "DIRTY":                       # whatever head GitHub shows
     return Done({"pr": out_pr, "ci": None}, ok=False,
-                findings=[{"key": "conflict", "input": "base", "text": f"PR #{pr.number} conflicts with {I} ({v.mergeStateStatus}); rebase the work branch"}])
+                findings=[{"key": "conflict", "input": "base", "text": f"PR #{pr.number} conflicts with {I} ({v.mergeStateStatus}); sync the work branch (base merges the target in merge mode)"}])
   if v.mergeable == "UNKNOWN": return ctx.wait("GitHub is computing mergeability", 60)
   merge_state = f"mergeable: {v.mergeable}/{v.mergeStateStatus}"
   req = settings.verification.required_ci
@@ -2066,7 +2075,7 @@ def run(ctx):
 
 def stack_pr(g, n, stack, B):                            # k ≥ 2: a draft PR that shows the combined stack set
   with_I = parents(B)[0] not in {e["head"] for e in stack}     # the combine commit's own first parent, not the current I
-  title = f"Stack for #{n}: combines " + ", ".join(f"#{e['pr']}" for e in stack) + (f" and {I}" if with_I else "") + " (do not merge)"
+  title = f"chore(stack): combine #{n}, " + ", ".join(f"#{e['pr']}" for e in stack) + (f" and {I}" if with_I else "") + " (do not merge)"
   body  = f"ZzzOps stack base for G{g} (PR #{n}). Combines:\n" + "".join(f"- #{e['pr']} (G{e['goal']})\n" for e in stack)
           + "\nZzzOps never merges this PR; it is closed when the stack set has fewer than two members."
   sp = gh pr list --head zzzops/stack/g<g> --state open --json number,title,body
@@ -2078,12 +2087,15 @@ fail(key, text) = Done({"pr": None, "ci": None}, ok=False, findings=[{"key": key
 classify(CheckRun):     COMPLETED and conclusion in {SUCCESS, NEUTRAL, SKIPPED} -> passed; COMPLETED otherwise -> failed; else pending
 classify(StatusContext): SUCCESS -> passed; FAILURE, ERROR -> failed; else pending
 ```
-- **PR target.** k = 0: `I`; k = 1: the dependency's PR branch; k ≥ 2: `zzzops/stack/g<id>`, with a draft stack PR from it into `I`, titled `Stack for #<goal PR>: combines #<a>, #<b> (do not merge)`, that the engine never merges. When the target changes, `integrate` retargets the PR with `gh pr edit <n> --base <target>`. A PR whose base differs from the target for any other reason (for example after a change of integration branch) is retargeted the same way. A stacked goal's GitHub diff is only its own code.
+- **PR target.** k = 0: `I`; k = 1: the dependency's PR branch; k ≥ 2: `zzzops/stack/g<id>`, with a draft stack PR from it into `I`, titled `chore(stack): combine #<goal PR>, #<a>, #<b> for G<g>`, that the engine never merges. When the target changes, `integrate` retargets the PR with `gh pr edit <n> --base <target>`. A PR whose base differs from the target for any other reason (for example after a change of integration branch) is retargeted the same way. A stacked goal's GitHub diff is only its own code.
 - **CI on stacked PRs.** When the PR's base is not `I`, `integrate` does not wait for required checks: it is ok once the PR is at the expected head, and records whatever checks have reported. Required checks are enforced only when the PR's base is `I`. By the time `merge` can run, every dependency has merged, `base` has restacked onto `I`, and `integrate` has re-run against `I`. A repository whose workflows only run on PRs into `I` therefore works unchanged.
-- **PR body:** `<summary input>\n\n## Review\n<review input>\n\nZzzOps goal G<g>. Built from zzzops/work/g<g> without docs(review) commits.` For a stacked PR the body adds "Stacked on #<pr> (G<dep>), not merged yet."
-- **Determinism.** Identical code on the same base rebuilds the identical head: author data is preserved, committer data is fixed (per committer identity, §1.7), and the committer date equals the author date. Re-running `integrate` on unchanged code therefore leaves its consumers current.
+- **PR body:** `<summary input>\n\n## Review\n<review input>\n\nZzzOps goal G<g>. Squashed from zzzops/work/g<g> into tests and implementation.` For a stacked PR the body adds "Stacked on #<pr> (G<dep>), not merged yet."
+- **Squash history (G1038).** Both modes create at most two review-free commits on B, the last synced base: c1 overlays frozen paths from X onto B, and c2 delivers X. Omit an empty part; no delivered change uses the no-code human question. The tree is exactly the tested work code tree. This operation never rewrites work history.
+- **Own commits:** walk W first-parent, no merges/reviews, excluding B and each sync's second parent and `Zzzops-Old-Base:` value. This excludes stale dependency/target history after rewritten or dropped dependencies and target changes. Tests commits have type test and touch only F; the others are implementation commits.
+- **Messages:** c1 is `test: <goal title> (G<g>)`. c2 takes the implementation commits' highest release type: feat; then fix/perf/revert (in that order); else the most common no-release type, ties by newest; no implementation commit means chore. Add `!` for an implementation bang/footer. Bodies retain at most 30 subjects per part (then an omitted-count line) and breaking footers. The PR title is its final commit's conventional subject and is updated when it changes.
+- **Authors and dates:** use each part's newest author (the other part's when empty) and the configured fixed committer. Let prev be the newest author/committer date on the existing remote PR head and its parent. Both dates of c1 are max(newest tests author date, prev+1s); both dates of c2 are max(newest implementation author date, c1+1s), or max(implementation author date, prev+1s) without c1. The head is always newest even after a late test fix. Before assigning these dates, reuse an existing head whose trees, parents, messages and authors match; unchanged integrate does not push or churn CI.
 - **Flaky checks.** The first failure per head is re-run once. A later failure gives findings with fixed ids `integrate:check-<name>`; the same id recurring after the agent's response reaches round 2 and goes to the human (§4.14). Re-observing without new code is `reopen G integrate --note …` (§4.18).
-- **Conflicts with `I`.** A PR into `I` that GitHub reports CONFLICTING or DIRTY gives the finding `integrate:conflict` on the `base` producer, as `merge` does, instead of a CI wait that would only time out. `base` then replays onto the current `I` (or takes the conflict path).
+- **Conflicts with `I`.** A PR into `I` that GitHub reports CONFLICTING or DIRTY gives the finding `integrate:conflict` on the `base` producer, as `merge` does, instead of a CI wait that would only time out. `base` then syncs onto the current target using its selected mode (or takes the conflict path).
 - **Merged elsewhere.** A PR found merged into a base other than `I` (a stacked PR merged by hand on GitHub) is a human item, never a `Done`.
 - **Polling cost.** Each poll is one `start`: fetch, lease push, rebuild (no-op push), two or three `gh` calls, and the finishing push. Polls are 5, 10, 20, then every 30 minutes, until `ci_timeout_minutes` (default 120) turns the wait into a human question. A k ≥ 2 run adds one or two `gh` calls for the stack PR.
 
@@ -2120,15 +2132,15 @@ def run(ctx):
     return Blocked({"category": "external", "waiting_for": "human", "reason": "PR head moved",
                     "question": f"PR #{n}'s head moved from {H[:7]} to {v.headRefOid[:7]}: someone pushed to it. Merge it as it is now (merge it on GitHub, then answer this item), or rebuild it from the work branch (reopen integrate, then answer this item; the pushed commits are discarded)?"})
   if v.mergeable == "CONFLICTING" or v.mergeStateStatus in ("DIRTY", "BEHIND"):
-    if "base" not in ctx.inputs: return Blocked(conflict, human, question=f"PR #{n} cannot merge ({v.mergeStateStatus}). Rebase it?")
+    if "base" not in ctx.inputs: return Blocked(conflict, human, question=f"PR #{n} cannot merge ({v.mergeStateStatus}). Sync it?")
     return Done({"merge_commit": None, "merged_at": None}, ok=False,
-                findings=[{"key": "conflict", "input": "base", "text": f"PR #{n} cannot merge into {I} ({v.mergeStateStatus}); rebase the work branch"}])
+                findings=[{"key": "conflict", "input": "base", "text": f"PR #{n} cannot merge into {I} ({v.mergeStateStatus}); sync the work branch (base merges the target in merge mode)"}])
   if v.autoMergeRequest: return ctx.wait("queued on GitHub (auto-merge)", 300)   # never call merge again
   # `gh pr view` has no merge-queue field; a `gh pr merge` refusal because the PR is already queued is treated the same way (wait)
   if v.mergeStateStatus == "BLOCKED":
     return ctx.wait("GitHub blocks the merge (required reviews, checks, signatures or queue); satisfy it on GitHub or merge there", 1800)
   if v.mergeable == "UNKNOWN": return ctx.wait("GitHub is computing mergeability", 120)
-  gh pr merge <n> --<settings.merge.method> --match-head-commit <H>
+  gh pr merge <n> --<settings.merge.method> --match-head-commit <H> <message flags below>
   v = gh pr view <n> --json state,mergeCommit,mergedAt,headRefOid,baseRefName
   return merged(v) if v.state == "MERGED" else ctx.wait("merge not observed yet", 120)
 
@@ -2144,6 +2156,7 @@ def merged(v):                                                   # the merge is 
   note = "" if v.headRefOid == H else f" (merged head {v.headRefOid[:7]} differs from {H[:7]} with the same code)"
   return Done({"merge_commit": v.mergeCommit.oid, "merged_at": iso(v.mergedAt)}, ok=True, summary="merged" + note)
 ```
+- **Conventional trunk message (G1038).** Keep the exact-head flag. For squash, pass `--subject "<H subject> (#<n>)"` and `--body` containing both squash parts' bodies, ending in the breaking footers. For merge, pass `--subject "chore(merge): G<g> <goal title> (#<n>)"` (cut to 72 characters) and `--body "Merge zzzops/pr/g<g> into <target>."`. For rebase pass no message flags. Check the generated subject is conventional before invoking gh. Manual UI merges remain observable even with GitHub's default subject; configure its merge-commit default to Pull request title or edit the subject manually (§8.4).
 - **Release gate.** `merge` requires every dependency merged (`dep_merges` resolves only when each dependency's `merge` is current; an open dependency is a named wait) and an `integrate` record whose PR base is `I`, which implies its required checks passed (§5.4). By then `base` has restacked onto `I`. A PR base other than `I` at that point, recorded or read live before merging (a PR retargeted by hand on GitHub), is a human item (`Blocked {waiting_for: human}`), never a finding, so `merge` and `integrate` cannot reopen each other without bound.
 - **Dependents after the merge.** Only once the merge is observed, inside `merged()`, does `merge` retarget every open PR whose base is `zzzops/pr/g<id>` to `I` (`gh pr list --base zzzops/pr/g<id>`, then `gh pr edit --base <I>`). So a failed or queued merge never leaves a dependent's PR into `I` showing the unmerged dependency's code, and a merge done by hand on GitHub is retargeted the same way. When GitHub's automatic head-branch deletion runs first, GitHub retargets the dependents itself and the list is empty; either way no dependent PR is closed. The dependents' own `base` runs then restack them.
 - **Merged elsewhere.** A PR merged into a base other than `I` is a human item ("PR #n was merged into `<base>`, not `<I>`"), never a `Done`.
@@ -2257,7 +2270,7 @@ The shipped `POLICY.json`, prompts and graph are configuration (owner decision, 
 - **Bulk revert of one bad release's writes:** `git log --format=%H --grep='^Engine: <build id>$' refs/zzzops/goal/<R>/g<id>` across goals; `git show <c>^:goal.json`; one multi-goal `edit --file … --base …`.
 - **Close a cancelled goal's PR and issue:** the `follow_up` commands of §4.18.
 
-- **A PR that conflicts with the integration branch** (G1021): GitHub runs no `pull_request` workflows on a conflicting PR, so checks never appear. `integrate` and `merge` raise a `conflict` finding on `base`, which rebases or asks for a hand resolution in the goal worktree. An older record stuck on "checks pending": `zzzops reopen <id> base --note "conflicts with <I>"`.
+- **A PR that conflicts with the integration branch** (G1021): GitHub runs no `pull_request` workflows on a conflicting PR, so checks never appear. `integrate` and `merge` raise a `conflict` finding on `base`, which syncs in its selected mode or asks for a hand resolution in the goal worktree (§5.2). An older record stuck on "checks pending": `zzzops reopen <id> base --note "conflicts with <I>"`.
 
 ---
 
@@ -2375,13 +2388,15 @@ Each item below is a point that neither DESIGN.md nor the change lists decide. T
 **Revision 6.2**
 92. Every finding records `target_attempt`, the attempt of the target record whose `out_fp` the fence returned (`null` with `target_fp`; a reopen finding takes its own record's attempt). Pass 1 treats a finding on an op target as answered when the target's record attempt is greater than `target_attempt`. Attempts never decrease and a carried record keeps its attempt, so a carry never answers an op finding; no clock is compared, so a fixed `ZZZOPS_NOW` cannot loop (REV6 H24).
 93. Op findings carry `carrier_fp`, the `input_fp` of the done record that raised them, because an op's Blocked record replaces that done record and has its own `input_fp`. `repeats` advances only when the new done record's `input_fp` equals it (REV6 H23, `x2:M2`).
-94. `replay_pos` holds only the positional pairs that `replay_map` lacks, and only when the old and new commit lists have equal length; so it adds bytes only after a conflict, and a pairing shifted by a dropped commit never suggests a wrong checkpoint (REV6 H23, `x2:M5`).
+94. (G1038 retains the map for compatibility but removes suggestions.) `replay_pos` holds only the positional pairs that `replay_map` lacks, and only when the old and new commit lists have equal length; so it adds bytes only after a conflict, and a pairing shifted by a dropped commit never suggests a wrong checkpoint (REV6 H23, `x2:M5`).
 95. After a hand-resolved conflict, the review commits of `op_state.work..W` are cherry-picked in order onto the local branch, skipping any whose patch id is already in `op_state.onto..Lc`, before the replay; `src` is then W (REV6 H23, `x2:M4`).
 96. `github.merge` reads the live `baseRefName` of an open PR before merging and asks the same question as for a recorded base other than `I` (REV6 H25, `x2:L9`).
 97. Skip options are omitted from crash-loop and op-dispute items whose node is terminal (REV6 H25, `x2:L8`).
 98. The goal-size limit of 200 commits is stated, not enforced (§1.8; REV6 H25, `x2:L10`).
-99. A workspace phase that committed nothing keeps its previous checkpoint, followed through `base`'s maps, and refuses with `checkpoint_required` when that commit cannot be followed; HEAD is the default only for a phase that committed, or when containment fails (REV6 H26, `m5:N1`).
+99. (Superseded by G1038: default HEAD with frozen-path scope, §4.14.) A workspace phase that committed nothing kept its previous checkpoint, followed through `base`'s maps, and refuses with `checkpoint_required` when that commit cannot be followed; HEAD is the default only for a phase that committed, or when containment fails (REV6 H26, `m5:N1`).
 100. `replay_pos` is a declared `object` output of `git.base` in the default graph (REV6 H27, `m5:N2`).
-101. The suggested checkpoint is computed at submit from the record's and the lease's fingerprint parts (REV6 H30, `m5:N5`).
+101. (Superseded by G1038: no suggested checkpoint.) The suggested checkpoint was computed at submit from the record's and the lease's fingerprint parts (REV6 H30, `m5:N5`).
 102. A crash-loop item on an over-budget agent node prints the budget raise before one more try (REV6 H29, `m5:N4`).
 
+
+102. G1038 supersedes choices 40, 94, 99 and 101 about suggested checkpoints: default HEAD, derived frozen-path scope, no checkpoint_required suggestion path. Goal sync uses merges only when the policy requires merge_sync; legacy replay maps remain for rebase carry. Integration squashes tests then code, with conventional subjects and increasing dates (§4.14–§5.5).

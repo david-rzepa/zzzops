@@ -1,11 +1,11 @@
 # Test design
 
-Write the tests for this goal on the goal's work branch (your card's `workspace`), before any implementation exists.
+Write or revise the tests for this goal on the goal's work branch (your card's `workspace`). Write the first tests before implementation; later test fixes may be committed after implementation commits, without reordering history.
 
 - Derive the tests from the design (`inputs.doc`): cover the behaviour it promises, including failure cases. Tests should fail now and pass once the design is implemented.
-- Commit the tests normally. Do not implement the feature.
+- Commit the tests normally with `test: summary` or `test(scope): summary` subjects. Do not implement the feature. Each path you commit becomes frozen as a whole, even if implementation edited it earlier. Only `base` creates merge commits.
 - List the exact commands that run these tests in `commands` (they run from the worktree root).
-- Your checkpoint defaults to the suggested checkpoint in the card, else your work branch's HEAD. Name `{"tests": {"commit": "<full 40-hex sha>"}}` only when your tests end at an earlier commit.
+- Your checkpoint defaults to your work branch's HEAD. Its change is scoped to the frozen test paths. Name `{"tests": {"commit": "<full 40-hex sha>"}}` only when your tests end at an earlier commit.
 - If you are answering findings, answer every one in `responses`.
 
 - Execute the recorded targeted commands and submit `cost` from the observed run: `checkpoint` (the measured tests commit), `commands: [{cmd, duration_ms, exit}]`, `total_ms`, `changed_tests: [{id_or_scope, duration_ms, observation}]`, and `summary`. Durable durations are integer milliseconds, never floats or guesses. Measurements must match the submitted checkpoint and commands.

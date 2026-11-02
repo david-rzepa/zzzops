@@ -61,6 +61,7 @@ REQUIRED_FILES = {
     "zzzops/engine/ops/lines.py",
     "zzzops/engine/ops/merge.py",
     "zzzops/engine/ops/run.py",
+    "zzzops/engine/ops/squash.py",
     "zzzops/engine/records.py",
     "zzzops/engine/render.py",
     "zzzops/engine/schemas.py",

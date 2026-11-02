@@ -60,7 +60,7 @@ git -C <worktree> push <R> HEAD:refs/heads/zzzops/work/g<id>
 
 A policy that still has the deprecated `settings.engine.min` keeps working; replace it with `requires` in the same branch.
 
-**Rollback:** land a policy change removing the names, then reinstall the older plugin. Goal documents the newer engine wrote with a newer goal schema are read-only for the older engine: revert each to its last older-schema version with the "Undo a goal change" recipe (find them with `git log --grep='^Engine: <newer build>$'`, the build from `zzzops --version`).
+**Rollback:** removing `merge_sync` is unsupported while any open goal work branch has sync merges. Merge or cancel those goals first; inspect each with `git log --first-parent --merges --grep='^Zzzops-Old-Base:' zzzops/work/g<id>`. The new engine blocks base before rebasing such a branch when the requirement is absent, but an older engine cannot preserve those resolutions. After that prerequisite, land a policy change removing the names, then reinstall the older plugin. Goal documents the newer engine wrote with a newer goal schema are read-only for the older engine: revert each to its last older-schema version with the "Undo a goal change" recipe (find them with `git log --grep='^Engine: <newer build>$'`, the build from `zzzops --version`).
 
 ## Rename a node
 While a policy branch is open, stage `records.<new>` (a copy of the old record), `skip.<new>` and any finding `target` rewrites on every goal, closed ones included, with one multi-goal `edit --file … --base …`; then land the workflow change and remove the old keys.
@@ -70,16 +70,16 @@ A child goal created after its parent's design can start from the parent's work 
 ```sh
 git push <R> <parent's checkpoint commit>:refs/heads/zzzops/work/g<child id>
 ```
-Its `base` then rebases the child's own commits onto its stack base as usual; prefer a `depends_on` on the parent, which stacks automatically.
+Its `base` then syncs the child's own change onto its stack base (merge when the policy requires `merge_sync`, legacy rebase otherwise); prefer a `depends_on` on the parent, which stacks automatically.
 
 ## A PR that conflicts with the integration branch
-GitHub runs no `pull_request` workflows on a conflicting PR, so its checks never appear. `integrate` checks the merge locally (`git merge-tree`) and reads GitHub's `mergeable`; on a conflict it (like `merge`) raises a `conflict` finding on `base`. `base` then re-runs: it rebases onto the integration tip, or blocks with `rebase conflict in <files>`; resolve that in the goal worktree (`git add`, `git rebase --continue`) and run `start <id> base` again. If an older record is stuck on "required checks pending" for such a PR, reopen `base` by hand:
+GitHub runs no `pull_request` workflows on a conflicting PR, so its checks never appear. `integrate` checks the merge locally (`git merge-tree`) and reads GitHub's `mergeable`; on a conflict it (like `merge`) raises a `conflict` finding on `base`. `base` then re-runs in the selected mode. With `merge_sync`, it merges the fresh target into the goal and may block with `merge conflict in <files>`. In the named goal worktree, edit **only** the listed files to their intended merged contents (keep/delete a modify-delete path as appropriate); remove conflict-marker lines, do not commit, and run the returned resume command. HEAD stays at work; the index/worktree initially hold the recorded conflicted tree. Resume compares against that tree, refuses changed or untracked paths outside the list, and builds the merge in a temporary index, ignoring what you staged. After a successful push it moves the worktree/index to the merge commit. If the target moved during the resolution, base resets/recomputes and reports that pending resolution edits were discarded. Without `merge_sync`, resolve the legacy rebase in the goal worktree (`git add`, `git rebase --continue`) and run `start <id> base` again. If an older record is stuck on "required checks pending" for such a PR, reopen `base` by hand:
 ```sh
 zzzops reopen <id> base --note "conflicts with <I>"
 ```
 
 ## Record a merge done on GitHub
-Nothing to do by hand: `start <id> merge` observes a PR already merged into the integration branch and records it (and `approve_merge` records the human's merge as the approval, as the execute skill says).
+Nothing to do by hand: `start <id> merge` observes a PR already merged into the integration branch and records it (and `approve_merge` records the human's merge as the approval, as the execute skill says). When merging manually, set GitHub's merge-commit message default to **Pull request title**, or edit the subject to a conventional commit. The engine uses explicit conventional subjects for merge/squash and preserves the implementation's breaking footers; it still observes an externally merged PR with GitHub's default subject.
 
 ## Purge data from a goal's history
 `edit` writes a new version; earlier versions stay in the goal branch's history, and every clone keeps its accepted copy. To remove data (for example a pasted secret — rotate it first):

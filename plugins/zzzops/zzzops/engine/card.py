@@ -5,6 +5,10 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import shlex
+
+from engine.identity import view_paths, Identity
+from engine.records import checkpoint_scope
 
 from engine.canon import canonical, iso
 from engine import schemas
@@ -53,12 +57,14 @@ def view(reader, v):
     return _blob(reader, v)
 
 
-def checkpoint_view(cp, sub=None):
+def checkpoint_view(cp, sub=None, scope=None, exclude=None, reader=None):
     """The card view of a checkpoint; `tree` only for a whole checkpoint or a `.tree` selector."""
     out = {"commit": cp["commit"], "base": cp["base"], "change": cp["change"],
-           "diff": f"git diff {cp['base']} {cp['commit']} -- ':/' ':(top,exclude).zzzops/reviews'"}
+           "diff": f"git diff {cp['base']} {cp['base'] if scope == [] else cp['commit']} -- " + " ".join(shlex.quote(p) for p in view_paths(scope, exclude))}
     if sub in (None, "tree"):
         out["tree"] = cp["tree"]
+    if len(scope or []) + len(exclude or []) > 12:
+        out["diff"] = _blob(reader, out["diff"])
     return out
 
 
@@ -72,16 +78,21 @@ def value_of(session, res, n, name, v):
     sub = sel.path[0] if ot == "checkpoint" and tuple(sel.path) in (("change",), ("tree",)) else None
     reader = session.ctx().reader
 
+    producer_record = (res.doc.get("records") or {}).get(sel.node) or {}
+    scope = checkpoint_scope(res.graph, sel.node, producer_record) if sel.kind == "node" else None
+    preserved = res.graph.nodes.get(sel.node, {}).get("preserve") if sel.kind == "node" else None
+    excluded = ((res.doc.get("records") or {}).get(preserved) or {}).get("frozen") if preserved else None
+
     def one(x, producer_out=None, goal=res.goal):
         if x is None:
             return None
         if sub:
             full = producer_out.get(sel.output) if isinstance(producer_out, dict) else None
             if isinstance(full, dict) and full.get(sub) == x and all(k in full for k in ("commit", "base", "change")):
-                return checkpoint_view(full, sub)
+                return checkpoint_view(full, sub, scope, excluded, reader)
             return view(reader, x)
         if t == "checkpoint" and isinstance(x, dict):
-            return checkpoint_view(x)
+            return checkpoint_view(x, scope=scope, exclude=excluded, reader=reader)
         if t == "artifact" and isinstance(x, dict):
             out = {"path": x["path"], "blob": x["blob"], "read": f"git cat-file -p {x['blob']}"}
             summary = (producer_out or {}).get("summary")
@@ -106,7 +117,7 @@ def value_of(session, res, n, name, v):
     return one(v, producer_out)
 
 
-def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = None) -> dict:
+def build(session, res, n: str, s: dict, lease: dict) -> dict:
     g, graph, doc = res.goal, res.graph, res.doc
     nd = graph.nodes[n]
     ctx = session.ctx(worker=True)
@@ -167,8 +178,6 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
     prev = previous(session, res, n, dict(s, stale_because=s.get("record_stale")))   # previous.output: record staleness
     if prev:
         card["previous"] = prev
-    if suggested:
-        card["suggested_checkpoint"] = suggested
     r = (doc.get("records") or {}).get(n)
     if r and r.get("status") == "blocked" and r.get("answer"):     # also on a stale card (G1026)
         card["answer"] = {k: r["answer"][k] for k in ("text", "quote", "decided_by") if k in r["answer"]}
@@ -344,9 +353,8 @@ def output_schema(graph, n, s, follows: bool = False) -> dict:
     else:
         for k, t in graph.output_types[n].items():
             if t == "checkpoint":
-                out[k] = ("checkpoint (optional): omit the key to default to the suggested checkpoint, else your work "
-                          "branch's HEAD (no new commit keeps the previous one). Override: {\"commit\": \"<full 40-hex "
-                          "sha>\"}, no refs or short shas. A restack may require one.")
+                out[k] = ("checkpoint (optional): omit the key to default to the work branch's HEAD. "
+                          "Override with {\"commit\": \"<full 40-hex sha>\"}; no refs or short shas.")
             elif t == "artifact":
                 out[k] = "artifact: write it to a local file and pass that file with --artifact; artifact.path is where submit stores it."
             else:
@@ -395,10 +403,22 @@ def previous(session, res, n, s) -> dict | None:
                 else:
                     prev["note"] = "previous version not available; review in full"
                 continue
-            if not isinstance(cur, dict) or cur.get("change") == old.get("change"):
+            if not isinstance(cur, dict) or (cur.get("change") == old.get("change") and cur.get("base") == old.get("base")):
                 continue
             if session.git.exists(old["commit"]):
-                prev["interdiff"] = (f"git range-diff {old['base']}..{old['commit']} {cur['base']}..{cur['commit']}")
+                scope = checkpoint_scope(res.graph, subj, sr)
+                producer = res.graph.nodes[subj].get("preserve")
+                excluded = (((res.doc.get("records") or {}).get(producer) or {}).get("frozen") or []) if producer else []
+                paths = " -- " + " ".join(shlex.quote(p) for p in view_paths(scope, excluded))
+                if old["base"] == cur["base"]:
+                    prev["interdiff"] = f"git diff {old['commit']} {cur['commit']}" + paths
+                else:
+                    syncs = Identity(session.git).sync_merges(old["commit"], cur["commit"])
+                    if syncs:
+                        prev["interdiff"] = f"git log -p --first-parent --no-merges {old['commit']}..{cur['commit']}" + paths
+                        prev["syncs"] = [f"git show --remerge-diff {c}" for c in syncs]
+                    else:
+                        prev["interdiff"] = f"git range-diff {old['base']}..{old['commit']} {cur['base']}..{cur['commit']}" + paths
             else:
                 prev["note"] = "previous version not available; review in full"
     if s.get("stale_because") == ["def"]:

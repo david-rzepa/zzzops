@@ -160,7 +160,7 @@ def cancel_option(ctx: Ctx, g: int) -> dict:
 
 def run_capability(state: dict) -> str | None:
     """The one capability rule, shared by `next` actions and task cards: a retry needs `reasoning`; a run whose
-    record is stale only on `inputs.base` and that has no live corrections is a rebase (`routine`); otherwise None
+    record is stale only on `inputs.base` and that has no live corrections is a base sync (`routine`); otherwise None
     (the caller falls back to the node's own tier). `record_stale` (set at claim time) is the staleness since the
     accepted record; a frontier state carries no `record_stale`, and its `stale_because` is exactly that."""
     if state.get("reason") == "retry":
@@ -284,6 +284,7 @@ def checks_summary(result: dict) -> str:
 def approve_context(ctx: Ctx, res: GoalResult, n: str, vals: dict) -> list:
     out = []
     nd = res.graph.nodes[n]
+    from engine.records import checkpoint_scope
     for name in sorted(nd.get("inputs") or {}):
         sel = res.graph.selectors[n][name]
         if name not in vals:
@@ -291,11 +292,15 @@ def approve_context(ctx: Ctx, res: GoalResult, n: str, vals: dict) -> list:
         v = vals[name]
         t = res.graph.output_types.get(sel.node, {}).get(sel.output) if sel.kind == "node" else None
         entry = {"label": sel.text}
+        record = ((res.doc.get("records") or {}).get(sel.node) or {}) if sel.kind == "node" else {}
+        scope = checkpoint_scope(res.graph, sel.node, record) if sel.kind == "node" else None
+        preserved = res.graph.nodes.get(sel.node, {}).get("preserve") if sel.kind == "node" else None
+        exclude = (((res.doc.get("records") or {}).get(preserved) or {}).get("frozen") or []) if preserved else []
         if t == "checkpoint" and isinstance(v, dict) and not sel.path:
-            entry.update(checkpoint_view(ctx, v))
+            entry.update(checkpoint_view(ctx, v, scope, exclude))
         elif t == "checkpoint" and sel.path and sel.path[0] in ("change", "tree"):
             cp = res.cur.get(sel.node, {}).get(sel.output)
-            entry.update(checkpoint_view(ctx, cp) if cp else {"summary": value_view(v)})
+            entry.update(checkpoint_view(ctx, cp, scope, exclude) if cp else {"summary": value_view(v)})
         elif t == "artifact" and isinstance(v, dict) and not sel.path:
             entry.update({"path": v.get("path"), "blob": v.get("blob"), "read": f"git cat-file -p {v.get('blob')}"})
             url = ctx.reader.artifact_url(v.get("commit"), v.get("path")) if v.get("commit") else None
@@ -317,12 +322,15 @@ def approve_context(ctx: Ctx, res: GoalResult, n: str, vals: dict) -> list:
     return out
 
 
-def checkpoint_view(ctx: Ctx, cp: dict) -> dict:
-    diff = f"git diff {cp['base']} {cp['commit']} -- ':/' ':(top,exclude).zzzops/reviews'"
+def checkpoint_view(ctx: Ctx, cp: dict, scope=None, exclude=None) -> dict:
+    from engine.identity import view_paths
+    diff = f"git diff {cp['base']} {cp['base'] if scope == [] else cp['commit']} -- " + " ".join(shlex.quote(p) for p in view_paths(scope, exclude))
     view = {"commit": cp["commit"], "base": cp["base"], "diff": diff}
-    stat = ctx.reader.diffstat(cp["base"], cp["commit"])
+    stat = ctx.reader.diffstat(cp["base"], cp["commit"]) if scope is None and not exclude else None
     if stat:
         view["diffstat"] = stat
+    if len(scope or []) + len(exclude or []) > 12:
+        view["diff"] = ctx.reader.blob_view(diff)
     return view
 
 

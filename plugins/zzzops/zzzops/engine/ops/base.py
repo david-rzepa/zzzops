@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import os
+import re
+import tempfile
+from pathlib import Path
+from engine.schemas import required_caps
+
 from engine.errors import EngineError, Refused
 from engine.identity import Identity
 from engine.ops.run import Blocked, Done
@@ -32,6 +38,14 @@ def run(ctx):
         # discovery artifacts are born on the integration tip, whatever the target (G1025): replay from there
         old = prev.get("old") or (git.out("merge-base", W, snap.integration) if W else None)
     resume = {"resume": ["start", str(g), ctx.node, "--as", "<LABEL>"]}
+    merge_mode = "merge_sync" in required_caps(ctx.settings)
+    if W and not merge_mode and ident.sync_merges(old, W):
+        return Blocked({"category": "policy", "waiting_for": "human", "reason": "work branch has merge syncs",
+                        "question": f"G{g}'s work branch has merge syncs and the policy no longer requires merge_sync. "
+                                    "Rebasing would drop them and redo conflicts. Add merge_sync back to "
+                                    "settings.engine.requires through a policy branch, then answer."})
+    if merge_mode and rebase_in_progress(git, p):
+        git.run("rebase", "--abort", cwd=p)
     # 0. the worktree
     if rebase_in_progress(git, p):
         return Blocked({"category": "conflict", "waiting_for": "agent", "reason": "rebase in progress",
@@ -39,7 +53,7 @@ def run(ctx):
                                         "`git -c core.editor=true rebase --continue` (or `git rebase --abort`), then run "
                                         "the resume command.",
                         "commands": resume, "op_state": prev})
-    if not wt.is_clean(git, p):
+    if not wt.is_clean(git, p) and not (merge_mode and prev.get("tree")):
         return Blocked({"category": "conflict", "waiting_for": "agent", "reason": "uncommitted changes in the goal worktree",
                         "instructions": "Commit or stash them, then run the resume command.", "commands": resume,
                         "op_state": dict(prev, old=old)})
@@ -79,7 +93,7 @@ def run(ctx):
     if len(S) < 2 and SB:
         target = I_name if S == [I] else f"zzzops/pr/g{stack[0]['goal']}"
         post = lambda: retire_stack(ctx, sb, SB, target)
-    out = {"branch": br, "base_commit": onto, "stack": stack, "replay_map": {}, "replay_pos": {}}
+    out = {"branch": br, "base_commit": onto, "stack": stack, "replay_map": {}, "replay_pos": {}, "synced": None}
     sched = (ctx.state or {}).get("scheduled_for")
     if sched and (ctx.state or {}).get("reason") == "upstream":
         out["scheduled_for"] = dict(sched)              # G1025 pass 3: one scheduled restack per agent attempt
@@ -88,6 +102,8 @@ def run(ctx):
         git.run("reset", "-q", "--keep", onto, cwd=p)
         return Done(out, ok=True, ref_updates=ups + [(f"refs/heads/{br}", None, onto)], after_push=post,
                     summary=f"work branch created on {onto[:7]}")
+    if merge_mode:
+        return merge_sync(ctx, ident, old, onto, prev, out, ups, post)
     # 3. a hand-resolved conflict
     Lc = git.rev_parse(f"refs/heads/{br}")
     pw = prev.get("work")
@@ -152,9 +168,9 @@ def combine(git, g, S, stack, with_I, I_name):
             raise EngineError(r.stderr.decode("utf-8", "replace"))
         tree = r.stdout.split(b"\0")[0].decode()
         if i < len(S) - 1:
-            acc = git.commit_tree(tree, [acc, h], "zzzops: partial stack\n")
+            acc = git.commit_tree(tree, [acc, h], "chore(stack): partial stack\n")
     names = ", ".join(f"G{e['goal']}" for e in stack) + (f", {I_name}" if with_I else "")
-    return git.commit_tree(tree, list(S), f"zzzops: stack for G{g} (combines {names})\n")
+    return git.commit_tree(tree, list(S), f"chore(stack): stack for G{g} (combines {names})\n")
 
 
 def unpushed_replay(git, ident, Lc, W, old) -> bool:
@@ -196,3 +212,85 @@ def retire_stack(ctx, sb, SB, target):
     if r != "ok":
         warnings.append({"kind": "stack_branch", "message": f"could not delete {sb}; the next base run or the close will"})
     return warnings
+
+
+def merge_sync(ctx, ident, old, onto, prev, out, ups, post):
+    git, p, g, snap = ctx.git, ctx.worktree, ctx.goal, ctx.snap
+    W = snap.work[g]
+    br = f"refs/heads/zzzops/work/g{g}"
+    resume = {"resume": ["start", str(g), ctx.node, "--as", "<LABEL>"]}
+    restarted = False
+    if prev.get("tree"):
+        pw = prev["work"]
+        reviews_only = W == pw or (git.is_ancestor(pw, W) and
+                       all(ident.is_review(c) for c in git.out("rev-list", f"{pw}..{W}").split()))
+        if prev.get("onto") != onto or not reviews_only:
+            git.run("read-tree", "-u", "--reset", W, cwd=p)
+            prev = {}
+            restarted = True
+    if prev.get("tree"):
+        tree, files, tip = prev["tree"], prev["files"], W
+        changed = git.run("diff", "--name-only", "-z", tree, "--", cwd=p, text=False).stdout
+        untracked = git.run("ls-files", "--others", "--exclude-standard", "-z", cwd=p, text=False).stdout
+        extra = sorted({x.decode("utf-8", "surrogateescape") for x in (changed + untracked).split(b"\0") if x} - set(files))
+        marked = [f for f in files if Path(p, f).is_file() and
+                  re.search(rb"(?m)^(?:<<<<<<< |>>>>>>> )", Path(p, f).read_bytes())]
+        if extra or marked:
+            reason = ("these paths are not part of the conflict: " + ", ".join(extra)) if extra else "conflict markers remain: " + ", ".join(marked)
+            return Blocked({"category": "conflict", "waiting_for": "agent", "reason": reason,
+                            "instructions": "Edit only the listed conflict files, remove outside edits, and resume; do not commit.",
+                            "commands": resume, "op_state": prev})
+        with tempfile.TemporaryDirectory(prefix="zzzops-sync-") as td:
+            env = {"GIT_INDEX_FILE": os.path.join(td, "index")}
+            git.run("read-tree", tree, cwd=p, env=env)
+            if files:
+                git.run("--literal-pathspecs", "add", "-A", "--", *files, cwd=p, env=env)
+            tree = git.out("write-tree", cwd=p, env=env)
+        resolved = files
+    else:
+        wt.sync(git, ident, snap, g, "clean", ctx.node, "?", self_sync=True)
+        tip = git.out("rev-parse", "HEAD", cwd=p)
+        if old == onto:
+            return Done(out, ok=True, ref_updates=ups, after_push=post, summary=f"already on {onto[:7]}")
+        if git.is_ancestor(onto, tip) and (old is None or git.is_ancestor(old, onto)):
+            synced = {"old": old, "onto": onto, "work": tip, "tip": tip, "merge": None, "resolved": []}
+            out["synced"] = synced
+            return Done(out, ok=True, ref_updates=ups, synced=synced, after_push=post, summary=f"already contains {onto[:7]}")
+        B0 = old if old and git.is_ancestor(old, tip) else git.out("merge-base", onto, tip)
+        result = git.run("merge-tree", "--write-tree", "--merge-base", B0, "--name-only", "-z", onto, tip, check=False, text=False)
+        fields = result.stdout.split(b"\0")
+        tree = fields[0].decode()
+        files = []
+        for field in fields[1:]:
+            if not field:
+                break
+            files.append(field.decode("utf-8", "surrogateescape"))
+        if result.returncode == 1:
+            git.run("read-tree", "-u", "--reset", tree, cwd=p)
+            reason = f"merge conflict in {', '.join(files)}" + (" (restarted; prior resolution edits were discarded)" if restarted else "")
+            return Blocked({"category": "conflict", "waiting_for": "agent", "reason": reason,
+                            "instructions": f"In {p}: edit only {', '.join(files)} to the intended goal on top of {onto}. "
+                                            "For modify/delete keep or delete the file. Do not commit or touch other paths; resume.",
+                            "commands": resume, "op_state": {"work": tip, "onto": onto, "old": old, "files": files, "tree": tree}})
+        if result.returncode != 0:
+            raise EngineError(result.stderr.decode("utf-8", "replace"))
+        resolved = []
+    B0 = old if old and git.is_ancestor(old, tip) else git.out("merge-base", onto, tip)
+    tree = ident.set_entry(tree, [".zzzops", "reviews"], ident.path_entry(tip, ".zzzops/reviews"))
+    dates = [int(x) for c in (tip, onto) for x in git.out("show", "-s", "--format=%at %ct", c).split()]
+    env = {k: f"@{max(dates)} +0000" for k in ("GIT_AUTHOR_DATE", "GIT_COMMITTER_DATE")}
+    from engine.ops.integrate import committer
+    name, email = committer(git)
+    env.update(GIT_AUTHOR_NAME=name, GIT_AUTHOR_EMAIL=email, GIT_COMMITTER_NAME=name, GIT_COMMITTER_EMAIL=email)
+    target = ctx.target or {"branch": snap.I, "tip": snap.integration}
+    label = target["branch"] if onto == target["tip"] else (f"G{out['stack'][0]['goal']}" if len(out["stack"]) == 1 else "stack")
+    merge = git.commit_tree(tree, [tip, onto], f"chore(sync): merge {label} into G{g}\n\nZzzops-Old-Base: {B0}\n", env=env)
+    if not git.is_ancestor(W, merge):
+        raise Refused("sync_refused", "merge sync would not advance work history")
+    synced = {"old": old, "onto": onto, "work": tip, "tip": merge, "merge": merge, "resolved": resolved}
+    out["synced"] = synced
+    def after():
+        git.run("reset", "-q", "--hard", merge, cwd=p)
+        return post() if post else []
+    return Done(out, ok=True, ref_updates=ups + [(br, W, merge)], synced=synced, after_push=after,
+                summary=f"merged {onto[:7]} into work")

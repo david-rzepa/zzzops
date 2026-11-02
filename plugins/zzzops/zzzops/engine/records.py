@@ -282,63 +282,6 @@ def reviewed(graph: Graph, doc: dict, X: str, fresh: bool = True) -> dict | None
     return out or None
 
 
-# --------------------------------------------------------------------------------------------- suggested checkpoint
-
-
-class GitView:
-    """The ancestry questions suggested_checkpoint asks; the verbs answer them with Git, tests with a dict."""
-
-    def is_ancestor(self, a: str, b: str) -> bool:
-        raise NotImplementedError
-
-    def committed_since(self, work: str, head: str) -> bool:
-        """Whether work..head holds any commit other than docs(review): commits."""
-        raise NotImplementedError
-
-
-def suggested_checkpoint(graph: Graph, doc: dict, X: str, k: str, r0: dict | None, lease_work: str | None,
-                         lease_parts: dict, base_value: str | None, head: str, git: GitView) -> str | None:
-    """SPEC §4.20 suggested checkpoint, computed at submit (H30), including the no-commit rule (H26).
-
-    Returns the suggestion (the default checkpoint), or None for HEAD; raises checkpoint_required."""
-    from engine.fingerprint import stale_keys
-    if not r0 or r0["status"] != "done" or not isinstance((r0.get("output") or {}).get(k), dict):
-        return None
-    c = r0["output"][k]["commit"]
-    records = doc.get("records") or {}
-    base_sel = graph.selectors[X].get("base")
-    bprod = base_sel.producer if base_sel else None
-    br = records.get(bprod) if bprod else None
-    maps = ((br or {}).get("output") or {}) if br and br["status"] == "done" else {}
-    moved = r0["output"][k].get("base") != base_value
-    nocommit = bool(lease_work) and not git.committed_since(lease_work, head)
-    hint = ("this phase added no commit; name the checkpoint: {\"%s\": {\"commit\": \"<full 40-hex sha>\"}}, your rebased "
-            "checkpoint commit, or the base commit when the rebase dropped your commits as already applied" % k)
-    if nocommit:
-        if moved:
-            sug = (maps.get("replay_map") or {}).get(c) or (maps.get("replay_pos") or {}).get(c)
-            if not sug:
-                raise Refused("checkpoint_required", f"{X}'s previous checkpoint {c[:7]} was rewritten by the restack",
-                              hint=hint)
-        else:
-            sug = c
-        if not (sug == head or git.is_ancestor(sug, head)):
-            raise Refused("checkpoint_required", f"{X}'s previous checkpoint {sug[:7]} is not in HEAD", hint=hint)
-    else:
-        if "inputs.base" not in stale_keys(r0.get("fp_parts"), lease_parts):
-            return None
-        sug = (maps.get("replay_map") or {}).get(c) or (maps.get("replay_pos") or {}).get(c)
-        if not sug or not (sug == head or git.is_ancestor(sug, head)):
-            return None
-    for name, sel in graph.selectors[X].items():
-        spec = graph.nodes[X]["inputs"][name]
-        if sel is None or sel.kind != "node" or spec.get("context"):
-            continue
-        p = sel.node
-        pr = records.get(p)
-        for pk in graph.checkpoint_outputs(p):
-            if pr and pr["status"] == "done" and isinstance((pr.get("output") or {}).get(pk), dict):
-                pc = pr["output"][pk]["commit"]
-                if not (pc == sug or git.is_ancestor(pc, sug)):
-                    return None
-    return sug
+def checkpoint_scope(graph, node: str, record: dict) -> list[str] | None:
+    """Only a preserved producer's frozen paths scope its change; legacy records remain unscoped."""
+    return sorted(record["frozen"]) if "frozen" in record and any(n.get("preserve") == node for n in graph.nodes.values()) else None
