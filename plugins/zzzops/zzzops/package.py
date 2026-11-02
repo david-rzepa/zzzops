@@ -44,6 +44,7 @@ REQUIRED_FILES = {
     "zzzops/engine/card.py",
     "zzzops/engine/carry.py",
     "zzzops/engine/cli.py",
+    "zzzops/engine/defaults.py",
     "zzzops/engine/errors.py",
     "zzzops/engine/fingerprint.py",
     "zzzops/engine/frontier.py",
