@@ -14,6 +14,39 @@
   },
   "priority": "P1",
   "records": {
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T16:34:26Z",
+      "fp_parts": {
+        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "inputs": {
+          "doc": "v1:blob:48db30e141b058f1e0aa82e4687321fdb6b2dc6e",
+          "summary": "v1:sha256:803f8c75fa32836e21874ebab4caf5273d1c672af33808501215218fd1d589ba"
+        },
+        "policy": {},
+        "subject": "v1:sha256:8ae00ebf9c7e0665b4636a326856ee9cb1e492a1b264b1bad1d3f40cf17edf69"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:779fbff6e7f191939a07e7eacbbe48c4450c02f219ea8d5d4e8d0c37cd57192e",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-02T16:34:26Z",
+        "decided_by": "Claude (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "After a sync merge from trunk where the goal's own diff didn't change, what should re-run? -> Tests + code review (Recommended)",
+        "summary": "Approved G1039 design revision 3 (review round 2 approved, all prior findings resolved). In merge mode (G1038), a clean trunk sync keeps a node's checkpoint when its -U0 patch id is unchanged and every hand-resolved path in its scope equals `git merge-file --union` of the three versions; design and tests reviews then stay current. run_tests always re-runs; review_impl re-runs via a new base input with a shrinkable sync card section. The budget becomes a per-stage limit (default 10) on review rounds that raise new material findings, gated by capability round_budget; only review/op re-runs after a clean sync are exempt. Notes for implement: skip the union check when old and new checkpoint commits are equal; exclude `detail` from the fold condition; update render.py res.budget readers and test that next offers no delivery agent actions while discovery remains."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "48db30e141b058f1e0aa82e4687321fdb6b2dc6e",
+          "commit": "e121cd29b573b34361c05471655ac94198e1ab84"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 4,
       "correction_runs": 2,
