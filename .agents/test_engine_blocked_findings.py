@@ -226,7 +226,8 @@ class HeldOutputTests(unittest.TestCase):
 class HeldSchemaTests(unittest.TestCase):
     def test_last_output_is_an_object_on_blocked_agent_records_only(self):
         r = schema_tests.record(status="blocked", ok=False, output=None, last_output={"summary": "old"},
-                blocked={"category": "decision", "waiting_for": "agent", "instructions": "retry", "reason": "retry"})
+                blocked={"category": "decision", "waiting_for": "agent", "instructions": "retry", "reason": "retry",
+                         "repeats": 1})
         self.assertEqual([], schemas.validate_record(r))
         for value in (None, "old", [], 3):
             with self.subTest(value=value):
