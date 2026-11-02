@@ -147,35 +147,23 @@
       "status": "done"
     },
     "integrate": {
-      "answer": {
-        "decided_at": "2026-11-02T15:35:56Z",
-        "decided_by": "Claude (root agent), delegated by Dave",
-        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
-        "text": "wait"
-      },
-      "attempt": 3,
+      "attempt": 4,
       "blocked": {
         "category": "external",
-        "instructions": "The human answered: wait",
         "op_state": {
           "head": "a1e09387454f99411731f1402db35b4e12310f70",
-          "pending_since": 1793631411,
+          "pending_since": 1793633758,
           "polls": 1,
           "rerun_head": null
         },
-        "options": [
-          "wait: answer with text 'wait'",
-          "fix verification.required_ci"
-        ],
-        "question": "No checks have appeared on PR #759 (head a1e0938) after 34 minutes (mergeable: MERGEABLE/BLOCKED). Workflows may not trigger for this PR (path filters, disabled Actions, or a conflict). Wait longer, or fix verification.required_ci through a policy branch?",
-        "reason": "no checks appeared",
-        "recommendation": "check the PR's checks and Actions settings on GitHub first",
+        "reason": "required checks pending: dev-required-tests (mergeable: MERGEABLE/BLOCKED)",
         "repeats": 1,
-        "waiting_for": "agent"
+        "retry_after": "2026-11-02T15:40:58Z",
+        "waiting_for": "time"
       },
-      "correction_runs": 2,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-02T15:31:46Z",
+      "finished_at": "2026-11-02T15:35:58Z",
       "fp_parts": {
         "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
         "inputs": {
