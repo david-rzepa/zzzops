@@ -47,34 +47,30 @@
       "status": "done"
     },
     "design": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-01T20:14:53Z",
+      "finished_at": "2026-11-02T22:05:17Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
-          "dep_designs": "v1:sha256:2b565734863caea81a6b584b6a5b80f3c5418cb38312179fd2136e021a5efa81",
+          "dep_designs": "v1:sha256:4f1ace82556f687dbc0ccdf05fc180333614b5be1142a3786159a49bd34e6274",
           "spec": "v1:sha256:7cacab7d2739a88c2f7c7d9773f294a4064599407fcc553561919fe77916b36c"
         },
         "policy": {}
       },
-      "holder": "claude:e6ad/d1036",
-      "input_fp": "v1:sha256:f7d7ad5b5ebb802e500012e278cd494feeed3aacc478c1276c6c33684b349002",
+      "holder": "codex:takeover/1036-design",
+      "input_fp": "v1:sha256:6cc56f2d92585d5a2cb9746ee92e5c623e3119a092a0e1c23dacd1442b930ffa",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "ac8bbd5390963a971a8790e1fbeb3099837edda7",
-          "commit": "293360ef7b92cb40b6ed96125e4c42c24da1db82",
+          "blob": "23d528659052e96d582576477870d43f2f0b74e1",
+          "commit": "6bc9fa7934a5451d83dce960a83c4182b811b46d",
           "path": ".zzzops/reviews/1036/design.md"
         },
-        "responses": {
-          "review_design:1:1": "fixed: DESIGN ids corrected (D1 with D2, D7, D11, D12 with §4.1 as amended by G1022, D14 with §3.4/§3.5, and the release gate (§2.5 W10; SPEC §3.1, §4.9) plus G1025's HISTORY §4 sections instead of D6); ledger citations use the forms 'DESIGN §9 Dn' and 'DESIGN §5 Rn', checked against the row (W14); limitation 3 and §3 item 7.8 now say R9 removed the propose/freeze ceremony and G1025 restores release lines without it.",
-          "review_design:1:2": "fixed: the binding check diffs all of plugins/zzzops, excluding only plugins/zzzops/plugin.json, .codex-plugin/plugin.json and .claude-plugin/plugin.json, and strips rendered skill-metadata provenance prefixes where they occur; the header labels its build id as the checked dev build's, the tag statement covers the source only, and W3 is reworded to match."
-        },
-        "summary": "Revision 2 of the whitepaper design, with the approach unchanged. It answers review_design:1:1: decision ids are corrected (D1/D2, D7, D11, D12 with §4.1, D14 with §3.4/§3.5, and the release gate plus G1025 in place of D6), the ledger always cites DESIGN §9 Dn and §5 Rn, and R9 is reconciled with G1025's release lines. It answers review_design:1:2: the binding check covers all of plugins/zzzops except the three version-bearing manifests, and the header labels its build id as the checked dev build's. It also applies the review notes: T1 now shows G2's design waiting on G1's, the ratio rule is broadened, and the cited-test fallback applies to every trace step."
+        "summary": "Revision 3 narrowly reconciles the whitepaper plan with approved G1037 attempt 5: merge-sync/change-based carry, verification plus base-focused implementation review, per-stage finding budgets and findings preserved across answered owner-question blocks. The trace and evaluation now distinguish real observations, cited tests and unobserved cases across A1–A20; writing explicitly waits for G1037 merge/report even if base is stack-ready earlier. WD1–WD8 and the existing binding, ratio-only evidence, anonymity, byline and external-post boundaries are unchanged; no paper or dogfood outcome is produced in this design phase."
       },
-      "reason": "reopened",
+      "reason": "stale",
       "status": "done"
     },
     "review_design": {
