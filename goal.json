@@ -285,51 +285,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 3,
-      "correction_runs": 2,
-      "findings": [
-        {
-          "id": "review_tests:1:2",
-          "note": null,
-          "response": "fixed: test_trailers_are_written_with_branching closes a release-1 goal as superseded and asserts `Closed: superseded`; new CutItemTests.test_superseded_goal_neither_blocks_the_cut_nor_completes_the_release_alone. Also added the GOLDEN_FP regeneration rule (regenerate with the new base commit's engine, never the head).",
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:76971436eb9603edec15c14585a8dc4582fc6efb40a7a49e08bc065434cd20b8",
-          "text": "F2 (minor): superseded goals are not tested where design revision 3 promised. Rev 3 §13 test 2a says the cut counts done, cancelled and superseded goals from trailers alone, but LedgerTests asserts only 'Closed: cancelled' and 'Closed: done', and no cut test has a superseded release-N goal (only the frontier's line_members_open case uses superseded). Fix: close one release-1 goal as superseded in test_trailers_are_written_with_branching (assert 'Closed: superseded'), and in a cut-item test assert that it neither blocks the cut nor alone makes the release complete.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-01T21:42:21Z",
+      "attempt": 4,
+      "correction_runs": 3,
+      "findings": [],
+      "finished_at": "2026-11-02T14:38:31Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:f240bd5994202bea10cb430a216b74cce56ace63",
-          "tests": "v1:sha256:a95e2f7a7e8445e30470d27354b94cce570bd3e1e55b5ee2395057ebb4c9551d"
+          "tests": "v1:sha256:5b630c686012fca0373ec028665ea6effeb2af6f8d9b17d0dc1fa3ac0fea1cac"
         },
         "policy": {},
-        "subject": "v1:sha256:a96e8d391a90b7d9636bca0dfb95cf783589718ec40bb16502931a4195ff841d"
+        "subject": "v1:sha256:4026735c4ebd60fe4a0f394dc1d184f7c63ff3201fe6783318f9ecf9686a7dac"
       },
       "holder": "claude:e6ad/rt1025",
-      "input_fp": "v1:sha256:0b3ef32b6d99c51e1d8c3795bfd0e64672451a69e6d6c972e157885add86ae5c",
+      "input_fp": "v1:sha256:5d88a9d305429f1fd00692a97542fd5ee404526b26466618496c478ce3387cc0",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "a83cee7a4ac967214535b9f0f7cf615f362cd685",
-          "commit": "7be26ffce62e755926f2ec48b32d35ace421967f",
+          "blob": "8aa6098f2c50e96aa23f12fd9d8d8fcce232916d",
+          "commit": "328366f4e5cc9fdfbce8fb100aae248b702ab9b8",
           "path": ".zzzops/reviews/1025/review_tests.md"
         },
-        "summary": "Approved. review_tests:1:2 is resolved. The superseded-goal cut test now asserts 'no cut' while the superseded goal is the only release-1 goal, and creates `a` only afterwards. An implementation that counts superseded as done would now fail it. The 'does not block the cut' half and the 'Closed: superseded' trailer assertion are unchanged. 1:1 was already resolved. No new findings."
+        "summary": "Approved. 848e66c fixes the five setups raised by implement:1:1-1:5 without weakening any assert. The new `notes` workspace agent fixture lets pass 3 be tested on an agent and an op together (§5.3). The release_sync test gets a real-shaped PR. The hotfix test continues from base. The seed fetch and the warm-up are fixture-only fixes. The frozen test file is unchanged by implement, and at 5061b79 the recorded command passes (56 tests, OK)."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "change": "60a45becbe87be5fc24e8cb964e879fdf00149b3",
-          "commit": "67a38f5dc5a49c90bbb6c722865451b41bdb1fce",
-          "tree": "fe4ebd4f9e6b49e1807bf7ecf0268ae0ae0405f3"
+          "change": "e531d85c7456a3a25d96b9d6fe8c693281f89c88",
+          "commit": "848e66c4b4c9e92d1d76f6126e1d54c102fee933",
+          "tree": "70e4a3c822347ac60a02411b35558f77dd9372b0"
         }
       },
       "status": "done"
