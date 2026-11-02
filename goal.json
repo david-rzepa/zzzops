@@ -194,6 +194,44 @@
       },
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T16:49:13Z",
+      "fp_parts": {
+        "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
+        "inputs": {
+          "code": "v1:sha256:fa9a7a6d890a14d8aeeb9b94e77cf7cfb8186ee8ac4114150b97b303b19f3a78",
+          "doc": "v1:blob:3ddfcf819109e6587559b34b5f61a295c331a1db",
+          "tests": "v1:sha256:65d9ab989471da0fe858808028644b0847eb6b6e8d7ddd5cf115ad8273ae261d"
+        },
+        "policy": {},
+        "subject": "v1:sha256:045c1d2c6cb24fe624a58c21c2ada5006d84f67686857f6c5f301af94d9975f0"
+      },
+      "holder": "claude:e6ad/ri1026",
+      "input_fp": "v1:sha256:c8ec4cc24b61bc9db9a51fdae2efdee0c41bcc5386e955d784a3f366df87ef3f",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "f3d50f438eb584faa80bccd9c69a346e5fd6608c",
+          "commit": "ca2d7688677d152573cb483bc5c8394b7e84fc41",
+          "path": ".zzzops/reviews/1026/review_impl.md"
+        },
+        "summary": "Approved: the implementation matches design revision 7 (prefix check and filter refusal, history-read human_decisions with the subject+ancestors card set and the non-descendant set for approve items and the PR body, the shrink step, the card answer on any blocked answered record); docs, SPEC sections, skill and prompts are complete; implement left the frozen tests unedited; 41 owner-question tests re-run OK."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "f4eaf7465f1d3e95392733d9ba05456702fd41d0",
+          "change": "3a2e9b59fc1716de810fbe2b214f69577fb2afc7",
+          "commit": "7f6788498ad91db48140b8e3927ab2df23f39e71",
+          "tree": "9537f6aeaa9cac1a03d8b592185b925cab82ea92"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 4,
       "correction_runs": 3,
