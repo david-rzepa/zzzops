@@ -55,8 +55,23 @@ class LocalDiagnosticsTests(unittest.TestCase):
             self.assertIn("unique child error evidence", observed["stderr"])
             summary = json.loads(stdout.getvalue())
             self.assertEqual("failed", summary["status"])
+            self.assertEqual((1, 1), (summary["failures"], summary["errors"]))
+            self.assertEqual([name + ".Probe.test_a_failure"], summary["failure_ids"])
+            self.assertEqual([name + ".Probe.test_b_error"], summary["error_ids"])
             self.assertNotIn("failure_details", summary)
             self.assertNotIn("unique child assertion evidence", stdout.getvalue())
+
+    def test_cli_keeps_known_failure_summary_last_instead_of_appending_a_wrapper_traceback(self):
+        runner = ci.load_runner()
+        summary = {"status": "failed", "failure_ids": ["probe.Case.test_failure"]}
+        def fail(**kwargs):
+            print(json.dumps(summary))
+            raise subprocess.CalledProcessError(1, ["local-tests"])
+        with mock.patch.object(sys, "argv", ["runner", "--platform", "linux", "--local"]), \
+                mock.patch.object(runner, "run_local_validation", side_effect=fail), \
+                contextlib.redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(1, runner.main())
+        self.assertEqual(summary, json.loads(stdout.getvalue().splitlines()[-1]))
 
     def test_crashed_temporary_child_retains_stderr_in_failure_report(self):
         runner = ci.load_runner()

@@ -559,10 +559,15 @@ def run_local_validation(root: Path = ROOT, workers: int | None = None,
         summary = {key: report[key] for key in ("status", "inventory_count", "inventory_sha256", "workers",
                                                 "wall_seconds", "aggregate_test_seconds", "slowest_tests")}
         summary.update(executed_count=len(report["executed_ids"]), completed_count=len(report["completed_ids"]),
-                       worker_seconds=[worker["wall_seconds"] for worker in report["worker_reports"]])
+                       worker_seconds=[worker["wall_seconds"] for worker in report["worker_reports"]],
+                       failures=report["failures"], errors=report["errors"],
+                       failure_ids=[item["id"] for item in report.get("failure_details", [])][:5],
+                       error_ids=[item["id"] for item in report.get("error_details", [])]
+                                 [:max(0, 5 - min(5, len(report.get("failure_details", []))))])
         if "error" in report:
             summary["error"] = report["error"][:400]
-        print(json.dumps(summary, sort_keys=True))
+        # Keep bounded failing IDs at the end for the engine's captured tail.
+        print(json.dumps(summary))
     return report
 
 
@@ -591,7 +596,12 @@ def main() -> int:
             parser.error("--local requires --platform linux and cannot combine with discovery or CI shard options")
         if args.workers is not None and args.workers <= 0:
             parser.error("Local --workers must be a positive integer")
-        run_local_validation(workers=args.workers, report_path=args.report)
+        try:
+            run_local_validation(workers=args.workers, report_path=args.report)
+        except (ValueError, RuntimeError, subprocess.CalledProcessError):
+            # run_local_validation has emitted the outcome and retained evidence;
+            # a wrapper traceback must not push failing IDs out of captured tails.
+            return 1
         return 0
     args.workers = 1 if args.workers is None else args.workers
     if args.workers not in (1, 2):

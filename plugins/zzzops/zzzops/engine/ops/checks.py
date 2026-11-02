@@ -185,7 +185,7 @@ def run(ctx):
         pids = sorted(commands.unconfirmed)
         return Blocked({"waiting_for": "human", "category": "external",
                         "reason": "verification process termination could not be confirmed",
-                        "question": f"Verification timed out and process groups or pipes for PIDs {pids} "
+                        "question": f"Verification stopped and process groups or pipes for PIDs {pids} "
                                     "could not be confirmed stopped. The worktree was preserved. "
                                     "Stop the remaining processes and inspect the checkout before retrying.",
                         "op_state": {"unconfirmed_pids": pids}})
