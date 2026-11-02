@@ -1,8 +1,10 @@
 # G1036 design: the ZzzOps whitepaper on deterministic progressive disclosure
 
-Revision 2. It answers review_design:1:1 (decision ids corrected, ledger citations made explicit, R9 reconciled with G1025) and review_design:1:2 (the binding check covers all of `plugins/zzzops` except the version-bearing manifests; the header's build id is the checked dev build's). It also applies the review's three notes: trace step T1, a broader ratio rule, and the cited-test fallback for any trace step. §13 has the responses.
+Revision 3 updates only the dependency reconciliation for G1037 attempt 5, against read_dev `de5640d1c5909ea924450aeea6450497a78946f6`: merge-based goal sync, change-based carry with sync-focused implementation review, per-stage material-finding budgets, findings across owner-question blocks, and observed-versus-unobserved report evidence. WD1–WD8, the binding/ledger/ratio decisions and the prior fixes are unchanged. §14 records this reconciliation. No paper is written and no dogfood outcome is claimed in this design phase.
 
-Revision 1 was written against read_dev 8d8437a, with `docs/design/` read from `zzzops/work/g1017`. It replaces G1002. The owner's ordering (OD2 of G1037) is that this design is done now and the paper is written only after G1037 merges, so that the dogfood run can still change the engine first. The writing nodes (`test_design` and `implement`) cannot start before then anyway: `depends_on: [1000, 1017, 1037]`, and G1037 depends on every Release 1 engine goal (G1022, G1024 to G1029 and the rest).
+Revision 2 answered review_design:1:1 (decision ids corrected, ledger citations made explicit, R9 reconciled with G1025) and review_design:1:2 (the binding check covers all of `plugins/zzzops` except the version-bearing manifests; the header's build id is the checked dev build's). It also applies the review's three notes: trace step T1, a broader ratio rule, and the cited-test fallback for any trace step. §13 has the responses.
+
+Revision 1 was written against read_dev 8d8437a, with `docs/design/` read from `zzzops/work/g1017`. It replaces G1002. The owner's ordering (OD2 of G1037) is that this design is done now and the paper is written only after G1037 merges, so that the dogfood run can still change the engine first. The dependencies stay `depends_on: [1000, 1017, 1037]`. The engine can make `base` stack-ready on an integrated dependency head before that dependency merges; that is not permission to begin writing. The root explicitly waits for G1037 to merge and its anonymised report to exist before starting G1036 `test_design` or `implement`, as OD2 requires. G1037 itself waits for all its dependency merges before the actual run, under its attempt-5 preconditions. A stack-ready action alone satisfies neither waiting boundary.
 
 ## 1. Owner decisions (2026-11-01 interview, relayed by the coordinator)
 
@@ -19,7 +21,7 @@ The quoted words are the owner's choices. The text after each one is the coordin
 
 ## 2. Outcome
 
-Two new files and one changed line:
+The deliverables remain:
 
 | Path | What |
 |---|---|
@@ -41,7 +43,7 @@ The paper opens with its claim (WD2), and every later section is marked with the
 3. **How it works, in one page.** Diagram D1 (the disclosure loop) plus the five things a practitioner sees: goals, `next`, task cards, reviews that reopen work, and batched human decisions, including owner-question interviews (G1026).
 4. **What it costs** (ratios only, WD8):
    - The multi-lens review experiment (G1022 Appendix A). One reviewer with five lenses found as many or more known defects than five separate lens agents, for about a quarter of the tokens. Adding a separate Adversary at the design stage matched seven separate lenses for about a third of the tokens. Sample sizes: 3 implementation runs and 2 design runs, one subject each.
-   - The dogfood run (G1037), as ratios derived from its report's totals (§7): for example the share of tokens spent on engine bookkeeping against the work itself, correction rounds per goal, the share of wall-clock time spent waiting on the owner, and how often a restack was free (carry-forward) against a re-run.
+   - The dogfood run (G1037), as ratios derived from its report's totals (§7): for example the share of tokens spent on engine bookkeeping against the work itself, new material-finding rounds and budget use by stage per goal, the share of wall-clock time spent waiting on the owner, and the proportion of eligible syncs that carried change-bound work against those that staled it. Sync-only review reruns are reported separately from new finding rounds; a clean carry is not described as free when verification and sync-focused implementation review still run.
    - Every number names its sample (n goals, n runs) and its caveat.
 5. **When not to use it.** One-session tasks. Repositories with no shared Git remote. Teams that need a project-management suite, enforced model routing, tamper-evident audit, or a CI/deploy orchestrator (these come from the intent's `not` list and R5/R1/R9).
 
@@ -54,9 +56,9 @@ The paper opens with its claim (WD2), and every later section is marked with the
    1. Goal documents on per-goal branches, compare-and-swap writes; Git as the only store (DESIGN §9 D1; the spec text lives in the goal document, §9 D2; SPEC §4.4).
    2. Lease branches: an empty commit, renew, reclaim, atomic submit (DESIGN §9 D7, §3.7; SPEC §4.12). No heartbeats, receipts or storage locks.
    3. `workflow.json`: the declarative graph, with agent, op, review and human approve nodes (DESIGN §3.3); the Release 1 default graph is G1022's 15 nodes (DESIGN §9 D12 and §4.1 as amended by G1022's HISTORY §4 row), with lenses, a lens tag on findings, and skip keys `<node>:<lens>`; a project can replace any of it.
-   4. Findings and corrections: a finding reopens its target; responses `fixed:`/`disputed:`; the filter; findings carried across rounds and edits (G1028); `owner question:` findings that block the design for the owner (G1026).
+   4. Findings and corrections: a finding reopens its target; responses `fixed:`/`disputed:`; the filter; findings carried across rounds and edits (G1028); `owner question:` findings that block the design for an unanswered owner decision (G1026); the already-answered decision is preserved on retry, while other still-live corrections survive the block under `blocked_findings` (G1040). The revised design prompt is adopted with that capability; an answered question is not itself a reason to block again.
    5. Identities and staleness: tree and change, fingerprints (DESIGN §9 D14, §3.4, §3.5; SPEC §4.7, §4.8).
-   6. Stacked PRs and carry-forward (DESIGN §9 D5, §3.16; SPEC §4.21). Not linear stacks: a dependent stacks only on its own dependencies.
+   6. Stacked PRs and carry-forward (DESIGN §9 D5, §3.16; SPEC §4.21, as amended by G1038/G1039 at the checked build). A dependent stacks only on its own dependencies. With `merge_sync` required, sync merges preserve forward work history, and integrate creates tests/implementation PR parts on the recorded synced base, preserving the tested tree; it does not silently use a newer live trunk tip. With `round_budget`, clean-sync carry uses each node's own change identity, including the accepted whole-side-union resolution rule: bound reviews may stay current while the changed tree re-runs verification and the default graph's non-context implementation-review base edge re-runs review for semantic conflicts. Other resolutions conservatively stale affected work. New material-finding rounds spend stage budget; sync-only reruns do not. These capability-gated modes are described from their merged contract and installed graph, not presented as behavior of every custom policy or older build. Test fixes after implementation and scoped frozen paths follow G1038, rather than requiring history to be reordered into tests-before-code.
    7. Policy: the policy branch that pauses new work (DESIGN §9 D11); declared engine capabilities and the build id (G1027); policy-update notices (G1024); the intent check at capture (G1029).
    8. Releases: the `release` field and the release gate on `merge` (DESIGN §2.5 W10; SPEC §3.1 `release_gate`, §4.9), and git-flow release and hotfix lines with `release_cut`, `sync`, `approve_finish` and `finish`, cited by the sections G1025's HISTORY §4 row names. The engine stays CI- and deploy-agnostic. The paper says plainly that R9 removed the old propose/freeze ceremony and that G1025 brings back release lines without it.
 
@@ -83,14 +85,15 @@ One goal pair in a scratch repository, generated by `.agents/whitepaper_check.py
 | T3 | `review_design` raises one material finding; `filter_design` keeps it; G1 `design` reopens. | the reopened card's `corrections` and `previous` |
 | T4 | Design fixed (`fixed:` response); reviews approve; the human `approve_design` item is answered. | the approve item and the answer file |
 | T5 | The delivery stage runs: `base`, `test_design`, `review_tests`, `implement`, `run_tests`, `review_impl`, `filter_impl`, `integrate`. | tree and change identities on the checkpoint view |
-| T6 | G2 stacks on G1's PR branch; its PR shows only its own diff. | the G2 `integrate` record's target |
+| T6 | G2 stacks on G1's PR branch; with the selected merge-sync mode its integrated PR contains only its own tests/implementation parts on the recorded synced base. | the G2 `integrate` target/base and equality of its PR code tree with the tested work tree |
 | T7 | A `zzzops/policy/*` branch is pushed; `next` pauses new starts with a named wait. Landing it resumes work. | the wait line |
-| T8 | G1 merges; `base` restacks G2 onto the integration branch with unchanged patch ids, so carry-forward keeps `test_design` and `implement` and only the checks re-run. | the carried records and the `replay_map` |
+| T8 | G1 merges; with `merge_sync` required, `base` sync-merges G2 onto the new stack base. For a clean own-change-preserving sync under G1039, tests/implementation checkpoint changes and their change-bound reviews carry; verification runs on the new tree, and the default graph's non-context `review_impl.inputs.base` edge re-runs implementation review for semantic conflicts. Sync-only reruns spend no new material-finding round; a genuinely new material finding does. | the before/after checkpoint change/tree/base identities, carried/staled states, review_impl readiness and stage-budget effect, using actual output names at the checked build rather than assuming `replay_map` exists |
 | T9 | Release: G1 and G2 carry `release: 1`; the release line is cut, synced and finished (G1025), with `approve_finish` bound to the line tip. | the line goal's `next` lines |
 
 Rules:
 - Normalisation: each 40-hex id is replaced by `<c1>`, `<c2>` … in order of first appearance, times by `<t+Ns>`, and paths by `<repo>`. Holder labels use the synthetic form `claude:0a01/…`.
 - The paper embeds excerpts (Appendix B), and the script writes the full normalised transcript to stdout. The excerpts in the paper must match the script's output byte for byte after normalisation.
+- The trace enables the merged capabilities `merge_sync`, `round_budget` and `blocked_findings`, together with their paired workflow/prompts, when illustrating those modes. The real engine build and configured graph remain the source of truth; a synthetic trace demonstrates the mechanism, not an observation from the private app. An accepted whole-side-union case or an owner-question retry may be supported by a cited engine test rather than adding a new trace journey.
 - **Cited-test fallback, for any step.** If a step cannot be driven by the fixtures at the checked build, it is shown from the engine's own test for that behaviour, cited as a `test` ledger row, and the paper says so next to the step. That applies when FakeGitHub lacks a line op for T9, or when G1037's fixes renamed or changed an op, node or output a step depends on. Step ids T1–T9 stay fixed, so the ledger is unaffected. The implementer decides per step and records the reason in the ledger.
 
 ## 5. Claims and how each is checked
@@ -161,7 +164,7 @@ Allowed exceptions are listed by exact string in the script: the contract byte l
 4. **The evidence base is small.** One synthetic experiment per review subject, and one dogfood repository that is private and anonymised (only its public report is cited). There is no controlled comparison with other tools (WD5).
 5. **Cost depends on discipline.** A project can make its own graph expensive: the graph and prompts belong to the project.
 6. **Git and GitHub are assumed.** The engine needs network access to the remote and write access to the Git directory, and integrate and merge use GitHub.
-7. **Anything G1037 reports as not observed** (its A11 failure paths), listed as untested in practice.
+7. **Anything G1037 reports as not observed** (its A11 failure paths and A19/A20 sync/finding observations), listed as untested in that real run. A passing synthetic trace or dependency test does not convert a real-run not-observed result into an observed success. Lack of an eligible clean sync or owner-question block must remain visible.
 
 ## 7. What G1036 needs from G1037's report
 
@@ -169,9 +172,10 @@ G1037 §7 already promises most of this. The paper needs it in this form:
 
 - **A stable path and section anchors** in the repository, so ledger rows of kind `report` resolve.
 - **Engine build ids per node**, and the build at the release. The paper's checked build must be one of these, or the paper says how they differ.
-- **The totals that ratios are derived from**: per-goal agent runs, correction rounds and budget used, tokens split into bookkeeping (CLI and card reading) and the work itself, wall-clock time, CI minutes, and owner items and waits. The paper publishes only ratios (WD8), but the totals must be in the report so the ratios can be recomputed.
+- **The totals that ratios are derived from**: per-goal agent runs, new material-finding rounds and budget used by stage, sync-only reruns separately, tokens split into bookkeeping (CLI and card reading) and the work itself, wall-clock time, CI minutes, and owner items and waits. The paper publishes only ratios (WD8), but the totals must be in the report so the ratios can be recomputed.
 - **The lens re-score**: recall, nit rate and tokens per round, relative to G1022's synthetic numbers.
-- **Per-phase outcomes**, the A1–A17 results, the defect goals, and which failure paths were observed (A11).
+- **Per-phase outcomes**, all A1–A20 results from G1037 attempt 5, the defect goals and the build on which each was found/fixed, and which failure paths were observed (A11). A18 supplies actual adopted capabilities/prompts/workflow, rather than inferring adoption from defaults. A19 distinguishes clean carry, conservative staleness and unobserved cases; A20 distinguishes findings retained through blocks, already-answered owner questions, unmatched-response refusals, and equivalent/distinct check failures.
+- **Evidence labels and denominators.** Distinguish measured real-run outcomes, cited deterministic tests and not-observed cases. For each ratio publish its sample size, population and exclusion reason. Keep older synthetic lens experiments separate from the real-run re-score; do not pool different build/capability modes or imply a causal speedup from an uncontrolled run. Any run-time review or sharded-verification feature that merges later is described only if the final checked build contains it and the report supplies observations; no G1043 design promise is treated as measured evidence.
 - **The anonymisation** that G1037 §6 already guarantees. The paper adds no detail about the app.
 
 If the report lacks an item, the paper says "not measured", rather than estimating it. A missing item is a finding against G1037 only when it was promised in G1037 §7.
@@ -184,7 +188,7 @@ Each diagram is a Mermaid block with `accTitle` and `accDescr`, followed by a sh
 - **D2, the branch layout:** integration branch, `zzzops/goal/g<id>`, `zzzops/lease/g<id>/<node>`, `zzzops/work/g<id>`, `zzzops/policy/*`, `release/<n>`.
 - **D3, the Release 1 default graph:** 15 nodes, discovery and delivery stages, human nodes marked.
 - **D4, identities and staleness:** tree and change, and which input changes stale which records.
-- **D5, stacked delivery and carry-forward:** G2 on G1's PR, and the restack after G1 merges.
+- **D5, stacked delivery and carry-forward:** G2 on G1's PR, then a forward sync merge after G1 merges, with unchanged own-change identities carrying bound work, verification on the new tree, and implementation review on the new base. Label the capability/graph mode so this does not misdescribe legacy rebase behavior.
 
 ## 9. Approach details and rejected alternatives
 
@@ -202,7 +206,7 @@ Root follow-up, recorded for `approve_merge`: if any engine or template change m
 
 ## 10. Risks
 
-- **The dogfood run changes the engine late.** That is why writing waits for G1037. A change after G1036 is covered by §9's follow-up.
+- **The dogfood run changes the engine late.** That is why writing explicitly waits for G1037 merge and report, even if `base` becomes stack-ready earlier. A change after G1036 is covered by §9's follow-up. Reviewed dependency designs are plans, not proof that a feature shipped or was exercised; claims bind to the checked merged source and observed report.
 - **The claim outruns the evidence** ("reliable and cheap" on n=1). Mitigations: claims tagged argued must cite ledger ids; every ratio carries its sample size; limitation 4.
 - **Naming the private app.** The paper cites only G1037's public report. Before publication, the implementer and `review_impl` run G1037's A15 name check on both new files; the root supplies the terms privately, and they are never committed.
 - **Byline and the privacy scrub.** G1017 scrubbed the owner's name from `docs/design/` only. The byline is the owner's explicit choice (WD7), and the plugin manifest already names the author. The G1017 gate covers `docs/design` only, so it does not apply.
@@ -225,10 +229,13 @@ The acceptance checks are commands with recorded outputs. Apart from the check s
 | W8 | The definition distinguishes concept loading in `docs/CONCEPTS.md` (WD6). Related work names the three approaches with no benchmarks (WD5). |
 | W14 | Every decision is cited as `DESIGN §9 Dn` and every removal as `DESIGN §5 Rn`, and each resolves to the row the claim describes. |
 | W9 | The removed concepts appear only as removals: heartbeats, receipts, storage locks, linear stacks and model-effort binding. |
-| W10 | The limitations cover advisory routing, no comprehension proof, R1–R15, and G1037's not-observed paths. |
+| W10 | The limitations cover advisory routing, no comprehension proof, R1–R15, and every G1037 A11/A19/A20 not-observed result relevant to a paper claim; no cited test or synthetic trace is passed off as a real-run observation. |
 | W11 | The A15 name check is empty on both files (terms supplied privately). |
 | W12 | The full validation suite passes, including `test_concepts`. |
 | W13 | The blog draft makes no claim that is absent from the paper, links the paper, and states that the owner publishes it. |
+| W15 | Claims and T8 match the checked build's merged capability/graph mode: forward merge sync, change-based carry, exact tested PR tree, verification and base-focused implementation-review reruns, conservative staleness where required, and per-stage new-material-finding budgets. Legacy rebase fields are not asserted as the merge-mode contract. Cited-test fallback stays labeled. |
+| W16 | Evaluation reconciles G1037 A1–A20 and report definitions: stage finding rounds versus sync-only reruns, actual adopted capabilities, matched-build cohorts, and observed/test-only/not-observed evidence are distinct. All ratios remain reproducible and comply with WD8. |
+| W17 | Root records G1037 merge/report availability before starting the writing phases. A merely integrated dependency or a stack-ready base is not used to bypass OD2. |
 
 ## 12. Out of scope
 
@@ -246,3 +253,16 @@ The acceptance checks are commands with recorded outputs. Apart from the check s
 - **review_design:1:1:** fixed. §3 item 7 now cites DESIGN §9 D1 (with D2 for the spec text) for goal documents, D7 for leases, D12 with §4.1 as amended by G1022 for the default graph, D14 with §3.4 and §3.5 for identities and fingerprints, D11 for the policy branch, and the release gate (§2.5 W10; SPEC §3.1, §4.9) plus G1025's HISTORY §4 sections for releases. The bare D6 is gone. Ledger rows always use the forms `DESIGN §9 Dn` and `DESIGN §5 Rn`, and the script checks the quoted phrase against that row (§5.2, W14). Limitation 3 now says that R9 removed the propose/freeze ceremony and that G1025 restores release lines without it, and §3 item 7.8 says the same.
 - **review_design:1:2:** fixed. The binding check now diffs all of `plugins/zzzops`, so skills, references, prompts and templates are covered. Only `plugins/zzzops/plugin.json`, `.codex-plugin/plugin.json` and `.claude-plugin/plugin.json` are excluded, and rendered skill-metadata provenance prefixes are stripped where they occur (§5.1). The header labels its build id as the checked dev build's, and the tag statement is about the source only. W3 is reworded to match.
 - **Notes:** T1 is corrected: G2's design waits for G1's design through `deps.design.doc`. The ratio rule is broadened to suffixed and separated numbers near "token", currency, and cost words, with an exact-string allow list (§5.4). The cited-test fallback now applies to any trace step, including steps affected by G1037's fixes (§4).
+
+
+## 14. Dependency reconciliation for revision 3
+
+This is a design-only refresh for the changed `dep_designs` input, not a claim that G1037 ran. The direct dependency remains G1037 (attempt 5); no new goal, publication venue, telemetry interface or owner decision is introduced.
+
+- **G1037 OD2 and §4 preconditions:** design may proceed now. Actual dogfood waits for all its dependencies to merge; G1036 writing waits for G1037 merge and the report. Engine stack readiness is kept separate from those root execution boundaries.
+- **G1037 §4/§12 adopting G1038 revision 3 and G1039 revision 3:** final source/trace describe merge sync, tests/implementation PR parts on the recorded synced base, node-own-change carry, conservative staleness on non-eligible resolution, verification plus base-focused implementation review, and `round_budget` stage rounds. The implementation checks the merged contract and graph; the dependency design does not override shipped code.
+- **G1037 adopting G1040 revision 2:** still-live findings can survive a block, and a recorded owner answer prevents re-blocking on that answered question. The paired revised prompt is part of actual adoption. Cases absent from the real run remain not observed; the paper can separately cite the engine tests.
+- **G1037 A18–A20 and §7:** claim-ledger/report evidence includes actual installed requirements and observation labels; ratios distinguish stage finding rounds from sync reruns and identify denominators. WD8 remains unchanged: paper/blog publish ratios and trends with sample sizes, not absolute token counts or monetary cost.
+- **G1000 and G1017:** the reviewed lens mechanics, in-repository normative references, historical decision/removal IDs and prior binding corrections remain. Later merged amendments govern the checked Release 1 build; default graph choices remain configuration, not engine rules.
+
+WD1–WD8 are copied verbatim from revision 2. The deliverables, byline, external-post boundary, anonymity convention, binding/claim ledger, print-friendly diagrams and release-finish recheck remain. This revision writes no whitepaper text, invents no app outcomes, changes no source/policy and grants no external publishing authority.
