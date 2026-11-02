@@ -209,6 +209,68 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_tests:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:45ad22dc792017797dead3f55afe2d6eafd3abbd2925d7b7d422c3d4a06fc6b9",
+          "text": "The new EngineSubjectsTests merge-method test asserts actual trunk subjects, but unchanged engine_fake_gh.do_merge ignores --subject/--body and implements rebase as a two-parent hardcoded \"Merge pull request\" commit. A direct fixture probe confirms correct production flags still produce that result. Extend the fake on the tests line to honor merge/squash messages and model rebase without a fabricated merge; retain argument assertions and verify actual per-method result/body/PR commits with a small direct probe.",
+          "upheld": false
+        },
+        {
+          "id": "review_tests:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:45ad22dc792017797dead3f55afe2d6eafd3abbd2925d7b7d422c3d4a06fc6b9",
+          "text": "Design §6.5 relocates only checkpoints equal to or ancestral to synced.work. Existing tests cover no-sync and valid ancestors but never a checkpoint outside that history, so always returning synced.tip would pass them and incorrectly carry unrelated work. Add one small negative carry integration case with a side-branch checkpoint not ancestral to synced.work and an otherwise-accepting predicate; assert it is not carried. Use explicit fixture Git context, not ambient cwd/global Git.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-02T22:07:31Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:ab1153abea2ff217e185a023c66febc2cdc471b2",
+          "tests": "v1:sha256:68d189ae38c4881113f658d4f1b573afe90778125be9dfdde54d34ae46e540c5"
+        },
+        "policy": {},
+        "subject": "v1:sha256:45ad22dc792017797dead3f55afe2d6eafd3abbd2925d7b7d422c3d4a06fc6b9"
+      },
+      "holder": "codex:takeover/1038-review-tests",
+      "input_fp": "v1:sha256:198947383129cf2625eb6ebd583fcb5afac75230446a27eb320cb1f9672f2088",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "dd5b1749f25bae31eaf5529c8f5aaff3a97801b5",
+          "commit": "e43b7de4b416cb66d3774e63ecca3496dbce9162",
+          "path": ".zzzops/reviews/1038/review_tests.md"
+        },
+        "summary": "Broad behavioral coverage is substantive, but the fake GitHub cannot satisfy the asserted merge/rebase results, and relocation needs one off-history checkpoint rejection case."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "de5640d1c5909ea924450aeea6450497a78946f6",
+          "change": "9da28c93bc7e8639527f93fe1b1c91b7e1a4631e",
+          "commit": "74cfb14f2ddcf24a3477c1f7b89c5b6c1443e039",
+          "tree": "f8c9dc7c951001483556960c0e2438e6f2b9b9ff"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 2,
       "correction_runs": 0,
