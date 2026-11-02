@@ -118,10 +118,10 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 5,
-      "correction_runs": 4,
+      "attempt": 6,
+      "correction_runs": 5,
       "findings": [],
-      "finished_at": "2026-11-02T05:25:49Z",
+      "finished_at": "2026-11-02T05:51:25Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -137,14 +137,14 @@
       "output": {
         "code": {
           "base": "25186a5ee98282b3f380ff48a06b014aae34aa10",
-          "change": "e1eb727fa3ccdb4433ed62bc2b5d02e38a41de67",
-          "commit": "4cb2671da63ba129ec0e6e47d1cfb8fb16771ed2",
-          "tree": "1ac1a0bd2f85a330f64260a029faddb15f45a224"
+          "change": "fc129725e3d2be338d1cdd5837610a22bb2f5365",
+          "commit": "6b068cb31a4181d0412bdcc3dc6997507016e200",
+          "tree": "ad5e3200ca12d321508739d89b23c815e8498034"
         },
         "responses": {
-          "run_tests:failed": "fixed: graph26/graph12 fixtures now use settings.engine.requires; test_engine_lenses passes (62 OK)"
+          "run_tests:failed": "fixed: graph12 fixture restored to engine.min 0.0.0 (G1027's own deprecation test reads it); graph26 keeps settings.engine.requires; both test files pass"
         },
-        "summary": "Fix for run_tests:failed: test_engine_lenses (G1000/G1022) validates the frozen graph26 fixture and expects exact warnings; its POLICY still set engine.min 0.0.0, which G1027 now reports as engine_min_deprecated. The graph26 and graph12 fixtures (not frozen by G1027's test_design) now declare settings.engine.requires (graph26 [lens_findings], graph12 []). test_engine_lenses: 62 OK. The repository's own .zzzops/POLICY.json still has engine.min 0.0.0; it is policy, so it moves through a policy branch after merge."
+        "summary": "Fix for run_tests:failed (test_engine_capabilities.test_policy_dir_validate_warns_too): that frozen G1027 test validates the graph12 fixture to see engine_min_deprecated, so graph12 goes back to engine.min 0.0.0. Only the graph26 fixture (used by test_engine_lenses' exact-warnings checks) declares settings.engine.requires [lens_findings]. capabilities, lenses, schemas, card_budget, review_lenses all OK."
       },
       "reason": "reopened",
       "status": "done"
