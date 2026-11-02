@@ -144,38 +144,10 @@
       "status": "done"
     },
     "integrate": {
-      "attempt": 3,
-      "blocked": {
-        "category": "external",
-        "op_state": {
-          "head": "09135cd3d33d9a221de292da811250a3d86211a7",
-          "pending_since": 1793591907,
-          "polls": 1,
-          "rerun_head": null
-        },
-        "reason": "required checks pending: dev-required-tests (mergeable: MERGEABLE/BLOCKED)",
-        "repeats": 1,
-        "retry_after": "2026-11-02T04:03:27Z",
-        "waiting_for": "time"
-      },
-      "correction_runs": 2,
-      "findings": [
-        {
-          "carrier_fp": "v1:sha256:782883cdde0856141e8c24693e03cf6da40848019459ef0ab3c0be2541aab7d1",
-          "id": "integrate:conflict",
-          "note": null,
-          "repeats": 1,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "base",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:39d7e7efa02f9e21dfc40f7eaaedb9f83e1115cd91a2d18281b4635b1e4b5ac9",
-          "text": "PR #757 conflicts with dev (merging into dev (d41e740) conflicts in docs/design/HISTORY.md); rebase the work branch",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-02T03:58:27Z",
+      "attempt": 4,
+      "correction_runs": 3,
+      "findings": [],
+      "finished_at": "2026-11-02T04:03:27Z",
       "fp_parts": {
         "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
         "inputs": {
@@ -190,10 +162,28 @@
       },
       "holder": "claude:e6ad/op",
       "input_fp": "v1:sha256:70f7adbd5ac33c07292c55c8878cf28fd0c15c414dc5a56aa3ced7d5291ee702",
-      "ok": false,
-      "output": null,
+      "ok": true,
+      "output": {
+        "ci": {
+          "failed": [],
+          "passed": [
+            "dev-required-tests"
+          ],
+          "required": [
+            "dev-required-tests"
+          ],
+          "stacked": false
+        },
+        "pr": {
+          "base": "dev",
+          "head": "09135cd3d33d9a221de292da811250a3d86211a7",
+          "number": 757,
+          "tree": "5a64a3426514c365f7ce0ce1fd7e72551980398a",
+          "url": "https://github.com/david-rzepa/zzzops/pull/757"
+        }
+      },
       "reason": "retry",
-      "status": "blocked"
+      "status": "done"
     },
     "review_design": {
       "attempt": 2,
