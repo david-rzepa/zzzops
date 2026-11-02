@@ -37,6 +37,41 @@
       },
       "reason": "new",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T16:09:29Z",
+      "fp_parts": {
+        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "inputs": {
+          "doc": "v1:blob:cc60eabf6331555c3c73bd5ea08d6311e25f34d3",
+          "spec": "v1:sha256:b90f03765b7f695de714249db0c39d241525b8eac6a035e7f31b16fc090d0826"
+        },
+        "policy": {},
+        "subject": "v1:sha256:b13720cdef2e32ccd365345d17d251192b3b73210e7beb66b8bf6947998a0a10"
+      },
+      "holder": "claude:e6ad/rd1041",
+      "input_fp": "v1:sha256:568196b510ca4ae805b78c9f4e551ef9e74fea6833ac28b74dbe6f188e921d4a",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "66606f13e0e8c8354a9207c863d38d8615723bff",
+          "commit": "b1d1a28d4ca017c4c4939c48f8e1b0b3241363d2",
+          "path": ".zzzops/reviews/1041/review_design.md"
+        },
+        "summary": "Approved. The diagnosis matches read_dev: discover ignores the exit status of worktree list, and update_mirror's worktree add runs under a lock that does not order it against worktree list. Exit-status check plus a bounded jittered retry in one shared helper is the simplest fix. In an extra 15 s stress run (20 readers, up to 8 continuous add/remove churners, Git 2.55) no call needed more than one retry and none ran out of retries, so the 6-try (~1.3 s worst case) budget is ample and fine for interactive verbs. Alternatives (deriving from the common dir, show-toplevel, the mirror lock) are rightly rejected. Non-blocking: the helper should return the last rc and stderr with its result for the refusal details and the GitError."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "cc60eabf6331555c3c73bd5ea08d6311e25f34d3",
+          "commit": "a2a518a6d5a8e2b8d394a682606fa5b0bce60994"
+        }
+      },
+      "status": "done"
     }
   },
   "release": 1,
