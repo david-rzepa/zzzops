@@ -45,44 +45,10 @@
       "status": "done"
     },
     "base": {
-      "attempt": 2,
-      "blocked": {
-        "category": "conflict",
-        "commands": {
-          "resume": [
-            "start",
-            "1027",
-            "base",
-            "--as",
-            "<LABEL>"
-          ]
-        },
-        "instructions": "In /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1027: resolve the conflicts in docs/design/HISTORY.md docs/design/README.md docs/design/SPEC.md plugins/zzzops/zzzops/engine/__init__.py plugins/zzzops/zzzops/engine/schemas.py plugins/zzzops/zzzops/references/CLI_USAGE.md, `git add` them, run `git -c core.editor=true rebase --continue`, then run the resume command. Do not change the meaning of the goal's commits.",
-        "op_state": {
-          "old": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-          "onto": "5288bf7ed3f8373dad773e2de48f6c7603afd985",
-          "work": "40336b9cac011fc8a525f6f798ff63c2ed3de740"
-        },
-        "reason": "rebase conflict in docs/design/HISTORY.md docs/design/README.md docs/design/SPEC.md plugins/zzzops/zzzops/engine/__init__.py plugins/zzzops/zzzops/engine/schemas.py plugins/zzzops/zzzops/references/CLI_USAGE.md",
-        "repeats": 1,
-        "waiting_for": "agent"
-      },
-      "correction_runs": 1,
-      "findings": [
-        {
-          "id": "base:reopen:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "base",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:c8da9e126124c2a6f42c5fb87b755c08861dea3ebb6912078b479ac38fae11a7",
-          "text": "rebase onto dev: G1028 (ENGINE_VERSION 1.2.0, follows) and others merged",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-02T04:28:14Z",
+      "attempt": 3,
+      "correction_runs": 2,
+      "findings": [],
+      "finished_at": "2026-11-02T04:33:15Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
         "inputs": {
@@ -93,10 +59,31 @@
       },
       "holder": "claude:e6ad/op",
       "input_fp": "v1:sha256:d9ef292a6b05a9ee73c1996b6fdc61e05c28301ce8f94d7c5aad2424acad7e3d",
-      "ok": false,
-      "output": null,
-      "reason": "reopened",
-      "status": "blocked"
+      "ok": true,
+      "output": {
+        "base_commit": "5288bf7ed3f8373dad773e2de48f6c7603afd985",
+        "branch": "zzzops/work/g1027",
+        "replay_map": {
+          "1782abd642bd62172545d20379741a255570db46": "903fb14bcfa5ee4f1d1258fd841b1695e11ba595",
+          "25f9eb20a4a8132c26c5f843e395e642468f66b2": "317daf0933cc4712c6e4e2b72bddfcb4828aa039",
+          "40336b9cac011fc8a525f6f798ff63c2ed3de740": "45dd96a492d62c727e753d5cfdce17bf259ac8e7",
+          "4c8c5c6147aea89d261c1ee27100f830d088bb99": "1d1bc49338826296aeddf46941a94a58d088794c",
+          "4d0d880582f1d1a29e1ccf4cc91ed59f2689b90a": "03c3910744d6b0950b0c770a1bab7e71a4c01803",
+          "62382bd7e384d9d3c969306b9bf3349d54d286d0": "59db3d6246747a9eca2f9716d36c58a427223ad8",
+          "746a54b0ef816a659ebfcd256260e711f4df21c6": "2c534aca46becadbe50ee4b6bde7e25407844807",
+          "913b22b56fa1ba6627f90eb2e809f2abac774721": "290918a3484e1e7b75d161071419b3f99c9c8ce1",
+          "c4b25a7efcefedab790b273b0009fb3f137409dd": "5ed3a26a10bd1625b2e2b592312465cfd42fdb55",
+          "d5ae0c133fbd8d6825b60d8efc87e17a7cf7ef1a": "e577e5780ea36d2a576d73b7fef395fd3f28bf8f",
+          "d7276b9ef673d4da6fce26ed71d73f462ccaebee": "0e928c10274badf4a7a10efcd4289d28aaa21983"
+        },
+        "replay_pos": {
+          "1a15ad2ef045f9129ec4f06f36b638322dd5c38c": "e1e8d0f7dc4246cc50907ab2750e22dfbb897802",
+          "4859124849638ab510aaecb85359028b5a8dadf5": "9db68f6bad380ce3961ac03adec818b019b88098"
+        },
+        "stack": []
+      },
+      "reason": "retry",
+      "status": "done"
     },
     "design": {
       "attempt": 2,
