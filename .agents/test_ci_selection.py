@@ -550,6 +550,14 @@ class NativeWorkerContractTests(unittest.TestCase):
 class LinuxShardContractTests(unittest.TestCase):
     def setUp(self):
         self.runner = load_runner()
+        # Isolation is a synthetic scheduling fixture. The real property has no
+        # elapsed-time contract and G1043 removes its obsolete scheduling entry.
+        if self._testMethodName in {
+            "test_worker_partitions_balance_without_auxiliary_reserve_and_guard_exclusive_ids",
+            "test_two_workers_overlap_and_exclusive_test_runs_only_after_both_finish",
+            "test_crashed_worker_retains_successful_sibling_evidence",
+        }:
+            self.runner.LINUX_EXCLUSIVE_TESTS = ("test_synthetic.Exclusive.test_serial",)
 
     def test_balanced_partition_is_deterministic_complete_disjoint_and_includes_new_tests(self):
         inventory = [f"test_module.Case.test_{index:02}" for index in range(24)]
