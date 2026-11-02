@@ -12,10 +12,10 @@
   "priority": "P1",
   "records": {
     "design": {
-      "attempt": 2,
-      "correction_runs": 0,
+      "attempt": 3,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-02T22:01:58Z",
+      "finished_at": "2026-11-02T22:09:57Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -24,18 +24,23 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1043-design",
+      "holder": "codex:takeover/1043-design-fix",
       "input_fp": "v1:sha256:f57f7b1df1cd5a8c7632c143491cf9cb7f66f9a211312c4cbd48b641d4003be5",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "d345f69af806b834872d8b37f710c3255ea95283",
-          "commit": "750bb8d540533824de9743cb94a057c9aed96970",
+          "blob": "4f9af989059cfa941d80e35d7bcee2094bea961c",
+          "commit": "ad50f593d101fa85db6e44f86d9837f4abf8d2b4",
           "path": ".zzzops/reviews/1043/design.md"
         },
-        "summary": "Reuse the existing CI runner's individual-test balancing for an all-CPU local suite with exact execution accounting, then measure and remove the slowest remaining bottlenecks to meet the owner's five-minute target. Add an opt-in, CPU-budgeted parallel mode for goal/repository command lanes without skipping commands; record integer-millisecond timing with a strictly qualified last-merged-target baseline. The default template passes measured test cost to test review and the Tests lens and shows timing/delta or an explicit unavailable reason at merge approval; this repository adopts the changes through its separately owner-approved policy PR."
+        "responses": {
+          "review_design:1:1": "fixed: compute the effective total from available CPUs and inherited ZZZOPS_TEST_WORKERS before mode choice/split; parent=4 on 20 CPUs allocates 2+2 and parent=1 is sequential; record and test observed versus effective budgets.",
+          "review_design:1:2": "fixed: audited test_random_portfolios/run_seeds/random_step/check_invariant and Sim/frontier; no elapsed-time assertion exists, so remove the stale isolation entry/comment while preserving every test/seed/step/assertion. No cross-invocation isolation is claimed; genuine future exclusive requirements use sequential policy, with barrier tests for both ordinary overlap and conservative sequencing.",
+          "review_design:1:3": "fixed: best-effort baseline lookup has document/history/tree caps (64/256/16), a 2000 ms local-work/Git deadline and <=1000 ms lookup-process cleanup. Exhaustion returns unavailable lookup_budget_exhausted; no partial older baseline or change to verification outcome. Add capped-stream, fake-clock and blocked-process tests."
+        },
+        "summary": "Revision 2 fixes all three design findings while keeping the feature scope stable: resolve and split one parent-capped CPU total, remove the obsolete exclusive-property scheduling entry after auditing its unchanged semantic assertions, and bound informational baseline lookup by work caps and a supervised local deadline. Costs, exact inventory/command coverage, qualified comparisons and the separate owner-approved policy adoption remain as designed."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
