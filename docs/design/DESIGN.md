@@ -547,6 +547,8 @@ All of these are visible edits, not ceremonies.
 
 Durable command/total timing uses integer milliseconds. One bounded lookup of existing accepted goal evidence identifies the newest tested code tree actually merged onto the captured goal target's first-parent history. Independently qualify total workload and repository workload hashes/environment against that same source. Different targeted commands can leave the total comparison unavailable while preserving a useful repository delta; show each qualification/provenance and the machine/concurrent-workload caveat. Missing evidence is unavailable, not zero, and a newer mismatch never selects an older convenient source. Caps/deadline cover Git work too (SPEC §5.3), so informational history cannot hold successful checks indefinitely. No timing database/service/index or second trunk test run is added; timing never renews approval identity or gates regressions.
 
+A command timeout has a fail-closed recovery boundary: group termination failures or pipes that remain open after bounded draining preserve the worktree and produce an external human block. A successful parent kill alone cannot justify resetting a checkout while descendants may still run.
+
 ### 3.10 Coordinator and policy
 
 **Every invocation runs this preamble** (SPEC §4.2–§4.5). It talks only to the Git remote, never to the GitHub API.

@@ -167,6 +167,8 @@ payload = {
     "tests_run": result.testsRun, "executed_ids": result.executed_ids,
     "completed_ids": result.completed_ids,
     "failures": len(result.failures), "errors": len(result.errors),
+    "failure_details": [{"id": test.id(), "traceback": detail} for test, detail in result.failures],
+    "error_details": [{"id": test.id(), "traceback": detail} for test, detail in result.errors],
     "skips": result.native_skips, "invalid_skips": result.invalid_skips,
     "durations": result.durations,
 }
@@ -181,11 +183,15 @@ def _launch_native(selected: list[str], root: Path) -> dict:
     try:
         completed = subprocess.run(
             [sys.executable, "-c", _CHILD_RUNNER, str(root), json.dumps(selected), str(report_path)],
-            cwd=root, check=False,
+            cwd=root, check=False, stderr=subprocess.PIPE, encoding="utf-8", errors="replace",
         )
+        diagnostic = completed.stderr or ""
+        if diagnostic:
+            print(diagnostic, end="", file=sys.stderr)
         if not report_path.stat().st_size:
-            raise RuntimeError(f"native test subprocess exited {completed.returncode} without a report")
+            raise RuntimeError(f"native test subprocess exited {completed.returncode} without a report: {diagnostic}")
         observation = json.loads(report_path.read_text(encoding="utf-8"))
+        observation["stderr"] = diagnostic
         if completed.returncode and observation.get("returncode") == 0:
             observation["returncode"] = completed.returncode
         return observation
@@ -263,6 +269,8 @@ def run_native_validation(
         "completed_ids": list(observation.get("completed_ids", [])),
         "tests_run": observation["tests_run"], "failures": observation.get("failures", 0),
         "errors": observation.get("errors", 0), "skipped": len(observation.get("skips", ())),
+        "failure_details": list(observation.get("failure_details", [])),
+        "error_details": list(observation.get("error_details", [])),
         "coverage_limits": list(observation.get("skips", ())), "wall_seconds": elapsed,
         "aggregate_test_seconds": sum(durations.values()),
         "slowest_tests": sorted(durations.items(), key=lambda item: item[1], reverse=True)[:5],
@@ -359,12 +367,12 @@ def linux_worker_plan(selected: list[str], workers: int) -> tuple[list[list[str]
 def _combine_linux_observations(observations: list[Mapping]) -> dict:
     combined = {"returncode": 0, "tests_run": 0, "failures": 0, "errors": 0,
                 "executed_ids": [], "completed_ids": [], "skips": [], "invalid_skips": [],
-                "durations": {}}
+                "durations": {}, "failure_details": [], "error_details": []}
     for observation in observations:
         for key in ("tests_run", "failures", "errors"):
             combined[key] += observation[key]
         combined["returncode"] = max(combined["returncode"], observation["returncode"])
-        for key in ("executed_ids", "completed_ids", "skips", "invalid_skips"):
+        for key in ("executed_ids", "completed_ids", "skips", "invalid_skips", "failure_details", "error_details"):
             combined[key].extend(observation.get(key, []))
         durations = observation.get("durations", {})
         if combined["durations"].keys() & durations.keys():
@@ -410,7 +418,7 @@ def run_linux_shard(shard_index: int, shard_count: int, report_path: Path | None
         observation = _combine_linux_observations([worker["observation"] for worker in report["worker_reports"]])
         report.update({key: observation[key] for key in (
             "returncode", "tests_run", "executed_ids", "completed_ids", "failures", "errors",
-            "skips", "invalid_skips", "durations",
+            "skips", "invalid_skips", "durations", "failure_details", "error_details",
         ) if key in observation})
         _validate_linux_observation(report["selected_ids"], observation)
         if observation["returncode"] or observation["failures"] or observation["errors"]:
@@ -474,7 +482,8 @@ def run_local_validation(root: Path = ROOT, workers: int | None = None,
               "inventory_count": 0, "inventory_sha256": None, "selected_count": 0, "selected_ids": [],
               "worker_reports": [], "executed_ids": [], "completed_ids": [], "durations": {},
               "tests_run": 0, "returncode": 1, "failures": 0, "errors": 0,
-              "skips": [], "invalid_skips": [], "serial_ids": [], "aggregate_test_seconds": 0.0}
+              "skips": [], "invalid_skips": [], "serial_ids": [], "aggregate_test_seconds": 0.0,
+              "failure_details": [], "error_details": []}
     try:
         observed, budget = local_worker_budget(workers)
         inventory = list(discover_linux_tests(Path(root)))
@@ -517,7 +526,7 @@ def run_local_validation(root: Path = ROOT, workers: int | None = None,
             observation = _combine_linux_observations(observations)
             report.update({key: observation[key] for key in (
                 "returncode", "tests_run", "executed_ids", "completed_ids", "failures", "errors",
-                "skips", "invalid_skips", "durations")})
+                "skips", "invalid_skips", "durations", "failure_details", "error_details")})
         for worker in report["worker_reports"]:
             if "error" in worker:
                 raise RuntimeError(worker["error"])
