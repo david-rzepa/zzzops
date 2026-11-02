@@ -574,8 +574,11 @@ class ReviewerCardTests(ReviewWorld):
             self.assertIn(f'"{self.l(lens)}"', schema, lens)
         from engine.canon import canonical
         from engine.card import CARD_LIMIT
-        self.assertLessEqual(len(canonical({k: v for k, v in card.items() if k not in ("ok", "coordinator")})),
-                             CARD_LIMIT)
+        # G1026: review_impl lists the owner_questions instruction (a blob view); design §9 lets a review card
+        # exceed the target by that one view, so the limit applies to the card without it.
+        sized = {k: v for k, v in card.items() if k not in ("ok", "coordinator")}
+        sized["instructions"] = {k: v for k, v in sized["instructions"].items() if k != "owner_questions"}
+        self.assertLessEqual(len(canonical(sized)), CARD_LIMIT)
 
 
 # --------------------------------------------------------------------------------------------- 4: lens tag
