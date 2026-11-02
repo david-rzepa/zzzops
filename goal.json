@@ -73,7 +73,20 @@
     "design": {
       "attempt": 3,
       "correction_runs": 1,
-      "findings": [],
+      "findings": [
+        {
+          "id": "design:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 3,
+          "target_fp": "v1:sha256:a1b8324a7aee6228a40609ae820a034594cf5e3ecf1daf63b05ec56f5a793143",
+          "text": "Pre-implementation review confirmed full plan hash includes goal-specific targeted commands, suppressing canonical verification deltas across most distinct goals. Independently qualify repository-command timing against the same newest eligible merged candidate with a repository-plan hash; keep whole-run comparison unavailable when full plan differs, no older fallback/new scan/state.",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-02T22:09:57Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
