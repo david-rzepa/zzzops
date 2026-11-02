@@ -232,29 +232,14 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
-      "findings": [
-        {
-          "carrier_fp": "v1:sha256:fbb6db82ba72156442fd2e2351834fbc0418e09192c5ec5b7d6e5ac7873faacb",
-          "id": "run_tests:failed",
-          "note": null,
-          "repeats": 1,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "implement",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:910e718e57055f7567bb4c14d989567b2dbb992db0d7c82e4734a55dc2d7cd00",
-          "text": "`python3 -m unittest discover -s .agents -p 'test_design_docs.py'` exited 1:\nthat_depend_on_g1017\n    self.assertEqual(\"open\", goal.get(\"state\"),\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^\n                     f\"G{row.goal} is {goal.get('state')!r}; a closed goal cannot be pending\")\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'open' != 'closed'\n- open\n+ closed\n : G1027 is 'closed'; a closed goal cannot be pending\n\n----------------------------------------------------------------------\nRan 35 tests in 0.499s\n\nFAILED (failures=1)\n",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-02T15:58:41Z",
+      "attempt": 2,
+      "correction_runs": 1,
+      "findings": [],
+      "finished_at": "2026-11-02T16:25:19Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:49ef26069656ffff53698f6a6ede267a27b6d11e031e8d1ba8601db76db7f815",
+          "code": "v1:sha256:d5b62a785fb54e1c561626a5be5165a9e2a6f9cdb9b322a8edcdd1c09defc9fa",
           "commands": "v1:sha256:45079d0bb5e86b7ddd4e849b6cb6ab66f073dfd4308b8a0a9c5083d50202d0f2"
         },
         "policy": {
@@ -264,47 +249,47 @@
         }
       },
       "holder": "claude:e6ad/op",
-      "input_fp": "v1:sha256:fbb6db82ba72156442fd2e2351834fbc0418e09192c5ec5b7d6e5ac7873faacb",
-      "ok": false,
+      "input_fp": "v1:sha256:211b6455b5e77d6b4486523e0c172f3ea2bd4c9174d4e193691cd90498c47cad",
+      "ok": true,
       "output": {
         "result": {
           "details": [
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_owner_questions.py'",
               "exit": 0,
-              "seconds": 152,
-              "tail": "nning\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 41 tests in 152.193s\n\nOK\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n"
+              "seconds": 75,
+              "tail": "........../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 1587240 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 1587279 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n............................../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 1636424 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 41 tests in 75.148s\n\nOK\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_design_docs.py'",
-              "exit": 1,
+              "exit": 0,
               "seconds": 0,
-              "tail": "that_depend_on_g1017\n    self.assertEqual(\"open\", goal.get(\"state\"),\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^\n                     f\"G{row.goal} is {goal.get('state')!r}; a closed goal cannot be pending\")\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'open' != 'closed'\n- open\n+ closed\n : G1027 is 'closed'; a closed goal cannot be pending\n\n----------------------------------------------------------------------\nRan 35 tests in 0.499s\n\nFAILED (failures=1)\n"
+              "tail": "...................................\n----------------------------------------------------------------------\nRan 35 tests in 0.234s\n\nOK\n"
             },
             {
               "cmd": "python3 .agents/prompt_stats.py --check",
               "exit": 0,
               "seconds": 0,
-              "tail": "# Enforced prompt budgets\n\nOnly always-loaded context and frequent routed workflows are blocking. Other workflows and total inventory are advisory.\n\n| Context | Bytes | Est. tokens | Limit | Status |\n| --- | ---: | ---: | ---: | --- |\n| always-loaded/codex | 0 | 0 | 700 | PASS |\n| capture/codex | 12284 | 3071 | 3700 | PASS |\n| execution/codex | 14137 | 3535 | 8800 | PASS |\n\nAdvisory total inventory: 35 prompts, 78244 bytes, ~19576 tokens.\n\n## Policy context boundary\n\nPublic documentation is excluded. Static prompts, the current project policy, and cold default/review context are counted separately.\n\n| Context class | Bytes | Est. tokens |\n| --- | ---: | ---: |\n| static-hot-prompts | 63089 | 15773 |\n| current-project-policy | 7536 | 1884 |\n| cold-default-review | 26122 | 6531 |\nPASS: all enforced prompt contexts are within their committed limits.\n"
+              "tail": "# Enforced prompt budgets\n\nOnly always-loaded context and frequent routed workflows are blocking. Other workflows and total inventory are advisory.\n\n| Context | Bytes | Est. tokens | Limit | Status |\n| --- | ---: | ---: | ---: | --- |\n| always-loaded/codex | 0 | 0 | 700 | PASS |\n| capture/codex | 13333 | 3334 | 3700 | PASS |\n| execution/codex | 15186 | 3797 | 8800 | PASS |\n\nAdvisory total inventory: 35 prompts, 80460 bytes, ~20130 tokens.\n\n## Policy context boundary\n\nPublic documentation is excluded. Static prompts, the current project policy, and cold default/review context are counted separately.\n\n| Context class | Bytes | Est. tokens |\n| --- | ---: | ---: |\n| static-hot-prompts | 64138 | 16035 |\n| current-project-policy | 7536 | 1884 |\n| cold-default-review | 26171 | 6543 |\nPASS: all enforced prompt contexts are within their committed limits.\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_review_lenses.py'",
               "exit": 0,
-              "seconds": 82,
-              "tail": "...........................................................\n----------------------------------------------------------------------\nRan 59 tests in 82.293s\n\nOK\n"
+              "seconds": 78,
+              "tail": "...........................................................\n----------------------------------------------------------------------\nRan 59 tests in 78.448s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents",
-              "exit": 1,
-              "seconds": 881,
+              "exit": 0,
+              "seconds": 911,
               "tail": ":0: ResourceWarning: unclosed file <_io.BufferedReader name=19>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=16>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=17>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=14>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=15>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=12>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=13>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
             }
           ],
-          "passed": false,
-          "tree": "72cf44f3c1a2bd2e6998b4e0d7b38ddd7da655c4"
+          "passed": true,
+          "tree": "9537f6aeaa9cac1a03d8b592185b925cab82ea92"
         }
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "test_design": {
