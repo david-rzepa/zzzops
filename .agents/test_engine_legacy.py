@@ -95,22 +95,26 @@ class LegacyCase(unittest.TestCase):
 
 
 class CacheTests(LegacyCase):
-    def test_fixture_seeds_a_clean_cache_with_the_engine_key(self):
-        from engine import ENGINE_VERSION, legacy
+    def test_fixture_seeds_a_clean_cache_with_the_detector_key(self):
+        from engine import build_id, legacy
         c = self.cache()
-        self.assertEqual(legacy.cache_key(ENGINE_VERSION, fx.REMOTE_URL, ()), c["key"])
+        self.assertEqual(legacy.cache_key(legacy.DETECTOR, fx.REMOTE_URL, ()), c["key"])     # G1027 §3.5
+        self.assertNotEqual(legacy.cache_key(build_id(), fx.REMOTE_URL, ()), c["key"])
+        self.assertEqual(build_id(), c["engine"])
         self.assertEqual(("ok", None, 0), (c["github"], c["retry_after"], c["issue_count"]))
         _, git, gh = self.measure("next")
         self.assertEqual((["fetch"], []), (git, gh))
 
     def test_cache_key_is_pure_and_sensitive_to_each_part(self):
+        import inspect
         from engine import legacy
-        k = legacy.cache_key("1.0.0", fx.REMOTE_URL, ())
+        self.assertEqual("detector", list(inspect.signature(legacy.cache_key).parameters)[0])
+        k = legacy.cache_key("0123456789ab", fx.REMOTE_URL, ())
         self.assertRegex(k, r"^[0-9a-f]{64}$")
-        self.assertEqual(k, legacy.cache_key("1.0.0", fx.REMOTE_URL, ()))
-        self.assertNotEqual(k, legacy.cache_key("0.9.0", fx.REMOTE_URL, ()))
-        self.assertNotEqual(k, legacy.cache_key("1.0.0", "https://github.com/other/repo.git", ()))
-        self.assertNotEqual(k, legacy.cache_key("1.0.0", fx.REMOTE_URL, (".zzzops/PROJECT_AUDIT.md",)))
+        self.assertEqual(k, legacy.cache_key("0123456789ab", fx.REMOTE_URL, ()))
+        self.assertNotEqual(k, legacy.cache_key("ba9876543210", fx.REMOTE_URL, ()))
+        self.assertNotEqual(k, legacy.cache_key("0123456789ab", "https://github.com/other/repo.git", ()))
+        self.assertNotEqual(k, legacy.cache_key("0123456789ab", fx.REMOTE_URL, (".zzzops/PROJECT_AUDIT.md",)))
 
     def test_legacy_repo_cold_cache_checks_once_then_on_key_change(self):
         self.issues(issue(1), issue(2, labels=("zzzops:schema:v1",)), issue(3, labels=("zzzops:schema:v2",)),
@@ -125,8 +129,8 @@ class CacheTests(LegacyCase):
         self.assertEqual(SKILL, item["skill"])
         self.assertIn(SKILL, item["message"])
         self.assertEqual("zzzops validate", item["recheck"])
-        from engine import ENGINE_VERSION
-        self.assertEqual({"engine": ENGINE_VERSION, "at": self.iso(self.w.now), "github": "ok"}, item["checked"])
+        from engine import build_id
+        self.assertEqual({"engine": build_id(), "at": self.iso(self.w.now), "github": "ok"}, item["checked"])
         self.assertIn("settings.legacy.ignore", item["dismiss"])
         for key in ("queries", "linked", "truncated"):
             self.assertNotIn(key, item)                           # validate only
@@ -136,7 +140,11 @@ class CacheTests(LegacyCase):
         self.assertEqual(3, out["legacy"]["counts"]["issues"])   # shown from the cache
         c = self.cache()
         from engine import legacy
-        c["key"], c["engine"] = legacy.cache_key("0.9.0", fx.REMOTE_URL, ()), "0.9.0"
+        c["engine"] = "0.0.0-dev 000000000000"                   # another build, the same detector: no re-check
+        legacy.write_cache(os.path.join(self.w.clones["a"].path, ".git"), c)
+        _, git, gh = self.measure("next")
+        self.assert_no_check(git, gh)
+        c["key"] = legacy.cache_key("000000000000", fx.REMOTE_URL, ())   # another detector: one re-check
         legacy.write_cache(os.path.join(self.w.clones["a"].path, ".git"), c)
         _, git, gh = self.measure("next")
         self.assert_one_check(git, gh)
@@ -149,9 +157,9 @@ class CacheTests(LegacyCase):
         self.w.drop_legacy_cache("a")
         self.w.ok("a", "next")
         c = self.cache()
-        from engine import ENGINE_VERSION
+        from engine import build_id
         self.assertEqual(1, c["schema"])
-        self.assertEqual(ENGINE_VERSION, c["engine"])
+        self.assertEqual(build_id(), c["engine"])
         self.assertEqual(self.iso(self.w.now), c["checked_at"])
         self.assertEqual(("ok", None), (c["github"], c["error"]))
         self.assertEqual(([7], 1, [], 1), (c["issues"], c["issue_count"], c["linked"], c["refs"]))

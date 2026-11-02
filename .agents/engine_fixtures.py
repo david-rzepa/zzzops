@@ -212,14 +212,16 @@ class World:
 
     def seed_legacy_cache(self, name):
         """A clean legacy cache, written with the engine's own key and writer, so `next` makes no legacy check
-        unless a test asks for one (G1015 design §7). Skipped before engine.legacy exists."""
+        unless a test asks for one (G1015 design §7; keyed by the detector, G1027 §3.5). Skipped before engine.legacy
+        exists."""
         try:
-            from engine import ENGINE_VERSION, legacy
-        except ImportError:
+            from engine import build_id, legacy
+            detector = legacy.DETECTOR
+        except (ImportError, AttributeError):
             return
         from engine.canon import iso
         legacy.write_cache(os.path.join(self.clones[name].path, ".git"), {
-            "schema": 1, "key": legacy.cache_key(ENGINE_VERSION, REMOTE_URL, ()), "engine": ENGINE_VERSION,
+            "schema": 1, "key": legacy.cache_key(detector, REMOTE_URL, ()), "engine": build_id(),
             "checked_at": iso(self.now), "github": "ok", "retry_after": None, "error": None,
             "issues": [], "issue_count": 0, "linked": [], "refs": 0})
 

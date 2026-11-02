@@ -1,0 +1,1 @@
+Lens review records (G1000): finding keys `impact` and `material`, filter nodes and their `keep`/`note` verdicts, notes, and `skippable` review nodes. An engine without it reads these as unknown keys.

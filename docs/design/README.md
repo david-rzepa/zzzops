@@ -24,7 +24,6 @@ Goals that will change the contract and have not landed yet. Every goal listed h
 | Goal | Sections | Landed when |
 |---|---|---|
 | G1024 default-policy update notices | SPEC §2.3, §3.2, §3.15, §3.16, §8.3, §9; DESIGN §3.10 | `plugins/zzzops/zzzops/engine contains "policy_update"` |
-| G1027 declared engine capabilities | SPEC §3.2, §3.9, §3.15, §3.17, §4.3, §4.5, §4.8, §6, §8.4; DESIGN §3.10, D4, §10 item 21 | `plugins/zzzops/zzzops/engine/__init__.py lacks "ENGINE_VERSION"` |
 | G1031 auto-delete advice with release branching | SPEC §3.16 (`validate` warning `auto_delete_head_branches`), §8.3 step 7; DESIGN §3.15 (`validate` cost) | `plugins/zzzops/zzzops/engine contains "auto_delete_head_branches"` |
 | G1025 release branching | SPEC §2.3, §3.1, §3.2, §3.3, §3.15, §3.16, §4.8, §4.9, §4.20, §5.2, §5.4, §5.5, new §5.7 and §5.8, §6, §7; DESIGN §3.16, §4.1, new release-branching section | `plugins/zzzops/zzzops/engine contains "git.line_sync"` |
 

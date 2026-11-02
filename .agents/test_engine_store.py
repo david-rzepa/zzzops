@@ -219,11 +219,11 @@ class PolicyTests(StoreBase):
         self.assertEqual(1, len(commits))
 
 
-class EngineVersionTests(StoreBase):
-    def test_engine_min_above_version_refuses_writes_reads_work(self):
+class EngineFloorTests(StoreBase):
+    def test_missing_capability_refuses_writes_reads_work(self):
         self.w.new(title="x")
         p = json.loads(json.dumps(self.w.policy))
-        p["settings"]["engine"]["min"] = "99.0.0"
+        p["settings"]["engine"] = {"requires": ["no_such_cap"]}
         self.w.push_dev({".zzzops/POLICY.json": json.dumps(p)})
         out = self.w.ok("b", "next")
         self.assertEqual("engine_too_old", out["blockers"][0]["kind"])
@@ -274,7 +274,7 @@ def default_key(title, spec, depends_on=()):
 
 def push_root(w: fx.World, gid: int, key=None, head_id=None, **fields):
     """Push a parentless goal commit for G<gid>, as `new` writes it, optionally with a Request-Key trailer."""
-    from engine import ENGINE_VERSION
+    from engine import build_id
     doc = {"schema": 1, "id": gid, "title": "Forged", "graph": "default", "state": "open", "closed": None,
            "spec": "forged spec", "priority": "P2", "release": 1, "depends_on": [], "skip": {},
            "links": {"issue": None}, "budget": None, "records": {}}
@@ -284,7 +284,7 @@ def push_root(w: fx.World, gid: int, key=None, head_id=None, **fields):
     blob = s.git("hash-object", "-w", "--stdin", input=data)
     tree = s.git("mktree", input=f"100644 blob {blob}\tgoal.json\n")
     trailer = f"Request-Key: {key}\n" if key else ""
-    msg = f"zzzops: new G{head_id or gid}\n\nOutcome: created\nState: open\n{trailer}Engine: {ENGINE_VERSION}\n"
+    msg = f"zzzops: new G{head_id or gid}\n\nOutcome: created\nState: open\n{trailer}Engine: {build_id()}\n"
     c = s.git("commit-tree", tree, "-m", msg)
     s.git("push", "-q", "origin", f"{c}:refs/heads/zzzops/goal/g{gid}")
     return c
@@ -769,7 +769,7 @@ class IdempotentNewTests(StoreBase):
         f = self.w.file({"title": "Blocked", "spec": "s"})
         first = self.w.ok("a", "new", "--file", f)
         p = json.loads(json.dumps(self.w.policy))
-        p["settings"]["engine"]["min"] = "99.0.0"
+        p["settings"]["engine"] = {"requires": ["no_such_cap"]}
         self.w.push_dev({".zzzops/POLICY.json": json.dumps(p)})
         again = self.w.ok("b", "new", "--file", f)                     # recovering writes nothing
         self.assertEqual((first["created"]["id"], True), (again["created"]["id"], again["created"]["recovered"]))
