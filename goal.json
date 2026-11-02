@@ -94,36 +94,36 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-01T20:02:09Z",
+      "finished_at": "2026-11-02T22:00:42Z",
       "fp_parts": {
         "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
         "inputs": {
-          "doc": "v1:blob:3d5740027b00e0543fd2d9a6c0eeae3c3447bbac",
+          "doc": "v1:blob:982d3c13e410a3f3c6bf0584d8e1cce94d67cb06",
           "spec": "v1:sha256:e2c063ee9322840387685a5c86388a130816b2a8e1960e4e6cdd0d7ede8870e3"
         },
         "policy": {},
-        "subject": "v1:sha256:28d698545ceef92e2400d43b10223bfaef492c762e285a80dec3680ba3f95c87"
+        "subject": "v1:sha256:bee6c9f3d6fb3db7ffe149b4830be16f5b4f5ee763bafb48e597ad0973198fff"
       },
-      "holder": "claude:e6ad/rd1022",
-      "input_fp": "v1:sha256:c55a9f108b21e6e0fbb07156b32b50cd37f0b3cfcd6d722b2bee5cca218e2891",
+      "holder": "codex:takeover/1037-review-design",
+      "input_fp": "v1:sha256:c8354f7f24ca95d03d33654c96c512b9f0cd3b46e13de0733942521049a9dbe6",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "4969424f2aadb7874b0bde610ffb35fe2a7da058",
-          "commit": "be41700af40c3ad05bbcc346f8590d313b8e04fd",
+          "blob": "4d16a63abcef3ff1d626ca203d721822214dc416",
+          "commit": "f088127a946c7678a7be42211c52795f2d1400f8",
           "path": ".zzzops/reviews/1037/review_design.md"
         },
-        "summary": "Only the revision note and the review_tests row (OD1 to OD8) changed. The spec now states OD8's convention, so spec and design agree. Nothing else moved. Approved."
+        "summary": "Attempt 5 preserves OD1–OD8 and the nine-phase plan, while explicitly adopting the reviewed merge_sync/round_budget/blocked_findings modes and their paired prompts/workflow edge. Separate deployment approvals and exact-tip staging remain, the actual run waits for all dependency merges and both harnesses, and clean-carry/finding paths are recorded only when observed. No new finding or owner question."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "3d5740027b00e0543fd2d9a6c0eeae3c3447bbac",
-          "commit": "4785af5ee640f335ff5637757c5a64f572222e74"
+          "blob": "982d3c13e410a3f3c6bf0584d8e1cce94d67cb06",
+          "commit": "dbef3a2e2e23ddac93901aa87524043374d7ea4b"
         }
       },
       "status": "done"
