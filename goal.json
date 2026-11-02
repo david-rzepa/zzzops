@@ -112,7 +112,20 @@
     "implement": {
       "attempt": 1,
       "correction_runs": 0,
-      "findings": [],
+      "findings": [
+        {
+          "id": "implement:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "implement",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:c4e22cc8d7d2772363c5fbad0b4d636e85bb404d69e5b60553c93c1c27eb9a5b",
+          "text": "Read-only preliminary review reproduced PowerShell apostrophe quoting failure and advisory notice paths displacing the only ready action. Correct within G1024 before full verification.",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-02T22:09:47Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
