@@ -106,6 +106,35 @@
       "reason": "reopened",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T22:00:57Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:0c2a08d0bde69e18e656d474372b82dbd482df44464aef4c1e75be377a0d3fac",
+          "doc": "v1:blob:aa20a8744d00fc0bc034094524e90fcb9076c9d2",
+          "tests": "v1:sha256:379a795f13d8780f965783a1d8a9d54d7b01bca074cb0459f0192854087ee5d6"
+        },
+        "policy": {}
+      },
+      "holder": "codex:takeover/1031-implement",
+      "input_fp": "v1:sha256:34e84262b24fe473c5d5b2f6361a4350b81063c372cccbd61037daacfce0507b",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "de5640d1c5909ea924450aeea6450497a78946f6",
+          "change": "feabdfbcf49ecd21c071fc5746445630da21ad23",
+          "commit": "6d2c50c2dcb9dcaaa3a6a8761d31396df056d8ac",
+          "tree": "8312d3a85fb4b8d257c9ee7c49f2c0ac72296aa7"
+        },
+        "summary": "Bootstrap and setup now recommend automatic head-branch deletion on without settings.branching and off with it, preserving finished release/hotfix branches and avoiding stacked-PR retarget races. Repository validate adds a warning-only, best-effort repository-setting probe with a 10-second timeout; absent fields, API failures and timeouts are silent and no other workflow pays the call. Migration/recovery guidance and SPEC/DESIGN/HISTORY are updated, including restoration from the actual recorded sync tip. Accepted tests pass (4 in 3.366 s), environment regressions pass (11 in 1.298 s), design-document checks pass (35 in 0.564 s), and prompt budgets/diff checks pass; the live read-only API confirmed delete_branch_on_merge is the correct field."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 2,
       "correction_runs": 1,
