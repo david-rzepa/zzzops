@@ -183,6 +183,44 @@
       },
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-02T22:41:06Z",
+      "fp_parts": {
+        "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
+        "inputs": {
+          "code": "v1:sha256:2972eb908b42b3a833f428ff935a5baca17c010010cb73bf2e18a3d029ad1653",
+          "doc": "v1:blob:aa20a8744d00fc0bc034094524e90fcb9076c9d2",
+          "tests": "v1:sha256:379a795f13d8780f965783a1d8a9d54d7b01bca074cb0459f0192854087ee5d6"
+        },
+        "policy": {},
+        "subject": "v1:sha256:41d8af34fe8529d243f71207291f43f313b579f8622464d7ce8b79bc512a1665"
+      },
+      "holder": "codex:takeover/1031-review-impl",
+      "input_fp": "v1:sha256:c589b0d6603944b5c82747c3858c1159a9ac61a89af9224c41699efb0cb5f70b",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "4ed371da761a2599056f4f6b9adde6fcae7a5d49",
+          "commit": "29a6743d3ff4b354e2d40901875383b4b23bc457",
+          "path": ".zzzops/reviews/1031/review_impl.md"
+        },
+        "summary": "Approved: implementation matches revision 2, keeps branch-deletion advice conditional on release branching, and adds only a bounded warning-only repository read. Frozen tests are unchanged; the exact code tree passed the four focused tests and all 925 repository tests."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "de5640d1c5909ea924450aeea6450497a78946f6",
+          "change": "feabdfbcf49ecd21c071fc5746445630da21ad23",
+          "commit": "6d2c50c2dcb9dcaaa3a6a8761d31396df056d8ac",
+          "tree": "8312d3a85fb4b8d257c9ee7c49f2c0ac72296aa7"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 1,
       "correction_runs": 0,
