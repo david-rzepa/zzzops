@@ -155,6 +155,80 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_tests:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:89d68a02c0c2510f593fb5061fbc5cae3e28370affb66bac4c6144d7cf9387a8",
+          "text": "test_cards_carry_the_instruction_and_stay_within_the_limit cannot pass after implementation: it abandons the review_design and adversary_design leases and then calls until_ready(g, 'review_impl'); on read_dev abandon makes a node reclaimable and the Pilot's plain start is refused with not_ready 'the lease expired; pass --reclaim' (reproduced with the same sequence on read_dev; hidden today because the test stops at line 363). Implement cannot fix a frozen test. Fix: finish the review runs (card, _ = self.p.run(g, node)) and check those cards, or restart with --reclaim.",
+          "upheld": false
+        },
+        {
+          "id": "review_tests:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:89d68a02c0c2510f593fb5061fbc5cae3e28370affb66bac4c6144d7cf9387a8",
+          "text": "The same test asserts card_size <= CARD_LIMIT for review_impl, which the design's own text makes impossible: review_impl is 3,948 bytes on read_dev in this world, and 4,219 bytes after shrink once the design's section 2 instruction, the review sentence and the four instruction listings are added (scratch copy; design 3,134, review_design 3,985, adversary_design 3,699). The new instruction view adds about 270 bytes that no existing shrink step can recover, and design section 9 already allows a review card above the target. Implement could pass only by changing fixed instruction text or adding shrink steps the design lacks. Fix: keep the limit for design, review_design and adversary_design; for review_impl assert growth of at most one view reference over the card without the instruction (or no limit), and note that design section 10 test 1 is relaxed for review_impl as section 9 allows.",
+          "upheld": false
+        },
+        {
+          "id": "review_tests:1:3",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 6,
+          "target_fp": "v1:sha256:277b5f7e356a93f3436f63555fbe2c2aab4e0d48e807e733bb7b3a879b751ab0",
+          "text": "The approve-item node set conflicts with OpDecisionTests: section 5 and D5 say approve items (and the PR body) read human_decisions over the item's ancestor nodes, but in the shipped graph integrate is not an ancestor of approve_merge (its ancestors are adversary_design, approve_design, base, design, filter_design, filter_impl, implement, review_design, review_impl, review_tests, run_tests, test_design), nor of itself for the PR body, and merge is an op. Under the rule an answered integrate question is shown nowhere, contrary to section 1 step 5 ('approve_merge and the PR body list every answered question') and D5/revision 3 (op questions appear in the list). test_an_answered_integrate_question_is_listed_with_kind_op asserts it on approve_merge, so an implementation following section 5 fails a frozen test and one passing it departs from the design. State the node set (for example, for approve_merge every graph node except its descendants, or ancestors plus the op nodes beside it; and whether the PR body includes integrate's own answers), then align the test.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-02T05:25:16Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:817343d7dd4732a43ca259904501a9f2c4a17045",
+          "tests": "v1:sha256:3611083068f047bfb11bb57876ba89c5b51b279d67f588b90d54db61e30823ef"
+        },
+        "policy": {},
+        "subject": "v1:sha256:89d68a02c0c2510f593fb5061fbc5cae3e28370affb66bac4c6144d7cf9387a8"
+      },
+      "holder": "claude:e6ad/rt1026",
+      "input_fp": "v1:sha256:13f57900e49711f236cdc41594e30539284a612e946be0d7eee77c7b7caed24a",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "6f85c7ea6c322468dff6c21d95fcfebde15ad63d",
+          "commit": "4c8038799249d4a3224d7a261986342e351793a4",
+          "path": ".zzzops/reviews/1026/review_tests.md"
+        },
+        "summary": "Tests cover the journey, the blocked/answered/stale cases, review and filter cards, the shrink step and the prompts, and fail only for the missing feature; but test 1 cannot pass (abandon makes the reviews reclaimable; review_impl measures 4,219 bytes with the design's text), and the design's ancestor rule leaves integrate's op answer off approve_merge, which a frozen test requires."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "25186a5ee98282b3f380ff48a06b014aae34aa10",
+          "change": "c7ddec0937e70130ba65ddb7641499e85eae871a",
+          "commit": "aec3870f5d5812cc62a1918468932e7501bcfbe3",
+          "tree": "ff0180963e544d438364dfdc76b57737681e8e2c"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 2,
       "correction_runs": 1,
