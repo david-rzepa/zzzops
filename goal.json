@@ -207,15 +207,15 @@
       "status": "done"
     },
     "review_impl": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_impl:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 7,
           "target_fp": "v1:sha256:e4e555f797e2f301765b0dd156ada87d8d3d21387e9e845cc08b5c884835dc9a",
@@ -223,36 +223,36 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-02T06:13:44Z",
+      "finished_at": "2026-11-02T14:55:01Z",
       "fp_parts": {
         "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
         "inputs": {
-          "code": "v1:sha256:e7b268397e3285405de1f9079711a7fb49c9d8c17cf5e0ee8f651179d4f0a369",
+          "code": "v1:sha256:ac24149ba8de50025ac37ebdcd2db1050c03c16d78f3234446f1778d963899b1",
           "doc": "v1:blob:0c556c21045dcada61dcaab09a6d222e0cdd7d4f",
-          "tests": "v1:sha256:c355bb701fe53674d4f6e44c80da585d5c3f8c5b3ade31fd8fcef168168f4d77"
+          "tests": "v1:sha256:327889640ce64f2b6b24e8f00505e05584819b7daf5b36389675a2c0c7b443da"
         },
         "policy": {},
-        "subject": "v1:sha256:eb55263854ccf687310d7489e1522693d45ef6ba56b5389bba521ca1f3c90bb5"
+        "subject": "v1:sha256:1fb778df1c393cd1256878e24d2f57febde693cdb80744e4ac44c0f98bbe0243"
       },
-      "holder": "claude:e6ad/ri1027",
-      "input_fp": "v1:sha256:fbc92f798401397946bfcdb929cb8360532205ee2279cef1cfce68be126f7e1f",
-      "ok": false,
+      "holder": "claude:e6ad/ri1027b",
+      "input_fp": "v1:sha256:1183ca3dee16c4392063b246f9ee1d1c770c6d323fad38badfb02327ffd18e98",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "b2bdd152edfd80ff30d6d008713abb1245551231",
-          "commit": "bb2450488bd3840770dac0995cf2439dd29e486a",
+          "blob": "27da3aa396878fe1b0096bab0f47a4b1e1f4b869",
+          "commit": "a2e8716856cbe16e8cf95e25ca4fd63f027987de",
           "path": ".zzzops/reviews/1027/review_impl.md"
         },
-        "summary": "The implementation matches design rev 2 and the two rebases. Capability files, settings.engine.requires, the engine_too_old floor with missing, the LEGACY_VERSIONS map with entries up to 1.3.0, the validate-only deprecation warning, the build id trailer and --version, the DETECTOR cache key, the template and the docs are all in place, and engine_too_new is gone. Outside the diff, nothing still reads ENGINE_VERSION; this repository's .zzzops/POLICY.json is left for the post-merge policy branch. The tests were not weakened. One Tests gap: the 1.2.0 and 1.3.0 map entries added during the rebases are pinned by no test."
+        "summary": "Approved. The owner reorder changed no code: range-diff shows every code commit as an identical cherry-pick, and the only non-review change is a223d45. review_impl:1:1 is resolved: test_mapping_covers_the_rollouts_of_g1028_and_g1022 pins the 1.2.0/1.3.0 tuples, 1.2.5 -> 1.2.0's set, 1.3.1 -> sentinel and follows_required for 1.2.0/1.1.0, and the full suite passes on the checkpoint tree. No new findings."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "code": {
           "base": "25186a5ee98282b3f380ff48a06b014aae34aa10",
-          "change": "fc129725e3d2be338d1cdd5837610a22bb2f5365",
-          "commit": "6b068cb31a4181d0412bdcc3dc6997507016e200",
-          "tree": "ad5e3200ca12d321508739d89b23c815e8498034"
+          "change": "5b338d9991a4d2d2976f53e08dc56ec846d9abd5",
+          "commit": "3c27ed0c19030bbca1068a3071ff4f805f279d56",
+          "tree": "e547d8999edf778d12d9c749396592f43f90ffa4"
         }
       },
       "status": "done"
