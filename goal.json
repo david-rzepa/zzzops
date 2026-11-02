@@ -41,8 +41,29 @@
       "status": "done"
     },
     "base": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "blocked": {
+        "category": "conflict",
+        "commands": {
+          "resume": [
+            "start",
+            "1022",
+            "base",
+            "--as",
+            "<LABEL>"
+          ]
+        },
+        "instructions": "In /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1022: resolve the conflicts in docs/design/HISTORY.md plugins/zzzops/skills/add-zzzops-goal/SKILL.md plugins/zzzops/zzzops/engine/__init__.py plugins/zzzops/zzzops/engine/card.py plugins/zzzops/zzzops/engine/schemas.py plugins/zzzops/zzzops/references/CLI_USAGE.md plugins/zzzops/zzzops/templates/default/prompts/lens_intent.md, `git add` them, run `git -c core.editor=true rebase --continue`, then run the resume command. Do not change the meaning of the goal's commits.",
+        "op_state": {
+          "old": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
+          "onto": "5288bf7ed3f8373dad773e2de48f6c7603afd985",
+          "work": "e166b12291c128fe14bba1a5721863b0661588db"
+        },
+        "reason": "rebase conflict in docs/design/HISTORY.md plugins/zzzops/skills/add-zzzops-goal/SKILL.md plugins/zzzops/zzzops/engine/__init__.py plugins/zzzops/zzzops/engine/card.py plugins/zzzops/zzzops/engine/schemas.py plugins/zzzops/zzzops/references/CLI_USAGE.md plugins/zzzops/zzzops/templates/default/prompts/lens_intent.md",
+        "repeats": 1,
+        "waiting_for": "agent"
+      },
+      "correction_runs": 1,
       "findings": [
         {
           "id": "base:reopen:1",
@@ -57,7 +78,7 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-01T20:38:52Z",
+      "finished_at": "2026-11-02T04:04:40Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
         "inputs": {
@@ -68,21 +89,10 @@
       },
       "holder": "claude:e6ad/op",
       "input_fp": "v1:sha256:94a2f521da9014f429278838a4aa20eeb5eaf9acbc17a1bb781eb46de632d65d",
-      "ok": true,
-      "output": {
-        "base_commit": "b452cd7e537618f47c17a64c98e25d8ca5a8dc44",
-        "branch": "zzzops/work/g1022",
-        "replay_map": {
-          "0f8c34d5aa6a1967f15403c5fec6e65f34d7272e": "02134e9ed528c7886d1f914758c2509d04d1db58",
-          "581d911bcb6f8244474e3dadeadc4ade5340f3d6": "119aec60dd6cde3db6cc2090509d91f281ee718c",
-          "c3065d43f1aa20dd1a60f9b753ade0212308139a": "38eee13ff9b24a0db14ed76d56a15c10441320e4",
-          "c8922ad412a6d701a2f9e9ea6a686ed3dd6023ce": "8a9fedddec969cf18202eaa7d0d80828d84e9656"
-        },
-        "replay_pos": {},
-        "stack": []
-      },
-      "reason": "new",
-      "status": "done"
+      "ok": false,
+      "output": null,
+      "reason": "reopened",
+      "status": "blocked"
     },
     "design": {
       "attempt": 2,
