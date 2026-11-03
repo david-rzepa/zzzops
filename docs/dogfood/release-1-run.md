@@ -14,11 +14,11 @@ The post-migration CLI validates policy and environment, but still reports one r
 
 The existing local CI dispatcher encountered a provider-request failure after its job succeeded. Recovery verified actual job completion, runner deregistration and exact owned VM identity before using the documented shutdown lifecycle and removing only the completed overlay. Diagnostics remain private. No credentials, trusted images, capacity guard or application source were changed by recovery. This is application-runner friction, not a new engine-defect claim.
 
-A later test correction followed an implementation checkpoint containing product source in forward Git history and passed independent test review. This is an observed follow-up path; final implementation refresh, review and merge are still pending.
+A later test correction followed an implementation checkpoint containing product source in forward Git history and passed independent test review. Implementation refresh and source review subsequently passed. The first product goal integrated with both required CI checks passing and a PR code tree matching its tested tree. The real dependent then based onto that unmerged PR checkpoint. Its own work, the dependency merge and post-merge sync remain pending; this does not yet pass the stacked-work acceptance check.
 
 ## Measured subset and limits
 
-The four required administrative CI jobs total **776 runner seconds (12.93 minutes)**. The JSON lists each duration so the sum is reproducible. This excludes queues, VM lifecycle overhead, product goals and agent work. 3 deduplicated blocked-agent questions have recorded answer waits totaling 1082 seconds. This subset includes the subsequently deferred initial goal and excludes outer-run waits, routine approvals and unanswered questions. The per-question sum is not unique elapsed owner time. Per-goal tokens, charged rounds, money and total owner waits remain unavailable until actual transcripts and final populations are reconciled. No lens re-score is claimed.
+The four required administrative CI jobs total **776 runner seconds (12.93 minutes)**. The JSON lists each duration so the sum is reproducible. The first product integration adds **277 runner seconds** across its two required checks, giving **1,053 seconds (17.55 minutes)** across the six observed required jobs. These subsets exclude queues, VM lifecycle overhead and agent work; they are not final release costs. 3 deduplicated blocked-agent questions have recorded answer waits totaling 1082 seconds. This subset includes the subsequently deferred initial goal and excludes outer-run waits, routine approvals and unanswered questions. The per-question sum is not unique elapsed owner time. Per-goal tokens, charged rounds, money and total owner waits remain unavailable until actual transcripts and final populations are reconciled. No lens re-score is claimed.
 
 Public goal and evidence labels are explicit anonymized aliases. The private journal retains actual commands, executors, source identities, decisions and read-only replay evidence.
 
@@ -35,12 +35,12 @@ Pass entries describe only the named interim observations. Pending entries remai
 | A5 | pending | Two Release 1 goals remain open. |
 | A6 | pass | Eight Release 2 goals and the owner-deferred Release 3 goal are held; the deferred goal had initial design work while it was still in Release 1. |
 | A7 | pending | Final command/ref audit remains pending. |
-| A8 | pending | The actual dependent source work and post-dependency sync have not finished. |
+| A8 | pending | The dependency integrated with matching tested/PR trees; the dependent based onto its unmerged checkpoint. Actual dependent work and post-merge sync remain pending. |
 | A9 | pending | Release cut, sync and finish have not occurred. |
 | A10 | pending | Staging and production remain separately unapproved; candidate identity evidence is not complete. |
 | A11 | pending | Natural test-review findings reopened test design and were corrected through review; safe dispatcher recovery was also observed. Remaining failure paths are not yet complete. |
 | A12 | pending | The final defect inventory has not been reconciled. Existing application-runner friction is distinct from an engine defect. |
-| A13 | pending | Only the four required administrative CI job durations are measured here; per-goal agent/token/cost totals remain unavailable. |
+| A13 | pending | Six required CI job durations are measured across separate administrative/product subsets; final per-goal agent/token/cost totals remain unavailable. |
 | A14 | pending | No final review cohort or lens re-score is available. |
 | A15 | pending | The final complete artifact set has not been published/reviewed; this milestone receives its own one-time name check. |
 | A16 | pending | Start snapshot and later metadata/source-ref comparisons are preserved; end-of-run comparison remains pending. |
@@ -51,6 +51,6 @@ Pass entries describe only the named interim observations. Pending entries remai
 
 ## Next boundary
 
-The owner approved the existing non-deferred visual/UX direction. The integration’s discovery, base and corrected test review are current; implementation refresh is running after the forward test correction. Natural test-review findings exercised the reopen/correction loop. The dependent’s discovery and approval are recorded, and its base waits for the upstream integration checkpoint. Source partition, ordinary reviews and the dependent candidate’s exact approval boundary remain part of the goal workflow. The retired file/ref remain preserved pending explicit cleanup authorization.
+The owner approved the existing non-deferred visual/UX direction. The first product integration has passed implementation review and exact-head CI but remains unmerged at this snapshot. Natural test and source-review findings exercised the reopen/correction loop. The dependent’s discovery and approval are recorded, and its base now includes the unmerged integration checkpoint. Source partition, ordinary reviews and the dependent candidate’s exact approval boundary remain part of the goal workflow. The retired file/ref remain preserved pending explicit cleanup authorization.
 
 Complete the real Release 1 integration and dependent work through design, tests, independent review and exact-head CI. Record actual carry/stale and budget behavior rather than forcing it. Release cut, staging and production remain distinct future gates. Staging and production each need a separate explicit owner approval bound to both relevant tips and the resulting candidate full repository tree and pinned artifact identity; the reduced engine code-tree value alone is insufficient. Refresh that proof before irreversible promotion and after waits or retries. Changed or unproven evidence requires a stop, restaging and renewed separate approvals.

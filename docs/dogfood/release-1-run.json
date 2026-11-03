@@ -2,7 +2,7 @@
   "schema": 1,
   "status": "in_progress",
   "complete": false,
-  "as_of_utc": "2026-11-03T21:36:19.876402+00:00",
+  "as_of_utc": "2026-11-03T22:34:02.733908+00:00",
   "scope": "CLI dogfood; interim bootstrap/migration milestone, not release acceptance",
   "actors": [
     {
@@ -64,7 +64,7 @@
       "release": 1,
       "state": "open",
       "depends_on": [],
-      "phase_status": "implementation_refresh_running_after_forward_test_followup"
+      "phase_status": "integrated_with_required_ci_passed_unmerged"
     },
     {
       "alias": "goal-B",
@@ -73,7 +73,7 @@
       "depends_on": [
         "goal-A"
       ],
-      "phase_status": "base_waiting_for_dependency_integrate"
+      "phase_status": "based_on_unmerged_dependency_checkpoint"
     },
     {
       "alias": "goal-C",
@@ -136,7 +136,7 @@
     "source_identity_rule": "Existing controller requires the full Git repository tree plus pinned acceptance/artifact proof; the engine reduced code_tree is insufficient."
   },
   "costs": {
-    "population": "Only required CI jobs for history-only reconciliation and policy bootstrap, excluding all product-goal work, queue time, VM boot/teardown and agent work.",
+    "population": "Required CI jobs for administrative reconciliation/bootstrap and the first product integration, excluding queues, VM lifecycle and agent work. Administrative and product subsets remain separately identifiable.",
     "administrative_ci_jobs": [
       {
         "phase": "ancestry-reconciliation",
@@ -199,13 +199,31 @@
       },
       "goal-A": {
         "discovery": 0,
-        "delivery": 4
+        "delivery": 6
       },
       "goal-B": {
         "discovery": 0
       }
     },
-    "stored_stage_counter_scope": "Snapshot sums of actual stored correction counters for agent nodes grouped by the declared actor stage. Not model token counts, not a forced budget exercise; later results remain pending."
+    "stored_stage_counter_scope": "Snapshot sums of actual stored correction counters for agent nodes grouped by the declared actor stage. Not model token counts, not a forced budget exercise; later results remain pending.",
+    "product_ci_jobs": [
+      {
+        "goal_alias": "goal-A",
+        "check_alias": "required-check-1",
+        "conclusion": "success",
+        "runner_wall_seconds": 163.0
+      },
+      {
+        "goal_alias": "goal-A",
+        "check_alias": "required-check-2",
+        "conclusion": "success",
+        "runner_wall_seconds": 114.0
+      }
+    ],
+    "product_ci_runner_wall_seconds": 277.0,
+    "observed_required_ci_runner_wall_seconds": 1053.0,
+    "observed_required_ci_runner_minutes": 17.55,
+    "ci_evidence_alias": "observation-13"
   },
   "lens_rescore": {
     "status": "pending",
@@ -261,7 +279,7 @@
     {
       "id": "A8",
       "status": "pending",
-      "reason": "The actual dependent source work and post-dependency sync have not finished."
+      "reason": "The dependency integrated with matching tested/PR trees; the dependent based onto its unmerged checkpoint. Actual dependent work and post-merge sync remain pending."
     },
     {
       "id": "A9",
@@ -286,7 +304,7 @@
     {
       "id": "A13",
       "status": "pending",
-      "reason": "Only the four required administrative CI job durations are measured here; per-goal agent/token/cost totals remain unavailable."
+      "reason": "Six required CI job durations are measured across separate administrative/product subsets; final per-goal agent/token/cost totals remain unavailable."
     },
     {
       "id": "A14",
@@ -330,7 +348,7 @@
   "scope_updates": [
     "Owner approved the existing non-deferred integration visual/UX direction; source partition and normal goal reviews remain in progress."
   ],
-  "phase_observed_at_utc": "2026-11-03T21:32:11.027012+00:00",
+  "phase_observed_at_utc": "2026-11-03T22:30:08Z",
   "failure_paths": {
     "review_finding_reopens_target": {
       "status": "observed",
@@ -352,6 +370,14 @@
     "followup_test_checkpoint_descends_from_implementation": true,
     "independent_followup_test_review_accepted": true,
     "final_implementation_review_or_merge_claimed": false,
-    "evidence_alias": "observation-11"
+    "evidence_alias": "observation-11",
+    "implementation_refresh_and_independent_review_completed": true
+  },
+  "stack_observation": {
+    "status": "in_progress",
+    "dependency_integrated_unmerged": true,
+    "dependent_based_on_dependency_pr_checkpoint": true,
+    "dependent_own_checkpoint_and_postmerge_sync": "pending",
+    "evidence_alias": "observation-12"
   }
 }
