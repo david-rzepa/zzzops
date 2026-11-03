@@ -483,7 +483,10 @@ def _steps(card: dict) -> list:
             if size > 200 and "full" not in c:
                 blobs.append((size, (sect, i)))
     blobs.sort(key=lambda b: -b[0])
-    return steps + [("blob",) + path for _, path in blobs]
+    steps += [("blob",) + path for _, path in blobs]
+    if any(len(v["summary"]) > 80 for v in _summaries(card)):
+        steps.append(("clip", "summaries", 80))
+    return steps
 
 
 def _apply(card: dict, step: tuple, reader) -> dict:
@@ -497,7 +500,7 @@ def _apply(card: dict, step: tuple, reader) -> dict:
         card["context"]["commands"] = "see commands_to_run"
     elif kind == "clip":
         for v in _summaries(card):
-            v["summary"] = clip(v["summary"], SUMMARY)
+            v["summary"] = clip(v["summary"], step[2] if len(step) > 2 else SUMMARY)
     elif step[1] == "prompt":
         card["prompt"] = _blob(reader, card["prompt"]["text"], SUMMARY)
     elif step[1] == "human_decisions":
@@ -529,7 +532,8 @@ def shrink_candidates(card: dict, reader=None) -> list:
 def shrink(card: dict, reader) -> dict:
     """While the card is over 4,096 bytes, apply the first step that makes it smaller: drop `argv`, point
     `context.commands` at `commands_to_run`, clip blob summaries to 120 characters, then blob the largest
-    inline text. Checkpoint views are never blobbed, and a card never leaves larger than it entered."""
+    inline text, then clip remaining blob previews to 80 characters. Checkpoint views are never blobbed,
+    and a card never leaves larger than it entered."""
     for _ in range(100):
         n = len(canonical(card))
         if n <= CARD_LIMIT:
