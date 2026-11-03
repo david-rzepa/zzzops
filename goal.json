@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-03T01:55:59Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [
     1025,
     1026,
@@ -223,6 +228,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-03T01:55:59Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:016351b9be91a47570a5e3a2983b3c5a23001966eaaf19097bccf371b454c5a7"
+        },
+        "policy": {}
+      },
+      "holder": "codex:takeover/1040-merge",
+      "input_fp": "v1:sha256:ea22f356591c9ec6ac1cc066ccf9ebfe279192a7926e109969038996af75e557",
+      "ok": true,
+      "output": {
+        "merge_commit": "41b4c50f755ea5ba76e8e4c6150ca5d91ed52a33",
+        "merged_at": "2026-11-03T01:55:56Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -533,6 +560,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Found while dogfooding Release 1 (dogfood notes 62, 73, 74, 75). A finding is live only while its target's latest record is done and current, so:\n- After a node blocks (an owner question) or goes stale (an input changed), its re-run card shows `corrections: []` although findings against it are still open; answering them is refused with \"no live finding ... Findings arrived while you ran\", which is wrong. The root relayed findings to workers by hand several times.\n- A second, different run_tests failure reuses the id `run_tests:failed` and is treated as a repeat, raising a needs_human dispute that says implement answered '' although it had answered \"fixed: ...\".\n\nOwner decision (verbatim): \"3. Ok\" (to carrying open findings onto the re-run's card and accepting answers to them), and \"I think we may as well get these done now, before dogfooding again\".\n\nScope:\n- A re-run card of a stale or blocked node lists the open findings against that node as corrections, and submit accepts responses to them.\n- A refusal for a finding that is no longer live says why (resolved, superseded, target changed) and to drop it, instead of \"arrived while you ran\".\n- A new run_tests failure with different text is a new round, not a repeat; a dispute question shows the target's actual last response.\n- Check this against G1026's option (b) (owner questions resolved by the re-review) and keep that flow working.\n\nAcceptance:\n- Replays of the G1026 cases (review_tests findings on test_design, then a design change staling test_design) show the findings on the stale card and accept fixed: responses.\n- Two different run_tests failures in a row give two rounds and no dispute.\n- This PR edits docs/design/SPEC.md and DESIGN.md for every contract change it makes and adds a HISTORY §4 row.",
-  "state": "open",
+  "state": "closed",
   "title": "Carry open findings onto stale and blocked re-run cards"
 }
