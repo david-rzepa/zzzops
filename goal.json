@@ -115,23 +115,23 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [
         {
-          "id": "implement:reopen:1",
+          "id": "implement:3:1",
           "note": null,
           "response": null,
           "rounds": 1,
           "status": "open",
-          "target": "implement",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:afd157529f7f037e39277d10a587a90427cdeddb026eb1ed74e2f17b388a3ff1",
-          "text": "CI Python3.10 reproduced frozen property-semantic guard hashing version-dependent ast.dump output (type/default-field representation differs from3.14). Preserve audited seeds/steps/assertions using interpreter-independent baseline comparison through test_design correction; do not skip/patch runtime or change property algorithm.",
+          "target": "test_design",
+          "target_attempt": 4,
+          "target_fp": "v1:sha256:d0cc533149fdfb7628c3a4b1eaa977c4b4ee4d43e6913b24499acaf91845144f",
+          "text": "Confirmed deterministic CI failure under Python 3.10: test_engine_cost_context.CostPolicyTemplateTests.test_property_semantics_remain_at_the_audited_seed_step_assertion_baseline hashes raw ast.dump output generated under Python 3.14. Identical source has different dump bytes across versions: e.g. x = f() includes empty Call args/keywords and Module type_ignores under 3.10 while 3.14 omits them. The guard therefore fails although audited property code/seeds/steps/assertions are unchanged. Correct the frozen semantic guard/golden to an interpreter-independent representation; preserve a negative control proving changed seeds/steps/assertions are rejected. Verify the full cost-context suite under both Python 3.10 and 3.14. Do not skip the check, patch runtime behavior or alter the property algorithm/test assertions. Product source was forward-rolled back only to permit this correction; source-free non-review tree equals tests checkpoint 5907d057 and all frozen paths remain unchanged.",
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-02T23:51:03Z",
+      "finished_at": "2026-11-03T00:40:34Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -141,19 +141,22 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1043-implement-restored",
+      "holder": "codex:takeover/1043-implement-ast-portability",
       "input_fp": "v1:sha256:ea177aade27bcfe5e5bf3e9fc50d4304e2273d428b30cbbc3510c4a68b38f8db",
       "ok": true,
       "output": {
         "code": {
           "base": "575015a9831ccd2ce724c3125dd74dd20029c1b5",
-          "change": "9576ffcca571cc3a7598467c4f2786d9780f05fc",
-          "commit": "53cc184c003604fb6219b6f98b948ab62c4a34bd",
-          "tree": "0bd9113728aa4787af2e16b00cab7a736a447e94"
+          "change": "1c5601dd8cb7003ca94e6e1b1dd523b8298f4b7b",
+          "commit": "19c082477c79ca5c233840edbe6ee9c8ee7a0f12",
+          "tree": "085adbc9ad63a602f608d00e3742efa73602608b"
         },
-        "summary": "Implemented individual-ID local sharding, parent-capped concurrent verification lanes, measured test-cost review/approval context and bounded same-source total/repository timing comparisons. At the final checkpoint, all 984 canonical test IDs executed and completed exactly once with no failures, errors or skips in 168.06 seconds on 20 workers; all seven required focused commands and Python 3.10 compatibility checks passed. Process-tree/pipe termination failures preserve the worktree and block for recovery, and failure reports retain IDs/tracebacks with actionable compact tails. Installed repository policy is unchanged; adoption remains its separate owner-approved policy PR, with template-history refresh deferred until the G1024 updater is in the integration base."
+        "responses": {
+          "implement:reopen:1": "disputed: The CI portability defect is confirmed, but its actual correction is deferred to test_design because the guard/golden are frozen. This forward rollback only establishes the source-free repair checkpoint while preserving all published history and property algorithms/assertions; the new ancestor finding requests the portable baseline and negative controls. It is not claimed fixed."
+        },
+        "summary": "Implementation is incomplete after a safe forward rollback to the source-free test checkpoint for a confirmed CI portability defect in the frozen semantic guard. The published product history and every frozen test remain intact; the entire final product patch, path manifest and hashes are saved privately for a later revert-of-revert after independent test correction. This rollback is not a portability fix or green implementation claim; no full test suite was rerun on the intentionally source-free checkpoint."
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     },
     "integrate": {
