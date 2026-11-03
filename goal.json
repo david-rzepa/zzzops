@@ -127,35 +127,32 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 7,
-      "correction_runs": 6,
+      "attempt": 8,
+      "correction_runs": 7,
       "findings": [],
-      "finished_at": "2026-11-03T01:50:51Z",
+      "finished_at": "2026-11-03T02:17:11Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
-          "base": "v1:sha256:f6ae2d2106213ea225ab6f462cecb9a25ad4a0acca6532547d6cc19937307fe8",
+          "base": "v1:sha256:bff1cfbeacd03186a6a1462cee7e5268319567fb700dff411bff0d10d309affc",
           "doc": "v1:blob:ab1153abea2ff217e185a023c66febc2cdc471b2",
-          "tests": "v1:sha256:835c438a1c183491d66897d76484c846b9953f23bc959f2c3f342a8542926182"
+          "tests": "v1:sha256:88517d56be5cb6ec74e13a25d0033851d3a0acf33fed46220c1c7752c6a8dcaf"
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1038-two-regressions",
-      "input_fp": "v1:sha256:f9a4fa6dc0bb341efac5d5074f2e257e5658143b2a043785597ae08163318046",
+      "holder": "codex:takeover/1038-powershell-scoped-diff",
+      "input_fp": "v1:sha256:7e2adafffd0a8d979e9624cebf7aa97d1a8e9b55b7cb9f75305ed0f2b4e83b60",
       "ok": true,
       "output": {
         "code": {
-          "base": "61290a45d137ef839b244555c74b6e45a58a7fa6",
-          "change": "93d3aeb623fc8e37f4d6837d4b8660ff3adf11ac",
-          "commit": "b7d7dbab4bb514b4efde7d8af4cf4dc0793b83e6",
-          "tree": "c1b90ea2a9989fc6934f2049fface1de3539bb7e"
+          "base": "41b4c50f755ea5ba76e8e4c6150ca5d91ed52a33",
+          "change": "e26d74825fc5ec9744a04b094ea90dd901c26e2d",
+          "commit": "d9ad869535bf114f2af7a49ceb4bf29d65f523a6",
+          "tree": "487cfc3e90368a905ed46f0745804dc8fdd2779d"
         },
-        "responses": {
-          "run_tests:failed": "fixed: Reproduced both failures as the same 4133-byte card exceeding the 4096-byte target by37 after excluding the existing owner-question allowance. A final fallback clips only blob previews after earlier useful shrink steps exhaust; the actual card now measures4086 without that allowance. Kept both original assertions, complete scoped commands, checks/cost evidence and seven frozen files. Exact2 plus shrink/prompt/real scoped-file controls:26 pass33.781s; required merge32/22.173s, conventional10/19.567s, capabilities27/7.960s and docs35/.292s pass, with docs repeated after wording refinement35/.261s. Tiny nonfrozen regression1/.002s passes, also independently onPython3.10. Root owns full canonical verification."
-        },
-        "summary": "Added a final 80-character blob-preview fallback after ordinary card compaction exhausts, fixing the two real scoped-review card budget regressions without changing their assertions. Full evidence, checkpoint identities and commands, measured-cost context and frozen tests remain intact; nested diff-blob previews may shorten too. Both regressions plus 24 related controls and all 104 required feature/capability/docs controls pass; the tiny new fallback test takes 0.002s and independent review cleared the change."
+        "summary": "Fixed the literal-filename defect found during independent preparation: scoped current, approval and previous commands now use a shell-neutral encoded argv fallback for apostrophe and PowerShell smart-quote arguments, with Git status preserved and an honest missing-interpreter environment refusal. Ordinary commands remain byte-identical, full blob/read evidence and scope stay intact, and native CI now selects one Windows-legal apostrophe control using PowerShell on Windows. Final real-shell tests pass (3 tests, 2.650s), native-selection controls pass (37, 0.363s), all 104 required commands pass, and 82 related card/prompt controls passed; all seven frozen files remain unchanged and independent focused review cleared the patch."
       },
-      "reason": "reopened",
+      "reason": "stale",
       "status": "done"
     },
     "review_design": {
