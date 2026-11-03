@@ -110,29 +110,29 @@
       "status": "done"
     },
     "filter_design": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-03T17:53:16Z",
+      "finished_at": "2026-11-03T18:16:44Z",
       "fp_parts": {
         "candidates": [],
         "def": "v1:sha256:c83a5e0ec02bc9504ff118f774138ad5517f6b3a5885d1c28444982e78d23a9f",
         "inputs": {
-          "adversary": "v1:sha256:54344fda103c42cc392d186f22c6c5aac91738bfcf7f5b67f7fb493b92e355ff",
-          "doc": "v1:blob:4046215ab26f8f387784b92a1a033c5d85f40af8",
-          "review": "v1:sha256:c906d2e25cf3bcd5e2fbfb2097658a1e238fa7d3a97fad805ad2d80de56a30cd",
+          "adversary": "v1:sha256:656c1938bf721e569ad302db11534112026ab42150f001d50cf541b613228194",
+          "doc": "v1:blob:2a239e92a02beb5c9dc03824485c183501bfc80a",
+          "review": "v1:sha256:6677070134ed91bc7dd288dc3868c85b4800dbbae2571342065b3880fee3007d",
           "spec": "v1:sha256:7cacab7d2739a88c2f7c7d9773f294a4064599407fcc553561919fe77916b36c"
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1036-filter-design",
-      "input_fp": "v1:sha256:6c41e626943e9b6f53f717b6ad0a4e276fc34507f9e7f0f3a7db648c8ecb16e5",
+      "holder": "codex:takeover/1036-filter-cli-only",
+      "input_fp": "v1:sha256:16e06bb92601db6b4b973c933ed1f58dcd8595922f1b71eeaf6543de20340db8",
       "ok": true,
       "output": {
-        "summary": "Both consolidated and Adversary reviews approve revision5. The plan preserves WD1–WD8, requires G1037 to merge with its actual anonymised report before writing phases, and distinguishes checked engine behavior, synthetic/test evidence and real observed outcomes. Candidate-bound external staging/production approvals and freshness remain root procedure, not an engine guarantee; privacy, ratios and the owner-only external publication boundary remain intact. No candidates reopen the work; notes0 and verdicts empty.",
+        "summary": "Both consolidated and Adversary reviews approve revision6; no candidates or notes remain. Recorded OD9 authorizes Codex-only CLI dogfood while evaluation requires actual actor/holder/build/action evidence, honest Claude non-execution and measured cohorts without untested equivalence claims. WD1–WD8, privacy, candidate-bound external deployment procedure and the actual G1037 merged-report prerequisite before writing remain intact. Nothing reopens the work; verdicts empty.",
         "verdicts": {}
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "review_design": {
