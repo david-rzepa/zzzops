@@ -170,26 +170,26 @@
       "status": "done"
     },
     "filter_design": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-03T17:45:43Z",
+      "finished_at": "2026-11-03T18:10:16Z",
       "fp_parts": {
         "candidates": [],
         "def": "v1:sha256:c83a5e0ec02bc9504ff118f774138ad5517f6b3a5885d1c28444982e78d23a9f",
         "inputs": {
-          "adversary": "v1:sha256:4fb408a7ddefec118615e2db0b84f35cc20fcebf896a44012e7cff2b20b12939",
-          "doc": "v1:blob:0ec3a983598e99d34ae9ec1e15251670d013db4a",
-          "review": "v1:sha256:43c825e58e9c5b879fed9f4b10075e312f030b369bc290711d4d200485131403",
+          "adversary": "v1:sha256:e85712056208a5f101a14b0b790f1282693b2aa45cd368146deb741bb7924c42",
+          "doc": "v1:blob:2005eea5a61f11083eb5c99b91048b8935031c3d",
+          "review": "v1:sha256:2784191121e1f8748c721fe2d80cea0cc6a85eaaba582057d5a2db31fd97ff64",
           "spec": "v1:sha256:e2c063ee9322840387685a5c86388a130816b2a8e1960e4e6cdd0d7ede8870e3"
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1037-filter-design-r6",
-      "input_fp": "v1:sha256:2e38608c3f7d20c2c0faf9a4cc6116cc8b46549dceb18f9a5212482fedb56daa",
+      "holder": "codex:takeover/1037-filter-design-r7",
+      "input_fp": "v1:sha256:5f80a7225e724ca315869847ce74d4d117ab59b9496faba70c65b4153f952ac9",
       "ok": true,
       "output": {
-        "summary": "Both consolidated and Adversary reviews approve the corrected design. Phase7/A10 now bind separate owner approvals to release/production-target tips and the resulting staged promotion candidate tree/artifact; refresh before irreversible promotion and after waits/retries, with stop/restage/renewed approvals on changed or unproven identity. The prior material gap is resolved, OD1–OD8 and the external deployment boundary remain, and no candidate reopens the work. Notes:0; verdicts empty.",
+        "summary": "Both consolidated and Adversary reviews approve attempt7; no candidates or notes remain. OD9 exactly matches the recorded owner answer and authorizes Codex-only CLI dogfood while confirming the freeze. Actual actor/holder/build evidence remains required, Claude non-execution is labelled honestly and no untested equivalence is claimed. OD1–OD8, private-state protection, real stacking/release and candidate-bound separate staging/production approvals remain intact; frozen protocol changes go through test_design. Nothing reopens the work; verdicts empty.",
         "verdicts": {}
       },
       "reason": "stale",
