@@ -483,7 +483,8 @@ class DocsTests(unittest.TestCase):
 
     def test_no_short_sha_checkpoint_override_shown(self):
         # Engine, references, skills and templates only; this repo's .zzzops/prompts is policy (separate change).
-        roots = (fx.PLUGIN_CODE / "engine", fx.PLUGIN_CODE / "references", fx.PLUGIN_CODE / "templates",
+        # Historical snapshots preserve old bytes; current defaults must use full SHAs.
+        roots = (fx.PLUGIN_CODE / "engine", fx.PLUGIN_CODE / "references", fx.PLUGIN_CODE / "templates" / "default",
                  fx.PLUGIN_CODE.parent / "skills")
         bad = ('"commit": "<sha>"', '\\"commit\\": \\"<sha>\\"')
         for root in roots:
