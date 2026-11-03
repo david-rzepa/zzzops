@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-03T17:02:19Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [
     1017,
     1027
@@ -227,6 +232,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-03T17:02:19Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:db08e74103c9d7bb2678c67bd926a945fd8273fd7a8ee9535ab120ff2db943ff"
+        },
+        "policy": {}
+      },
+      "holder": "codex:takeover/1024-merge",
+      "input_fp": "v1:sha256:8ce2fb1cba01d6c4824672ec829aba7f6d68ccb8c00dbb3ad1009fe89fe2c008",
+      "ok": true,
+      "output": {
+        "merge_commit": "19379cc1f1437fd38f8ae1b755d07ac6d5159d2a",
+        "merged_at": "2026-11-03T17:02:09Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -494,6 +521,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Found while dogfooding Release 1 (2026-11-01). Bootstrap copies the shipped templates (templates/default: POLICY.json, workflow.json, prompts/) into .zzzops/, and from then on nothing links the copy to its source. When a release changes the defaults, a repository is never told. This already happened here: G1016 changed the shipped test_design.md and implement.md wording, and this repo's .zzzops/prompts still has the old text. G1023's designer then tried to fix it in a goal diff, which integrate refuses (policy-paths). G1000 and G1022 will change the default graph itself, and every bootstrapped repository needs to hear about that.\nThe pre-reset engine had this: policy sections carried default provenance (accepted, changed, rejected) and a plugin upgrade produced a policy review. The reset dropped it.\n\nAdd it back in the reset's style, with no fallback at run time (policy stays fully explicit in the repository):\n1. Bootstrap records which shipped default each policy file came from: an engine or template version plus a per-file digest of the template copy, in POLICY.json settings (or a small .zzzops/TEMPLATE.json, decided in the design).\n2. `next` and `validate --policy` compare the repository's record with the shipped templates of the running engine. When a shipped default changed since bootstrap, they show a non-blocking `policy_update` item. It lists the files that changed upstream, whether the repository also changed each file locally (from the digest), and a diff command from the old default to the new one.\n3. The item's next step is a reviewed policy change: open a `zzzops/policy/*` branch that applies the upstream changes and keeps local edits, and run `validate --policy-ref` for its impact. Add this to the bootstrap or execute skill. Declining records the decision, so the item does not recur until the defaults change again.\n4. A repository with no record (bootstrapped before this goal) gets a one-time item saying the record is missing, with a command to create it from the current files.\n5. Never change policy automatically, and never block goal work on this item.\n\nAcceptance:\n- Engine tests: an unchanged repo shows no item; a changed shipped prompt shows the item with the file and a working diff command; a locally edited file is marked as such; declining suppresses the item until the next change; a missing record gives the one-time item.\n- The skill documents the policy-branch update and the decline.\n- This repository's record is created through its next policy branch.\n- This PR edits docs/design/SPEC.md and DESIGN.md for every contract change it makes (the sections in G1017's pending row), adds a HISTORY §4 row and deletes the G1024 pending row (G1017's rule).",
-  "state": "open",
+  "state": "closed",
   "title": "Tell repositories when the shipped default policy changed, and offer a reviewed update"
 }
