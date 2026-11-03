@@ -69,35 +69,35 @@
       "status": "done"
     },
     "approve_design": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-03T17:46:15Z",
+      "finished_at": "2026-11-03T18:11:19Z",
       "fp_parts": {
         "def": "v1:sha256:d04fc5094a85157b7e25b3020caaee316324161c59b30d25d4aabb2e5c24f0ed",
         "inputs": {
-          "doc": "v1:blob:0ec3a983598e99d34ae9ec1e15251670d013db4a",
-          "filter": "v1:sha256:a6fac86eab1ec0ce7521f6a6d192e07a3956a5a1b23392a44535e250742ba626",
-          "summary": "v1:sha256:ec239221f75a5f5f31a2512cffb76019aabaaac794179ce34903c32d3963227f"
+          "doc": "v1:blob:2005eea5a61f11083eb5c99b91048b8935031c3d",
+          "filter": "v1:sha256:d564da64b66dc8b158db8c5c8e66bf57169149001da4083054efd2fd1f171ea8",
+          "summary": "v1:sha256:06563f6261140a5cb9df7db94d31e46663b488de2585f3750581031b63796b8c"
         },
         "policy": {},
-        "subject": "v1:sha256:e1ca20ff12fc0e16ec7843d040a9881ced3116ea75b1f724729edf404fec7a64"
+        "subject": "v1:sha256:4d60ffed07b36307e48bf3e0e00f511f49b3d3affbdbe2f049ea8981810b0b85"
       },
       "holder": "human",
-      "input_fp": "v1:sha256:bc098d609e92d67b2b338a566e29bfb0032798030b139fb8801ca3d1257e1e49",
+      "input_fp": "v1:sha256:4c4d8a6dd11280284f2f81de1f41f0c0f37d26fc7b634b4b66016e715d83637a",
       "ok": true,
       "output": {
-        "decided_at": "2026-11-03T17:46:15Z",
-        "decided_by": "Codex (root agent), delegated by Dave",
+        "decided_at": "2026-11-03T18:11:19Z",
+        "decided_by": "Dave",
         "decision": "approved",
-        "quote": "Do not wait for my approval",
-        "summary": "Approve the independently reviewed correction binding deployment evidence to the release tip, production target, and staged candidate, with separate staging and production approvals and renewed proof when inputs change."
+        "quote": "Yeah, nothing else is modifying the target repo. We don't need to worry about Claude, we can assume Codex and Claude work similarly enough, we're dogfooding the CLI, not the model/harness",
+        "summary": "Approve the reviewed CLI-focused Codex-only dogfood with truthful actor evidence and the existing deployment approval protections."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "0ec3a983598e99d34ae9ec1e15251670d013db4a",
-          "commit": "bc6a2ed2e48eb2881d34ca87ce8b999573a30e69"
+          "blob": "2005eea5a61f11083eb5c99b91048b8935031c3d",
+          "commit": "4bf38cfd123369fd27f5c19de8b01f27c1c05fb2"
         }
       },
       "status": "done"
