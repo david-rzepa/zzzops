@@ -47,6 +47,39 @@
       },
       "status": "done"
     },
+    "base": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-03T02:44:19Z",
+      "fp_parts": {
+        "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
+        "inputs": {
+          "heads": "v1:sha256:6ff75d1b1ddb6596a3bfc4d22eacf03f7de8f48fecfb6211f5d4110aaf4d1282",
+          "merges": "v1:sha256:3872e7024e2e8672cafb5470c6a437ef547848c4248e5eedd0476e677b7d11cc"
+        },
+        "policy": {}
+      },
+      "holder": "codex:takeover/1039-base",
+      "input_fp": "v1:sha256:17d1ffe8682514eadd90a613888bf029c0a5ddf99f1759fcb8b711b32bce31e1",
+      "ok": true,
+      "output": {
+        "base_commit": "8e5b98b63dd2ad6c8f719fbf1bd5ac273c9af9a7",
+        "branch": "zzzops/work/g1039",
+        "replay_map": {
+          "53b0e020522b39168a27c7deddea553d85eae336": "883fdf3fda4da779d01720353b2b6e5c3319ad8e",
+          "a3c2b1b17be754192cd34d5e8a747cca8718d5ca": "9585b10ff34bc169d2e196bf276093a26c4f5935",
+          "c465f5b6ca81f819f6d6b81083a55d8264307224": "262be16e3744760ed67f3265ae012640380a8782",
+          "e121cd29b573b34361c05471655ac94198e1ab84": "7667b9c25d4a65ea95a46ac35b7e9fc61f7bbb2a",
+          "e935df3eaaf99946b26215ff74a4b3049df4022f": "275c63ea63c0427f1c7d697bb7e999e80d40b4df"
+        },
+        "replay_pos": {},
+        "stack": [],
+        "synced": null
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "design": {
       "attempt": 4,
       "correction_runs": 2,
