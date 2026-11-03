@@ -420,14 +420,14 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 5,
-      "correction_runs": 3,
+      "attempt": 6,
+      "correction_runs": 4,
       "findings": [],
-      "finished_at": "2026-11-03T01:38:58Z",
+      "finished_at": "2026-11-03T02:00:10Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
-          "base": "v1:sha256:f6ae2d2106213ea225ab6f462cecb9a25ad4a0acca6532547d6cc19937307fe8",
+          "base": "v1:sha256:bff1cfbeacd03186a6a1462cee7e5268319567fb700dff411bff0d10d309affc",
           "doc": "v1:blob:ab1153abea2ff217e185a023c66febc2cdc471b2"
         },
         "policy": {}
@@ -441,8 +441,8 @@
         ".agents/test_engine_conventional.py",
         ".agents/test_engine_merge_sync.py"
       ],
-      "holder": "codex:takeover/1038-tests-golden-forward",
-      "input_fp": "v1:sha256:51ace47b80fef7b3c13913b0f9bac20403730d708e952788b7cfdc09590e6884",
+      "holder": "codex:takeover/1038-tests-refresh-after1040",
+      "input_fp": "v1:sha256:f24aaeafa1f92223ff5de98edccf78c9cbf5200cc88d7274d38d5699c99b339e",
       "ok": true,
       "output": {
         "commands": [
@@ -451,17 +451,14 @@
           "python3 -m unittest discover -s .agents -p 'test_engine_capabilities.py'",
           "python3 -m unittest discover -s .agents -p 'test_design_docs.py'"
         ],
-        "responses": {
-          "review_tests:3:1": "fixed: only the already-frozen g1038_fingerprints.json fixture is changed forward. New shipped node/journey expectations were generated from a temporary git archive of immutable BASE 61290a45d137ef839b244555c74b6e45a58a7fa6, importing only that base engine and fixtures. Graph12/graph26 controls and equality assertions are unchanged; prior de5640 shipped audit data is retained. The focused node/journey test passes (1 test, 0.139 s). Explicit checkpoint 6cc3ba63f97e64eddd02fceee79c739bc0fa00d5 contains pre-existing G1038 product code under the installed unscoped checkpoint semantics; it is NOT source-free. The non-review interdiff from product91ed69d2 to this checkpoint changes only the existing frozen fixture, with no production changes or pushed-history rewrites."
-        },
         "tests": {
-          "base": "61290a45d137ef839b244555c74b6e45a58a7fa6",
-          "change": "85c62b1394fd293bb0d34e04881e80816a9eb60c",
-          "commit": "6cc3ba63f97e64eddd02fceee79c739bc0fa00d5",
-          "tree": "5190ad825a3c6b7785d6220a9ef7fd5b3243f551"
+          "base": "41b4c50f755ea5ba76e8e4c6150ca5d91ed52a33",
+          "change": "fbc6ec2b9067e79bdba455b5f952f3486a5815c5",
+          "commit": "549608acab9f8a1b1dc1482a9bdbe02e1cd8e677",
+          "tree": "79aaf4ed4a617c0ca4f2870efd31d01ac0efe403"
         }
       },
-      "reason": "reopened",
+      "reason": "stale",
       "status": "done"
     }
   },
