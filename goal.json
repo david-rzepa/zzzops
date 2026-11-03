@@ -276,38 +276,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-03T17:25:16Z",
+      "finished_at": "2026-11-03T17:52:45Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
-          "doc": "v1:blob:982d3c13e410a3f3c6bf0584d8e1cce94d67cb06",
-          "tests": "v1:sha256:62d0f24eeedc6f07ad0a3f41a4a3cbd27640e4bb869d4578b259666934764ff7"
+          "doc": "v1:blob:0ec3a983598e99d34ae9ec1e15251670d013db4a",
+          "tests": "v1:sha256:06d8af0a5171c4e011b0270dceacda98b1ec6d4f420b849ca9f599c6ffb00436"
         },
         "policy": {},
-        "subject": "v1:sha256:d8bfdf7061d45824338c7a09b75463daaba3e69714a4a460b92479b424f0554c"
+        "subject": "v1:sha256:2b526fc6583f0b531935e830713c128da831540190ce4055cdbcc18c91393731"
       },
-      "holder": "codex:takeover/1037-review-tests",
-      "input_fp": "v1:sha256:9c40ead17af19056ed55cc8206cc61304675bebe87444d68aeb5c248bdc17a8e",
+      "holder": "codex:takeover/1037-review-tests-r6",
+      "input_fp": "v1:sha256:e2495d6479f51db7b913bf1a521f8a0b74e954f7fad69528a1ebb3eba66e79e4",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "21efa586e0511c7c36dc5542f50893c7f3b367b7",
-          "commit": "b4f0203f86ca2baa58f59b6387d77a5cfac52932",
+          "blob": "d757ae5f1dc3ddedae028ab52cbb2f032d99090c",
+          "commit": "07ce55a7b9afd4bc94e8cdfa6eb72dee91e3f489",
           "path": ".zzzops/reviews/1037/review_tests.md"
         },
-        "summary": "Approved: generic immutable A1–A20 protocol covers the approved design and OD1–OD8, genuine matching-build two-harness work, actual migration/stack/release evidence, distinct same-tip staging/production approvals, recomputable costs and privacy boundaries. Future report/data stay editable; missing data remains intentional pre-run red. Two existing validators pass (0.034s). No findings; execution prerequisites and deploy authority remain separate."
+        "summary": "Approved: A10 and the release procedure bind both tips, resulting candidate and actual staging/deployed identities, refresh proof before irreversible promotion and after waits/retries, and stop for changed/unproven evidence with restaging and renewed separate approvals. Privacy and real-run evidence remain intact. Complete measured cost context is proportionate (232ms); independent two validators pass, parser remains honest pre-run red. No findings or deployment authorization."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "432a99b528dc6388ba73cc3ba3361b13aea5612d",
-          "change": "83a542167893cbc1807930cbb6841cf98a903958",
-          "commit": "6e282c5aa1e94e25e16f8e44c352169e62670fc2",
-          "tree": "46c2c081f123949f5e55ce5a6996733fe2f62976"
+          "change": "2fe69e39bb42442964a3d3f45ad771655a5697cd",
+          "commit": "ff4d123237b3210150eb09fa594b0bb7a9edbb1a",
+          "tree": "b065f97064d01890739141cf167a2f88b289d69b"
         }
       },
       "status": "done"
