@@ -118,6 +118,63 @@ class SyncCardTests(msf.OpFixture):
         self.assertEqual(names[0], sync['touching'][1]['path'])
         self.assertIn('newName', sync['touching'][1]['why'])
 
+    def test_cross_file_plain_json_line_added_by_trunk_is_a_removed_line_hit(self):
+        template = 'plugins/zzzops/zzzops/templates/default/POLICY.json'
+        graph26 = '.agents/fixtures/graph26/POLICY.json'
+        with_min = b'{\n  "engine": {\n    "min": "0.0.0"\n  }\n}\n'
+        without_min = b'{\n  "engine": {\n  }\n}\n'
+        before = self.publish({template: with_min}, 'test: common template policy')
+        self.w.seed.git('fetch', '-q', 'origin', 'zzzops/work/g1000')
+        self.w.seed.git('merge', '--ff-only', 'FETCH_HEAD')
+        onto = self.trunk({graph26: with_min})
+        # The goal inherits the new graph26 file and never edits it.
+        self.wt.git('reset', '--hard', onto)
+        current = self.publish({template: without_min}, 'feat: remove obsolete minimum')
+        trunk_paths = set(self.git.out('diff', '--name-only', before, onto).splitlines())
+        goal_paths = set(self.git.out('diff', '--name-only', onto, current).splitlines())
+        self.assertEqual({graph26}, trunk_paths)
+        self.assertEqual({template}, goal_paths)
+        self.assertFalse(trunk_paths & goal_paths)
+        self.assertEqual(self.git.out('show', f'{onto}:{graph26}'),
+                         self.git.out('show', f'{current}:{graph26}'))
+        wf = fx.load_template('workflow.json')
+        wf['graphs']['default']['nodes']['review_impl']['inputs']['base'] = {'from': 'base.base_commit'}
+        sim = Sim(workflow=wf)
+        doc = sim.goal(1000)
+        sim.drive(1000, until='review_impl')
+        doc['records']['review_impl']['reviewed'] = {
+            'code': {'base': before, 'commit': before, 'change': self.ident.change(before, before)}}
+        doc['records']['implement']['output']['code'] = {
+            'base': onto, 'commit': current, 'change': self.ident.change(onto, current)}
+        doc['records']['base']['output'].update(base_commit=onto, synced={
+            'old': before, 'onto': onto, 'work': before, 'tip': current,
+            'merge': current, 'resolved': []})
+        res = sim.eval().goals[1000]
+        reader = render.Reader()
+        reader.prompt = lambda n: ''
+        reader.human_decisions = lambda *a: []
+        reader.diffstat = lambda *a: None
+        reader.blob_view = lambda text: cb.READER.blob_view(text)
+        ctx = render.Ctx('zzzops', sim.now, sim.settings, {'current': True}, reader=reader)
+        session = SimpleNamespace(git=self.git, settings=sim.settings,
+                                  state=SimpleNamespace(policy={'instructions': {}}, coordinator={'current': True}),
+                                  snap=SimpleNamespace(integration=onto, goals={}),
+                                  ctx=lambda **kw: ctx, portfolio=lambda: sim.eval(),
+                                  mirror_path=lambda: self.repo.path, fetch_work_of=lambda g: None)
+        state = dict(res.st['review_impl'], stale_because=['inputs.base'], record_stale=['inputs.base'],
+                     parts=doc['records']['review_impl']['fp_parts'])
+        lease = {'timeout': 120, 'attempt': 2, 'holder': 'test:review', 'expires_at': sim.now + 7200,
+                 'card_reason': 'stale', 'workspace': None, 'parts': state['parts']}
+        with patch.object(C, 'shrink', side_effect=lambda card, reader: card):
+            card = C.build(session, res, 'review_impl', state, lease)
+        self.assertIn('sync', card)
+        entries = {x['path']: x for x in card['sync']['touching']}
+        self.assertIn(graph26, entries)
+        entry = entries[graph26]
+        self.assertIn('trunk adds', entry['why'])
+        self.assertIn('"min": "0.0.0"', entry['why'])
+        self.assertIn('a line the goal removes', entry['why'])
+
 
 class SyncTemplateTests(unittest.TestCase):
     def test_review_impl_base_is_fingerprinted_but_test_review_and_filter_are_unchanged(self):
