@@ -45,6 +45,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-03T17:01:54Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:cad4269344ab9b7fdeeb0b560fe5f22ed80d67117fec6e3fa2779b73def1eda0"
+        },
+        "policy": {},
+        "subject": "v1:sha256:d55865c0d0143fbff6b3795ad7138440eb0280b718b60bbce89844e37b273813"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:30e042c082617afc49deefa558ff4c6dcdd9f343351744b8b2de5bf7845c2841",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-03T17:01:54Z",
+        "decided_by": "Codex (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approve G1024 at reviewed PR head 0ec4a89e1596d0aeaf9450149fd6aaf24e219390. Independent review approved policy update notices, provenance and immutable template history. The final exact tree passed all 1114 tests and required checks; all 20 CI checks passed. Routine merge under owner delegation."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "a1b3edb3cf200be9ca844fecb1623645285d3bac",
+          "change": "8bdab2e07950992b4c433b857b46865adc68644d",
+          "commit": "fe0412910deed913547ad26d6be204cb04634367",
+          "tree": "e6c6630f3f81aa95e45587b93fbd4eb97fea78b9"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 5,
       "correction_runs": 4,
