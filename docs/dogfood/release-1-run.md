@@ -49,6 +49,6 @@ Pass entries describe only the named interim observations. Pending entries remai
 
 ## Next boundary
 
-The owner approved the existing non-deferred visual/UX direction, and the Release 1 integration design has resumed. Source partition, ordinary reviews and the dependent candidate’s exact approval boundary remain part of the goal workflow. The retired file/ref remain preserved pending explicit cleanup authorization.
+The owner approved the existing non-deferred visual/UX direction. The integration design, both design reviews, filtering, approval and base are current; test design is running. The genuine dependent is ready for design. Source partition, ordinary reviews and the dependent candidate’s exact approval boundary remain part of the goal workflow. The retired file/ref remain preserved pending explicit cleanup authorization.
 
 Complete the real Release 1 integration and dependent work through design, tests, independent review and exact-head CI. Record actual carry/stale and budget behavior rather than forcing it. Release cut, staging and production remain distinct future gates. Staging and production each need a separate explicit owner approval bound to both relevant tips and the resulting candidate tree/artifact; refresh that proof before irreversible promotion and after waits or retries. Changed or unproven evidence requires a stop, restaging and renewed separate approvals.

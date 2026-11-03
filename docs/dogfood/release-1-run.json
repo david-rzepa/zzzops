@@ -2,7 +2,7 @@
   "schema": 1,
   "status": "in_progress",
   "complete": false,
-  "as_of_utc": "2026-11-03T20:35:41.737607+00:00",
+  "as_of_utc": "2026-11-03T20:52:47.266641+00:00",
   "scope": "CLI dogfood; interim bootstrap/migration milestone, not release acceptance",
   "actors": [
     {
@@ -64,7 +64,7 @@
       "release": 1,
       "state": "open",
       "depends_on": [],
-      "phase_status": "design_running_after_owner_direction"
+      "phase_status": "test_design_running_after_current_discovery_and_base"
     },
     {
       "alias": "goal-B",
@@ -72,7 +72,8 @@
       "state": "open",
       "depends_on": [
         "goal-A"
-      ]
+      ],
+      "phase_status": "design_ready"
     },
     {
       "alias": "goal-C",
@@ -308,5 +309,6 @@
   "blocking_decision": null,
   "scope_updates": [
     "Owner approved the existing non-deferred integration visual/UX direction; source partition and normal goal reviews remain in progress."
-  ]
+  ],
+  "phase_observed_at_utc": "2026-11-03T20:48:00.170556+00:00"
 }
