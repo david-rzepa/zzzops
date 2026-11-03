@@ -384,10 +384,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 4,
-      "correction_runs": 3,
+      "attempt": 5,
+      "correction_runs": 4,
       "findings": [],
-      "finished_at": "2026-11-02T23:11:33Z",
+      "finished_at": "2026-11-03T00:44:48Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -406,7 +406,7 @@
         ".agents/test_engine_test_cost.py",
         ".agents/test_local_validation.py"
       ],
-      "holder": "codex:takeover/1043-test-design-context",
+      "holder": "codex:takeover/1043-test-design-ast-portability",
       "input_fp": "v1:sha256:3a98de38f0c522754e2ed792ba079478a374fe95d61b8945ae3d29864bb798e1",
       "ok": true,
       "output": {
@@ -420,13 +420,13 @@
           "python3 -m unittest discover -s .agents -p 'test_design_docs.py'"
         ],
         "responses": {
-          "implement:1:1": "fixed: CostPlumbingJourney reads reviewed.context.cost, matching its context:true declaration and existing card.build contract; an explicit assertion also keeps cost outside identity-bearing card.inputs. Measured red/green launcher, complete cost equality and blob decoding remain unchanged. Analogous approval access already uses item.context correctly. A source-free generic two-node CLI fixture passed in 0.575 s with empty inputs and cost in context, confirming the correction without restoring product implementation or running a broad suite."
+          "implement:3:1": "fixed: replaced raw ast.dump hashes with version-neutral structural serialization that normalizes only empty/default AST fields while retaining node kinds, list order and literal scalar values (including None). Expected hashes were generated from immutable audited commit de5640d1c5909ea924450aeea6450497a78946f6, property blob ebfd8a8c52a62ba1580b7f7da04d5c3aa18068ae, recorded as fixture provenance—not from the current source. The exact property file remains byte-identical to that blob. Added negative controls for weakened seed count, step count and assertion; guard plus controls pass under Python 3.14.7 (2 tests, 0.014 s) and Python 3.10.20 (2 tests, 0.013 s). No version skip, algorithm/assertion edits, product restore or broad suite run."
         },
         "tests": {
           "base": "575015a9831ccd2ce724c3125dd74dd20029c1b5",
-          "change": "1c5601dd8cb7003ca94e6e1b1dd523b8298f4b7b",
-          "commit": "5907d057e5a713e015635acecf85a33658106f49",
-          "tree": "085adbc9ad63a602f608d00e3742efa73602608b"
+          "change": "7aca72e202478b8393f23a11b0f24ddb45cc0469",
+          "commit": "932af741d3a7475c8ec63b8141549fa91330db30",
+          "tree": "1184ab7293cd48ad7f29dfaac0c0dd2de5058e67"
         }
       },
       "reason": "reopened",
