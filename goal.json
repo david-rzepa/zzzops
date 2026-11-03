@@ -255,51 +255,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 4,
-      "correction_runs": 3,
-      "findings": [
-        {
-          "id": "review_tests:3:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 4,
-          "target_fp": "v1:sha256:162179daa2e06f1dec11374df3ffd068cedf1f221ac010488f65e1d621dd01e3",
-          "text": ".agents/fixtures/g1038_fingerprints.json still names de5640d1 and the pre-G1043 shipped node digest 9fda092662584570e58d39fe0ea6542af202ad419631fbf7ad288af65106080b. The immutable mapped base 61290a45 now hashes to fab125b86110d96d656fae8142794ac4af9b1f7a18ebc40a445aaf71169a4f14 because G1043 intentionally added cost/context graph fields. The focused fingerprint test fails its shipped subcase (0.123 s), stopping before its shipped journey check. Recompute the fixture baseline and all expected control values from immutable 61290a45 source, not G1038 implementation; retain proven unchanged graph12/graph26 controls and rerun only the focused node/journey test without weakening equality assertions.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-03T01:40:32Z",
+      "attempt": 5,
+      "correction_runs": 4,
+      "findings": [],
+      "finished_at": "2026-11-03T02:02:36Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:ab1153abea2ff217e185a023c66febc2cdc471b2",
-          "tests": "v1:sha256:835c438a1c183491d66897d76484c846b9953f23bc959f2c3f342a8542926182"
+          "tests": "v1:sha256:88517d56be5cb6ec74e13a25d0033851d3a0acf33fed46220c1c7752c6a8dcaf"
         },
         "policy": {},
-        "subject": "v1:sha256:69a296a252cfd5cdbca14cceb3fc809168c23aa94b448cac1653a980355d05ab"
+        "subject": "v1:sha256:7b036d9c69a6dde782c6579be29a4db97682780c807c5056a1cbbd9ffc33968d"
       },
-      "holder": "codex:takeover/1038-review-tests-golden-forward",
-      "input_fp": "v1:sha256:007097e7362bc250308f18e4d12fb10aac267d9c3569858727f845f838e2592a",
+      "holder": "codex:takeover/1038-review-tests-after1040",
+      "input_fp": "v1:sha256:6cf043d57f6b999e1d5b9adcf8b6c2274e3f50bbc5782044692868e94d24dcdb",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "015c81a4c478a0e22c88eda5073b1c20b0c77cb5",
-          "commit": "349ae5a0cb94769fc243328f8869242f2bf9e55a",
+          "blob": "86e29369e7eb5cc44bd62f89ab9e9b0185f84ff9",
+          "commit": "fa38caa2f614885277c4653af66ce360104f562c",
           "path": ".zzzops/reviews/1038/review_tests.md"
         },
-        "summary": "Approved: fixture-only forward correction matches all node/journey values independently generated from immutable 61290a45; equality assertions and seven frozen paths are unchanged. Focused control passes. Legacy checkpoint includes pre-existing product code and is explicitly not source-free."
+        "summary": "Approved mapped accepted tests after G1040: seven frozen blobs match product; prior golden/core assertions are unchanged and the capability union preserves blocked_findings, test_cost and merge_sync. Product correctness, including its separate PowerShell fix, remains implementation work."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
-          "base": "61290a45d137ef839b244555c74b6e45a58a7fa6",
-          "change": "85c62b1394fd293bb0d34e04881e80816a9eb60c",
-          "commit": "6cc3ba63f97e64eddd02fceee79c739bc0fa00d5",
-          "tree": "5190ad825a3c6b7785d6220a9ef7fd5b3243f551"
+          "base": "41b4c50f755ea5ba76e8e4c6150ca5d91ed52a33",
+          "change": "fbc6ec2b9067e79bdba455b5f952f3486a5815c5",
+          "commit": "549608acab9f8a1b1dc1482a9bdbe02e1cd8e677",
+          "tree": "79aaf4ed4a617c0ca4f2870efd31d01ac0efe403"
         }
       },
       "status": "done"
