@@ -1,15 +1,13 @@
-# G1038 mapped-test review after G1043
+# G1038 forward golden correction review
 
-Changes requested for one stale control fixture. The mapped tests checkpoint is honestly source-free, and the previous two findings remain resolved.
+Approved. `review_tests:3:1` is resolved, with no new findings.
 
-The frozen checkpoint `7510fe3d39c08bcf7b2a798ff571c05242a64799` differs from coordinator `61290a45d137ef839b244555c74b6e45a58a7fa6` only in the seven intended `.agents` test/support/fixture files (plus excluded review artifacts). The capability and documentation unions preserve G1043's `test_cost` and G1038's `merge_sync` coverage. The substantive tests reviewed in rounds 1 and 2 are unchanged.
+The non-review interdiff from product `91ed69d2` to explicit tests checkpoint `6cc3ba63f97e64eddd02fceee79c739bc0fa00d5` changes only the already-frozen `.agents/fixtures/g1038_fingerprints.json`. It updates the baseline to immutable coordinator `61290a45d137ef839b244555c74b6e45a58a7fa6` and the two shipped-graph expected values. Graph12/graph26 controls are unchanged, old de5640 shipped audit values remain recorded, and no test algorithm or equality assertion is weakened.
 
-## Finding: refresh the control from the actual immutable base
+I independently exported `.agents` and the engine/templates from that immutable coordinator with `git archive`, ran a fresh interpreter importing only the archive, and recomputed all three node-definition and all three journey digests. They exactly match the corrected fixture. This confirms the expectations are pre-G1038 controls, not values copied from the implementation under review.
 
-`.agents/fixtures/g1038_fingerprints.json` still names audit base `de5640d1c5909ea924450aeea6450497a78946f6` and pins the shipped node-definition digest `9fda092662584570e58d39fe0ea6542af202ad419631fbf7ad288af65106080b`. G1043 intentionally changed the shipped graph by adding measured cost outputs and context. The mapped pre-G1038 coordinator's shipped graph now hashes to `fab125b86110d96d656fae8142794ac4af9b1f7a18ebc40a445aaf71169a4f14`.
+I repeated only the focused fingerprint method: one test passed in 0.130 seconds, including the shipped journey comparison that the stale node golden previously prevented from running. No broad suite was repeated.
 
-I independently calculated that digest from `git show 61290a45...:plugins/zzzops/zzzops/templates/default/workflow.json` with the installed baseline `node_def_fp`, rather than reading the product implementation's changed graph. The recorded focused run of `test_node_and_journey_fingerprints_stay_at_the_pre_feature_baseline` fails precisely this shipped subcase in 0.123 seconds; graph12 and graph26 node controls pass. The failing assertion prevents the shipped journey comparison from running, so that value is not yet verified.
+The before/after CLI records prove the frozen set is byte-for-byte unchanged at seven paths. The substantive test/support coverage from the source-free mapped checkpoint `7510fe3d39c08bcf7b2a798ff571c05242a64799` remains the previously reviewed coverage.
 
-Recompute the golden node-definition and journey values from the immutable `61290a45...` baseline, record that baseline in the fixture, retain unchanged graph12/graph26 values where proven unchanged, and rerun only this focused control. Do not regenerate the expected values from G1038's implementation or weaken the equality assertions: this control must still detect changes made by G1038 itself. No broad suite is required for the fixture correction.
-
-No approval is recorded while this known control fails.
+The new checkpoint is explicitly **not source-free**: the installed engine computes its base-to-checkpoint change without frozen-path scope, so its view contains pre-existing G1038 product code. This review treats that code as pre-existing implementation, not newly authored tests. The actual forward correction is fixture-only; independent implementation review and required checks still apply. No pushed history was rewritten, no product source was rolled back during the test lease, and no failed control was approved as passing.
