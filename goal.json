@@ -196,48 +196,35 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 2,
+      "attempt": 3,
+      "blocked": {
+        "category": "decision",
+        "options": [
+          "Free at least 2 GiB from known authorized disposable storage, then retain the existing local runner",
+          "Explicitly authorize hosted runners for the required checks",
+          "Request a review of specific cleanup candidates; keep execution paused"
+        ],
+        "question": "The two owner-required CI jobs for the approved history-only reconciliation are queued. No runners are registered and the existing local dispatcher is stopped with no retained VM or active job. Its documented guard requires 85 GiB free; the latest read shows 84.16 GiB. RAM is sufficient. No sufficient disposable task-owned artifact was found; trusted images and owner work must be preserved. How should CI capacity be restored? Staging and production deployments remain separately unapproved.",
+        "reason": "Required exact-head CI is queued while the local runner is below its existing disk-capacity guard.",
+        "recommendation": "Retain the existing local runner and its 85 GiB guard. Free at least 2 GiB through an authorized known-safe action; otherwise require an explicit hosted-runner decision. Do not delete owner work or images, weaken capacity checks, silently switch runners, bypass queued CI, or use any banked Codex usage reset.",
+        "repeats": 1,
+        "waiting_for": "human"
+      },
       "correction_runs": 1,
-      "findings": [
-        {
-          "id": "implement:2:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "design",
-          "target_attempt": 6,
-          "target_fp": "v1:sha256:8a1fa578ca87fb7c935ffd2c104c21353363ab5871838c23ec2d6dd6ab2fd2cf",
-          "text": "The owner answered implement on 2026-11-03: Yeah, nothing else is modifying the target repo. We don't need to worry about Claude, we can assume Codex and Claude work similarly enough, we're dogfooding the CLI, not the model/harness. This confirms the freeze and explicitly removes genuine Claude participation as a prerequisite for CLI dogfood. Approved design attempt6 still requires both harnesses in Outcome, Install, Execute and A1 (including same-build actual participation). Update those requirements and related actor/cost/report wording to permit honest Codex-only CLI execution while recording actual executor/build and explicitly not claiming Claude participation or measured cross-harness equivalence. Preserve owner-state protection, freeze, real stacked-pair/release requirements, privacy, and separate future staging/production approvals with candidate freshness proof. This is an explicit owner override, not a new unresolved owner question.",
-          "upheld": false
-        },
-        {
-          "id": "implement:2:2",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "test_design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:2b526fc6583f0b531935e830713c128da831540190ce4055cdbcc18c91393731",
-          "text": "Frozen docs/dogfood/release-1-checks.md at ff4d123237b3210150eb09fa594b0bb7a9edbb1a requires both real harnesses in the overview, prerequisites2, A1 and actual actor checks; unavailable Claude must currently wait. That contradicts the owner's recorded implement answer: Yeah, nothing else is modifying the target repo. We don't need to worry about Claude, we can assume Codex and Claude work similarly enough, we're dogfooding the CLI, not the model/harness. After the design is reconciled, update this frozen acceptance protocol through test_design to verify actual Codex CLI run/build evidence and record Claude as not executed under the explicit waiver; do not turn installed bytes or the owner's assumption into fabricated participation/equivalence evidence. Keep genuine actor attribution, private raw evidence, release/stacked-pair checks and separate deployment approvals unchanged. Implement has preserved the frozen file byte-for-byte and has not started app mutations or claimed acceptance.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-03T18:03:25Z",
+      "findings": [],
+      "finished_at": "2026-11-03T18:43:25Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
           "base": "v1:sha256:cc25726eab1a2a69f62402e2c816652d5ef5bd453b38ff1755c2afd49dc8db93",
-          "doc": "v1:blob:0ec3a983598e99d34ae9ec1e15251670d013db4a",
-          "tests": "v1:sha256:06d8af0a5171c4e011b0270dceacda98b1ec6d4f420b849ca9f599c6ffb00436"
+          "doc": "v1:blob:2005eea5a61f11083eb5c99b91048b8935031c3d",
+          "tests": "v1:sha256:57b016fa9a2420d9392f268be2d40af6e9915e929e1c864d9c6bd605b48537dd"
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1037-implement-r2",
-      "input_fp": "v1:sha256:4a1b6d80a7083092ff2194da70a554871a15b060e9b5edaf227e713fc0880c7e",
-      "ok": true,
-      "output": {
+      "holder": "codex:takeover/1037-implement-r3",
+      "input_fp": "v1:sha256:701e78aa471f44d3963832d65d5b5dff1fef0b39c8be35209b2a2010a1f5020c",
+      "last_output": {
         "code": {
           "base": "432a99b528dc6388ba73cc3ba3361b13aea5612d",
           "change": "2fe69e39bb42442964a3d3f45ad771655a5697cd",
@@ -246,8 +233,10 @@
         },
         "summary": "Implementation remains incomplete: the owner confirmed the freeze and explicitly changed this dogfood to CLI execution with Codex, without requiring real Claude participation. The unchanged approved design and frozen protocol still require both real harnesses, so normal findings request their correction before private-app mutations or acceptance claims. Existing owner-state baseline and private handoff remain preserved; no source/app changes, deployment, Claude model call or usage reset occurred. Current checks and report data remain preparation-only; no release or end-to-end completion is claimed."
       },
-      "reason": "retry",
-      "status": "done"
+      "ok": false,
+      "output": null,
+      "reason": "stale",
+      "status": "blocked"
     },
     "review_design": {
       "attempt": 7,
