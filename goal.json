@@ -201,6 +201,44 @@
       },
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-03T16:57:17Z",
+      "fp_parts": {
+        "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
+        "inputs": {
+          "code": "v1:sha256:cad4269344ab9b7fdeeb0b560fe5f22ed80d67117fec6e3fa2779b73def1eda0",
+          "doc": "v1:blob:891e284f14d6d39fa3bd3d0854b643b5c887b5a6",
+          "tests": "v1:sha256:4a14579dba6ede7c8614709ae3d23f4b307e5a8b42cdbdcda5f88a511bee96b5"
+        },
+        "policy": {},
+        "subject": "v1:sha256:d55865c0d0143fbff6b3795ad7138440eb0280b718b60bbce89844e37b273813"
+      },
+      "holder": "codex:takeover/1024-review-impl-final",
+      "input_fp": "v1:sha256:f73f778333a55e965945a61b8524e161c1900b55da850e6ce11e529045bbd4cb",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "05f8a08f6b51689b5ac789cfbcbd160a6ca12f98",
+          "commit": "7ae4b94d10a7fce65fa03fe761e4deee297e112d",
+          "path": ".zzzops/reviews/1024/review_impl.md"
+        },
+        "summary": "Approved: advisory default provenance/update behavior, PowerShell-safe advice, immutable published history and retained upstream contracts match the design. Frozen tests are unchanged; final code tree exactly matches checks.run, with all 1114 IDs completed once and zero failures/errors (186.709 s canonical command)."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "a1b3edb3cf200be9ca844fecb1623645285d3bac",
+          "change": "8bdab2e07950992b4c433b857b46865adc68644d",
+          "commit": "fe0412910deed913547ad26d6be204cb04634367",
+          "tree": "e6c6630f3f81aa95e45587b93fbd4eb97fea78b9"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 3,
       "correction_runs": 2,
