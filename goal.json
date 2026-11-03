@@ -154,10 +154,10 @@
       "status": "done"
     },
     "design": {
-      "attempt": 5,
+      "attempt": 6,
       "correction_runs": 4,
       "findings": [],
-      "finished_at": "2026-11-02T21:59:04Z",
+      "finished_at": "2026-11-03T17:41:59Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -166,18 +166,21 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1037-design",
+      "holder": "codex:takeover/1037-design-correction",
       "input_fp": "v1:sha256:95f370e53142e781a864a61b2c1fc83a17a3929f3f5259fe6dc8ab89bad45107",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "982d3c13e410a3f3c6bf0584d8e1cce94d67cb06",
-          "commit": "dbef3a2e2e23ddac93901aa87524043374d7ea4b",
+          "blob": "0ec3a983598e99d34ae9ec1e15251670d013db4a",
+          "commit": "bc6a2ed2e48eb2881d34ca87ce8b999573a30e69",
           "path": ".zzzops/reviews/1037/design.md"
         },
-        "summary": "Attempt 5 preserves OD1–OD8 and the nine-phase private dogfood plan, updating only its integration with the reviewed merge-sync, clean-carry/budget and blocked-findings dependencies. Bootstrap explicitly adopts their capabilities and paired prompts/graph edge, and acceptance records actual sync/finding behaviour without manufacturing failures. The real run still waits for every dependency to merge, uses both harnesses, keeps app-specific facts private, and requires separate owner approvals for staging and production."
+        "responses": {
+          "adversary_design:1:1": "fixed: Phase 7, A10 and the private release runbook now include production target and resulting candidate identity alongside staged evidence; refresh both tips and re-evaluate before irreversible promotion, stop/restage/renew separate owner approvals when relevant proof changes or equality is unproven, and identify external freshness as root procedure rather than an engine guarantee."
+        },
+        "summary": "Revised the private-app dogfood plan to bind staging and production decisions to the release tip, production target tip and resulting promotion candidate tree/artifact. The root rechecks that proof immediately before irreversible promotion and after waits/retries; relevant changes or unproven equality require a stop, restaging and renewed separate owner approvals. OD1–OD8, actual-actor attribution, privacy and the existing engine/app deployment boundaries are preserved."
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     },
     "filter_design": {
