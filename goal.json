@@ -210,6 +210,39 @@
       "reason": "stale",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "blocked": {
+        "category": "decision",
+        "options": [
+          "Confirm the freeze and resume when genuine second-harness availability is established",
+          "Keep the private-app run paused"
+        ],
+        "question": "The real private-app dogfood run is waiting for current owner confirmation that the approved freeze is in effect and for genuine Claude participation using the matching installed build. The last observed Claude allowance stop scheduled refresh for November 5 at 07:00 America/Mexico_City; no current model probe or reset was attempted. May the run resume once both prerequisites are actually established? Separate staging and production approvals remain required later.",
+        "reason": "The real private-app dogfood run is waiting for current owner confirmation that the approved freeze is in effect and for genuine Claude participation using the matching installed build. The last obser",
+        "recommendation": "Keep the run paused until the owner confirms the freeze and actual second-harness availability is established. Preserve the prepared read-only evidence and all dirty owner state; do not substitute installation evidence, another actor/model or a banked usage reset.",
+        "repeats": 1,
+        "waiting_for": "human"
+      },
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-03T17:59:10Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:cc25726eab1a2a69f62402e2c816652d5ef5bd453b38ff1755c2afd49dc8db93",
+          "doc": "v1:blob:0ec3a983598e99d34ae9ec1e15251670d013db4a",
+          "tests": "v1:sha256:06d8af0a5171c4e011b0270dceacda98b1ec6d4f420b849ca9f599c6ffb00436"
+        },
+        "policy": {}
+      },
+      "holder": "codex:takeover/1037-implement",
+      "input_fp": "v1:sha256:4a1b6d80a7083092ff2194da70a554871a15b060e9b5edaf227e713fc0880c7e",
+      "ok": false,
+      "output": null,
+      "reason": "new",
+      "status": "blocked"
+    },
     "review_design": {
       "attempt": 6,
       "correction_runs": 3,
