@@ -139,6 +139,43 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-03T04:21:33Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:abd52351d4bb795f01ba11ba8ecbbd49b84b2319",
+          "tests": "v1:sha256:d1b819ee6603e0d12a36b6ea6471b3a63dd503237ea65e8eb224c99b8633284b"
+        },
+        "policy": {},
+        "subject": "v1:sha256:b95e1165395e7e23c24b2d80412dd6ff3a8fd5f494881303e8d027c77474a796"
+      },
+      "holder": "codex:takeover/1042-review-plan",
+      "input_fp": "v1:sha256:d08f613eada8540b33d7bed04aa09f17879e49fe61bdb9d031c8170c4167047b",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "f414422646b393e689adfdd143e2f9976d98621d",
+          "commit": "f4d437404a85bf5bc28f62a4891ada279435f5cf",
+          "path": ".zzzops/reviews/1042/review_tests.md"
+        },
+        "summary": "Approved: proportionate documentation verification plan with an empty source checkpoint, concrete final-claim/source review, preserved disclosures/branding, qualified optional capabilities and published-vs-dev behavior, and explicit later wording/metadata/release boundaries. Independently confirmed source/live critical claims, reran all three existing validators (0.016s), and resolved 18 relative file targets. No findings; future prose and external changes remain unapproved by this review."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "a1b3edb3cf200be9ca844fecb1623645285d3bac",
+          "change": "0000000000000000000000000000000000000000",
+          "commit": "7ce910636d4fcfd9610e2d5d6ae4f7748cc9869f",
+          "tree": "37acf87b845f58778aa1dccb55dfe32c4d8dbf1d"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
