@@ -47,6 +47,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-03T17:12:25Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:a522c816c91faeec9303290e39d27eff7d3244e2b35be5c8c0eb62525ffea300"
+        },
+        "policy": {},
+        "subject": "v1:sha256:4b0314cab83d214f2ce8501ba93ff9c523a7b713d4719b71d7f5c249d0abd7bc"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:998995ab596369a0deebb2ae8b934a658d816c85eb454b3fc6072000ba9a2342",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-03T17:12:25Z",
+        "decided_by": "Codex (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approve reviewed README wording at PR head a8c9dd6a4e42d7f1271065eadccd0a4e68c5da5f and the exact metadata proposal: description “Agentic engineering for autonomous coding agents: bootstrap repositories and carry durable Git-native goals through reviewed work.”; remove topics github-issues and project-management, add git-native and goal-management, preserving other current topics. Re-read metadata before applying and reconcile any material concurrent description change. All 1114 tests and 20 CI checks passed. Routine approval under owner delegation."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "19379cc1f1437fd38f8ae1b755d07ac6d5159d2a",
+          "change": "d859c491699f0b94fb094af97a1e2ebfabbb8ed7",
+          "commit": "fcb0c1b47b62f3715966f1b0a2451e00a2bdbe3f",
+          "tree": "e94da221a0e5cf6f5a529fc948a733803e5541ba"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 2,
       "correction_runs": 1,
