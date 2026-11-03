@@ -2,7 +2,7 @@
   "schema": 1,
   "status": "in_progress",
   "complete": false,
-  "as_of_utc": "2026-11-03T21:18:49.593715+00:00",
+  "as_of_utc": "2026-11-03T21:36:19.876402+00:00",
   "scope": "CLI dogfood; interim bootstrap/migration milestone, not release acceptance",
   "actors": [
     {
@@ -64,7 +64,7 @@
       "release": 1,
       "state": "open",
       "depends_on": [],
-      "phase_status": "implementation_running_after_current_test_review"
+      "phase_status": "implementation_refresh_running_after_forward_test_followup"
     },
     {
       "alias": "goal-B",
@@ -199,7 +199,7 @@
       },
       "goal-A": {
         "discovery": 0,
-        "delivery": 2
+        "delivery": 4
       },
       "goal-B": {
         "discovery": 0
@@ -330,7 +330,7 @@
   "scope_updates": [
     "Owner approved the existing non-deferred integration visual/UX direction; source partition and normal goal reviews remain in progress."
   ],
-  "phase_observed_at_utc": "2026-11-03T21:15:18.236963+00:00",
+  "phase_observed_at_utc": "2026-11-03T21:32:11.027012+00:00",
   "failure_paths": {
     "review_finding_reopens_target": {
       "status": "observed",
@@ -345,5 +345,13 @@
     "policy_branch_pause": {
       "status": "pending"
     }
+  },
+  "forward_test_followup": {
+    "status": "observed",
+    "implementation_checkpoint_contains_product_source": true,
+    "followup_test_checkpoint_descends_from_implementation": true,
+    "independent_followup_test_review_accepted": true,
+    "final_implementation_review_or_merge_claimed": false,
+    "evidence_alias": "observation-11"
   }
 }
