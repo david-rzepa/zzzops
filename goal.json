@@ -109,61 +109,66 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 4,
+      "attempt": 5,
       "correction_runs": 3,
-      "findings": [
-        {
-          "id": "review_design:3:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:bab05a89d67896b5f4c16526f220fae96b9ffcdaca0e43ee51a4ce899442eaf1",
-          "text": "T8 says that after clean sync a 'genuinely new material finding' spends a stage-budget round, but G1039 revision 3 §3.5 explicitly exempts a node with no checkpoint outputs that started stale only on base-selecting inputs, even when it raises findings. The normal example is exactly T8's sync-focused review_impl. A checkpointing node whose carry was refused, or a review also stale on changed code, counts normally; a new finding from the exempt clean-sync review does not. Fix §3 item 7.6, T8, §7 evaluation definitions and W15/W16 to state the exemption precisely, and make the trace/check distinguish exempt base-only review findings from genuinely chargeable new material rounds rather than asserting that every new finding is charged.",
-          "upheld": false
-        },
-        {
-          "id": "review_design:3:2",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:bab05a89d67896b5f4c16526f220fae96b9ffcdaca0e43ee51a4ce899442eaf1",
-          "text": "The paper plan still presents 4,096 bytes as a hard card bound (§3 item 6, also 'bounded task card' in item 1), but the checked engine intentionally returns an oversized fixed point when previous cannot shrink. At read_dev de5640d, .agents/test_engine_card_budget.py::ShrinkBudgetTests::test_a_card_over_budget_because_of_previous_is_a_fixed_point passes and its fixture emits 8,537 bytes with zero remaining shrink candidates. G1039 revision 3 §3.4/§7 explicitly preserves this limitation; G1019 is open in Release 2 and is not a writing prerequisite. Fix the definition/evidence plan to describe a 4,096-byte target plus the known re-review/previous exception, cite the test and report observed overruns honestly. Add a matching limitation and acceptance check; claim a strict bound only if the final checked build actually fixes it. This needs no new engine scope or dependency.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-02T22:12:58Z",
+      "findings": [],
+      "finished_at": "2026-11-03T17:52:11Z",
       "fp_parts": {
-        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
         "inputs": {
-          "doc": "v1:blob:eca59b21dfc8001bc2b8543a9a2593468b3baca1",
+          "doc": "v1:blob:4046215ab26f8f387784b92a1a033c5d85f40af8",
           "spec": "v1:sha256:7cacab7d2739a88c2f7c7d9773f294a4064599407fcc553561919fe77916b36c"
         },
-        "policy": {},
-        "subject": "v1:sha256:dfed44f260f3d15ad4df96c3d908d3829a265b6007f4965bdb4b2e08cdcacece"
+        "lenses": [
+          "intent",
+          "simplicity",
+          "truth",
+          "adversary",
+          "concurrency",
+          "rollout",
+          "experience"
+        ],
+        "policy": {
+          "intent": {
+            "not": [
+              "A general project-management suite.",
+              "A ceremony framework: every mechanism must prevent a real failure worth its cost.",
+              "A second source of truth beside Git.",
+              "An engine that invents human decisions or acts without authority.",
+              "A deploy, CI or release-publishing tool: its release support is a branching strategy.",
+              "Inherently opinionated: it ships an opinionated default graph, but every opinion (graph, lenses, prompts, policy) can be customised by the project."
+            ],
+            "principles": [
+              "Git is the store; state is visible and repairable by hand.",
+              "A small engine; the graph, prompts and policy belong to the project.",
+              "Human authority is explicit: approvals may be delegated, but decisions with big consequences go to the owner, batched.",
+              "Reviews are independent, and a finding must matter.",
+              "Guard against drift at both levels: from what a goal asked for, and from the project's original intent. A goal that departs from the project's intent is flagged when it is added, and the owner either changes the goal or amends the intent.",
+              "Prefer deleting to adding; keep prompts distilled."
+            ],
+            "purpose": "Let coding agents carry long-running repository work through durable, reviewable goals, so a developer can stop supervising without losing progress, priorities or control.",
+            "serves": "Developers who delegate project work to coding agents, and the agents doing it."
+          }
+        },
+        "subject": "v1:sha256:5e637952941e2f5973c2905d7a453c89e11ca1617e9c6275e6e4f72a37bd5edc"
       },
-      "holder": "codex:takeover/1036-review-design-2",
-      "input_fp": "v1:sha256:80bf6e620c2cfd4e167c1d1cb77a525fd54a3e82a39b497162d4ee8d99689811",
+      "holder": "codex:takeover/1036-review-design",
+      "input_fp": "v1:sha256:a23b84238e03273351d3a156d267bc4bbb4d567a47029e0f7c0ea5bc5b172a5b",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "10a5ac7b06f98973d95121b1a4f6620afe00f82a",
-          "commit": "d235c11756ba6f8583159147bc8211df6ec4c814",
+          "blob": "a525229c1bfefb93ff0e2e99edec96108a9c91b4",
+          "commit": "44d8752bb4f930802bdc5eaf9d9f69ff0bf8d494",
           "path": ".zzzops/reviews/1036/review_design.md"
         },
-        "summary": "Approved revision 4: both prior findings are resolved. Budget wording and evidence checks now preserve G1039’s exact finding-raising clean-sync exemption; card-size claims state the target and measured oversized-previous exception. Owner choices, anonymity and the G1037 merge/report writing gate are unchanged."
+        "summary": "Approved: revision 5 preserves the actual merged-report writing gate and faithfully distinguishes candidate-bound external release evidence from engine guarantees, without expanding scope or exposing the private app."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "eca59b21dfc8001bc2b8543a9a2593468b3baca1",
-          "commit": "a111bc2929dbfff1953b70d88b99213bdce0d604"
+          "blob": "4046215ab26f8f387784b92a1a033c5d85f40af8",
+          "commit": "b3ffb40fdc2287fcfcd403e0b5acece672741c48"
         }
       },
       "status": "done"
