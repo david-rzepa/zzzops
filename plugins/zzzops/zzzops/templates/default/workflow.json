@@ -229,7 +229,8 @@
           },
           "outputs": {
             "tests": "checkpoint",
-            "commands": "strings"
+            "commands": "strings",
+            "cost": "object"
           },
           "instructions": [
             "verification"
@@ -250,6 +251,10 @@
             },
             "tests": {
               "from": "test_design.tests.change"
+            },
+            "cost": {
+              "from": "test_design.cost",
+              "context": true
             }
           },
           "instructions": [
@@ -309,7 +314,8 @@
             }
           },
           "policy": [
-            "verification.commands"
+            "verification.commands",
+            "verification"
           ],
           "outputs": {
             "result": "object"
@@ -338,6 +344,10 @@
             },
             "checks": {
               "from": "run_tests.result",
+              "context": true
+            },
+            "cost": {
+              "from": "test_design.cost",
               "context": true
             }
           },
@@ -468,6 +478,10 @@
             },
             "review": {
               "from": "review_impl.summary",
+              "context": true
+            },
+            "checks": {
+              "from": "run_tests.result",
               "context": true
             }
           }
