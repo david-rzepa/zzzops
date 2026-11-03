@@ -115,48 +115,32 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 3,
-      "correction_runs": 2,
-      "findings": [
-        {
-          "id": "implement:3:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "test_design",
-          "target_attempt": 4,
-          "target_fp": "v1:sha256:d0cc533149fdfb7628c3a4b1eaa977c4b4ee4d43e6913b24499acaf91845144f",
-          "text": "Confirmed deterministic CI failure under Python 3.10: test_engine_cost_context.CostPolicyTemplateTests.test_property_semantics_remain_at_the_audited_seed_step_assertion_baseline hashes raw ast.dump output generated under Python 3.14. Identical source has different dump bytes across versions: e.g. x = f() includes empty Call args/keywords and Module type_ignores under 3.10 while 3.14 omits them. The guard therefore fails although audited property code/seeds/steps/assertions are unchanged. Correct the frozen semantic guard/golden to an interpreter-independent representation; preserve a negative control proving changed seeds/steps/assertions are rejected. Verify the full cost-context suite under both Python 3.10 and 3.14. Do not skip the check, patch runtime behavior or alter the property algorithm/test assertions. Product source was forward-rolled back only to permit this correction; source-free non-review tree equals tests checkpoint 5907d057 and all frozen paths remain unchanged.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-03T00:40:34Z",
+      "attempt": 4,
+      "correction_runs": 3,
+      "findings": [],
+      "finished_at": "2026-11-03T00:53:49Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
           "base": "v1:sha256:a517aeb92cc9adc5bfaa0dba482802d7f6f0acd71b9b18bd9ea68112a8c4054a",
           "doc": "v1:blob:a361e31ab8798ddb675ac6b835eda82dd46266c9",
-          "tests": "v1:sha256:37f77726f16c787978fbe63007db62f56fcaad1e0a64cc26ffb6fed021ea6384"
+          "tests": "v1:sha256:6abdb4b571ffa9b2fdb27251e599401b76bdb58028f8775328d810303749a92b"
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1043-implement-ast-portability",
-      "input_fp": "v1:sha256:ea177aade27bcfe5e5bf3e9fc50d4304e2273d428b30cbbc3510c4a68b38f8db",
+      "holder": "codex:takeover/1043-implement-restored-portable",
+      "input_fp": "v1:sha256:79936fcacff0707fc508bb24ca41e64909348f1ed270663cc0dd14db696ad5ab",
       "ok": true,
       "output": {
         "code": {
           "base": "575015a9831ccd2ce724c3125dd74dd20029c1b5",
-          "change": "1c5601dd8cb7003ca94e6e1b1dd523b8298f4b7b",
-          "commit": "19c082477c79ca5c233840edbe6ee9c8ee7a0f12",
-          "tree": "085adbc9ad63a602f608d00e3742efa73602608b"
+          "change": "f3ea70d21b0157825f3c1372e244b0fc944cbee9",
+          "commit": "2b79bafc79427c08d7d9456c66ce7ab43b6c4700",
+          "tree": "c6baab65505807deb96ce5e053588a5da47fff18"
         },
-        "responses": {
-          "implement:reopen:1": "disputed: The CI portability defect is confirmed, but its actual correction is deferred to test_design because the guard/golden are frozen. This forward rollback only establishes the source-free repair checkpoint while preserving all published history and property algorithms/assertions; the new ancestor finding requests the portable baseline and negative controls. It is not claimed fixed."
-        },
-        "summary": "Implementation is incomplete after a safe forward rollback to the source-free test checkpoint for a confirmed CI portability defect in the frozen semantic guard. The published product history and every frozen test remain intact; the entire final product patch, path manifest and hashes are saved privately for a later revert-of-revert after independent test correction. This rollback is not a portability fix or green implementation claim; no full test suite was rerun on the intentionally source-free checkpoint."
+        "summary": "Restored measured verification against independently approved portable tests, preserving every property seed, step and assertion and the previously verified runtime bytes. Local ID sharding, CPU-limited command lanes, integer timing, bounded baseline lookup and independent repository comparison are implemented with reviewed template, capability and documentation wiring. All seven required focused commands passed; the guard and weakening controls also passed on Python 3.10 and 3.14, and all 985 tests completed exactly once in 123.41 seconds with zero failures, errors or skips on this exact clean checkpoint. Installed repository policy remains a separate adoption step."
       },
-      "reason": "reopened",
+      "reason": "stale",
       "status": "done"
     },
     "integrate": {
