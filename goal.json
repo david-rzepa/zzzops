@@ -216,6 +216,44 @@
       },
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-03T04:03:51Z",
+      "fp_parts": {
+        "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
+        "inputs": {
+          "code": "v1:sha256:2021ea3bbad9e3311f867ea7259cfc73411cea961eda76d201496e81df3ab2d2",
+          "doc": "v1:blob:48db30e141b058f1e0aa82e4687321fdb6b2dc6e",
+          "tests": "v1:sha256:d5a4508b4bae785e5f5b915d7e86852f2d0859f735fdefe5cd0cfd6a149903be"
+        },
+        "policy": {},
+        "subject": "v1:sha256:260bea012334690e689bd73db4965af67c779d9752a8c47527e4dd266e24089f"
+      },
+      "holder": "codex:takeover/1039-review-impl",
+      "input_fp": "v1:sha256:f62922668a16bafdf6dc5274b858078d389a49e66b8fdedd013cacbacea6c07d",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "480409a3463845c6337cbe16d3433d4d27a110e3",
+          "commit": "e5bda1c70ef46753c4cc2ee88ac1b2ed5ed0a2a2",
+          "path": ".zzzops/reviews/1039/review_impl.md"
+        },
+        "summary": "Approved: scoped transient U0 carry with conservative positional unions, truthful sync evidence and gated per-stage material-round budgeting match the design. Card guidance and legacy behavior are preserved; zero-budget empty-stage crash fixed; seven frozen files and default POLICY unchanged. Final tree37acf87b matches all7commands PASS and1090/1090 canonical tests in131.014s. No open findings; fresh CI pending."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "8e5b98b63dd2ad6c8f719fbf1bd5ac273c9af9a7",
+          "change": "41361dd2092e0e1347158b01e72176ba854e1497",
+          "commit": "ab919a9ed5e1655a442586979f88fe2106de76d8",
+          "tree": "37acf87b845f58778aa1dccb55dfe32c4d8dbf1d"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 2,
       "correction_runs": 1,
