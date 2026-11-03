@@ -365,14 +365,14 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 4,
-      "correction_runs": 3,
+      "attempt": 5,
+      "correction_runs": 4,
       "findings": [],
-      "finished_at": "2026-11-03T02:18:54Z",
+      "finished_at": "2026-11-03T02:32:33Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:91a04e2c5bf24921f648ebcc3b977e1232d51887ddcf5da67cbcdf13087239fd",
+          "code": "v1:sha256:ff2d02182a5d39c9c6e33a175fa4ef4ff53b5f5ccbc10a5100c0369b9ecb8139",
           "commands": "v1:sha256:66032a15fc7babe8a9dacf05626d9032570911439d06076f5e81ca39771a4f65"
         },
         "policy": {
@@ -381,8 +381,8 @@
           ]
         }
       },
-      "holder": "codex:takeover/1038-runtests-powershell-final",
-      "input_fp": "v1:sha256:269a7f1fd2ef15d3cfff3293d72e0af25d924702c9150f0df95e0c746f5fb06f",
+      "holder": "codex:takeover/1038-runtests-windows-fixture",
+      "input_fp": "v1:sha256:23c3e3903c617696439b34c9cef61108b347804a123b68a10e93838fdf045a83",
       "ok": true,
       "output": {
         "result": {
@@ -390,42 +390,42 @@
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_merge_sync.py'",
               "exit": 0,
-              "milliseconds": 9352,
+              "milliseconds": 9331,
               "seconds": 9,
               "source": "goal",
-              "tail": " get the object allocation traceback\n/home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp3a5nxsas/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...\n----------------------------------------------------------------------\nRan 32 tests in 9.275s\n\nOK\n"
+              "tail": " get the object allocation traceback\n/home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmphu4_dt_t/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...\n----------------------------------------------------------------------\nRan 32 tests in 9.248s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_conventional.py'",
               "exit": 0,
-              "milliseconds": 8274,
+              "milliseconds": 8303,
               "seconds": 8,
               "source": "goal",
-              "tail": " encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpedwpj6za/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpwu69gafh/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.......\n----------------------------------------------------------------------\nRan 10 tests in 8.210s\n\nOK\n"
+              "tail": " encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpl9jmodh6/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpnpghi9pv/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.......\n----------------------------------------------------------------------\nRan 10 tests in 8.239s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_capabilities.py'",
               "exit": 0,
-              "milliseconds": 5615,
+              "milliseconds": 5574,
               "seconds": 5,
               "source": "goal",
-              "tail": "...........................\n----------------------------------------------------------------------\nRan 27 tests in 5.567s\n\nOK\n"
+              "tail": "...........................\n----------------------------------------------------------------------\nRan 27 tests in 5.525s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_design_docs.py'",
               "exit": 0,
-              "milliseconds": 305,
+              "milliseconds": 296,
               "seconds": 0,
               "source": "goal",
-              "tail": "...................................\n----------------------------------------------------------------------\nRan 35 tests in 0.258s\n\nOK\n"
+              "tail": "...................................\n----------------------------------------------------------------------\nRan 35 tests in 0.252s\n\nOK\n"
             },
             {
               "cmd": "python3 .github/scripts/run_product_validation.py --platform linux --local",
               "exit": 0,
-              "milliseconds": 128765,
-              "seconds": 128,
+              "milliseconds": 129066,
+              "seconds": 129,
               "source": "verification",
-              "tail": "test_engine_journeys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 29.212505941999552], [\"test_engine_lenses.FullLensJourneyTests.test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body\", 29.033691960998112], [\"test_engine_lenses.RenamedFullLensJourneyTests.test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body\", 29.031645765004214], [\"test_engine_branching.SyncTests.test_dev_moving_under_an_open_sync_pr\", 28.42283938300534]], \"executed_count\": 1063, \"completed_count\": 1063, \"worker_seconds\": [123.01057831100479, 113.16818117399816, 121.03458707000391, 122.13262290199782, 111.87681642700045, 112.7084778339995, 118.6363232779986, 122.42930328199873, 127.04263868099952, 117.81277710400173, 124.66588222200517, 114.68436614999518, 125.01115309399756, 121.49526922299992, 126.51518536700314, 125.12507583299885, 128.6364441120022, 124.47590730599768, 126.35489015799976, 122.0171968959985], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
+              "tail": "est_engine_journeys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 29.20921279000322], [\"test_engine_lenses.FullLensJourneyTests.test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body\", 29.133055935999437], [\"test_engine_lenses.RenamedFullLensJourneyTests.test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body\", 29.119077379000373], [\"test_engine_branching.SyncTests.test_dev_moving_under_an_open_sync_pr\", 28.497465184002067]], \"executed_count\": 1063, \"completed_count\": 1063, \"worker_seconds\": [123.15008138800476, 113.16023448199849, 121.64389226399362, 122.69785623600183, 112.50800080600311, 113.12034012700315, 118.49450053200417, 122.9750762459953, 127.50699951299612, 117.86295350100409, 125.22510645099828, 115.15607502400235, 125.1071292159977, 122.03822999199474, 126.85642419799842, 125.83151634000387, 128.9359603720004, 125.19933899400348, 126.95374955400621, 122.62846197199542], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
             }
           ],
           "passed": true,
@@ -444,7 +444,7 @@
               "status": "unavailable",
               "verification": {
                 "caveat": "informational; machine load and concurrent goal-command workload may differ",
-                "delta_ms": -10253,
+                "delta_ms": -9952,
                 "source": {
                   "finished_at": "2026-11-03T01:45:50Z",
                   "goal": 1040,
@@ -465,18 +465,18 @@
               "platform": "linux",
               "python": "3.14"
             },
-            "goal_ms": 23546,
+            "goal_ms": 23504,
             "parallel_commands": false,
             "plan_sha256": "5c3b75410e044de92fc1b9c96f531c6d538ffd3c890b0563bb6bf6d23182e7a9",
-            "total_ms": 152311,
-            "verification_ms": 128765,
+            "total_ms": 152569,
+            "verification_ms": 129066,
             "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1",
             "workers": {
               "goal": 20,
               "verification": 20
             }
           },
-          "tree": "487cfc3e90368a905ed46f0745804dc8fdd2779d"
+          "tree": "fe2f91662056cd0baf6aef826292733bf1b48558"
         }
       },
       "reason": "stale",
