@@ -251,63 +251,51 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [
         {
-          "id": "review_tests:1:1",
+          "id": "review_tests:3:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "resolved",
+          "status": "open",
           "target": "test_design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:45ad22dc792017797dead3f55afe2d6eafd3abbd2925d7b7d422c3d4a06fc6b9",
-          "text": "The new EngineSubjectsTests merge-method test asserts actual trunk subjects, but unchanged engine_fake_gh.do_merge ignores --subject/--body and implements rebase as a two-parent hardcoded \"Merge pull request\" commit. A direct fixture probe confirms correct production flags still produce that result. Extend the fake on the tests line to honor merge/squash messages and model rebase without a fabricated merge; retain argument assertions and verify actual per-method result/body/PR commits with a small direct probe.",
-          "upheld": false
-        },
-        {
-          "id": "review_tests:1:2",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:45ad22dc792017797dead3f55afe2d6eafd3abbd2925d7b7d422c3d4a06fc6b9",
-          "text": "Design §6.5 relocates only checkpoints equal to or ancestral to synced.work. Existing tests cover no-sync and valid ancestors but never a checkpoint outside that history, so always returning synced.tip would pass them and incorrectly carry unrelated work. Add one small negative carry integration case with a side-branch checkpoint not ancestral to synced.work and an otherwise-accepting predicate; assert it is not carried. Use explicit fixture Git context, not ambient cwd/global Git.",
+          "target_attempt": 4,
+          "target_fp": "v1:sha256:162179daa2e06f1dec11374df3ffd068cedf1f221ac010488f65e1d621dd01e3",
+          "text": ".agents/fixtures/g1038_fingerprints.json still names de5640d1 and the pre-G1043 shipped node digest 9fda092662584570e58d39fe0ea6542af202ad419631fbf7ad288af65106080b. The immutable mapped base 61290a45 now hashes to fab125b86110d96d656fae8142794ac4af9b1f7a18ebc40a445aaf71169a4f14 because G1043 intentionally added cost/context graph fields. The focused fingerprint test fails its shipped subcase (0.123 s), stopping before its shipped journey check. Recompute the fixture baseline and all expected control values from immutable 61290a45 source, not G1038 implementation; retain proven unchanged graph12/graph26 controls and rerun only the focused node/journey test without weakening equality assertions.",
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-02T22:11:40Z",
+      "finished_at": "2026-11-03T01:36:04Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:ab1153abea2ff217e185a023c66febc2cdc471b2",
-          "tests": "v1:sha256:af416495120811ad2bdbff1e982b776eaa6b0ec6a3901d84576f16c0ca0bb227"
+          "tests": "v1:sha256:2767c0781f2b334f4995f687474c48799013a5eac5d488ca5743fd91537dba0a"
         },
         "policy": {},
-        "subject": "v1:sha256:fd9fc8829e0f5f2e90f4c02ae164b964712b3467bb3719b41d09dc464364e628"
+        "subject": "v1:sha256:162179daa2e06f1dec11374df3ffd068cedf1f221ac010488f65e1d621dd01e3"
       },
-      "holder": "codex:takeover/1038-review-tests-2",
-      "input_fp": "v1:sha256:73b8f77bf7bd8ee5ecc08ee864270de67496731ed0d699d9e01f7711bec9cb8c",
-      "ok": true,
+      "holder": "codex:takeover/1038-review-tests-sharded",
+      "input_fp": "v1:sha256:17cef5b4683096ce5889ccca4622a62db910d0da4f2ca633d62f3fba6c9b21f3",
+      "ok": false,
       "output": {
-        "decision": "approved",
+        "decision": "changes_requested",
         "report": {
-          "blob": "b2e6903758bd8374f73449dbd20705c2c5694ea2",
-          "commit": "09bf971915f8aa6e2d68136ecd715ba0b1ccba4c",
+          "blob": "23a296b6cb350c61d2fc40a22e4fc5f68a2659b8",
+          "commit": "ab5e77d12d4c3b0cc06da878953297b5d9692107",
           "path": ".zzzops/reviews/1038/review_tests.md"
         },
-        "summary": "Approved: fake merge/squash messages and real rebase behavior now directly verified on Python 3.10; negative carry case rejects identical-tree checkpoints outside synced work history. Both prior findings resolved."
+        "summary": "The mapped tests remain source-free and substantive, but the shipped fingerprint golden still pins the pre-G1043 graph. Refresh expected node/journey values from immutable coordinator 61290a45 before approval."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
-          "base": "de5640d1c5909ea924450aeea6450497a78946f6",
-          "change": "62750f89fc47652724460b0fd48c97e3a4f25acd",
-          "commit": "e8549b403cede28935ec00d74456a5e31d5e063e",
-          "tree": "7ff07a94b02a4794ecdec347ddc96c04e722667d"
+          "base": "61290a45d137ef839b244555c74b6e45a58a7fa6",
+          "change": "47f27327e2ad92e7820777ed30ccf8c975385c6e",
+          "commit": "7510fe3d39c08bcf7b2a798ff571c05242a64799",
+          "tree": "3afc808db663866a75f2151a17d5cb22621c910d"
         }
       },
       "status": "done"
