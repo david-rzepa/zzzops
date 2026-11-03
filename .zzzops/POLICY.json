@@ -2,12 +2,14 @@
   "schema_version": 2,
   "settings": {
     "engine": {
-      "min": "0.0.0"
+      "requires": [
+        "test_cost"
+      ]
     },
     "integration_branch": "dev",
     "verification": {
       "commands": [
-        "python3 -m unittest discover -s .agents"
+        "python3 .github/scripts/run_product_validation.py --platform linux --local"
       ],
       "required_ci": [
         "dev-required-tests"
