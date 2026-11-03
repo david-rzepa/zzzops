@@ -46,44 +46,10 @@
       "status": "done"
     },
     "base": {
-      "attempt": 4,
-      "blocked": {
-        "category": "conflict",
-        "commands": {
-          "resume": [
-            "start",
-            "1024",
-            "base",
-            "--as",
-            "<LABEL>"
-          ]
-        },
-        "instructions": "In /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1024: resolve the conflicts in docs/design/HISTORY.md docs/design/README.md docs/design/SPEC.md plugins/zzzops/zzzops/references/CLI_USAGE.md plugins/zzzops/zzzops/references/MIGRATING.md, `git add` them, run `git -c core.editor=true rebase --continue`, then run the resume command. Do not change the meaning of the goal's commits.",
-        "op_state": {
-          "old": "575015a9831ccd2ce724c3125dd74dd20029c1b5",
-          "onto": "a1b3edb3cf200be9ca844fecb1623645285d3bac",
-          "work": "fb5b4fcca659a2758c78f0485a1a629aa4be239e"
-        },
-        "reason": "rebase conflict in docs/design/HISTORY.md docs/design/README.md docs/design/SPEC.md plugins/zzzops/zzzops/references/CLI_USAGE.md plugins/zzzops/zzzops/references/MIGRATING.md",
-        "repeats": 1,
-        "waiting_for": "agent"
-      },
-      "correction_runs": 3,
-      "findings": [
-        {
-          "id": "base:reopen:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "base",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:69a8281cf5fe38794631bbdf7b0dd09951879968695b1862dbbc2804fd914297",
-          "text": "G1038/G1039/G1040/G1043 merged; synchronize actual default template versions before history refresh and final verification",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-03T04:12:30Z",
+      "attempt": 5,
+      "correction_runs": 4,
+      "findings": [],
+      "finished_at": "2026-11-03T04:18:46Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
         "inputs": {
@@ -92,12 +58,38 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1024-base-final",
+      "holder": "codex:takeover/1024-base-final-resume",
       "input_fp": "v1:sha256:eae9168cf4a0851ed43ad53c333350f0d12d3e812a986dddeca4766e695f3d26",
-      "ok": false,
-      "output": null,
-      "reason": "reopened",
-      "status": "blocked"
+      "ok": true,
+      "output": {
+        "base_commit": "a1b3edb3cf200be9ca844fecb1623645285d3bac",
+        "branch": "zzzops/work/g1024",
+        "replay_map": {
+          "66f29466634b7d660eeda2d56665e537fe9cdfda": "82e675321b905e8874ab3b91d207fc91210b072a",
+          "809748e039bf449909c6f9daff89219f311e7cfe": "7e818f62129c6a850005c81b76be597b38f8cec3",
+          "88df4442894b2498c5ffd1afb35b055dab3c0a51": "3fd967fcaeb27d2d676369c49f98e5a19e1d2f70",
+          "915445425caaae9a1ff81e8e92952d9a938afd15": "2eb1024d5b8cb3036d5144cc2e30d3f04ce0e521",
+          "a967622d47da23019073ac0516e96a9d43673a0a": "17efdffd1b35de477843fc33bcecab46f1fcb1c4",
+          "abab0fe06c0a4ad75096635ca24a209ae01befd2": "1d28c34dd3491ab7f77311b4d931ad19b3a15f62",
+          "af263bb3a8034bae8c38b98f88d26d957b9d25fb": "159b2fbc42e029bad3f16d5fb439c3cd45036d5a",
+          "b6ec1e08e13bf1827e26b398feedb27e7aa50db8": "36d75fbb940c8f0eb19f10883635a06a3c46a439",
+          "c15c875b6d1c959787297b63df61abc84a24d915": "04af3b93aeb2f683311914fe4a74378577a872c1",
+          "e11ae3e61d09f2d6e5d66a9122c9978352f3f537": "27cc637e43fdf3912e6fc0578731108648e7e395",
+          "e94025ff0ac2e1a7fbef81cb92963c4a0ab228cd": "67b684461d93b9040d00081eebd9e1c20bbdce13",
+          "f9d48442bc42e1c0996e589b82867b94c7cbbcbd": "2f5b8206816fa8036e521a27e0e0cf90c1dc5d96",
+          "febf68308cb28dd0e031e08db906515d8cafe783": "9420ad6f0e061bfd86609997bd5dd2e8d440110a"
+        },
+        "replay_pos": {
+          "22e5b078b5b603f5183ee5a2d138896fd307ee8b": "f4476efd6a20ead11fc46e53de6d4aa87ae0d215",
+          "cd9ef202ab960dcd83ebdd219619b7dbe90392b4": "5f5512a87f26c48370168c7a698d3720d4f7e5fe",
+          "d2ca82f4f6e91cdb3033815c67a38e77abbdf187": "250df443b7ff60f3efcea0e48e70cb579febdd02",
+          "fb5b4fcca659a2758c78f0485a1a629aa4be239e": "67d7671f00ce9742c9fb381334840b33a93029a7"
+        },
+        "stack": [],
+        "synced": null
+      },
+      "reason": "retry",
+      "status": "done"
     },
     "design": {
       "attempt": 4,
