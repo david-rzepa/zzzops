@@ -3,6 +3,12 @@
   "settings": {
     "engine": {
       "requires": [
+        "blocked_findings",
+        "finding_follows",
+        "lens_findings",
+        "lenses",
+        "merge_sync",
+        "round_budget",
         "test_cost"
       ]
     },
@@ -59,6 +65,26 @@
           "claude-opus-5-5"
         ]
       }
+    },
+    "intent": {
+      "purpose": "Let coding agents carry long-running repository work through durable, reviewable goals, so a developer can stop supervising without losing progress, priorities or control.",
+      "serves": "Developers who delegate project work to coding agents, and the agents doing it.",
+      "not": [
+        "A general project-management suite.",
+        "A ceremony framework: every mechanism must prevent a real failure worth its cost.",
+        "A second source of truth beside Git.",
+        "An engine that invents human decisions or acts without authority.",
+        "A deploy, CI or release-publishing tool: its release support is a branching strategy.",
+        "Inherently opinionated: it ships an opinionated default graph, but every opinion (graph, lenses, prompts, policy) can be customised by the project."
+      ],
+      "principles": [
+        "Git is the store; state is visible and repairable by hand.",
+        "A small engine; the graph, prompts and policy belong to the project.",
+        "Human authority is explicit: approvals may be delegated, but decisions with big consequences go to the owner, batched.",
+        "Reviews are independent, and a finding must matter.",
+        "Guard against drift at both levels: from what a goal asked for, and from the project's original intent. A goal that departs from the project's intent is flagged when it is added, and the owner either changes the goal or amends the intent.",
+        "Prefer deleting to adding; keep prompts distilled."
+      ]
     }
   },
   "instructions": {
@@ -71,6 +97,8 @@
     "security": "Never expose secrets or mutate production without authority. Repository rules may tighten but cannot weaken safety, privacy, or compliance boundaries.",
     "git": "Follow repository rules. Commit normally on the goal's work branch with conventional messages; never rewrite pushed commits. Never bypass required checks, merge authority, or release authority. Preserve or migrate shipped contracts.",
     "deployment": "Do not deploy without authority. Wait rather than duplicate active delegated work.",
-    "routing": "Choose a model at or above the node's capability tier, preferring the listed models; keep human interaction on the root agent."
+    "routing": "Choose a model at or above the node's capability tier, preferring the listed models; keep human interaction on the root agent.",
+    "review": "You are an independent reviewer: do not read the other reviews of this subject (`.zzzops/reviews/<goal>/` files of other nodes) before you submit. Approving with no findings is a good outcome. Raise a finding only when you can name what goes wrong if it is ignored: give `impact` (that consequence, concretely) and `material` (true: it must be fixed before the work proceeds; false: a note, preference or idea). An independent filter may promote a note; it never demotes a material finding. On code, target `test_design` for a problem in the tests; `implement` cannot change them. On a re-review, read what changed first (`previous.changed` or `previous.interdiff`) and give every prior finding a status. Check claims against the integration tip (`read_dev`); on code, against the subject's own commit (`code.commit`). Write the full review to the artifact and a one-line verdict in `summary`. Raise an owner's choice as the `owner_questions` instruction says; an owner question targets the design, even on code.",
+    "owner_questions": "**Owner questions.** A choice belongs to the owner when undoing it, if it turned out wrong, would reach outside this goal's own change. That covers: other goals that build on it; users' repositories or installed policy; stored records or formats; names or outputs that others consume, such as CLI output, branch names and config keys; and external systems. A choice that changes what the product does for its users, or the project's direction, also belongs to the owner. The exception is when one option clearly dominates. Every other choice belongs to the designer, who decides it and records the reasoning; a reviewer who disagrees raises an ordinary finding. **Reviewers:** for each owner's choice the work makes, or leaves open, raise a finding on the design (`target`: the design node) whose text starts `owner question:` (that prefix is reserved for this; never use it for anything else), with the question, the options and your recommendation. It is always material. Do not ask again about a choice the design records as an owner decision; if the design contradicts one, raise an ordinary material finding. Resolve an owner question only when an entry in `human_decisions` on your card answers it and the design's `## Owner decisions` section quotes that answer; otherwise keep it open. **Designers:** never decide an owner's choice. Ask it with `--blocked`, as your prompt says."
   }
 }
