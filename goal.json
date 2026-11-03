@@ -289,14 +289,14 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-02T23:51:57Z",
+      "finished_at": "2026-11-03T00:54:32Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:58203a56af7c8a2d5163457acb880b282da389769d4af073986697d9b7943ea4",
+          "code": "v1:sha256:2a1aa5df4ae2b162449cfabec127ffef2414e10f8877bd04c2b805fb2e399788",
           "commands": "v1:sha256:8e81d0cf42b660bed236d1d48950e94effe8a408b1482619bdb7349e70f7e033"
         },
         "policy": {
@@ -306,7 +306,7 @@
         }
       },
       "holder": "codex:takeover/op",
-      "input_fp": "v1:sha256:10a81f60c20151285b2b755f2ad5667a3ba8d84141240ab76fbe80c041976591",
+      "input_fp": "v1:sha256:3f860bc9b97c55f1eb66942ba6df7e5f1a5c541224c91a0fccb3aa6625c1317c",
       "ok": true,
       "output": {
         "result": {
@@ -315,56 +315,56 @@
               "cmd": "python3 -m unittest discover -s .agents -p 'test_local_validation.py'",
               "exit": 0,
               "seconds": 0,
-              "tail": "............\n----------------------------------------------------------------------\nRan 12 tests in 0.214s\n\nOK\n{\"status\": \"failed\", \"inventory_count\": 0, \"inventory_sha256\": null, \"workers\": 0, \"wall_seconds\": 4.4916003389516845e-05, \"aggregate_test_seconds\": 0, \"slowest_tests\": [], \"executed_count\": 0, \"completed_count\": 0, \"worker_seconds\": [], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": [], \"error\": \"loader failed\"}\n"
+              "tail": "............\n----------------------------------------------------------------------\nRan 12 tests in 0.104s\n\nOK\n{\"status\": \"failed\", \"inventory_count\": 0, \"inventory_sha256\": null, \"workers\": 0, \"wall_seconds\": 2.165699697798118e-05, \"aggregate_test_seconds\": 0, \"slowest_tests\": [], \"executed_count\": 0, \"completed_count\": 0, \"worker_seconds\": [], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": [], \"error\": \"loader failed\"}\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_test_cost.py'",
               "exit": 0,
               "seconds": 0,
-              "tail": "............\n----------------------------------------------------------------------\nRan 12 tests in 0.191s\n\nOK\n"
+              "tail": "............\n----------------------------------------------------------------------\nRan 12 tests in 0.071s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_cost_baseline.py'",
               "exit": 0,
               "seconds": 0,
-              "tail": "...............\n----------------------------------------------------------------------\nRan 15 tests in 0.028s\n\nOK\n"
+              "tail": "...............\n----------------------------------------------------------------------\nRan 15 tests in 0.012s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_cost_context.py'",
               "exit": 0,
-              "seconds": 6,
-              "tail": ".............\n----------------------------------------------------------------------\nRan 13 tests in 6.469s\n\nOK\n"
+              "seconds": 2,
+              "tail": "..............\n----------------------------------------------------------------------\nRan 14 tests in 2.874s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_ci_selection.py'",
               "exit": 0,
               "seconds": 0,
-              "tail": "................s\n...\n...................\n----------------------------------------------------------------------\nRan 37 tests in 0.763s\n\nOK\n"
+              "tail": "................s\n...\n...................\n----------------------------------------------------------------------\nRan 37 tests in 0.371s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_capabilities.py'",
               "exit": 0,
-              "seconds": 12,
-              "tail": "...........................\n----------------------------------------------------------------------\nRan 27 tests in 12.697s\n\nOK\n"
+              "seconds": 5,
+              "tail": "...........................\n----------------------------------------------------------------------\nRan 27 tests in 5.486s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_design_docs.py'",
               "exit": 0,
               "seconds": 0,
-              "tail": "...................................\n----------------------------------------------------------------------\nRan 35 tests in 0.557s\n\nOK\n"
+              "tail": "...................................\n----------------------------------------------------------------------\nRan 35 tests in 0.262s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents",
               "exit": 0,
-              "seconds": 1662,
+              "seconds": 1102,
               "tail": ":0: ResourceWarning: unclosed file <_io.BufferedReader name=19>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=16>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=17>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=14>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=15>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=12>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=13>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
             }
           ],
           "passed": true,
-          "tree": "0bd9113728aa4787af2e16b00cab7a736a447e94"
+          "tree": "c6baab65505807deb96ce5e053588a5da47fff18"
         }
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "test_design": {
