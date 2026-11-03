@@ -256,73 +256,110 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
-      "findings": [
-        {
-          "carrier_fp": "v1:sha256:67eaf579c1cbf9a1448fe6eb3efda16b7f1c0fe548764dac83ab16389d606a2d",
-          "id": "run_tests:failed",
-          "note": null,
-          "repeats": 1,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "implement",
-          "target_attempt": 4,
-          "target_fp": "v1:sha256:e8c7d5f0c69090558264caae37422d7ea4117d6d48d693b893bfc2c8b243f396",
-          "text": "`python3 -m unittest discover -s .agents` exited 1:\n:0: ResourceWarning: unclosed file <_io.BufferedReader name=19>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=16>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=17>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=14>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=15>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=12>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=13>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-02T22:59:11Z",
+      "attempt": 2,
+      "correction_runs": 1,
+      "findings": [],
+      "finished_at": "2026-11-03T01:33:00Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:b37064966a5f7ee0a94604636e187f7cf804ce18bd95728883efbb6245338fb2",
+          "code": "v1:sha256:5fe399bd76f08f2502cf18272e6267a73e52895b813d19bb89e72316ddf956a2",
           "commands": "v1:sha256:5d45432d37245e6a9235d3e695cde3fef2adbdba789c19f91e38956def733113"
         },
         "policy": {
           "verification.commands": [
-            "python3 -m unittest discover -s .agents"
+            "python3 .github/scripts/run_product_validation.py --platform linux --local"
           ]
         }
       },
-      "holder": "codex:takeover/op",
-      "input_fp": "v1:sha256:67eaf579c1cbf9a1448fe6eb3efda16b7f1c0fe548764dac83ab16389d606a2d",
-      "ok": false,
+      "holder": "codex:takeover/1040-runtests-sharded",
+      "input_fp": "v1:sha256:3a812fc30e565f2c835e1a5f2070c64d54de6ac04b6df1c4df222ef00991b512",
+      "ok": true,
       "output": {
         "result": {
           "details": [
             {
               "cmd": "python3 -m unittest discover -s .agents -p test_engine_blocked_findings.py",
               "exit": 0,
+              "milliseconds": 11116,
               "seconds": 11,
-              "tail": "....................\n----------------------------------------------------------------------\nRan 20 tests in 11.637s\n\nOK\n"
+              "source": "goal",
+              "tail": "....................\n----------------------------------------------------------------------\nRan 20 tests in 11.033s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p test_engine_owner_questions.py",
               "exit": 0,
-              "seconds": 73,
-              "tail": "........../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2482522 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2482526 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n............................../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2513897 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 41 tests in 73.800s\n\nOK\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n"
+              "milliseconds": 72378,
+              "seconds": 72,
+              "source": "goal",
+              "tail": "........../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2510910 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2510914 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n............................../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2525730 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 41 tests in 72.323s\n\nOK\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n"
             },
             {
               "cmd": "cd .agents && python3 -m unittest test_engine_github.IntegrateTests.test_failure_after_a_fix_escalates",
               "exit": 0,
+              "milliseconds": 6291,
               "seconds": 6,
-              "tail": ".\n----------------------------------------------------------------------\nRan 1 test in 6.220s\n\nOK\n"
+              "source": "goal",
+              "tail": ".\n----------------------------------------------------------------------\nRan 1 test in 6.245s\n\nOK\n"
             },
             {
-              "cmd": "python3 -m unittest discover -s .agents",
-              "exit": 1,
-              "seconds": 1246,
-              "tail": "ts in 1246.509s\n\nFAILED (failures=1)\nZzzOps legacy cleanup preview\nTarget: /tmp/tmp5zeulkve\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=22>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=23>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=30>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=31>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=28>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=29>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=26>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=27>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=20>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=21>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=18>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=19>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=16>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=17>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=14>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=15>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=12>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=13>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=10>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=11>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n"
+              "cmd": "python3 .github/scripts/run_product_validation.py --platform linux --local",
+              "exit": 0,
+              "milliseconds": 126996,
+              "seconds": 126,
+              "source": "verification",
+              "tail": "urneys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 29.616172286005167], [\"test_engine_lenses.FullLensJourneyTests.test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body\", 29.297263910004403], [\"test_engine_lenses.RenamedFullLensJourneyTests.test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body\", 28.989265155003523], [\"test_engine_journeys.JourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 28.006282447000558]], \"executed_count\": 1008, \"completed_count\": 1008, \"worker_seconds\": [120.55585976500151, 115.72051647300395, 116.68947609700263, 118.18904513600137, 116.42589120600314, 111.47930924299726, 121.38916472999699, 119.92459608300123, 123.65263553200202, 118.03907255800004, 121.31296972799464, 109.07417805599835, 121.67351814999711, 107.71001986999909, 112.36143026400532, 123.5672607689994, 126.84640325699729, 117.64362929799972, 126.33040359299775, 120.9697878490042], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
             }
           ],
-          "passed": false,
-          "tree": "3bc6039145e71960a4912abaaed9b7398d652226"
+          "passed": true,
+          "timing": {
+            "baseline": {
+              "reason": "legacy_timing",
+              "source": {
+                "finished_at": "2026-11-03T00:54:32Z",
+                "goal": 1043,
+                "goal_commit": "06dc3de880b402521726a58bd6735922b6c5c274",
+                "merge_commit": "02bc6c2f21e1508406e6cfb666c16e61961ff708",
+                "node": "run_tests",
+                "target": "dev",
+                "tree": "c6baab65505807deb96ce5e053588a5da47fff18"
+              },
+              "status": "unavailable",
+              "verification": {
+                "reason": "legacy_timing",
+                "source": {
+                  "finished_at": "2026-11-03T00:54:32Z",
+                  "goal": 1043,
+                  "goal_commit": "06dc3de880b402521726a58bd6735922b6c5c274",
+                  "merge_commit": "02bc6c2f21e1508406e6cfb666c16e61961ff708",
+                  "node": "run_tests",
+                  "target": "dev",
+                  "tree": "c6baab65505807deb96ce5e053588a5da47fff18"
+                },
+                "status": "unavailable"
+              }
+            },
+            "cpu_budget": 20,
+            "environment": {
+              "cpus": 20,
+              "platform": "linux",
+              "python": "3.14"
+            },
+            "goal_ms": 89785,
+            "parallel_commands": false,
+            "plan_sha256": "40a11c30f862e3ed00e189d742a5e38965de31b56ff6a8888867640182fafd9d",
+            "total_ms": 216781,
+            "verification_ms": 126996,
+            "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1",
+            "workers": {
+              "goal": 20,
+              "verification": 20
+            }
+          },
+          "tree": "88ad6a48b2511e3fa40dc119a1784c3cb751909f"
         }
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "test_design": {
