@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "status": "in_progress",
+  "status": "blocked_owner_design",
   "complete": false,
-  "as_of_utc": "2026-11-03T20:20:13.191903+00:00",
+  "as_of_utc": "2026-11-03T20:24:09.380488+00:00",
   "scope": "CLI dogfood; interim bootstrap/migration milestone, not release acceptance",
   "actors": [
     {
@@ -63,7 +63,8 @@
       "alias": "goal-A",
       "release": 1,
       "state": "open",
-      "depends_on": []
+      "depends_on": [],
+      "phase_status": "design_blocked_owner_choice"
     },
     {
       "alias": "goal-B",
@@ -287,5 +288,6 @@
       "status": "pending",
       "reason": "The final naturally occurring block/finding/check cases have not been audited."
     }
-  ]
+  ],
+  "blocking_decision": "Owner visual design selection is pending on the private Release 1 integration goal."
 }
