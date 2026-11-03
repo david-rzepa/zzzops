@@ -49,34 +49,35 @@
       "status": "done"
     },
     "approve_design": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-02T22:17:55Z",
+      "finished_at": "2026-11-03T17:53:58Z",
       "fp_parts": {
-        "def": "v1:sha256:2ad58b4fceffa1605d5aeadcf7847c38bce45c2fb1afd1228a27fa5a0d1b2926",
+        "def": "v1:sha256:d04fc5094a85157b7e25b3020caaee316324161c59b30d25d4aabb2e5c24f0ed",
         "inputs": {
-          "doc": "v1:blob:eca59b21dfc8001bc2b8543a9a2593468b3baca1",
-          "summary": "v1:sha256:6c1b1839c09d93f53164dbac29ef7a9af11f02395651d25ffb4d13855a9c7fd4"
+          "doc": "v1:blob:4046215ab26f8f387784b92a1a033c5d85f40af8",
+          "filter": "v1:sha256:6b3cce5257aa7c2c6d01931c14623016e9a3f3b77c1604d87b8e3d4b15cda0f5",
+          "summary": "v1:sha256:b43eb20560dd48fe8180529ba461bf537e48f36ebd944612ff327fa3ebfcbfca"
         },
         "policy": {},
-        "subject": "v1:sha256:dfed44f260f3d15ad4df96c3d908d3829a265b6007f4965bdb4b2e08cdcacece"
+        "subject": "v1:sha256:5e637952941e2f5973c2905d7a453c89e11ca1617e9c6275e6e4f72a37bd5edc"
       },
       "holder": "human",
-      "input_fp": "v1:sha256:987e3dc5309b4c42dd7a71291cfb3d5d2198b3092aa4d57f24aa927d1d99a81c",
+      "input_fp": "v1:sha256:73d3288222f939a5613b122cc47e06eec1414abb956b5335393fcda20def9674",
       "ok": true,
       "output": {
-        "decided_at": "2026-11-02T22:17:55Z",
+        "decided_at": "2026-11-03T17:53:58Z",
         "decided_by": "Codex (root agent), delegated by Dave",
         "decision": "approved",
         "quote": "Do not wait for my approval",
-        "summary": "Approve independently reviewed G1036 revision4 under existing delegation, preserving WD1–WD8 and anonymization. Whitepaper remains practitioner-first with ratios/trends, source/trace binding and truthful observations/limitations. Base-only no-checkpoint review budget exemption and actual card-size target/exception are accurate. Design approval does not start writing: root waits for G1037 merge and report before test_design/implement. Blog is drafted only; owner publishes externally."
+        "summary": "Approve the independently reviewed whitepaper design refresh preserving the actual merged dogfood report prerequisite, privacy, and the distinction between engine guarantees and deployment procedures."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "eca59b21dfc8001bc2b8543a9a2593468b3baca1",
-          "commit": "a111bc2929dbfff1953b70d88b99213bdce0d604"
+          "blob": "4046215ab26f8f387784b92a1a033c5d85f40af8",
+          "commit": "b3ffb40fdc2287fcfcd403e0b5acece672741c48"
         }
       },
       "status": "done"
