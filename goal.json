@@ -377,10 +377,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 4,
-      "correction_runs": 2,
+      "attempt": 5,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-03T01:32:21Z",
+      "finished_at": "2026-11-03T01:38:58Z",
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
@@ -398,7 +398,7 @@
         ".agents/test_engine_conventional.py",
         ".agents/test_engine_merge_sync.py"
       ],
-      "holder": "codex:takeover/1038-tests-refresh-sharded",
+      "holder": "codex:takeover/1038-tests-golden-forward",
       "input_fp": "v1:sha256:51ace47b80fef7b3c13913b0f9bac20403730d708e952788b7cfdc09590e6884",
       "ok": true,
       "output": {
@@ -408,14 +408,17 @@
           "python3 -m unittest discover -s .agents -p 'test_engine_capabilities.py'",
           "python3 -m unittest discover -s .agents -p 'test_design_docs.py'"
         ],
+        "responses": {
+          "review_tests:3:1": "fixed: only the already-frozen g1038_fingerprints.json fixture is changed forward. New shipped node/journey expectations were generated from a temporary git archive of immutable BASE 61290a45d137ef839b244555c74b6e45a58a7fa6, importing only that base engine and fixtures. Graph12/graph26 controls and equality assertions are unchanged; prior de5640 shipped audit data is retained. The focused node/journey test passes (1 test, 0.139 s). Explicit checkpoint 6cc3ba63f97e64eddd02fceee79c739bc0fa00d5 contains pre-existing G1038 product code under the installed unscoped checkpoint semantics; it is NOT source-free. The non-review interdiff from product91ed69d2 to this checkpoint changes only the existing frozen fixture, with no production changes or pushed-history rewrites."
+        },
         "tests": {
           "base": "61290a45d137ef839b244555c74b6e45a58a7fa6",
-          "change": "47f27327e2ad92e7820777ed30ccf8c975385c6e",
-          "commit": "7510fe3d39c08bcf7b2a798ff571c05242a64799",
-          "tree": "3afc808db663866a75f2151a17d5cb22621c910d"
+          "change": "85c62b1394fd293bb0d34e04881e80816a9eb60c",
+          "commit": "6cc3ba63f97e64eddd02fceee79c739bc0fa00d5",
+          "tree": "5190ad825a3c6b7785d6220a9ef7fd5b3243f551"
         }
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     }
   },
