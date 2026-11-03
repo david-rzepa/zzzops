@@ -1,6 +1,6 @@
 # G1037 design: dogfood Release 1 on a private web app, from migration to a finished release
 
-Attempt 5: updated for the reviewed G1038/G1039/G1040 dependency designs, against read_dev `de5640d1c5909ea924450aeea6450497a78946f6`. The nine phases, OD1–OD8, private journal and separate deploy approvals remain. This revision adds explicit adoption and observation of merge sync, clean-sync carry and blocked findings (§4, §5), and distinguishes the engine's stack-ready `base` from the root's requirement to wait for all dependencies to merge before the real run. Earlier revisions aligned the spec with OD8 and answered review_design:1:1 (§11). It replaces G1003 and G1035.
+Attempt 6: answers adversary_design:1:1 against read_dev `edb9b2c9aa317220a8e1340f27c40b6a4b6a1b5a`. Phase 7 and A10 now bind staging and production evidence to the release tip, production target tip and resulting promotion candidate tree/artifact. The root re-evaluates that proof before irreversible promotion; changed or unproven identity requires restaging and renewed separate owner approvals. The nine phases, OD1–OD8, actual-actor attribution and privacy convention are preserved. Earlier revisions adopted G1038/G1039/G1040 and removed scrub machinery under OD8. It replaces G1003 and G1035.
 
 The app's identity and every fact specific to it are kept out of this repository (OD7). **The detailed plan is in the root's private journal**: per-phase steps, evidence about the app, triage proposals, and the release mechanics against the app's own deploy flow. This document is the generic plan the reviewers judge, and it is what the whitepaper can cite.
 
@@ -87,10 +87,12 @@ Identifying words are replaced by `[redacted]`. Everything else is verbatim.
    - When a real owner-question block follows a review containing other findings, keep the before-block and retry card observations privately. After the answer, G1040 must show the still-live corrections, and the designer answers them without re-blocking on the already-answered question. A genuinely stale carrier is identified separately. An unmatched response refusal must explain why; a different failing check is a new round, while an equivalent normalized failure may repeat. These paths are observed only if they occur; existing dependency tests cover the deterministic cases.
 7. **Release (G1025, OD3, OD6).**
    - The owner approves `release_cut`, which cuts the release line. Stabilisation goals target the line, and `sync` back-merges it into the integration branch.
-   - The app's own staging step happens **outside the engine**, on the exact release tip, with its own owner approval.
-   - The owner approves `approve_finish` (production) only after staging is accepted. The bound tip must equal the staged tip. A tip that moves makes both stale.
-   - `finish` merges into the production branch and back-merges.
-   - The engine stays CI- and deploy-agnostic. **No G1025 change is needed.** If the outside step proves error-prone, a generic defect is captured.
+   - In the private release runbook, the root records the release tip, the current production target tip, and the resulting promotion candidate code tree and deployable artifact identity (when the app deploys an artifact). Derive the candidate using the app's existing merge/build/promotion flow, including target-only changes; the release tip alone is not the candidate identity. Keep the relevant build/deploy inputs and evidence linking the staged content to that candidate privately. Do not infer equality merely from conflict-free mergeability.
+   - The app's own staging step happens **outside the engine**, with its own owner approval covering that candidate. Record what was actually staged, its tree/artifact identity, the relevant tips and the owner's acceptance. If the existing staging flow cannot demonstrate equality to the resulting production candidate, stop; do not substitute staging of the release branch alone.
+   - The owner approves `approve_finish` (production) only after staging is accepted, with a separate decision covering the same candidate and target evidence. The root records the actual decision-maker and the owner's words for both deploying steps; routine delegated approvals never substitute for OD6.
+   - Immediately before the first irreversible promotion, including starting/resuming `finish` when its production merge can deploy, the root refreshes both relevant tips and re-evaluates the resulting candidate against the accepted staging evidence. Repeat this after waits, retries or intervening hotfixes. Any relevant tip, candidate or build/deploy proof change invalidates the earlier external acceptance/approvals for this run: stop, re-establish the candidate, restage it and obtain renewed separate staging and production approvals. Lost or unproven equality is a stop, never permission to rely on an unchanged release head. Preserve the freeze and engine-managed hotfix rules; if concurrent movement cannot be excluded or accounted for through the irreversible step using the existing flow, do not promote.
+   - `finish` merges into the production branch and back-merges. Record the actual production merge tree and deployed artifact, when applicable, against the accepted candidate; do not report success if the resulting content is different or unproven.
+   - These external evidence and approval freshness checks are the root's procedure, **not an automatic engine guarantee**. G1025 binds the recorded line head and checks mergeability, but a nonconflicting production-target change can survive its merge while the line head stays unchanged. The engine stays CI- and deploy-agnostic. **No G1025 change, app deploy-flow redesign or new guard machinery is needed.** If the outside step proves error-prone, a generic defect is captured.
 8. **Abort.** The new engine stays. Nothing is deleted. The report records the cause.
 9. **Report.** The anonymised write-up and data are committed (§7).
 
@@ -107,7 +109,7 @@ Identifying words are replaced by `[redacted]`. Everything else is verbatim.
 | A7 | No hand edits of `zzzops/**` refs beyond REPAIR.md recipes, each of which is journaled. |
 | A8 | A real stacked dependent ran and synced after its dependency merged. The sync follows merge mode, preserves forward work history, and integrate produces the tests/implementation PR parts on the synced base with the tested code tree. |
 | A9 | One release was cut, synced and finished through the engine, with the owner's finish approval quoted (redacted where needed). |
-| A10 | Staging and production each had their own owner approval, and both were bound to the same release tip. |
+| A10 | Private evidence records the release tip, production target tip, resulting promotion candidate tree/artifact and what was actually staged. Staging and production each had a separate owner approval for that candidate. The root refreshed both tips and re-evaluated candidate equality immediately before irreversible promotion and after waits/retries; relevant tip/proof changes caused a stop, restaging and renewed separate approvals. Actual production merge/deployed content matched the accepted candidate. Missing or unequal evidence is not a pass; external freshness is a root procedure, not an engine guarantee. |
 | A11 | Each failure path was observed, or marked not observed with a reason. |
 | A12 | Every defect has its own goal in this repository. |
 | A13 | Per-goal costs are reported and can be recomputed from the data file. |
@@ -165,7 +167,7 @@ Defects found during the run follow the same path:
 
 ## 9. Risks
 
-- **Production impact:** low-risk Release 1 content, separate approvals for each deploying step, and tip binding.
+- **Production impact:** low-risk Release 1 content, separate approvals for each deploying step, and release-tip/production-target/candidate binding. A moved target can change the resulting code even when the release head and mergeability are unchanged; Phase 7 stops for restaging and renewed approvals when the relevant proof changes.
 - **Naming the app in public text:** the convention in §6, plus A15.
 - **Owner load and CI throughput:** both measured, not worked around.
 - **Mixed engine builds during the run:** every node is journaled with its build; required capabilities refuse older writers.
@@ -188,6 +190,7 @@ Defects found during the run follow the same path:
 ## 11. Response to corrections
 
 - **review_design:1:1:** fixed. The owner judged the scrub machinery intent drift (OD8), so A15 is reduced to a name check on the report and this goal's artifacts.
+- **adversary_design:1:1:** fixed. Phase 7 and A10 bind approval evidence to both relevant tips and the resulting promotion candidate tree/artifact, re-evaluate immediately before irreversible promotion and after waits/retries, and stop for restaging plus renewed separate owner approvals when relevant proof changes or equality is unproven. External staging freshness is explicitly a root procedure, not an engine guarantee.
 
 
 ## 12. Dependency reconciliation for attempt 5
@@ -201,3 +204,8 @@ Defects found during the run follow the same path:
 - **G1040 revision 2:** `blocked_findings` must be paired with revised prompt step 4. Its stored output and finding liveness stay inside that dependency; this run gathers evidence without changing the rules.
 
 No new owner choice is introduced: these are the already reviewed dependency contracts applied to the same approved dogfood plan. The existing separate deployment approvals and private journal remain authoritative for the real run.
+
+
+## 13. Attempt 6 correction evidence
+
+At read_dev, `engine/ops/lines.py:finish` uses the recorded sync tip, checks whether the line moved and tests production mergeability; `merge_pr` matches the PR head. These checks do not bind external staging acceptance to the production target tip or resulting merge tree. The independent synthetic proof records an unchanged release tip and conflict-free merge with a resulting tree different from staging. This revision corrects only the runbook and A10 evidence; it preserves OD1–OD8 verbatim and introduces no new engine interface, deployment mechanism or privacy checklist. Rejected: treating an unchanged line head or successful CI/mergeability as proof of staged production content.
