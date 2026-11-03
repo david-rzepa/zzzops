@@ -14,7 +14,7 @@ from engine import schemas
 from engine.canon import EMPTY_TREE, iso, parse_iso
 from engine.errors import Refused
 from engine.fingerprint import out_fp, stale_keys
-from engine.frontier import live_input_changes, recorded_out, resolve
+from engine.frontier import budget_for, live_input_changes, recorded_out, resolve
 from engine.identity import Identity, conventional
 from engine.leases import lease_ref, message as lease_message
 from engine.render import clip, command, lease_commands, live_lease_entry, restart_command, state_string
@@ -151,9 +151,14 @@ def start(s, g: int, X: str, label: str, reclaim=False, force=False) -> dict:
     if reclaim and p.mass_expiry and not force:
         raise Refused("mass_expiry", "most leases expired at once (a machine that slept?); reclaim needs --force",
                       hint="ask the human before --force")
-    if nd["kind"] == "agent" and res.budget.get("over"):
-        raise Refused("budget_exceeded", f"G{g} has used {res.budget['used']} correction runs (limit {res.budget['limit']})",
-                      hint="answer the budget item first")
+    budget = budget_for(res, X)
+    if nd["kind"] == "agent" and budget.get("over"):
+        if "stages" in res.budget:
+            message = (f"G{g} has had {budget['used']} rounds with new material findings in {nd['stage']} "
+                       f"(limit {budget['limit']})")
+        else:
+            message = f"G{g} has used {budget['used']} correction runs (limit {budget['limit']})"
+        raise Refused("budget_exceeded", message, hint="answer the budget item first")
     subj = res.graph.subject(X) or res.graph.filter_subject(X)       # a filter's subject comes from its lenses
     if subj and nd["kind"] == "agent":
         sr = (res.doc.get("records") or {}).get(subj)
@@ -410,7 +415,7 @@ def blocked_record(s, res, doc, X, L, r0, b, ident, work):
     last = (r0["output"] if r0 and r0["status"] == "done" else (r0 or {}).get("last_output"))
     extra = {"last_output": last} if nd["kind"] == "agent" and "blocked_findings" in schemas.required_caps(s.settings) else {}
     return rec.record("blocked", False, L.attempt, L.holder, L.reason, r0, L.input_fp, L.fp_parts, None, [], s.now,
-                      prompt=L.prompt, blocked=blocked, **extra)
+                      prompt=L.prompt, graph=res.graph, node=X, settings=s.settings, blocked=blocked, **extra)
 
 
 def response_why(graph, doc, X, fid):
@@ -522,7 +527,7 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
     if frozen is not None:
         extra["frozen"] = frozen
     return rec.record("done", ok, L.attempt, L.holder, L.reason, r0, L.input_fp, L.fp_parts, out, findings, s.now,
-                      prompt=L.prompt, **extra)
+                      prompt=L.prompt, graph=graph, node=X, settings=s.settings, **extra)
 
 
 def check_verdicts(verdicts, candidates: list):
@@ -751,7 +756,8 @@ def answer(s, g: int, X: str, fp: str, path: str) -> dict:
             if auto:
                 out["responses"] = auto
             records[X] = rec.record("done", a["decision"] == "approved", attempt, "human", ready["reason"], r0, fp,
-                                    ready["parts"], out, findings, s.now, reviewed=rec.reviewed(graph, doc, X))
+                                    ready["parts"], out, findings, s.now, graph=graph, node=X, settings=s.settings,
+                                    reviewed=rec.reviewed(graph, doc, X))
             info["outcome"] = "ok" if a["decision"] == "approved" else f"changes_requested → {graph.subject(X)}"
             return {g: doc}
         r = records.get(X)

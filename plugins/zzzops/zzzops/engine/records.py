@@ -10,7 +10,7 @@ from engine.canon import iso, parse_iso
 from engine.errors import Refused
 from engine.fingerprint import out_fp
 from engine.frontier import counts
-from engine.schemas import Graph, is_material, is_owner_question
+from engine.schemas import Graph, is_material, is_owner_question, required_caps
 
 SANITIZE = re.compile(r"[^A-Za-z0-9_-]")
 
@@ -251,9 +251,13 @@ def blocked_repeats(r0: dict | None, waiting_for: str, reason: str) -> int:
 
 
 def record(status: str, ok: bool, attempt: int, holder: str, reason: str, r0: dict | None, input_fp: str,
-           fp_parts: dict, output, findings: list, now: int, prompt: str | None = None, **extra) -> dict:
+           fp_parts: dict, output, findings: list, now: int, prompt: str | None = None, *,
+           graph=None, node=None, settings=None, **extra) -> dict:
+    charge = 0 if status != "done" and "round_budget" in required_caps(settings) else counts(
+        r0, reason, r0 and r0.get("fp_parts"), fp_parts,
+        graph=graph, node=node, findings=findings, attempt=attempt, settings=settings)
     rec = {"status": status, "ok": ok, "attempt": attempt, "holder": holder, "reason": reason,
-           "correction_runs": (r0["correction_runs"] if r0 else 0) + counts(r0, reason, r0 and r0.get("fp_parts"), fp_parts),
+           "correction_runs": (r0["correction_runs"] if r0 else 0) + charge,
            "input_fp": input_fp, "fp_parts": fp_parts, "output": output, "findings": findings, "finished_at": iso(now)}
     if prompt:
         rec["prompt"] = prompt

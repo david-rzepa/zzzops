@@ -14,7 +14,7 @@ import sys
 from dataclasses import dataclass, field
 
 from engine.canon import canonical, iso, parse_iso
-from engine.frontier import PRI, GoalResult, Portfolio, order_key
+from engine.frontier import PRI, GoalResult, Portfolio, order_key, budget_for
 from engine.schemas import lens_label
 
 NEXT_LIMIT = 8192
@@ -594,8 +594,8 @@ def crash_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:
     if not full:
         return item
     one_more = {"label": "one more try", "command": command(ctx, retry)}
-    if res.graph.nodes[n]["kind"] == "agent" and res.budget.get("over"):
-        raise_opt = budget_raise(ctx, res)
+    if res.graph.nodes[n]["kind"] == "agent" and budget_for(res, n).get("over"):
+        raise_opt = budget_raise(ctx, res, n)
         one_more = {"label": "one more try (raise the budget first)", "command": raise_opt["command"],
                     "file": raise_opt["file"], "then": command(ctx, retry)}
     opts = [one_more]
@@ -606,20 +606,27 @@ def crash_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:
     return item
 
 
-def budget_raise(ctx: Ctx, res: GoalResult) -> dict:
-    b = res.budget
-    return edit_option(ctx, res.goal, "raise the budget", {"budget": b["used"] + 3 * b["agents"]})
+def budget_raise(ctx: Ctx, res: GoalResult, node: str | None = None) -> dict:
+    if node is None:
+        node = next(n for n in res.graph.topo if res.graph.nodes[n]["kind"] == "agent")
+    b = budget_for(res, node)
+    extra = 10 if "stages" in res.budget else 3 * b["agents"]
+    return edit_option(ctx, res.goal, "raise the budget", {"budget": b["used"] + extra})
 
 
 def budget_item(ctx: Ctx, res: GoalResult, node: str, full: bool) -> dict:
-    b = res.budget
+    b = budget_for(res, node)
     g = res.goal
     per = ", ".join(f"{k} {v}" for k, v in b["per_node"].items()) or "none"
     q = f"G{g} has used {b['used']} correction runs (limit {b['limit']}): {per}. Continue, hold, or cancel?"
+    if "stages" in res.budget:
+        stage = res.graph.nodes[node]["stage"]
+        q = (f"G{g} has had {b['used']} rounds with new material findings in {stage} "
+             f"(limit {b['limit']}): {per}. Continue, hold, or cancel?")
     item = {"goal": g, "node": node, "stage": res.graph.nodes[node]["stage"], "kind": "budget", "question": q,
             "since": iso(ctx.goal_dates[g]) if g in ctx.goal_dates else None}
     if full:
-        item["options"] = [budget_raise(ctx, res), edit_option(ctx, g, "hold the goal", {"state": "held"}),
+        item["options"] = [budget_raise(ctx, res, node), edit_option(ctx, g, "hold the goal", {"state": "held"}),
                            cancel_option(ctx, g)]
     return item
 
@@ -700,10 +707,14 @@ def human_items(ctx: Ctx, res: GoalResult, full: bool) -> list:
     if res.stuck:
         it = stuck_item(ctx, res, full)
         out.append((order_key(settings, res.doc, res.graph, it["node"]), it if full else compact(ctx, it)))
-    if res.budget.get("over"):
-        node = next((n for n in res.graph.topo if res.graph.nodes[n]["kind"] == "agent"
-                     and res.st[n]["name"] in ("ready", "reclaimable")),
-                    next(n for n in res.graph.topo if res.graph.nodes[n]["kind"] == "agent"))
+    stages = ([stage for stage, b in res.budget["stages"].items() if b["over"]]
+              if "stages" in res.budget else ([None] if res.budget.get("over") else []))
+    for stage in stages:
+        agents = [n for n in res.graph.topo if res.graph.nodes[n]["kind"] == "agent"
+                  and (stage is None or res.graph.nodes[n]["stage"] == stage)]
+        if not agents:
+            continue
+        node = next((n for n in agents if res.st[n]["name"] in ("ready", "reclaimable")), agents[0])
         it = budget_item(ctx, res, node, full)
         out.append((order_key(settings, res.doc, res.graph, node), it if full else compact(ctx, it)))
     if res.close:
@@ -730,7 +741,7 @@ def goal_actions(ctx: Ctx, p: Portfolio, res: GoalResult) -> tuple:
         nd = res.graph.nodes[n]
         if s["name"] not in ("ready", "reclaimable") or nd["kind"] == "human":
             continue
-        if nd["kind"] == "agent" and res.budget.get("over"):
+        if nd["kind"] == "agent" and budget_for(res, n).get("over"):
             continue
         if res.busy and nd.get("workspace") and n != res.busy:
             waiting.append({"goal": res.goal, "node": n, "until": f"{res.busy} finishes", "reason": f"workspace busy: {res.busy}"})

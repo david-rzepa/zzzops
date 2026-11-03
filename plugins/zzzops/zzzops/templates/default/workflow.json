@@ -349,6 +349,9 @@
             "cost": {
               "from": "test_design.cost",
               "context": true
+            },
+            "base": {
+              "from": "base.base_commit"
             }
           },
           "instructions": [
