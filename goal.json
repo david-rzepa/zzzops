@@ -196,9 +196,16 @@
       "status": "done"
     },
     "implement": {
+      "answer": {
+        "decided_at": "2026-11-03T19:26:39Z",
+        "decided_by": "Dave",
+        "quote": "Try again",
+        "text": "The owner reports space is available; measured free space now exceeds 85 GiB. Resume with the existing local runner and its unchanged guard."
+      },
       "attempt": 3,
       "blocked": {
         "category": "decision",
+        "instructions": "The human answered: The owner reports space is available; measured free space now exceeds 85 GiB. Resume with the existing local runner and its unchanged guard.",
         "options": [
           "Free at least 2 GiB from known authorized disposable storage, then retain the existing local runner",
           "Explicitly authorize hosted runners for the required checks",
@@ -208,7 +215,7 @@
         "reason": "Required exact-head CI is queued while the local runner is below its existing disk-capacity guard.",
         "recommendation": "Retain the existing local runner and its 85 GiB guard. Free at least 2 GiB through an authorized known-safe action; otherwise require an explicit hosted-runner decision. Do not delete owner work or images, weaken capacity checks, silently switch runners, bypass queued CI, or use any banked Codex usage reset.",
         "repeats": 1,
-        "waiting_for": "human"
+        "waiting_for": "agent"
       },
       "correction_runs": 1,
       "findings": [],
