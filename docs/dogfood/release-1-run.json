@@ -2,7 +2,7 @@
   "schema": 1,
   "status": "in_progress",
   "complete": false,
-  "as_of_utc": "2026-11-03T22:34:02.733908+00:00",
+  "as_of_utc": "2026-11-03T23:04:38.203270+00:00",
   "scope": "CLI dogfood; interim bootstrap/migration milestone, not release acceptance",
   "actors": [
     {
@@ -62,9 +62,9 @@
     {
       "alias": "goal-A",
       "release": 1,
-      "state": "open",
+      "state": "merged",
       "depends_on": [],
-      "phase_status": "integrated_with_required_ci_passed_unmerged"
+      "phase_status": "merged_after_reviewed_correction_and_fresh_required_ci"
     },
     {
       "alias": "goal-B",
@@ -73,7 +73,7 @@
       "depends_on": [
         "goal-A"
       ],
-      "phase_status": "based_on_unmerged_dependency_checkpoint"
+      "phase_status": "post_dependency_merge_sync_complete_test_review_pending"
     },
     {
       "alias": "goal-C",
@@ -211,19 +211,38 @@
         "goal_alias": "goal-A",
         "check_alias": "required-check-1",
         "conclusion": "success",
-        "runner_wall_seconds": 163.0
+        "runner_wall_seconds": 163.0,
+        "phase": "initial-integration"
       },
       {
         "goal_alias": "goal-A",
         "check_alias": "required-check-2",
         "conclusion": "success",
-        "runner_wall_seconds": 114.0
+        "runner_wall_seconds": 114.0,
+        "phase": "initial-integration"
+      },
+      {
+        "goal_alias": "goal-A",
+        "phase": "corrected-integration",
+        "check_alias": "required-check-1",
+        "conclusion": "success",
+        "runner_wall_seconds": 228.0
+      },
+      {
+        "goal_alias": "goal-A",
+        "phase": "corrected-integration",
+        "check_alias": "required-check-2",
+        "conclusion": "success",
+        "runner_wall_seconds": 105.0
       }
     ],
-    "product_ci_runner_wall_seconds": 277.0,
-    "observed_required_ci_runner_wall_seconds": 1053.0,
-    "observed_required_ci_runner_minutes": 17.55,
-    "ci_evidence_alias": "observation-13"
+    "product_ci_runner_wall_seconds": 610.0,
+    "observed_required_ci_runner_wall_seconds": 1386.0,
+    "observed_required_ci_runner_minutes": 23.1,
+    "ci_evidence_aliases": [
+      "observation-13",
+      "observation-15"
+    ]
   },
   "lens_rescore": {
     "status": "pending",
@@ -262,7 +281,7 @@
     {
       "id": "A5",
       "status": "pending",
-      "reason": "Two Release 1 goals remain open."
+      "reason": "One Release 1 goal merged; the dependent goal remains unfinished."
     },
     {
       "id": "A6",
@@ -279,7 +298,7 @@
     {
       "id": "A8",
       "status": "pending",
-      "reason": "The dependency integrated with matching tested/PR trees; the dependent based onto its unmerged checkpoint. Actual dependent work and post-merge sync remain pending."
+      "reason": "Real dependent test work preceded the parent merge and survived the post-merge forward sync. Final dependent verification and integrated tree equality remain pending."
     },
     {
       "id": "A9",
@@ -304,7 +323,7 @@
     {
       "id": "A13",
       "status": "pending",
-      "reason": "Six required CI job durations are measured across separate administrative/product subsets; final per-goal agent/token/cost totals remain unavailable."
+      "reason": "Eight required CI job durations are measured across administrative and initial/corrected product subsets; final per-goal agent/token/cost totals remain unavailable."
     },
     {
       "id": "A14",
@@ -336,7 +355,7 @@
     {
       "id": "A19",
       "status": "pending",
-      "reason": "No completed eligible goal sync is claimed."
+      "reason": "A clean sync preserved the dependent test change and file blobs while updating its base/checkpoint. Other carry/stale and base-only review cases remain unaudited."
     },
     {
       "id": "A20",
@@ -348,7 +367,7 @@
   "scope_updates": [
     "Owner approved the existing non-deferred integration visual/UX direction; source partition and normal goal reviews remain in progress."
   ],
-  "phase_observed_at_utc": "2026-11-03T22:30:08Z",
+  "phase_observed_at_utc": "2026-11-03T23:03:15Z",
   "failure_paths": {
     "review_finding_reopens_target": {
       "status": "observed",
@@ -369,15 +388,21 @@
     "implementation_checkpoint_contains_product_source": true,
     "followup_test_checkpoint_descends_from_implementation": true,
     "independent_followup_test_review_accepted": true,
-    "final_implementation_review_or_merge_claimed": false,
+    "final_implementation_review_or_merge_claimed": true,
     "evidence_alias": "observation-11",
-    "implementation_refresh_and_independent_review_completed": true
+    "implementation_refresh_and_independent_review_completed": true,
+    "completion_evidence_alias": "observation-15"
   },
   "stack_observation": {
     "status": "in_progress",
     "dependency_integrated_unmerged": true,
     "dependent_based_on_dependency_pr_checkpoint": true,
-    "dependent_own_checkpoint_and_postmerge_sync": "pending",
-    "evidence_alias": "observation-12"
+    "dependent_own_checkpoint_and_postmerge_sync": "observed",
+    "evidence_alias": "observation-14",
+    "dependent_own_checkpoint_before_parent_merge": true,
+    "dependency_subsequently_merged": true,
+    "postmerge_forward_sync_completed": true,
+    "own_checkpoint_ancestry_and_four_path_blobs_preserved": true,
+    "final_tested_integrated_dependent_identity": "pending"
   }
 }
