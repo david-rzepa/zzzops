@@ -268,6 +268,4 @@ One row per change to the contract after revision 6.3 was approved, in merge ord
 
 | G1031 | this PR | SPEC §3.16, §8.3; DESIGN §3.15, §3.16, §3.17, §10 | Bootstrap recommends automatic head-branch deletion on without `settings.branching`, off with it to preserve finished line branches and avoid retarget races. Repository `validate` adds best-effort warning `auto_delete_head_branches` (one 10 s API read, never gating); SETUP, MIGRATING and REPAIR describe adoption and recovery. |
 
-| G1043 | this PR | SPEC §1.8, §3.2, §3.14–§3.16, §4.5, §4.20, §5.3; DESIGN §3.9, §3.17, §4.1 | test_cost gates optional CPU-budgeted parallel verification lanes; checks retain every command and exact-tree gate, add integer timing and independently qualified whole-run/repository deltas from one bounded newest-merged-source lookup. Default configuration records measured test cost for reviews and merge approval. Repository tooling reuses CI per-ID sharding for all-CPU local verification; installed policy changes remain separate. |
-
 Worked examples in DESIGN §4 and SPEC (finding ids such as `review_impl:2:1`, the 12-node walkthroughs) still use revision 6.3's node names. They illustrate mechanisms that the lens graph keeps unchanged.

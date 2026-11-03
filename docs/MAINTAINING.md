@@ -72,19 +72,13 @@ When a PR or release fails, inspect **PR validation / dev-required-tests** or th
 If CI is unavailable or a failure needs local reproduction:
 
 ```powershell
-<python> .github/scripts/run_product_validation.py --platform linux --local
+<python> -m unittest discover -s .agents -p 'test_*.py'
 npm ci
 npm run test:plugin
 npm run test:release
 <python> .agents/prompt_stats.py --check
 <python> -m compileall -q .agents plugins/zzzops .github/scripts
 ```
-
-The local Python command reuses CI's canonical individual-test inventory and longest-first timing hints, with a fresh interpreter per worker. It runs every discovered ID exactly once and validates completion; duplicate/missing/extra IDs, unsupported skips, crashes and failures fail the command. It prints compact totals, per-worker timing and slowest tests; add `--report <path>` for full evidence, written on failure too. Use a durable location outside the checks worktree's reset/clean scope if keeping the report after an engine verification run.
-
-Local `--workers N` requests a positive count; default is process affinity when available, else CPU count. Optional positive `ZZZOPS_TEST_WORKERS` limits that request, including explicit workers; CPUs and nonempty inventory bound it too. Timing hints affect placement only, never selection. Native-platform selection, CI shard flags/worker limits and the npm/plugin/compile auxiliary leg keep their existing contracts; the local command covers the canonical Python suite. Preserve all assertions/scenarios when profiling slow tests, and report measured full-run duration and exact-ID counts rather than estimated speedups.
-
-This source change does not silently switch installed `.zzzops/` verification policy. Adopt the local command, measured review contexts/prompts and capability through the separately owner-approved policy PR. `parallel_commands` is opt-in only after a shared-checkout command-safety review. Timings show total and repository work separately; comparison scopes may differ in availability, and an informational repository delta carries source provenance and a machine/concurrent-workload caveat.
 
 The real-GitHub smoke test is manual: `ZZZOPS_GH_SMOKE_REPO=<owner>/<scratch repo> <python> .agents/engine_gh_smoke.py` (a scratch repository with a ZzzOps policy on its integration branch).
 

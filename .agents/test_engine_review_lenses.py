@@ -172,8 +172,7 @@ class ShippedTemplateTests(unittest.TestCase):
         self.assertEqual({"subject": "implement", "filter": "filter_impl"}, nd["review"])
         froms = {k: (s["from"], bool(s.get("context"))) for k, s in nd["inputs"].items()}
         self.assertEqual({"doc": ("design.doc", False), "tests": ("test_design.tests.change", False),
-                          "code": ("implement.code.change", False), "checks": ("run_tests.result", True),
-                          "cost": ("test_design.cost", True)}, froms)
+                          "code": ("implement.code.change", False), "checks": ("run_tests.result", True)}, froms)
         self.assertNotIn("spec", nd["inputs"])                 # D6: compliance judges against the approved design
         self.assertEqual([], nd.get("policy", []))              # project intent is judged once, at design
         self.assertTrue({"review", "communication", "security", "code_quality"} <= set(nd["instructions"]),
@@ -882,21 +881,13 @@ class MigrationWorld(ReviewWorld):
         self.w.bootstrap(policy=policy, workflow=fixture(self.source, "workflow.json"), prompts=False)
         self.push_prompts(root)
 
-    def adopt_shipped(self, include_cost=True):
+    def adopt_shipped(self):
         """The policy branch of §8: the 15-node workflow, its POLICY (with intent) and prompts."""
         policy = policy_with_intent()
         policy["settings"]["integration_branch"] = "dev"
         policy["settings"]["goals"]["first_id"] = 1000
-        workflow = shipped("workflow.json")
-        if not include_cost:
-            # This isolated G1022 migration promises reviewer redefinition only.
-            # G1043's required cost output intentionally reruns delivery instead.
-            nodes = workflow["graphs"]["default"]["nodes"]
-            nodes["test_design"]["outputs"].pop("cost")
-            nodes["review_tests"]["inputs"].pop("cost")
-            nodes["review_impl"]["inputs"].pop("cost")
         files = {".zzzops/POLICY.json": json.dumps(policy, indent=2) + "\n",
-                 ".zzzops/workflow.json": json.dumps(workflow, indent=2) + "\n"}
+                 ".zzzops/workflow.json": json.dumps(shipped("workflow.json"), indent=2) + "\n"}
         for p in sorted((fx.SHIPPED / "prompts").iterdir()):
             files[f".zzzops/prompts/{p.name}"] = p.read_text(encoding="utf-8")
         self.w.push_dev(files, "chore(zzzops): adopt the consolidated review graph")
@@ -907,7 +898,7 @@ class MigrationFrom12Tests(MigrationWorld):
         g = self.goal()
         self.p.drive(g, lambda st: st["review_impl"] == "current", limit=200)
         used = self.runs(g)
-        self.adopt_shipped(include_cost=False)
+        self.adopt_shipped()
         st = self.p.states(g)
         self.assertEqual("ready (stale: def, lenses, policy.intent)", st["review_design"])
         self.assertEqual("ready (new)", st["adversary_design"])
