@@ -196,9 +196,16 @@
       "status": "done"
     },
     "implement": {
+      "answer": {
+        "decided_at": "2026-11-03T20:33:12Z",
+        "decided_by": "Dave",
+        "quote": "Approved existing designs",
+        "text": "The owner approved the existing non-Maps designs; their exact decision has been recorded on the private design goal. Resume the run."
+      },
       "attempt": 4,
       "blocked": {
         "category": "decision",
+        "instructions": "The human answered: The owner approved the existing non-Maps designs; their exact decision has been recorded on the private design goal. Resume the run.",
         "options": [
           "Record the owner’s selection on the existing private design item and resume",
           "Keep the run paused"
@@ -207,7 +214,7 @@
         "reason": "The private Release 1 integration design is waiting for the owner’s visual choice.",
         "recommendation": "Wait for the actual owner design choice and record it on the corresponding private goal before resuming. Preserve all original source and dirty owner state; do not assume the whole existing card candidate is approved. Keep later-release goals held. Existing legacy file/ref must not be cleaned without explicit authorization, and staging and production each retain their separate future approvals.",
         "repeats": 1,
-        "waiting_for": "human"
+        "waiting_for": "agent"
       },
       "correction_runs": 1,
       "findings": [],
