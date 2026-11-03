@@ -231,7 +231,7 @@ def finish(s, g, X, label, lease, result, spec, ctx, retry=True) -> dict:
                     b[k] = cap(b[k])
             findings = copy.deepcopy((r0 or {}).get("findings") or []) if r0 else []
             record = rec.record("blocked", False, N, label, L.reason, r0, L.input_fp, L.fp_parts, None, findings,
-                                sess.now, blocked=b)
+                                sess.now, blocked=b, graph=graph, node=X, settings=sess.settings)
             info["outcome"] = "blocked"
         else:
             out = dict(result.output)
@@ -247,7 +247,8 @@ def finish(s, g, X, label, lease, result, spec, ctx, retry=True) -> dict:
             ok = bool(result.ok) and not findings
             if not ok and not findings:
                 raise Refused("engine_bug", f"{X} failed without a finding")
-            record = rec.record("done", ok, N, label, L.reason, r0, L.input_fp, L.fp_parts, out, findings, sess.now)
+            record = rec.record("done", ok, N, label, L.reason, r0, L.input_fp, L.fp_parts, out, findings, sess.now,
+                                graph=graph, node=X, settings=sess.settings)
             info["outcome"] = "done"
         doc["records"][X] = record
         info["record"] = record

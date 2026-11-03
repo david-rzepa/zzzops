@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 import copy
+import re
+import tempfile
+from pathlib import Path
+
+from engine.errors import EngineError
 
 from engine.fingerprint import fp_selected, input_fp
 from engine.frontier import get_path
@@ -76,4 +81,58 @@ def relocate(cp: dict, synced: dict | None, git=None) -> str | None:
 
 
 def unchanged(ident, node, key, old_cp, new_cp, scope):
-    return ident.change(new_cp["base"], new_cp["commit"], paths=scope) == old_cp["change"]
+    if ident.change(old_cp["base"], old_cp["commit"], paths=scope, unified=0) != ident.change(
+            new_cp["base"], new_cp["commit"], paths=scope, unified=0):
+        return False
+    if old_cp["commit"] == new_cp["commit"]:
+        return True
+    return all(union_kept(ident, new_cp["commit"], path)
+               for path in resolved_paths(ident, new_cp["commit"]) if scope is None or path in scope)
+
+
+def sync_parents(ident, commit):
+    parents = ident.git.out("rev-list", "--parents", "-n", "1", commit).split()[1:]
+    body = ident.git.out("show", "-s", "--format=%B", commit)
+    old = re.search(r"^Zzzops-Old-Base: ([0-9a-f]{40})$", body, re.M)
+    return (parents[0], old[1], parents[1]) if len(parents) == 2 and old else None
+
+
+def resolved_paths(ident, commit):
+    """Edits against the recomputed conflicted tree, memoized for this immutable sync."""
+    cache = ident.__dict__.setdefault("_sync_resolved", {})
+    if commit not in cache:
+        parents = sync_parents(ident, commit)
+        paths = []
+        if parents:
+            work, old, onto = parents
+            result = ident.git.run("merge-tree", "--write-tree", "--merge-base", old, "--name-only", "-z",
+                                   onto, work, check=False, text=False)
+            if result.returncode not in (0, 1):
+                raise EngineError("cannot recompute sync merge for carry")
+            tree = result.stdout.split(b"\0", 1)[0].decode("ascii")
+            changed = ident.git.run("diff", "--no-renames", "--name-only", "-z", tree, commit, "--", ":/",
+                                    ":(top,exclude).zzzops/reviews", text=False).stdout
+            paths = sorted(p.decode("utf-8", "surrogateescape") for p in changed.split(b"\0") if p)
+        cache[commit] = paths
+    return cache[commit]
+
+
+def union_kept(ident, commit, path):
+    """A hand resolution must match either complete whole-file union order exactly."""
+    parents = sync_parents(ident, commit)
+    if not parents:
+        return False
+    entries = [ident.path_entry(c, path) for c in (*parents, commit)]
+    if any(e is None or e[1] != "blob" for e in entries):
+        return False
+    blobs = [ident.git.run("cat-file", "blob", e[2], text=False).stdout for e in entries]
+    with tempfile.TemporaryDirectory(prefix="zzzops-union-") as directory:
+        files = [Path(directory, str(i)) for i in range(3)]
+        for file, blob in zip(files, blobs):
+            file.write_bytes(blob)
+        for order in ((0, 1, 2), (2, 1, 0)):
+            result = ident.git.run("merge-file", "-p", "--union", *(str(files[i]) for i in order),
+                                   check=False, text=False)
+            if result.returncode == 0 and result.stdout == blobs[3]:
+                return True
+    return False

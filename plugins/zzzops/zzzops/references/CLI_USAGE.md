@@ -44,3 +44,5 @@ Response-key refusals include `details.why` for each `no_longer_live` id: `super
 **Goal sync.** Require `merge_sync` only after every writer is upgraded; otherwise base retains rebase mode. Never remove it while an open work branch has sync merges. See [REPAIR.md](REPAIR.md#goal-sync-checkpoints-and-delivery) for rollout, rollback, conventional subjects, scoped checkpoints and conflict recovery.
 
 **Measured verification (`test_cost`).** Observed timings compare total/repository costs with one newest tested merged source; unavailable is never zero. Deltas are informational. Policy-enabled lanes share a capped CPU budget. See [adoption and local sharding](MIGRATING.md#adopting-measured-test-cost-capability-test_cost) for qualifications and settings.
+
+**Round budgets:** `round_budget` gates per-stage limits on new material-finding rounds (default 10); see [adoption](MIGRATING.md#clean-sync-reviews-and-round-budgets).

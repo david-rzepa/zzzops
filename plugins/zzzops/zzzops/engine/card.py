@@ -158,6 +158,10 @@ def build(session, res, n: str, s: dict, lease: dict) -> dict:
     if graph.lens_defs(n):
         card["lenses"] = lens_section(reader, graph, n, doc.get("skip") or {})
     card["inputs"], card["context"] = inputs, context
+    from engine import sync_review
+    sync = sync_review.build(session.git, graph, doc, n, s.get("stale_because") or [], vals, reader)
+    if sync is not None:
+        card["sync"] = sync
     if nd["kind"] == "agent" and nd.get("policy"):
         card["policy"] = {k: view(reader, get_dotted(settings, k)) for k in nd["policy"]}
     if nd.get("workspace"):
@@ -482,8 +486,14 @@ def _steps(card: dict) -> list:
             size = len(c.get("text") or "") + len(c.get("impact") or "")
             if size > 200 and "full" not in c:
                 blobs.append((size, (sect, i)))
+    sync = card.get("sync") or {}
+    if isinstance(sync.get("touching"), list):
+        blobs.append((len(canonical(sync["touching"])), ("sync", "touching")))
     blobs.sort(key=lambda b: -b[0])
     steps += [("blob",) + path for _, path in blobs]
+    detail = {k: v for k, v in sync.items() if k not in ("from", "to", "diff", "log", "detail")}
+    if isinstance(sync.get("touching"), dict) and "blob" in sync["touching"] and len(canonical(detail)) > 200:
+        steps.append(("fold", "sync"))
     if any(len(v["summary"]) > 80 for v in _summaries(card)):
         steps.append(("clip", "summaries", 80))
     return steps
@@ -492,7 +502,12 @@ def _steps(card: dict) -> list:
 def _apply(card: dict, step: tuple, reader) -> dict:
     card = copy.deepcopy(card)
     kind = step[0]
-    if kind == "drop":
+    if kind == "fold":
+        sync = card["sync"]
+        detail = {k: v for k, v in sync.items() if k not in ("from", "to", "diff", "log", "detail")}
+        card["sync"] = {k: sync[k] for k in ("from", "to", "diff", "log")}
+        card["sync"]["detail"] = _blob(reader, detail, SUMMARY)
+    elif kind == "drop":
         for v in card["commands"].values():
             if isinstance(v, dict):
                 v.pop("argv", None)
