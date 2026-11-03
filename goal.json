@@ -185,15 +185,15 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_tests:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:4bfdf824f9d5b41f8437f71035b1e0789bbb984e95d2d8250177a4209c6a0b7e",
@@ -201,35 +201,35 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-03T03:11:44Z",
+      "finished_at": "2026-11-03T03:16:01Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:48db30e141b058f1e0aa82e4687321fdb6b2dc6e",
-          "tests": "v1:sha256:cc690ad00ba4271ca086fd5aaf0413d1e92216ee45bf2743f606699b6d4c50d6"
+          "tests": "v1:sha256:d5a4508b4bae785e5f5b915d7e86852f2d0859f735fdefe5cd0cfd6a149903be"
         },
         "policy": {},
-        "subject": "v1:sha256:4bfdf824f9d5b41f8437f71035b1e0789bbb984e95d2d8250177a4209c6a0b7e"
+        "subject": "v1:sha256:f7e14c57b52164b41043f6235fc130bf9afb34f8f0818397f0e65517d9995a87"
       },
-      "holder": "codex:takeover/1039-review-tests",
-      "input_fp": "v1:sha256:6b90709ce942cfdac0ff7b5026b72cb8f3d6f2d4f2b54dc6282e9eb98a6e8d27",
-      "ok": false,
+      "holder": "codex:takeover/1039-review-tests-line-hit",
+      "input_fp": "v1:sha256:43b8c0884a56064535959a5f1a6c4377e795648901a9050e7651e9f755355ec0",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "2484a3720174f4dc5351233109102fb6ebdd58a2",
-          "commit": "fc4c50dc7bc666050d4757e7a24d0f0a476e1995",
+          "blob": "31a3d56dc3625283837f2c6184e4714a03548977",
+          "commit": "5e910737a2f68372270e357b8fa322c6ad171580",
           "path": ".zzzops/reviews/1039/review_tests.md"
         },
-        "summary": "Substantive carry/budget/shrink coverage and independent literal/golden provenance check out. Add the explicit cross-file plain-JSON removed-line sync-card case required by acceptance 1; shared-file newName() coverage does not prove it."
+        "summary": "Approved: the new real-Git cross-file case proves empty path intersection and requires graph26 evidence for the exact plain JSON line removed from the template. Prior assertions, replay/golden provenance and source-free scope are unchanged."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "8e5b98b63dd2ad6c8f719fbf1bd5ac273c9af9a7",
-          "change": "2af2d3e598b361c198a25222eb020a680b30ba7a",
-          "commit": "35bc8034d7ef6df94e0031e5af7fc6f9cf2bb54d",
-          "tree": "afbb90bef4a75dcb893d1d22083c45b90866c8ab"
+          "change": "d87857c1dcf49f634bc584fe29a04246538055e6",
+          "commit": "7d3e0eb2ed6c07b8a88c3d1f1c579e20dd7aa630",
+          "tree": "5063971ee3acbf67892ab1b9556b56a6afa87df5"
         }
       },
       "status": "done"
