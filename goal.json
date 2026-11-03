@@ -50,7 +50,20 @@
     "base": {
       "attempt": 1,
       "correction_runs": 0,
-      "findings": [],
+      "findings": [
+        {
+          "id": "base:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "base",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:01bc67199fa543b38d32ddbd23935a466a5ff023dcca721962bab52f2c12dd42",
+          "text": "G1024 merged; synchronize README with final source before verification",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-03T04:12:09Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
