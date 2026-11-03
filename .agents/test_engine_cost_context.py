@@ -23,6 +23,37 @@ from engine.fingerprint import fp_parts, input_fp
 from engine.ops import OPS, checks as check_ops
 
 
+def _semantic_ast(node):
+    """Normalize parser default fields without losing literal values or child order."""
+    if isinstance(node, ast.AST):
+        fields = {}
+        for name, value in ast.iter_fields(node):
+            # Empty/default optional fields differ across supported Python ASTs
+            # (e.g. Call.args/keywords and the newer type_params). A Constant's
+            # value is always semantic, including an explicit None literal.
+            if value is None and not (isinstance(node, ast.Constant) and name == "value"):
+                continue
+            if isinstance(value, list) and not value:
+                continue
+            fields[name] = _semantic_ast(value)
+        return {"node": type(node).__name__, "fields": fields}
+    if isinstance(node, list):
+        return [_semantic_ast(item) for item in node]
+    return node
+
+
+def property_semantic_hashes(source):
+    values = {}
+    for node in ast.parse(source).body:
+        name = node.name if isinstance(node, (ast.FunctionDef, ast.ClassDef)) else None
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "LONG" for t in node.targets):
+            name = "LONG"
+        if name is not None:
+            payload = json.dumps(_semantic_ast(node), sort_keys=True, separators=(",", ":"))
+            values[name] = hashlib.sha256(payload.encode()).hexdigest()
+    return values
+
+
 def measured_test_script(git, script, cwd, env):
     """Measure the same portable shell/current-interpreter command checks.run uses."""
     command = shlex.join([sys.executable.replace("\\", "/"), script])
@@ -150,14 +181,27 @@ class CostPolicyTemplateTests(unittest.TestCase):
 
     def test_property_semantics_remain_at_the_audited_seed_step_assertion_baseline(self):
         golden = json.loads((fx.ROOT / ".agents/fixtures/g1043_property_ast.json").read_text())
-        tree = ast.parse((fx.ROOT / ".agents/test_engine_property.py").read_text())
-        observed = {}
-        for node in tree.body:
-            if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
-                observed[node.name] = hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest()
-            elif isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "LONG" for t in node.targets):
-                observed["LONG"] = hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest()
-        self.assertEqual(golden, observed, "removing stale isolation must preserve property seeds/steps/assertions")
+        observed = property_semantic_hashes((fx.ROOT / ".agents/test_engine_property.py").read_text())
+        self.assertEqual(golden["semantics"], observed,
+                         "removing stale isolation must preserve property seeds/steps/assertions")
+
+    def test_property_semantic_guard_rejects_weakened_seeds_steps_and_assertions(self):
+        golden = json.loads((fx.ROOT / ".agents/fixtures/g1043_property_ast.json").read_text())["semantics"]
+        source = (fx.ROOT / ".agents/test_engine_property.py").read_text()
+        mutations = {
+            "seeds": ("range(200 if LONG else 25)", "range(200 if LONG else 1)"),
+            "steps": ("self.run_seeds(range(200 if LONG else 25), 80)",
+                      "self.run_seeds(range(200 if LONG else 25), 1)"),
+            "assertion": ("tc.assertLessEqual(len(canonical(small)), render.NEXT_LIMIT)",
+                          "tc.assertLessEqual(0, render.NEXT_LIMIT)"),
+        }
+        for label, (before, after) in mutations.items():
+            with self.subTest(mutation=label):
+                self.assertIn(before, source)
+                weakened = source.replace(before, after, 1)
+                self.assertNotEqual(source, weakened)
+                self.assertNotEqual(golden, property_semantic_hashes(weakened),
+                                    "audited baseline must reject this weaker property")
 
 
 class ApprovalTimingContextTests(unittest.TestCase):
