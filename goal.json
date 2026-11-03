@@ -34,7 +34,7 @@
   "priority": "P1",
   "records": {
     "adversary_design": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 1,
       "findings": [
         {
@@ -44,7 +44,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 5,
           "target_fp": "v1:sha256:bee6c9f3d6fb3db7ffe149b4830be16f5b4f5ee763bafb48e597ad0973198fff",
@@ -52,33 +52,33 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-03T17:37:47Z",
+      "finished_at": "2026-11-03T17:44:43Z",
       "fp_parts": {
         "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
         "inputs": {
-          "doc": "v1:blob:982d3c13e410a3f3c6bf0584d8e1cce94d67cb06",
+          "doc": "v1:blob:0ec3a983598e99d34ae9ec1e15251670d013db4a",
           "spec": "v1:sha256:e2c063ee9322840387685a5c86388a130816b2a8e1960e4e6cdd0d7ede8870e3"
         },
         "policy": {},
-        "subject": "v1:sha256:bee6c9f3d6fb3db7ffe149b4830be16f5b4f5ee763bafb48e597ad0973198fff"
+        "subject": "v1:sha256:e1ca20ff12fc0e16ec7843d040a9881ced3116ea75b1f724729edf404fec7a64"
       },
-      "holder": "codex:takeover/1037-adversary-design",
-      "input_fp": "v1:sha256:4f2b3562e31a10b3dc9a763a61ab3e1a0cf525f88ffc92dc34537d99544adb5d",
+      "holder": "codex:takeover/1037-adversary-design-r6",
+      "input_fp": "v1:sha256:d84f49160aea57af0b73d8b0b4cf2003745024621b7e1bf27b7f9e68ec120675",
       "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "b599cf162254cac3951eaa5bcfa4e92847584e52",
-          "commit": "4055d9f3da28b46191f20c5fd54dd54dee1c0439",
+          "blob": "43b5a582d21776e837c53b8d32b4f744539668f5",
+          "commit": "966fe4664763128fbf27be37d8ec6d4dc893b36c",
           "path": ".zzzops/reviews/1037/adversary_design.md"
         },
-        "summary": "One material release-evidence gap: equal release tips do not guarantee staged/production content equality when the production target moves. Require a procedural target/candidate identity check and renewed staging/owner approvals when that proof changes. OD1–OD8, privacy convention and genuine both-harness participation otherwise remain intact."
+        "summary": "Approved: Phase 7 and A10 resolve the production-target/candidate evidence gap while preserving separate owner approvals and the existing deployment boundary."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "982d3c13e410a3f3c6bf0584d8e1cce94d67cb06",
-          "commit": "dbef3a2e2e23ddac93901aa87524043374d7ea4b"
+          "blob": "0ec3a983598e99d34ae9ec1e15251670d013db4a",
+          "commit": "bc6a2ed2e48eb2881d34ca87ce8b999573a30e69"
         }
       },
       "status": "done"
