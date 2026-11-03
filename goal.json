@@ -47,44 +47,10 @@
       "status": "done"
     },
     "base": {
-      "attempt": 3,
-      "blocked": {
-        "category": "conflict",
-        "commands": {
-          "resume": [
-            "start",
-            "1040",
-            "base",
-            "--as",
-            "<LABEL>"
-          ]
-        },
-        "instructions": "In /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1040: resolve the conflicts in .agents/test_engine_capabilities.py, `git add` them, run `git -c core.editor=true rebase --continue`, then run the resume command. Do not change the meaning of the goal's commits.",
-        "op_state": {
-          "old": "575015a9831ccd2ce724c3125dd74dd20029c1b5",
-          "onto": "61290a45d137ef839b244555c74b6e45a58a7fa6",
-          "work": "99b4e35fb77aaa355ac098e906b952459416c476"
-        },
-        "reason": "rebase conflict in .agents/test_engine_capabilities.py",
-        "repeats": 1,
-        "waiting_for": "agent"
-      },
-      "correction_runs": 2,
-      "findings": [
-        {
-          "id": "base:reopen:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "base",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:edd201fdf05b567296b54691fb47f7273191b9281537bc166e0665d254a90528",
-          "text": "G1043 and sharded verification policy merged; synchronize branch to reviewed runner before refreshing checks",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-03T01:27:19Z",
+      "attempt": 4,
+      "correction_runs": 3,
+      "findings": [],
+      "finished_at": "2026-11-03T01:28:27Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
         "inputs": {
@@ -93,12 +59,31 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1040-base-sharded",
+      "holder": "codex:takeover/1040-base-sharded-resume",
       "input_fp": "v1:sha256:7a1b579dcb6e0f316b9d084b63e87f51d0477262a5866b1bf2897cebaf2e426b",
-      "ok": false,
-      "output": null,
-      "reason": "reopened",
-      "status": "blocked"
+      "ok": true,
+      "output": {
+        "base_commit": "61290a45d137ef839b244555c74b6e45a58a7fa6",
+        "branch": "zzzops/work/g1040",
+        "replay_map": {
+          "131327414886e01fa1a271cfcadc8f67de2b3a38": "2d40e4a43c21724ad69a2b3b916cd7c96a4464af",
+          "193a5d1ded932a1eb0686b80acf3d8cbdfb4263c": "28d882b88269eaf4283917053e03179eb8e88133",
+          "351138e84906bd0167fde24f9262726f2bb11e36": "8443e8c871221da66adaf4fe8ca3fd7f4ecb91b2",
+          "752b7a4ebaaa9169cb2cb3f3a844dd0cb85e3cb1": "a5c36a035fd5e7a5f45a31b015e09093b752108d",
+          "865df412eed5f61d524b5b5a801efdaa9db95f4f": "28cce57fd5632fe790902420e58ed9fa12bfa14d",
+          "99b4e35fb77aaa355ac098e906b952459416c476": "e8d4b6e8f8c4621cc255ec7e4c43b19f1e26edcb",
+          "a88ea8ba6c380d5a2bc21c582e31ca95a191b706": "be55a70ab7ed6d10aacef0e05a3b7b2f1a442640",
+          "c7cab604e04683566e58131932dfaeb1f7186925": "debdbdbcb67cc3f1a1bcb8f8b5f3ba1164c661f2",
+          "cb6c3a4ef7d4e1f76d5bb973d67266c1ab442681": "76e759442888185bcd913622fc825d989aaf88e0",
+          "f299ff05626f797a439adea5fdcfb30cd98c40c8": "b4cfdab72a7e7645f8d6861b32500f2572035c4c"
+        },
+        "replay_pos": {
+          "2ea54fd0bbf6071baca83eed11b1714b084d496d": "989b13d8dbb0c23a7559a4e9161e0e071260203d"
+        },
+        "stack": []
+      },
+      "reason": "retry",
+      "status": "done"
     },
     "design": {
       "attempt": 2,
@@ -352,7 +337,7 @@
       "fp_parts": {
         "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
         "inputs": {
-          "base": "v1:sha256:a517aeb92cc9adc5bfaa0dba482802d7f6f0acd71b9b18bd9ea68112a8c4054a",
+          "base": "v1:sha256:f6ae2d2106213ea225ab6f462cecb9a25ad4a0acca6532547d6cc19937307fe8",
           "doc": "v1:blob:3f7f884dc1f76f4d638f9e1f8bc3fe5c9aa0d288"
         },
         "policy": {}
@@ -361,7 +346,7 @@
         ".agents/test_engine_blocked_findings.py"
       ],
       "holder": "codex:takeover/1040-test-design-fix",
-      "input_fp": "v1:sha256:6729d0cd3841a55e2c4bfaa3c78f65fd648d88b8cac7d9001fd50ee29620d1d3",
+      "input_fp": "v1:sha256:f2f7d1f8a20e9802b00d0f86697b5e68369e85d6cf8464a97819344dee029729",
       "ok": true,
       "output": {
         "commands": [
@@ -370,10 +355,10 @@
           "cd .agents && python3 -m unittest test_engine_github.IntegrateTests.test_failure_after_a_fix_escalates"
         ],
         "tests": {
-          "base": "575015a9831ccd2ce724c3125dd74dd20029c1b5",
+          "base": "61290a45d137ef839b244555c74b6e45a58a7fa6",
           "change": "83d922720080ac53068e7df8bd04ae43aafc3674",
-          "commit": "351138e84906bd0167fde24f9262726f2bb11e36",
-          "tree": "a34b01e6f450718f154567325f2166c6b00d68b9"
+          "commit": "8443e8c871221da66adaf4fe8ca3fd7f4ecb91b2",
+          "tree": "023deaf604857705128da64d96435554ca956a91"
         }
       },
       "reason": "reopened",
