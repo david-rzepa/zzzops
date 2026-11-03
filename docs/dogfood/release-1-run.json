@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "status": "blocked_owner_design",
+  "status": "in_progress",
   "complete": false,
-  "as_of_utc": "2026-11-03T20:24:09.380488+00:00",
+  "as_of_utc": "2026-11-03T20:35:41.737607+00:00",
   "scope": "CLI dogfood; interim bootstrap/migration milestone, not release acceptance",
   "actors": [
     {
@@ -64,7 +64,7 @@
       "release": 1,
       "state": "open",
       "depends_on": [],
-      "phase_status": "design_blocked_owner_choice"
+      "phase_status": "design_running_after_owner_direction"
     },
     {
       "alias": "goal-B",
@@ -168,7 +168,23 @@
     "per_stage_rounds": null,
     "owner_wait_seconds": null,
     "estimated_money": null,
-    "unavailable_reason": "Actual executor transcript exports and final goal/review populations have not been reconciled; unavailable measurements are not zero."
+    "unavailable_reason": "Actual executor transcript exports and final goal/review populations have not been reconciled; unavailable measurements are not zero.",
+    "blocked_agent_question_waits_subset": [
+      {
+        "goal_alias": "goal-C",
+        "node": "design",
+        "attempt": 1,
+        "wait_seconds": 275.0
+      },
+      {
+        "goal_alias": "goal-A",
+        "node": "design",
+        "attempt": 1,
+        "wait_seconds": 706.0
+      }
+    ],
+    "blocked_agent_question_wait_seconds_subset": 981.0,
+    "blocked_agent_wait_population": "Only deduplicated completed blocked-agent question intervals with recorded answers on the two observed private goals, including the subsequently deferred initial goal. Excludes outer-run waits, routine approval items and unanswered/in-flight questions."
   },
   "lens_rescore": {
     "status": "pending",
@@ -289,5 +305,8 @@
       "reason": "The final naturally occurring block/finding/check cases have not been audited."
     }
   ],
-  "blocking_decision": "Owner visual design selection is pending on the private Release 1 integration goal."
+  "blocking_decision": null,
+  "scope_updates": [
+    "Owner approved the existing non-deferred integration visual/UX direction; source partition and normal goal reviews remain in progress."
+  ]
 }
