@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from engine.identity import Identity
+from engine.identity import Identity, conventional
+from engine.errors import EngineError
 from engine.ops.integrate import guarded, pull_head
 from engine.ops.run import Blocked, Done
 
@@ -89,10 +90,10 @@ def _run(ctx):
     if v.get("mergeable") == "CONFLICTING" or v.get("mergeStateStatus") in ("DIRTY", "BEHIND"):
         if "base" not in ctx.inputs:
             return Blocked({"category": "conflict", "waiting_for": "human", "reason": "PR cannot merge",
-                            "question": f"PR #{n} cannot merge ({v.get('mergeStateStatus')}). Rebase it?"})
+                            "question": f"PR #{n} cannot merge ({v.get('mergeStateStatus')}). Sync it?"})
         return Done({"merge_commit": None, "merged_at": None}, ok=False,
                     findings=[{"key": "conflict", "input": "base",
-                               "text": f"PR #{n} cannot merge into {I} ({v.get('mergeStateStatus')}); rebase the work branch"}])
+                               "text": f"PR #{n} cannot merge into {I} ({v.get('mergeStateStatus')}); sync the work branch"}])
     if v.get("autoMergeRequest"):
         return ctx.wait("queued on GitHub (auto-merge)", 300)
     if v.get("mergeStateStatus") == "BLOCKED":
@@ -102,7 +103,22 @@ def _run(ctx):
         return ctx.wait("GitHub is computing mergeability", 120)
     from engine.gh import GhError
     try:
-        gh.run("pr", "merge", str(n), f"--{ctx.settings['merge']['method']}", "--match-head-commit", H)
+        method = ctx.settings["merge"]["method"]
+        flags = []
+        if method == "merge":
+            prefix, suffix = f"chore(merge): G{g} ", f" (#{n})"
+            subject = prefix + ctx.doc["title"][:max(1, 72 - len(prefix) - len(suffix))] + suffix
+            flags = ["--subject", subject, "--body", f"Merge zzzops/pr/g{g} into {I}."]
+        elif method == "squash":
+            ident = Identity(ctx.git)
+            # The first part is optional; include a parent only if it is the goal's tests squash.
+            parent = ctx.git.out("rev-parse", H + "^")
+            selected = ([parent] if ident.subject(parent).startswith("test: ") and f"(G{g})" in ident.subject(parent) else []) + [H]
+            body = "\n\n".join(ctx.git.out("show", "-s", "--format=%b", c) for c in selected)
+            flags = ["--subject", f"{ident.subject(H)} (#{n})", "--body", body]
+        if flags and conventional(flags[1]) is None:
+            raise EngineError("non-conventional engine merge subject")
+        gh.run("pr", "merge", str(n), f"--{method}", "--match-head-commit", H, *flags)
     except GhError as exc:
         if "queue" in str(exc).lower() or "already" in str(exc).lower():
             return ctx.wait("queued on GitHub", 300)

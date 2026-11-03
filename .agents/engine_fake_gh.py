@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 
 STATE = os.environ.get("ZZZOPS_FAKE_GH_STATE", "")
 
@@ -173,15 +174,29 @@ def pr_json(st, pr, fields, view=False):
     return {k: full[k] for k in fields}
 
 
-def do_merge(st, pr, method, by="zzzops"):
+def do_merge(st, pr, method, by="zzzops", subject=None, body=None):
     base = tip(st, pr["baseRefName"])
     head = pr["headRefOid"]
-    tree = git(st, "merge-tree", "--write-tree", base, head).splitlines()[0]
-    env_msg = f"Merge pull request #{pr['number']}"
-    if method == "squash":
-        c = git(st, "commit-tree", tree, "-p", base, "-m", f"{pr['title']} (#{pr['number']})")
+    if method == "rebase":
+        # Use Git's own replay rather than fabricating a merge for --rebase.
+        # This also handles a base that advanced after the PR was opened.
+        old_base = git(st, "merge-base", base, head)
+        with tempfile.TemporaryDirectory(prefix="fake-gh-rebase-") as path:
+            git(st, "worktree", "add", "-q", "--detach", path, head)
+            try:
+                p = subprocess.run(["git", "-C", path, "rebase", "-q", "--onto", base, old_base],
+                                   capture_output=True, text=True)
+                if p.returncode:
+                    die(f"fake gh: rebase failed: {p.stderr}")
+                c = subprocess.check_output(["git", "-C", path, "rev-parse", "HEAD"], text=True).strip()
+            finally:
+                git(st, "worktree", "remove", "--force", path, check=False)
     else:
-        c = git(st, "commit-tree", tree, "-p", base, "-p", head, "-m", env_msg)
+        tree = git(st, "merge-tree", "--write-tree", base, head).splitlines()[0]
+        default = f"{pr['title']} (#{pr['number']})" if method == "squash" else f"Merge pull request #{pr['number']}"
+        message = (subject if subject is not None else default) + (f"\n\n{body}" if body else "")
+        parents = ["-p", base] + ([] if method == "squash" else ["-p", head])
+        c = git(st, "commit-tree", tree, *parents, "-m", message)
     git(st, "update-ref", f"refs/heads/{pr['baseRefName']}", c, base)
     pr.update(state="MERGED", mergeCommit=c, mergedAt="2027-01-15T09:00:00Z", mergedBy=by)
     if st.get("auto_delete", True):
@@ -513,7 +528,7 @@ def main(argv):
             die("GraphQL: Head branch was modified. Review and try the merge again.")
         method = "squash" if o.get("squash") else ("rebase" if o.get("rebase") else "merge")
         st.setdefault("merge_methods_used", []).append(method)
-        do_merge(st, pr, method)
+        do_merge(st, pr, method, subject=o.get("subject"), body=o.get("body"))
         save(st)
         return 0
     die(f"fake gh: unsupported pr {sub}")

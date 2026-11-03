@@ -65,6 +65,7 @@ REQUIRED_NATIVE_IDS = {
     "test_engine_identity.IdentityTests.test_identity_under_hostile_global_configuration",
     "test_engine_identity.IdentityTests.test_text_input_reaches_git_unchanged",
     "test_engine_identity.IdentityTests.test_i1_i2_and_artifact_commits",
+    "test_engine_scoped_shell_commands.ScopedShellTests.test_native_apostrophe_path_in_host_shell",
     "test_engine_lifecycle.SubmitTests.test_new_creates_no_branch_and_first_artifact_does",
 }
 

@@ -368,8 +368,9 @@ class Pilot:
                     out[k].update(given)
                 elif t.startswith("checkpoint"):
                     if card["workspace"]:
+                        kind = "test" if self.rev.get(node, node) == "test_design" else "feat"
                         fx.GitDir(card["workspace"], self.w.env).commit(
-                            {f"work/{self.rev.get(node, node)}.txt": f"{node} {self.turn}\n"}, f"feat: {node}")
+                            {f"work/{self.rev.get(node, node)}.txt": f"{node} {self.turn}\n"}, f"{kind}: {node}")
                 elif t == "object":
                     out[k] = {}  # Generic fixture value for newly declared object outputs.
                 elif t == "strings":
