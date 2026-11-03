@@ -118,10 +118,10 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 6,
-      "correction_runs": 5,
+      "attempt": 7,
+      "correction_runs": 6,
       "findings": [],
-      "finished_at": "2026-11-03T01:32:33Z",
+      "finished_at": "2026-11-03T01:45:28Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -131,19 +131,22 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1040-implement-refresh-sharded",
+      "holder": "codex:takeover/1040-normalization-script-fix",
       "input_fp": "v1:sha256:38d061296d0d6833cd1c0a19637b033ac55129ea194fb2a803a2248bf63cc6ed",
       "ok": true,
       "output": {
         "code": {
           "base": "61290a45d137ef839b244555c74b6e45a58a7fa6",
-          "change": "887f6f955c769394893d0cd7f5e6fb05ced73b8b",
-          "commit": "ae66e8722c6622441cf446fd90290fe8ba1b5834",
-          "tree": "88ad6a48b2511e3fa40dc119a1784c3cb751909f"
+          "change": "1a819d77c692c1aa7dd4d01c9901b570baa4cc0a",
+          "commit": "12d66a6a0dc319095bd630d114d77545d471f110",
+          "tree": "23bfd9ff30c37db4f0c62dd1775cbb66a4db9d7b"
         },
-        "summary": "Refreshed G1040 on the G1043/sharded-policy base with its approved feature and stable-option/refusal fixes preserved. The required commands exited feature=0 (20 tests, 11.800s), owner=1 (40 of 41 passed, 72.948s), GitHub=0 (1 test, 6.678s); the owner-suite failure exposed capture context at 3774 over 3700. Moved the complete legacy-detection paragraph verbatim from hot CLI usage into a precisely linked cold migration section; retained G1040 refusal guidance and G1043 measured-verification link. The exact failed prompt test now passes in 0.037s and prompt_stats --check passes with capture 3595/3700 and execution 4059/8800. Frozen tests unchanged; no full owner/full-suite repeat after the docs-only correction."
+        "responses": {
+          "review_impl:1:1": "fixed: removed generic eight-character basename/default-name replacement. Only default tmp names in explicit temporary-root components and the documented zzzops-card-budget-, zzzops-claude-acceptance-, .zzzops-cleanup- and .legacy- namespaces normalize their random component. check-strategy.js versus check-protocol.js, stable test names and script names under varying temp roots remain distinct. Added non-frozen pure and Sim regression controls for different-command round 1 and actual-repeat round 2; known temp-path equivalences and scalar tokens remain covered. All required focused commands pass; accepted frozen paths were not edited."
+        },
+        "summary": "Restricted filename normalization to positively identified temporary namespaces and documented tempfile prefixes; arbitrary hyphenated command/test names remain significant, including names beneath changing temporary directories. New non-frozen regressions prove distinct script failures reopen at round 1 and a genuine same-command repeat escalates at round 2, while POSIX/Windows temporary paths and existing scalar normalization remain equivalent. Independent focused pre-review passed. All required commands passed: feature 20 tests in 26.853s, owner-question regressions 41 in 153.288s, GitHub recurrence 1 in 14.474s; six normalization controls passed in 0.039s. Frozen accepted tests are unchanged; SPEC states the conservative recognition scope."
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
