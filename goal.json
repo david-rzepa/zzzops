@@ -313,37 +313,55 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-03T17:22:35Z",
+      "finished_at": "2026-11-03T17:50:05Z",
       "fp_parts": {
-        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
           "base": "v1:sha256:cc25726eab1a2a69f62402e2c816652d5ef5bd453b38ff1755c2afd49dc8db93",
-          "doc": "v1:blob:982d3c13e410a3f3c6bf0584d8e1cce94d67cb06"
+          "doc": "v1:blob:0ec3a983598e99d34ae9ec1e15251670d013db4a"
         },
         "policy": {}
       },
       "frozen": [
         "docs/dogfood/release-1-checks.md"
       ],
-      "holder": "codex:takeover/1037-test-design",
-      "input_fp": "v1:sha256:a9a1be2883c4444fd0d08ba3bb4ef43e456f3441400f3758dbd33d937e6e9c8c",
+      "holder": "codex:takeover/1037-test-design-r6",
+      "input_fp": "v1:sha256:659f0f818fadf0cc27dec556c11688dd5a369f04a68c8432ff36cb9f243ce41f",
       "ok": true,
       "output": {
         "commands": [
           "python3 -m json.tool docs/dogfood/release-1-run.json > /dev/null",
           "cd .agents && python3 -m unittest test_design_docs.DesignDocsTests.test_relative_links_resolve test_engine_owner_questions.OwnerQuestionsTemplateTests.test_shipped_templates_still_validate"
         ],
+        "cost": {
+          "changed_tests": [],
+          "checkpoint": "ff4d123237b3210150eb09fa594b0bb7a9edbb1a",
+          "commands": [
+            {
+              "cmd": "python3 -m json.tool docs/dogfood/release-1-run.json > /dev/null",
+              "duration_ms": 82,
+              "exit": 1
+            },
+            {
+              "cmd": "cd .agents && python3 -m unittest test_design_docs.DesignDocsTests.test_relative_links_resolve test_engine_owner_questions.OwnerQuestionsTemplateTests.test_shipped_templates_still_validate",
+              "duration_ms": 150,
+              "exit": 0
+            }
+          ],
+          "summary": "Documentation-only acceptance protocol refresh; no executable test cases added or changed, so changed_tests is empty. Durations measure complete recorded commands, not unmeasured manual review or future app checks. Existing document/template validators passed. JSON parsing failed because the actual run/data are not present yet; this is an honest pre-implementation red observation, not a completed run or product failure.",
+          "total_ms": 232
+        },
         "tests": {
           "base": "432a99b528dc6388ba73cc3ba3361b13aea5612d",
-          "change": "83a542167893cbc1807930cbb6841cf98a903958",
-          "commit": "6e282c5aa1e94e25e16f8e44c352169e62670fc2",
-          "tree": "46c2c081f123949f5e55ce5a6996733fe2f62976"
+          "change": "2fe69e39bb42442964a3d3f45ad771655a5697cd",
+          "commit": "ff4d123237b3210150eb09fa594b0bb7a9edbb1a",
+          "tree": "b065f97064d01890739141cf167a2f88b289d69b"
         }
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     }
   },
