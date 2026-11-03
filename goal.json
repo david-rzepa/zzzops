@@ -34,51 +34,36 @@
   "priority": "P1",
   "records": {
     "adversary_design": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 1,
-      "findings": [
-        {
-          "id": "adversary_design:1:1",
-          "impact": "A direct nonconflicting production-branch change during the run can be merged and deployed even though it was absent from the staged build, while both recorded approvals still name the same unchanged release tip; the owner and app users receive untested/unapproved combined code.",
-          "material": true,
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 5,
-          "target_fp": "v1:sha256:bee6c9f3d6fb3db7ffe149b4830be16f5b4f5ee763bafb48e597ad0973198fff",
-          "text": "Phase7 and A10 bind staging/production approval to the release tip alone, but an unchanged release tip does not prove that finishing into a moved production target deploys the staged code. At read_dev, git.line_finish checks the recorded line head and mergeability; a nonconflicting target-only commit survives the merge without changing that head. Extend the private release runbook and A10 evidence to capture the target tip and actual promotion candidate tree/artifact alongside the staged identity. Re-evaluate before the irreversible promotion whenever either relevant tip changes; if equality to accepted staging is lost or unproven, stop and re-stage/re-obtain the separate owner approvals rather than treating the unchanged release head as sufficient. Clarify that external staging evidence becoming stale is a root procedure, not an automatic engine guarantee. This needs no app/engine deploy-flow redesign or new privacy machinery.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-03T17:44:43Z",
+      "findings": [],
+      "finished_at": "2026-11-03T18:08:49Z",
       "fp_parts": {
         "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
         "inputs": {
-          "doc": "v1:blob:0ec3a983598e99d34ae9ec1e15251670d013db4a",
+          "doc": "v1:blob:2005eea5a61f11083eb5c99b91048b8935031c3d",
           "spec": "v1:sha256:e2c063ee9322840387685a5c86388a130816b2a8e1960e4e6cdd0d7ede8870e3"
         },
         "policy": {},
-        "subject": "v1:sha256:e1ca20ff12fc0e16ec7843d040a9881ced3116ea75b1f724729edf404fec7a64"
+        "subject": "v1:sha256:4d60ffed07b36307e48bf3e0e00f511f49b3d3affbdbe2f049ea8981810b0b85"
       },
-      "holder": "codex:takeover/1037-adversary-design-r6",
-      "input_fp": "v1:sha256:d84f49160aea57af0b73d8b0b4cf2003745024621b7e1bf27b7f9e68ec120675",
+      "holder": "codex:takeover/1037-adversary-design-r7",
+      "input_fp": "v1:sha256:4a14d2d58885d33a8a59fb8aa8c7fa834c53a508b61f53caf11f62f37060fe1c",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "43b5a582d21776e837c53b8d32b4f744539668f5",
-          "commit": "966fe4664763128fbf27be37d8ec6d4dc893b36c",
+          "blob": "25dfe6dbbb3b408b1b103580a315b665d2e0dea0",
+          "commit": "76ac0ebf16098aa95496c860b2554d6c3c567a07",
           "path": ".zzzops/reviews/1037/adversary_design.md"
         },
-        "summary": "Approved: Phase 7 and A10 resolve the production-target/candidate evidence gap while preserving separate owner approvals and the existing deployment boundary."
+        "summary": "Approved: OD9 exactly records the owner’s CLI-only scope override, requires truthful actual-actor evidence, and preserves private-state and candidate-bound deployment safety."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "0ec3a983598e99d34ae9ec1e15251670d013db4a",
-          "commit": "bc6a2ed2e48eb2881d34ca87ce8b999573a30e69"
+          "blob": "2005eea5a61f11083eb5c99b91048b8935031c3d",
+          "commit": "4bf38cfd123369fd27f5c19de8b01f27c1c05fb2"
         }
       },
       "status": "done"
