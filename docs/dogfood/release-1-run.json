@@ -1,0 +1,291 @@
+{
+  "schema": 1,
+  "status": "in_progress",
+  "complete": false,
+  "as_of_utc": "2026-11-03T20:20:13.191903+00:00",
+  "scope": "CLI dogfood; interim bootstrap/migration milestone, not release acceptance",
+  "actors": [
+    {
+      "harness": "Codex",
+      "participation": "actual CLI execution and goal preparation",
+      "model_tokens": null
+    },
+    {
+      "harness": "Claude",
+      "participation": "not executed under explicit owner scope override",
+      "equivalence_result": "not measured"
+    }
+  ],
+  "engine_cohorts": [
+    {
+      "alias": "initial-build",
+      "build": "0.0.0-dev f017a54d3e9f",
+      "public_engine_source": "19379cc1f1437fd38f8ae1b755d07ac6d5159d2a",
+      "available_capabilities": [
+        "blocked_findings",
+        "finding_follows",
+        "lens_findings",
+        "lenses",
+        "merge_sync",
+        "release_lines",
+        "round_budget",
+        "test_cost"
+      ],
+      "environment_errors": []
+    }
+  ],
+  "migration": {
+    "counted_old_issues": 12,
+    "closed_old_issues": 12,
+    "new_goals": 11,
+    "dispositions": {
+      "migrated": 11,
+      "already_done": 1
+    },
+    "current_release_counts": {
+      "1": 2,
+      "2": 8,
+      "3": 1
+    },
+    "held_by_release": {
+      "2": 8,
+      "3": 1
+    },
+    "remaining_legacy": {
+      "issues": 0,
+      "files": 1,
+      "refs": 1,
+      "notice_present": true
+    }
+  },
+  "goals": [
+    {
+      "alias": "goal-A",
+      "release": 1,
+      "state": "open",
+      "depends_on": []
+    },
+    {
+      "alias": "goal-B",
+      "release": 1,
+      "state": "open",
+      "depends_on": [
+        "goal-A"
+      ]
+    },
+    {
+      "alias": "goal-C",
+      "release": 3,
+      "state": "held",
+      "scope_note": "Owner-deferred after initial Release 1 design work"
+    },
+    {
+      "alias": "later-goal-01",
+      "release": 2,
+      "state": "held"
+    },
+    {
+      "alias": "later-goal-02",
+      "release": 2,
+      "state": "held"
+    },
+    {
+      "alias": "later-goal-03",
+      "release": 2,
+      "state": "held"
+    },
+    {
+      "alias": "later-goal-04",
+      "release": 2,
+      "state": "held"
+    },
+    {
+      "alias": "later-goal-05",
+      "release": 2,
+      "state": "held"
+    },
+    {
+      "alias": "later-goal-06",
+      "release": 2,
+      "state": "held"
+    },
+    {
+      "alias": "later-goal-07",
+      "release": 2,
+      "state": "held"
+    },
+    {
+      "alias": "later-goal-08",
+      "release": 2,
+      "state": "held"
+    }
+  ],
+  "aliases": "Anonymized aliases only; actual identifiers, holders, immutable inputs and replay commands resolve in the private journal.",
+  "source_preservation": {
+    "original_source_refs_unchanged": true,
+    "owner_start_snapshot_preserved": true,
+    "end_of_run_check": "pending"
+  },
+  "release": {
+    "status": "not_cut",
+    "staging_approval": "not_granted",
+    "production_approval": "not_granted",
+    "candidate_proof": "pending"
+  },
+  "costs": {
+    "population": "Only required CI jobs for history-only reconciliation and policy bootstrap, excluding all product-goal work, queue time, VM boot/teardown and agent work.",
+    "administrative_ci_jobs": [
+      {
+        "phase": "ancestry-reconciliation",
+        "check_alias": "required-check-1",
+        "conclusion": "success",
+        "runner_wall_seconds": 260.0
+      },
+      {
+        "phase": "ancestry-reconciliation",
+        "check_alias": "required-check-2",
+        "conclusion": "success",
+        "runner_wall_seconds": 139.0
+      },
+      {
+        "phase": "policy-bootstrap",
+        "check_alias": "required-check-1",
+        "conclusion": "success",
+        "runner_wall_seconds": 229.0
+      },
+      {
+        "phase": "policy-bootstrap",
+        "check_alias": "required-check-2",
+        "conclusion": "success",
+        "runner_wall_seconds": 148.0
+      }
+    ],
+    "administrative_ci_runner_wall_seconds": 776.0,
+    "administrative_ci_runner_minutes": 12.933333333333334,
+    "per_goal_agent_runs": null,
+    "per_goal_tokens": null,
+    "per_stage_rounds": null,
+    "owner_wait_seconds": null,
+    "estimated_money": null,
+    "unavailable_reason": "Actual executor transcript exports and final goal/review populations have not been reconciled; unavailable measurements are not zero."
+  },
+  "lens_rescore": {
+    "status": "pending",
+    "recall": null,
+    "nit_rate": null,
+    "tokens_per_round": null,
+    "limitation": "No completed cohort; this CLI run does not test model/harness equivalence."
+  },
+  "acceptance": [
+    {
+      "id": "A1",
+      "status": "pass",
+      "scope": "interim observation only",
+      "reason": "Actual Codex CLI build/capabilities and environment validation are recorded; Claude was not executed under the owner override.",
+      "evidence_alias": "observation-01"
+    },
+    {
+      "id": "A2",
+      "status": "pending",
+      "reason": "The issue inventory is clear, but a retained old file/ref still produces a legacy notice. No cleanup or dismissal is claimed."
+    },
+    {
+      "id": "A3",
+      "status": "pass",
+      "scope": "interim observation only",
+      "reason": "Reviewed policy, provenance, capabilities, prompts and instruction mapping landed.",
+      "evidence_alias": "observation-02"
+    },
+    {
+      "id": "A4",
+      "status": "pass",
+      "scope": "interim observation only",
+      "reason": "All twelve counted old issues closed; eleven migrated goals have explicit releases and source links.",
+      "evidence_alias": "observation-03"
+    },
+    {
+      "id": "A5",
+      "status": "pending",
+      "reason": "Two Release 1 goals remain open."
+    },
+    {
+      "id": "A6",
+      "status": "pass",
+      "scope": "interim observation only",
+      "reason": "Eight Release 2 goals and the owner-deferred Release 3 goal are held; the deferred goal had initial design work while it was still in Release 1.",
+      "evidence_alias": "observation-04"
+    },
+    {
+      "id": "A7",
+      "status": "pending",
+      "reason": "Final command/ref audit remains pending."
+    },
+    {
+      "id": "A8",
+      "status": "pending",
+      "reason": "The actual dependent source work and post-dependency sync have not finished."
+    },
+    {
+      "id": "A9",
+      "status": "pending",
+      "reason": "Release cut, sync and finish have not occurred."
+    },
+    {
+      "id": "A10",
+      "status": "pending",
+      "reason": "Staging and production remain separately unapproved; candidate identity evidence is not complete."
+    },
+    {
+      "id": "A11",
+      "status": "pending",
+      "reason": "A real CI-dispatcher failure and safe completed-job recovery were observed; the specified failure-path matrix is not complete."
+    },
+    {
+      "id": "A12",
+      "status": "pending",
+      "reason": "The final defect inventory has not been reconciled. Existing application-runner friction is distinct from an engine defect."
+    },
+    {
+      "id": "A13",
+      "status": "pending",
+      "reason": "Only the four required administrative CI job durations are measured here; per-goal agent/token/cost totals remain unavailable."
+    },
+    {
+      "id": "A14",
+      "status": "pending",
+      "reason": "No final review cohort or lens re-score is available."
+    },
+    {
+      "id": "A15",
+      "status": "pending",
+      "reason": "The final complete artifact set has not been published/reviewed; this milestone receives its own one-time name check."
+    },
+    {
+      "id": "A16",
+      "status": "pending",
+      "reason": "Start snapshot and later metadata/source-ref comparisons are preserved; end-of-run comparison remains pending."
+    },
+    {
+      "id": "A17",
+      "status": "pending",
+      "reason": "The owner confirmed the freeze; the full execution window is still open."
+    },
+    {
+      "id": "A18",
+      "status": "pass",
+      "scope": "interim observation only",
+      "reason": "Adopted capability/prompt/base-edge pairs validate; automatic head deletion was observed off.",
+      "evidence_alias": "observation-02"
+    },
+    {
+      "id": "A19",
+      "status": "pending",
+      "reason": "No completed eligible goal sync is claimed."
+    },
+    {
+      "id": "A20",
+      "status": "pending",
+      "reason": "The final naturally occurring block/finding/check cases have not been audited."
+    }
+  ]
+}
