@@ -4,8 +4,7 @@
     "engine": {
       "requires": [
         "lens_findings",
-        "lenses",
-        "test_cost"
+        "lenses"
       ]
     },
     "integration_branch": "main",

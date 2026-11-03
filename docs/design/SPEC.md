@@ -88,7 +88,7 @@
 ### 1.8 Stated limitations and setup notes
 - **`gh` for the legacy check (G1015).** `next` and `validate` look for pre-reset ZzzOps state with one `ls-remote` and at most one `gh api graphql` search. Without `gh`, or unauthenticated, the item still reports local signals and remote refs, and the issue count stays `null`.
 - **Hosts.** PR delivery (`integrate`, `merge`) requires GitHub and `gh`. On other hosts the default graph runs up to `filter_impl`; delivery needs a host op (about 100 lines against §5.1), which is not shipped.
-- **Monorepos.** One verification contract (`checks.run` always includes `settings.verification.commands`; per-area selection belongs in the repository's verify script), one policy block for all teams, one full checkout per delivery goal (disk ≈ concurrent delivery goals × checkout size). Submodules are not initialised by `git worktree add`: put `git submodule update --init --recursive` first in `verification.commands`.
+- **Monorepos.** One verification contract (`checks.run` always appends `settings.verification.commands`; per-area selection belongs in the repository's verify script), one policy block for all teams, one full checkout per delivery goal (disk ≈ concurrent delivery goals × checkout size). Submodules are not initialised by `git worktree add`: put `git submodule update --init --recursive` first in `verification.commands`.
 - **Required checks.** `required_ci` names must run on every PR into `I`. A path-filtered check stays pending until `ci_timeout_minutes` and becomes a human question on every goal it skips.
 - **Signing and metadata rules.** Engine commits are unsigned. Goal titles follow the repository's PR-title convention when one is enforced (the PR title is `<title> (G<id>)`); agents commit with `-s` under DCO. Engine identities and messages (`zzzops@localhost`, `zzzops lease …`, `docs(review): …`) are exempt only on `zzzops/**` (§1.5).
 - **Cost of `change`.** `change` costs time proportional to the size of the goal's diff, not of the repository (seconds for asset moves of 100 MB or more), because `--no-renames --binary` is kept for stability.
@@ -258,11 +258,10 @@ There is no `review_path` field: the review path is the constant `.zzzops/review
   "settings": {
     "engine":       {"requires": ["lens_findings"]},   // capability names the engine must declare (§4.5); "min" (semver) is deprecated
     "integration_branch": "dev",                 // string; must equal I on every verb (§4.3)
-    "verification": {"commands": ["<shell>"],    // strings; included by checks.run; serial after goal commands unless parallel_commands is enabled
+    "verification": {"commands": ["<shell>"],    // strings; run by checks.run after the node's own commands
                      "required_ci": ["<check name>"],   // strings; [] = no required checks
                      "timeout_minutes": 60,      // int 1–240; total for checks.run commands
-                     "ci_timeout_minutes": 120,  // int 10–1440; op time waits escalate to the human after this
-                     "parallel_commands"?: false}, // optional bool (G1043); requires test_cost even when false
+                     "ci_timeout_minutes": 120}, // int 10–1440; op time waits escalate to the human after this
     "releases":     {"current": 1},              // int ≥ 1
     "leases":       {"ttl_minutes": 120},        // int 10–1440; default agent lease timeout
     "parallelism":  {"max_workers": 10},         // int 1–50
@@ -278,7 +277,6 @@ There is no `review_path` field: the review path is the constant `.zzzops/review
 }
 ```
 - Every key shown is required (the shipped template sets them all), except the optional `legacy` and `intent`. Unknown keys anywhere are errors.
-- **`settings.verification.parallel_commands`** (G1043, optional bool, default false). Presence, even false, requires capability `test_cost`. True declares that goal and repository commands are safe in concurrent lanes in the same checkout; it neither selects nor omits commands. Every `checks.run` node under this setting must declare both `verification.commands` and `verification` in `policy` (extra keys allowed), so the relevant policy change stales checks. Without the setting, existing commands-only declarations remain valid. The shipped template does not enable concurrency (§5.3).
 - **`settings.legacy.ignore`** (bool, default false, not fingerprinted; G1015) dismisses the legacy item (§3.15) for the whole repository. A pre-G1015 development build reports it as `policy_invalid`. Any later optional settings key ships with a new capability (§4.5).
 - **`settings.branching`** (G1025, optional) turns on git-flow release lines: `production` is a valid branch name other than `integration_branch`; `release_prefix` and `hotfix_prefix` end in `/`, are not under `zzzops/` and do not overlap, and neither `integration_branch` nor `production` is a release-prefix-plus-number or under the hotfix prefix. It **requires capability `release_lines`**: `settings.engine.requires` must list it (an engine without it reads the key as unknown and refuses the policy). With it the workflow must hold a `release` graph with the ops `git.line_sync` and `git.line_finish`. Without the block the engine behaves exactly as before: no extra fetch, item, trailer, fingerprint part or schedule.
 - **`settings.intent`** (G1000): the project's intent, `{"purpose": text, "serves": text, "not": [text], "principles": [text]}`, with extra keys allowed (text or list of text). It is required only by the graph: a node declaring `policy: ["intent"]` makes a missing key a `validate --policy` error (§3.1 rule 6). Values starting with `TODO:` (the template's placeholder) give the warning `intent_placeholder`. Changing it is a policy change.
@@ -591,8 +589,6 @@ Cards gain `target: {"branch", "kind": "integration"|"release"|"hotfix", "commit
 
 A **value view** is the value itself when its canonical form is at most 600 bytes; otherwise `{"summary": "<first 200 chars>", "blob": "<sha>", "read": "git cat-file -p <sha>"}` (§4.20). Artifact values are always shown as `{"path", "blob", "summary"?, "read"}`; checkpoint values as `{"commit", "base", "tree", "change", "diff": "git diff <base> <commit> -- ':/' ':(top,exclude).zzzops/reviews'"}`. A sub-field selector `.change` or `.tree` shows the same view, `{"commit", "base", "change", "diff"}`, plus `tree` only for `.tree` (G1018). `deps.` values are maps of views. The top-level `renew` sentence of revision 6.3 is replaced by `commands.renew.when` (G1016). Every command's `argv` and `command` end with `--repo <primary worktree>` (§1.6, G1028).
 
-**Measured context (G1043).** Generic object outputs can carry observed test cost (integer milliseconds, command/exit/checkpoint and measured scope) into review cards as context. They use the ordinary view/blob/shrink rules; no universal test-writer node name or duration schema is imposed by the engine. A failing red measurement is not green test evidence. Shipped graph/prompt adoption is configuration, described in DESIGN §4.1.
-
 ### 3.15 `next` output (at most 8,192 bytes unless `--all`)
 
 ```jsonc
@@ -651,8 +647,6 @@ A **value view** is the value itself when its canonical form is at most 600 byte
 **Legacy item (G1015).** When pre-reset ZzzOps state remains, `next` and `validate` carry a top-level `legacy` object: `message`, `counts` (`issues`, `null` until counted; `files`; `refs` on `R`, counted only), `files` (at most 10), `skill` (`migrate-zzzops-repository`), `recheck`, `checked` and `dismiss`. It never pauses work. `validate` re-checks every time and adds `issues` (up to 100 per search, linked goal issues removed), `linked`, `queries` (the exact search strings) and `truncated`. `next` checks GitHub only when the cache key of `legacy.json` (§2.3) changes or its `retry_after` passes: 24 h after a transient failure or while the item is active, 7 days after `gh` is missing or unauthenticated. It never checks in the `next` embedded in a write, offline, or when `settings.legacy.ignore` is true. Old refs alone never make the item active: they are the archive (DESIGN §7). The check reads no issue bodies or comments.
 
 With `--all`, the output also carries `"goals": [{"id", "title", "state", "stage", "first_unfinished", "last_change"}]` for open and held goals (`last_change` = the goal tip's committer date), and no byte cap.
-
-**Checks timing in full approval context (G1043).** A configured input produced by `checks.run` exposes a concise timing summary and the complete result through its view/read reference. Show total local checks time and repository verification time, independently qualified whole-run and repository baselines (§5.3), their source/provenance or exact unavailable reason. An unavailable whole-run baseline must not hide an available `baseline.verification` delta. The repository delta is informational: concurrent goal workload and machine load may differ. Legacy command times never imply an invented total/delta. Unscoped compact items still expand through `next --goal G`; new timing remains context rather than approval identity.
 
 ### 3.16 Other verb outputs
 
@@ -813,7 +807,6 @@ def write_goals(verb, ids, mutate, extra=None, retry=True):
 
 ### 4.5 Engine capabilities, floor and schemas
 - **Capabilities.** The engine declares a set of capability names, one file each under `engine/capabilities/<name>.txt` (one paragraph: the format or behaviour it guards and the goal that added it). A capability is never removed. Shipped: `lens_findings` (G1000: finding keys `impact` and `material`, filters and their verdicts, notes, skippable review nodes) `finding_follows` (G1028: the finding key `follows`) and `lenses` (G1022: the node field `lenses`, skip keys `<node>:<lens>` and the finding key `lens`) and `release_lines` (G1025: `settings.branching`, the `release` graph's line ops and node fields `schedule` and `line_complete`, goal schema 2 and the `target` fingerprint part).
-- **`test_cost` (G1043).** Optional boolean `verification.parallel_commands` is permitted only with this capability, including an explicit false value; `checks.run` nodes then declare `verification.commands` and `verification` policy dependencies. Integer timing/baseline observations are additive fields in generic result objects. `FP_VERSION` and the checks.run op version do not change; measured-review wiring remains shipped configuration.
 - **Build id** is `<plugin version> <package revision, 12 hex>` (`package_provenance()`), or `unknown` when it cannot be read. It is the `Engine:` trailer (§3.9) and `zzzops --version`; `validate` shows `engine: {build, capabilities}`. It identifies one build, so a bad build's writes can be found (§8.4).
 - **Floor first.** Before strict validation, POLICY.json is parsed as plain JSON and only `schema_version`, `settings.engine.requires` and `settings.engine.min` are read. The required set is `requires` plus the capabilities of the deprecated `min` (`LEGACY_VERSIONS`: `1.0.0` → none, `1.1.0` → `lens_findings`, `1.2.0` → `lens_findings` and `finding_follows`, `1.3.0` → `lens_findings`, `finding_follows` and `lenses`; a version maps to the highest entry not above it; a version above every entry requires `engine_min_<min>`, which no engine has, and the message says to replace it with `requires`). If a required capability is missing, or `schema_version` is newer than the engine supports, the engine reports only `engine_too_old` ("upgrade the plugin"), with `missing` (sorted) on the blocker and in the error `details`, never `policy_invalid`. Writes are refused (exit 1); reads still work, and `next` shows the blocker. `validate` warns `engine_min_deprecated` while `min` is present.
 - **`engine_version_check()`** applies the floor before every write. There is no ceiling: an engine never refuses a policy for requiring too little.
@@ -1613,7 +1606,6 @@ def view(v, label):
 - **Prompt:** the blob `<integration>:.zzzops/prompts/<file>`; its text inline when ≤ 600 bytes, otherwise `{"blob", "read", "summary"}`. Its blob id goes into the lease's `Prompt:` field and later the record's `prompt`.
 - **Instructions:** for each key in the node's `instructions`, its text as a view.
 - **Inputs and context:** every resolved input value as a view. Artifacts: `{"path", "blob", "summary", "read"}`, where `summary` is the producer's `summary` output when it has one. If the blob is missing locally, the CLI fetches `+refs/heads/zzzops/work/g<producer goal>:refs/remotes/<R>/zzzops/work/g<producer goal>` once; if it is still missing (the branch was deleted), the view says `(full text no longer available)`. Checkpoints: `{"commit", "tree", "change", "diff"}` (§3.14).
-- **Timing observations (G1043):** measured cost objects remain ordinary context values and can be blobbed whole without changing fingerprints. The configured checks result in a full human item's context gets a concise total/repository timing and independently qualified baseline summary; retain a blob/read pointer to the full evidence when summarized. Recognize it through its declared input/producer, never a default node id. Missing/legacy evidence and lookup limits are displayed truthfully (§5.3).
 - **Commands to run:** for workspace nodes, every input (context included) of type `strings` is listed under `commands_to_run` with the note "Run these in the workspace before you submit."
 - **Corrections:** every live finding targeting the node (every ready or reclaimable state carries them), with `from` = carrier, `rounds`, `upheld`.
 - **Previous (review nodes re-running):** the node's previous findings with the target's responses. The interdiff compares the reviewed version of each subject checkpoint `k` with the current one:
@@ -1892,46 +1884,38 @@ def retire_stack(sb, SB, target):                       # Done.after_push: the s
 
 | | |
 |---|---|
-| Inputs | `code` (required): checkpoint `.tree`; `commands` (optional): `strings` |
-| Outputs | `result` (`object`): `{passed, tree, details, timing}`; timing is additive, old details-only results remain readable |
-| Node | `workspace: true`; declare `policy: ["verification.commands"]`; with verification.parallel_commands present, also declare `verification` |
+| Inputs | `code` (required): a checkpoint `.tree` selector; `commands` (optional): `strings` |
+| Outputs | `result` (`object`): `{"passed": bool, "tree": sha, "details": [{"cmd", "exit", "seconds", "tail"}]}` |
+| Node | `workspace: true` required; declare `policy: ["verification.commands"]` |
 
-**Exact tree and command lifecycle.** Compare `Identity.code_tree(HEAD)` with the input tree before executing. A mismatch fails with the existing tree-mismatch finding and unavailable timing (`tree_mismatch`), never a zero cost. Goal commands and repository verification commands all run under the POSIX shell on every supported platform. Serial mode (absent/false parallel_commands) retains goal commands then repository commands. Opt-in parallel mode has two lanes in the same worktree, each preserving its own order; no shell-coverage inference or command omission occurs. A non-timeout failure does not omit later commands. Results and the first failure finding stay in original goal-then-verification order, independent of completion order.
-
-Start one monotonic global timeout from verification.timeout_minutes for command execution. Each live shell has its own process group. On timeout kill all live groups (killpg on POSIX, taskkill /T /F on Windows), join both lanes and retain interrupted/timeout observations. Reset hard/clean once only after every child exits; ignored files remain. A nonzero Windows taskkill result or timeout falls back to killing the parent, but that alone does not prove descendants stopped. Bound post-kill pipe draining to one second. If process-tree termination or pipe completion remains unconfirmed, preserve the checkout (no reset/clean) and return the existing external human block with unconfirmed PIDs; the operator must stop/inspect them before retrying. This is incomplete execution, not a successful check result. Ordinary failures/crashes retain other command evidence. Tail trimming may cut logs (2,048-byte tails; 4,096-byte details target) but never removes command identity, source, exit or duration. passed, findings and exact-tree checks retain their existing meaning.
-
-**CPU allocation.** Observe A from sched_getaffinity when available, else cpu_count or 1. Validate inherited ZZZOPS_TEST_WORKERS as a positive integer P; effective total C=min(A,P), or A without P. Compute C before choosing lanes: C=1 or an empty lane means sequential commands with C workers; otherwise goal gets floor(C/2) and repository gets C-floor(C/2). Export the lane's allocation as each child's ZZZOPS_TEST_WORKERS. The repository runner honors that limit even with an explicit worker request. Arbitrary third-party commands may ignore it; this is not OS resource enforcement. The policy author must ensure command isolation/order/resource requirements, and genuine job-wide exclusive commands keep parallel mode off.
-
-**Observed result shape.** All durable numbers are integers (no JSON floats). A command detail gains source (`goal` or `verification`) and milliseconds, retaining integer seconds. New results hold:
-
-```jsonc
-"timing": {
-  "total_ms": 125000, "goal_ms": 12000, "verification_ms": 124000,
-  "parallel_commands": true,
-  "workers": {"goal": 10, "verification": 10}, "cpu_budget": 20,
-  "environment": {"platform": "linux", "python": "3.14", "cpus": 20},
-  "plan_sha256": "<whole ordered plan hash>",
-  "verification_plan_sha256": "<ordered repository plan hash>",
-  "baseline": {"status": "unavailable", "reason": "no_prior_run",
-               "verification": {"status": "unavailable", "reason": "no_prior_run"}}
-}
+```text
+def run(ctx):
+  p = ctx.worktree                                    # synced, clean
+  T = ctx.inputs["code"]; head_tree = code_tree("HEAD")
+  if head_tree != T:
+    return Done({"result": {"passed": False, "tree": head_tree, "details": []}}, ok=False,
+                findings=[{"key": "tree-mismatch", "input": "code",
+                           "text": f"the work branch tip (code tree {head_tree[:7]}) differs from the recorded checkpoint ({T[:7]}); submit a checkpoint at the tip"}])
+  cmds = (ctx.inputs.get("commands") or []) + settings.verification.commands
+  end = now + settings.verification.timeout_minutes * 60; details = []
+  sh = POSIX shell: "/bin/sh" on POSIX; on Windows "<git --exec-path>/../../bin/sh.exe" (Git for Windows)
+  try:
+    for cmd in cmds:
+      r = run [sh, "-c", cmd] in cwd p, stdout+stderr combined, timeout max(1, end - now()),
+          in a new process group (start_new_session=True; on Windows CREATE_NEW_PROCESS_GROUP);
+          on timeout kill the whole group (killpg; on Windows `taskkill /T /F /PID <pid>`)
+      details.append({"cmd": cmd, "exit": r.returncode (or -1 on timeout), "seconds": n, "tail": last 2,048 bytes})
+      if timed out: break
+  finally:
+    git -C <p> reset --hard HEAD; git -C <p> clean -fd          # leave the worktree clean (ignored files kept)
+  cap details to 4,096 bytes in total, cutting the longest tails first
+  passed = all(d["exit"] == 0 for d in details) and not timed out
+  findings = [] if passed else [{"key": "failed", "input": "code",
+              "text": f"`{first failing cmd}` exited {exit}:\n{tail, at most 1,024 bytes}"}]
+  return Done({"result": {"passed": passed, "tree": T, "details": details}}, ok=passed, findings=findings)
 ```
-
-Total_ms is monotonic elapsed command wall time through child completion, before cleanup and baseline lookup. Goal_ms and verification_ms sum each source's command durations; their sum can exceed elapsed wall time in parallel mode. Record timing on failures/timeouts too. Environment contains platform, Python major/minor and available CPU count, never machine/user identifiers. Plan_sha256 hashes canonical ordered source/command pairs, actual execution mode, effective total and allocations. Verification_plan_sha256 hashes only ordered repository commands, actual mode, effective total and repository allocation; it excludes goal-specific commands/time. The two hashes explain workload compatibility without creating new test inventory or state.
-
-**One source, two comparisons.** During this operation only, use accepted snapshot goal tips (including closed goals), the actual captured target branch/tip (integration/release/hotfix) and locally available history. Recognize configured checks.run, git.integrate and github.merge producers by op kind; do not assume default node ids. A source is a successful recorded check paired with a successful merge into this target, whose merge commit is on the target's first-parent history and whose actual code_tree equals the tested result.tree. Pick the nearest such merge to the captured tip; within it pick the latest successful check by finished_at. This is the latest recorded tested tree that actually reached the target, not a claim to have benchmarked its current tip.
-
-Select that source once before comparing hashes/environment. Never replace a newer incompatible source with an older convenient match, and never scan separately for each scope:
-
-- Whole run: baseline.status is available only with valid integer timing, equal full plan hash and equal environment; delta_ms=current.total_ms-source.total_ms. With a goal-command-only difference the total comparison is unavailable: changed_commands_or_allocation.
-- Repository lane: baseline.verification qualifies independently using verification_plan_sha256 and environment, even when the whole-run plan differs. Available holds verification_ms, signed delta_ms=current.verification_ms-source.verification_ms, the source repository hash, and source `{goal, node, goal_commit, merge_commit, tree, target, finished_at}`. Its caveat says machine load and concurrent goal-command workload may differ. Show this delta even when baseline.status is unavailable.
-- The available whole-run object retains its source/provenance, total_ms and verification_ms; its flat verification_delta_ms is only a compatibility mirror when the nested repository comparison is available. Omit flat deltas when total is unavailable. Missing narrower metadata is legacy_timing for that scope, not an inferred match. A zero source permits absolute difference but no percentage.
-
-Unavailable evidence has status/reason and applicable provenance/limit, never invented time or delta. Reasons are no_prior_run, legacy_timing, changed_commands_or_allocation, changed_environment, missing_history, invalid_evidence and lookup_budget_exhausted. Missing source/history or incomplete search makes both scopes unavailable; a scope-specific missing hash can leave the other valid scope available. Comparisons remain informational: plans/platform/Python/CPU allocation do not normalize hardware type, caches, load or concurrent goal workload. The captured target is not reinterpreted after it moves.
-
-**Bounded optional lookup.** Limit candidate goal documents to 64, first-parent history entries to 256 and code-tree comparisons to 16. Give the entire local lookup a separate 2,000 ms monotonic deadline plus at most 1,000 ms termination/join cleanup. Check remaining work/time before each read/history/tree action. Git reads run in a supervised read-only subprocess group (a short-lived cat-file batch is permitted), so a blocked session pipe cannot escape the deadline. No fetch, portfolio reload, goal mutation or timing index is permitted. If omitted/capped/malformed evidence prevents proving the newest eligible source, both comparisons return unavailable with the reason/limit; no partial or older baseline is published. Exhaustion/failure never changes verification passed, exits or findings. Lookup elapsed time may be recorded separately, outside total_ms. The first adoption commonly has no compatible baseline.
-
-The result remains a generic context object, not a performance regression gate or new fingerprint component. FP_VERSION and the op's implementation version stay unchanged. Shipped measured-review wiring and prompt choices are configuration (DESIGN §4.1), not an engine requirement that a node be named test_design or run_tests.
+- Commands run under the POSIX shell on every platform, so one goal's commands written on Linux also run on Windows.
+- Consumers use `result` only as a gate (context input); `details` holds durations and logs and is never fingerprinted.
 
 ### 5.4 `git.integrate` (includes CI)
 

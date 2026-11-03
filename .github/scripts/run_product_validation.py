@@ -19,9 +19,11 @@ from typing import Callable, Iterable, Mapping
 ROOT = Path(__file__).resolve().parents[2]
 LINUX_TIMINGS = ROOT / ".github" / "scripts" / "linux_test_timings.json"
 LINUX_AUXILIARY_SECONDS = 20.0
-# Genuine per-invocation exclusive tests can run after all concurrent children join.
-# Commands needing isolation from other invocations must be scheduled sequentially.
-LINUX_EXCLUSIVE_TESTS: tuple[str, ...] = ()
+# This unchanged one-second wall-clock contract needs an otherwise idle shard.
+# Keep this list explicit and discovery-guarded: never omit or relax the test.
+LINUX_EXCLUSIVE_TESTS = (
+    "test_engine_property.NoDeadEndPropertyTests.test_random_portfolios",
+)
 
 NATIVE_COVERAGE = {
     "installation_cleanup": (
@@ -167,8 +169,6 @@ payload = {
     "tests_run": result.testsRun, "executed_ids": result.executed_ids,
     "completed_ids": result.completed_ids,
     "failures": len(result.failures), "errors": len(result.errors),
-    "failure_details": [{"id": test.id(), "traceback": detail} for test, detail in result.failures],
-    "error_details": [{"id": test.id(), "traceback": detail} for test, detail in result.errors],
     "skips": result.native_skips, "invalid_skips": result.invalid_skips,
     "durations": result.durations,
 }
@@ -183,15 +183,11 @@ def _launch_native(selected: list[str], root: Path) -> dict:
     try:
         completed = subprocess.run(
             [sys.executable, "-c", _CHILD_RUNNER, str(root), json.dumps(selected), str(report_path)],
-            cwd=root, check=False, stderr=subprocess.PIPE, encoding="utf-8", errors="replace",
+            cwd=root, check=False,
         )
-        diagnostic = completed.stderr or ""
-        if diagnostic:
-            print(diagnostic, end="", file=sys.stderr)
         if not report_path.stat().st_size:
-            raise RuntimeError(f"native test subprocess exited {completed.returncode} without a report: {diagnostic}")
+            raise RuntimeError(f"native test subprocess exited {completed.returncode} without a report")
         observation = json.loads(report_path.read_text(encoding="utf-8"))
-        observation["stderr"] = diagnostic
         if completed.returncode and observation.get("returncode") == 0:
             observation["returncode"] = completed.returncode
         return observation
@@ -269,8 +265,6 @@ def run_native_validation(
         "completed_ids": list(observation.get("completed_ids", [])),
         "tests_run": observation["tests_run"], "failures": observation.get("failures", 0),
         "errors": observation.get("errors", 0), "skipped": len(observation.get("skips", ())),
-        "failure_details": list(observation.get("failure_details", [])),
-        "error_details": list(observation.get("error_details", [])),
         "coverage_limits": list(observation.get("skips", ())), "wall_seconds": elapsed,
         "aggregate_test_seconds": sum(durations.values()),
         "slowest_tests": sorted(durations.items(), key=lambda item: item[1], reverse=True)[:5],
@@ -367,12 +361,12 @@ def linux_worker_plan(selected: list[str], workers: int) -> tuple[list[list[str]
 def _combine_linux_observations(observations: list[Mapping]) -> dict:
     combined = {"returncode": 0, "tests_run": 0, "failures": 0, "errors": 0,
                 "executed_ids": [], "completed_ids": [], "skips": [], "invalid_skips": [],
-                "durations": {}, "failure_details": [], "error_details": []}
+                "durations": {}}
     for observation in observations:
         for key in ("tests_run", "failures", "errors"):
             combined[key] += observation[key]
         combined["returncode"] = max(combined["returncode"], observation["returncode"])
-        for key in ("executed_ids", "completed_ids", "skips", "invalid_skips", "failure_details", "error_details"):
+        for key in ("executed_ids", "completed_ids", "skips", "invalid_skips"):
             combined[key].extend(observation.get(key, []))
         durations = observation.get("durations", {})
         if combined["durations"].keys() & durations.keys():
@@ -418,7 +412,7 @@ def run_linux_shard(shard_index: int, shard_count: int, report_path: Path | None
         observation = _combine_linux_observations([worker["observation"] for worker in report["worker_reports"]])
         report.update({key: observation[key] for key in (
             "returncode", "tests_run", "executed_ids", "completed_ids", "failures", "errors",
-            "skips", "invalid_skips", "durations", "failure_details", "error_details",
+            "skips", "invalid_skips", "durations",
         ) if key in observation})
         _validate_linux_observation(report["selected_ids"], observation)
         if observation["returncode"] or observation["failures"] or observation["errors"]:
@@ -447,130 +441,6 @@ def run_linux_shard(shard_index: int, shard_count: int, report_path: Path | None
     return report
 
 
-def available_local_cpus() -> int:
-    """Observe this process's affinity before falling back to the portable CPU count."""
-    try:
-        count = len(os.sched_getaffinity(0))
-        if count:
-            return count
-    except (AttributeError, OSError, NotImplementedError):
-        pass
-    count = os.cpu_count()
-    return count if type(count) is int and count > 0 else 1
-
-
-def local_worker_budget(workers: int | None = None) -> tuple[int, int]:
-    available = available_local_cpus()
-    if workers is not None and (type(workers) is not int or workers <= 0):
-        raise ValueError("Local workers must be a positive integer")
-    budget = os.environ.get("ZZZOPS_TEST_WORKERS")
-    if budget is not None:
-        if not budget.isascii() or not budget.isdecimal() or int(budget) <= 0:
-            raise ValueError("ZZZOPS_TEST_WORKERS must be a positive integer")
-        available_budget = min(available, int(budget))
-    else:
-        available_budget = available
-    return available, min(available_budget, workers) if workers is not None else available_budget
-
-
-def run_local_validation(root: Path = ROOT, workers: int | None = None,
-                         report_path: Path | None = None) -> dict:
-    """Run every canonical Python ID once; local mode never runs the CI auxiliary leg."""
-    started = time.perf_counter()
-    report = {"schema_version": 1, "platform": "linux", "mode": "local",
-              "python_version": sys.version.split()[0], "status": "failed", "workers": 0,
-              "inventory_count": 0, "inventory_sha256": None, "selected_count": 0, "selected_ids": [],
-              "worker_reports": [], "executed_ids": [], "completed_ids": [], "durations": {},
-              "tests_run": 0, "returncode": 1, "failures": 0, "errors": 0,
-              "skips": [], "invalid_skips": [], "serial_ids": [], "aggregate_test_seconds": 0.0,
-              "failure_details": [], "error_details": []}
-    try:
-        observed, budget = local_worker_budget(workers)
-        inventory = list(discover_linux_tests(Path(root)))
-        if not inventory or len(inventory) != len(set(inventory)):
-            raise ValueError("Local discovery inventory is empty or contains duplicate IDs")
-        inventory.sort()
-        missing = set(LINUX_EXCLUSIVE_TESTS) - set(inventory)
-        if missing:
-            raise ValueError("Local exclusive test IDs missing from discovery: " + ", ".join(sorted(missing)))
-        exclusive = sorted(set(inventory) & set(LINUX_EXCLUSIVE_TESTS))
-        concurrent = [test_id for test_id in inventory if test_id not in exclusive]
-        count = min(budget, len(concurrent))
-        report.update({"observed_cpus": observed, "cpu_budget": budget, "workers": count,
-                       "inventory_count": len(inventory), "selected_count": len(inventory),
-                       "inventory_sha256": hashlib.sha256("\n".join(inventory).encode()).hexdigest(),
-                       "selected_ids": inventory, "serial_ids": exclusive, "concurrent_worker_count": count})
-        weights, fallback = load_linux_timings()
-        batches = partition_linux_tests(concurrent, count, weights, fallback, auxiliary_seconds=0.0) if count else []
-
-        def launch(index, batch, serial):
-            began = time.perf_counter()
-            worker = {"worker_index": index, "serial": serial, "selected_ids": batch}
-            try:
-                worker["observation"] = dict(_launch_native(batch, Path(root)))
-            except Exception as error:
-                worker["error"] = str(error)
-            finally:
-                worker["wall_seconds"] = time.perf_counter() - began
-            return worker
-
-        if batches:
-            with ThreadPoolExecutor(max_workers=count) as pool:
-                futures = [pool.submit(launch, index, batch, False) for index, batch in enumerate(batches)]
-                # Every future is collected before validation or the serial phase, including failed children.
-                report["worker_reports"] = [future.result() for future in futures]
-        if exclusive:
-            report["worker_reports"].append(launch(len(batches), exclusive, True))
-        observations = [worker["observation"] for worker in report["worker_reports"] if "observation" in worker]
-        if observations:
-            observation = _combine_linux_observations(observations)
-            report.update({key: observation[key] for key in (
-                "returncode", "tests_run", "executed_ids", "completed_ids", "failures", "errors",
-                "skips", "invalid_skips", "durations", "failure_details", "error_details")})
-        for worker in report["worker_reports"]:
-            if "error" in worker:
-                raise RuntimeError(worker["error"])
-            _validate_linux_observation(worker["selected_ids"], worker["observation"])
-            durations = worker["observation"].get("durations")
-            if not isinstance(durations, dict) or set(durations) != set(worker["selected_ids"]):
-                raise ValueError("Local execution lacks exact per-test durations")
-            if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0
-                   for value in durations.values()):
-                raise ValueError("Local durations must be finite nonnegative seconds")
-        _validate_linux_observation(inventory, observation)
-        if observation["returncode"] or observation["failures"] or observation["errors"]:
-            raise subprocess.CalledProcessError(int(observation["returncode"] or 1), [sys.executable, "local-tests"])
-        report["status"] = "success"
-    except Exception as error:
-        report["error"] = str(error)
-        if type(report["returncode"]) is not int or report["returncode"] <= 0:
-            report["returncode"] = 1
-        raise
-    finally:
-        report["wall_seconds"] = time.perf_counter() - started
-        durations = {test_id: value for test_id, value in report["durations"].items()
-                     if type(value) in (int, float) and math.isfinite(value) and value >= 0}
-        report["aggregate_test_seconds"] = sum(durations.values())
-        report["slowest_tests"] = sorted(durations.items(), key=lambda item: (-item[1], item[0]))[:5]
-        if report_path is not None:
-            path = Path(report_path)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        summary = {key: report[key] for key in ("status", "inventory_count", "inventory_sha256", "workers",
-                                                "wall_seconds", "aggregate_test_seconds", "slowest_tests")}
-        summary.update(executed_count=len(report["executed_ids"]), completed_count=len(report["completed_ids"]),
-                       worker_seconds=[worker["wall_seconds"] for worker in report["worker_reports"]],
-                       failures=report["failures"], errors=report["errors"],
-                       failure_ids=[item["id"] for item in report.get("failure_details", [])][:5],
-                       error_ids=[item["id"] for item in report.get("error_details", [])]
-                                 [:max(0, 5 - min(5, len(report.get("failure_details", []))))])
-        if "error" in report:
-            summary["error"] = report["error"][:400]
-        # Keep bounded failing IDs at the end for the engine's captured tail.
-        print(json.dumps(summary))
-    return report
-
-
 def windows_validation() -> None:
     run_native_validation("windows")
 
@@ -583,29 +453,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--platform", choices=("linux", "windows", "macos"), required=True)
     parser.add_argument("--discover-native", action="store_true")
-    parser.add_argument("--local", action="store_true")
     parser.add_argument("--shard-index", type=int)
     parser.add_argument("--shard-count", type=int)
     parser.add_argument("--discover-linux", action="store_true")
     parser.add_argument("--report", type=Path)
-    parser.add_argument("--workers", type=int)
+    parser.add_argument("--workers", type=int, choices=(1, 2), default=1)
     args = parser.parse_args()
     sharded = args.shard_index is not None or args.shard_count is not None
-    if args.local:
-        if args.platform != "linux" or sharded or args.discover_native or args.discover_linux:
-            parser.error("--local requires --platform linux and cannot combine with discovery or CI shard options")
-        if args.workers is not None and args.workers <= 0:
-            parser.error("Local --workers must be a positive integer")
-        try:
-            run_local_validation(workers=args.workers, report_path=args.report)
-        except (ValueError, RuntimeError, subprocess.CalledProcessError):
-            # run_local_validation has emitted the outcome and retained evidence;
-            # a wrapper traceback must not push failing IDs out of captured tails.
-            return 1
-        return 0
-    args.workers = 1 if args.workers is None else args.workers
-    if args.workers not in (1, 2):
-        parser.error("Non-local --workers must be 1 or 2")
     if sharded or args.discover_linux or args.report or (args.platform == "linux" and args.workers != 1):
         if args.platform != "linux" or args.discover_native:
             parser.error("Linux shard options require --platform linux")
