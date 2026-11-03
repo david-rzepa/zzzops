@@ -1,13 +1,13 @@
-# G1038 forward golden correction review
+# G1038 accepted-test remap after G1040
 
-Approved. `review_tests:3:1` is resolved, with no new findings.
+Approved. No new test finding; the earlier golden correction remains resolved.
 
-The non-review interdiff from product `91ed69d2` to explicit tests checkpoint `6cc3ba63f97e64eddd02fceee79c739bc0fa00d5` changes only the already-frozen `.agents/fixtures/g1038_fingerprints.json`. It updates the baseline to immutable coordinator `61290a45d137ef839b244555c74b6e45a58a7fa6` and the two shipped-graph expected values. Graph12/graph26 controls are unchanged, old de5640 shipped audit values remain recorded, and no test algorithm or equality assertion is weakened.
+I reviewed mapped tests checkpoint `549608acab9f8a1b1dc1482a9bdbe02e1cd8e677` against current coordinator `41b4c50f755ea5ba76e8e4c6150ca5d91ed52a33` and the previously approved checkpoint `6cc3ba63f97e64eddd02fceee79c739bc0fa00d5`.
 
-I independently exported `.agents` and the engine/templates from that immutable coordinator with `git archive`, ran a fresh interpreter importing only the archive, and recomputed all three node-definition and all three journey digests. They exactly match the corrected fixture. This confirms the expectations are pre-G1038 controls, not values copied from the implementation under review.
+All seven accepted frozen files have the same blobs at the mapped checkpoint and product `f3758075`. The golden fixture, merge-sync tests, conventional tests, shared fixture and fake GitHub are byte-identical to the prior approved correction. The capability-file union adds the independently landed `blocked_findings` while retaining `test_cost` and `merge_sync`; documentation sentinels remain intact. No test assertion was removed or weakened.
 
-I repeated only the focused fingerprint method: one test passed in 0.130 seconds, including the shipped journey comparison that the stale node golden previously prevented from running. No broad suite was repeated.
+The immutable golden audit remains valid: G1040 did not change the shipped workflow/POLICY, frozen graph12/graph26 inputs or fingerprint implementation between `61290a45` and `41b4c50f`. Its pre-G1038 provenance remains recorded in the fixture; it must not be regenerated from current product code merely because the work branch moved.
 
-The before/after CLI records prove the frozen set is byte-for-byte unchanged at seven paths. The substantive test/support coverage from the source-free mapped checkpoint `7510fe3d39c08bcf7b2a798ff571c05242a64799` remains the previously reviewed coverage.
+The mapped checkpoint includes pre-existing product implementation under the installed engine's unscoped checkpoint semantics, just as the accepted forward correction did. This is not a new source-free-tests claim and does not convert pre-existing product code into newly authored tests. Implementation correctness and required checks remain separate.
 
-The new checkpoint is explicitly **not source-free**: the installed engine computes its base-to-checkpoint change without frozen-path scope, so its view contains pre-existing G1038 product code. This review treats that code as pre-existing implementation, not newly authored tests. The actual forward correction is fixture-only; independent implementation review and required checks still apply. No pushed history was rewritten, no product source was rolled back during the test lease, and no failed control was approved as passing.
+A separate scoped-path PowerShell quoting defect is already assigned to implementation correction. This test approval makes no claim that the product is ready or that that defect is fixed. No new test changes, new feature measurements or broad suite run were needed for this exact mapped-test review.
