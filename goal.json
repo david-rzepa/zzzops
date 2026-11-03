@@ -117,7 +117,20 @@
     "implement": {
       "attempt": 2,
       "correction_runs": 1,
-      "findings": [],
+      "findings": [
+        {
+          "id": "implement:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "implement",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:afd157529f7f037e39277d10a587a90427cdeddb026eb1ed74e2f17b388a3ff1",
+          "text": "CI Python3.10 reproduced frozen property-semantic guard hashing version-dependent ast.dump output (type/default-field representation differs from3.14). Preserve audited seeds/steps/assertions using interpreter-independent baseline comparison through test_design correction; do not skip/patch runtime or change property algorithm.",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-02T23:51:03Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
