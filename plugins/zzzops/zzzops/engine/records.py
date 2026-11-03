@@ -192,13 +192,17 @@ def human_findings(graph: Graph, X: str, r0: dict | None, given: list, attempt: 
     return result
 
 
-# Timings, commit ids, object addresses and tempfile randomness do not identify an op failure.
-# A prefixed temp suffix needs a basename prefix and a path separator/extension; options are stable.
-NORM = re.compile(r"0[xX][0-9a-fA-F]+|tmp[a-z0-9_]{8}|(?<=[a-z0-9_]-)[a-z0-9_]{8}(?=[/.])"
-                  r"|[0-9a-fA-F]{7,}|[0-9]+(?:\.[0-9]+)?")
+# Only known temporary namespaces identify random filename components. Ordinary
+# command/test basenames, including eight-letter suffixes, remain significant.
+TEMP_NAME = re.compile(
+    r"(?P<prefix>[/\\](?:tmp|temp|Temp|T)[/\\]tmp|(?<![\w.-])"
+    r"(?:zzzops-card-budget-|zzzops-claude-acceptance-|\.zzzops-cleanup-|\.legacy-))"
+    r"[a-z0-9_]{8}(?=$|[/\\.\s'\":])")
+NORM = re.compile(r"0[xX][0-9a-fA-F]+|[0-9a-fA-F]{7,}|[0-9]+(?:\.[0-9]+)?")
 
 
 def norm(text: str) -> str:
+    text = TEMP_NAME.sub(lambda m: m.group("prefix") + "#", text)
     return NORM.sub("#", text)
 
 
