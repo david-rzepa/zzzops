@@ -298,11 +298,11 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
-          "carrier_fp": "v1:sha256:1330c2e53567510008563d52d8552059418aae5fe63147991c1866f850594856",
+          "carrier_fp": "v1:sha256:b23ee8129f96839f57c8d53cd17307028248ef6643787d735eb69871661d60b0",
           "id": "run_tests:failed",
           "note": null,
           "repeats": 1,
@@ -310,27 +310,27 @@
           "rounds": 1,
           "status": "open",
           "target": "implement",
-          "target_attempt": 4,
-          "target_fp": "v1:sha256:7108ab67680f3d76f9b0815e63f17210397283dc95c5f554d967b297dd5a97e4",
-          "text": "`python3 -m unittest discover -s .agents` exited 1:\nest_only_always_loaded_and_hot_path_contexts_are_enforced)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/.agents/test_prompt_stats.py\", line 39, in test_only_always_loaded_and_hot_path_contexts_are_enforced\n    self.assertEqual([], prompt_stats.budget_overruns(measurements))\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: Lists differ: [] != [('capture/codex', 3926, 3700)]\n\nSecond list contains 1 additional elements.\nFirst extra element 0:\n('capture/codex', 3926, 3700)\n\n- []\n+ [('capture/codex', 3926, 3700)]\n\n----------------------------------------------------------------------\nRan 973 tests in 1260.474s\n\nFAILED (failures=16, errors=2)\nZzzOps legacy cleanup preview\nTarget: /tmp/tmp7tc0h9vt\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n",
+          "target_attempt": 6,
+          "target_fp": "v1:sha256:665c1a48ecb9d0481ff220cc14eeef74001556d4066a91e3670318e7ceaee1f6",
+          "text": "`python3 .github/scripts/run_product_validation.py --platform linux --local` exited 1:\nnodes_are_listed_on_approvals_and_the_pr_body\", 31.702221125997312], [\"test_engine_branching.FinishTests.test_finish_merges_into_production_back_into_dev_and_keeps_the_branch\", 30.951667804001772]], \"executed_count\": 1033, \"completed_count\": 1033, \"worker_seconds\": [132.91294111200114, 125.12651668699982, 128.6489594359955, 132.83775874999992, 128.99580386800517, 134.96531223100465, 126.38965011900291, 137.12847257700196, 137.71984893499757, 139.07937863400002, 132.97785344499425, 126.74510370800272, 137.60869689399988, 127.2843159289987, 129.6436883149945, 137.50587304500368, 147.34848879000492, 132.69875732999935, 139.6579571559996, 136.08517986499646], \"failures\": 2, \"errors\": 0, \"failure_ids\": [\"test_engine_review_lenses.ReviewerCardTests.test_review_impl_card_searches_the_goals_own_commit\", \"test_engine_owner_questions.OwnerJourneyTests.test_cards_carry_the_instruction_and_stay_within_the_limit\"], \"error_ids\": [], \"error\": \"Command '['/usr/bin/python3', 'local-tests']' returned non-zero exit status 1.\"}\n",
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-02T22:59:11Z",
+      "finished_at": "2026-11-03T01:42:10Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:c3310051bb5e3346113920d400e99b50f0480d9fa526e03f68de2ec781a73995",
+          "code": "v1:sha256:0b3916a87f571c95b532f95a90158ba468aad6a0163da62de7ce32163b025a4d",
           "commands": "v1:sha256:66032a15fc7babe8a9dacf05626d9032570911439d06076f5e81ca39771a4f65"
         },
         "policy": {
           "verification.commands": [
-            "python3 -m unittest discover -s .agents"
+            "python3 .github/scripts/run_product_validation.py --platform linux --local"
           ]
         }
       },
-      "holder": "codex:takeover/op",
-      "input_fp": "v1:sha256:1330c2e53567510008563d52d8552059418aae5fe63147991c1866f850594856",
+      "holder": "codex:takeover/1038-runtests-sharded",
+      "input_fp": "v1:sha256:b23ee8129f96839f57c8d53cd17307028248ef6643787d735eb69871661d60b0",
       "ok": false,
       "output": {
         "result": {
@@ -338,39 +338,93 @@
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_merge_sync.py'",
               "exit": 0,
+              "milliseconds": 9364,
               "seconds": 9,
-              "tail": " encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp8qozkxyc/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp8qozkxyc/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...\n----------------------------------------------------------------------\nRan 32 tests in 9.191s\n\nOK\n"
+              "source": "goal",
+              "tail": " get the object allocation traceback\n/home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpheevfgm2/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...\n----------------------------------------------------------------------\nRan 32 tests in 9.287s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_conventional.py'",
               "exit": 0,
+              "milliseconds": 8306,
               "seconds": 8,
-              "tail": " encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpnb98quj0/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmppnlr33nz/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.......\n----------------------------------------------------------------------\nRan 10 tests in 8.371s\n\nOK\n"
+              "source": "goal",
+              "tail": " encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmps11k_t63/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp9teqa4zs/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.......\n----------------------------------------------------------------------\nRan 10 tests in 8.243s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_capabilities.py'",
               "exit": 0,
+              "milliseconds": 5635,
               "seconds": 5,
-              "tail": "...........................\n----------------------------------------------------------------------\nRan 27 tests in 5.734s\n\nOK\n"
+              "source": "goal",
+              "tail": "...........................\n----------------------------------------------------------------------\nRan 27 tests in 5.587s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_design_docs.py'",
               "exit": 0,
+              "milliseconds": 296,
               "seconds": 0,
+              "source": "goal",
               "tail": "...................................\n----------------------------------------------------------------------\nRan 35 tests in 0.251s\n\nOK\n"
             },
             {
-              "cmd": "python3 -m unittest discover -s .agents",
+              "cmd": "python3 .github/scripts/run_product_validation.py --platform linux --local",
               "exit": 1,
-              "seconds": 1260,
-              "tail": "est_only_always_loaded_and_hot_path_contexts_are_enforced)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/.agents/test_prompt_stats.py\", line 39, in test_only_always_loaded_and_hot_path_contexts_are_enforced\n    self.assertEqual([], prompt_stats.budget_overruns(measurements))\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: Lists differ: [] != [('capture/codex', 3926, 3700)]\n\nSecond list contains 1 additional elements.\nFirst extra element 0:\n('capture/codex', 3926, 3700)\n\n- []\n+ [('capture/codex', 3926, 3700)]\n\n----------------------------------------------------------------------\nRan 973 tests in 1260.474s\n\nFAILED (failures=16, errors=2)\nZzzOps legacy cleanup preview\nTarget: /tmp/tmp7tc0h9vt\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n"
+              "milliseconds": 147532,
+              "seconds": 147,
+              "source": "verification",
+              "tail": "nodes_are_listed_on_approvals_and_the_pr_body\", 31.702221125997312], [\"test_engine_branching.FinishTests.test_finish_merges_into_production_back_into_dev_and_keeps_the_branch\", 30.951667804001772]], \"executed_count\": 1033, \"completed_count\": 1033, \"worker_seconds\": [132.91294111200114, 125.12651668699982, 128.6489594359955, 132.83775874999992, 128.99580386800517, 134.96531223100465, 126.38965011900291, 137.12847257700196, 137.71984893499757, 139.07937863400002, 132.97785344499425, 126.74510370800272, 137.60869689399988, 127.2843159289987, 129.6436883149945, 137.50587304500368, 147.34848879000492, 132.69875732999935, 139.6579571559996, 136.08517986499646], \"failures\": 2, \"errors\": 0, \"failure_ids\": [\"test_engine_review_lenses.ReviewerCardTests.test_review_impl_card_searches_the_goals_own_commit\", \"test_engine_owner_questions.OwnerJourneyTests.test_cards_carry_the_instruction_and_stay_within_the_limit\"], \"error_ids\": [], \"error\": \"Command '['/usr/bin/python3', 'local-tests']' returned non-zero exit status 1.\"}\n"
             }
           ],
           "passed": false,
-          "tree": "250f56c3619f7471578fea139dcfc1ed6a7a80da"
+          "timing": {
+            "baseline": {
+              "reason": "legacy_timing",
+              "source": {
+                "finished_at": "2026-11-03T00:54:32Z",
+                "goal": 1043,
+                "goal_commit": "06dc3de880b402521726a58bd6735922b6c5c274",
+                "merge_commit": "02bc6c2f21e1508406e6cfb666c16e61961ff708",
+                "node": "run_tests",
+                "target": "dev",
+                "tree": "c6baab65505807deb96ce5e053588a5da47fff18"
+              },
+              "status": "unavailable",
+              "verification": {
+                "reason": "legacy_timing",
+                "source": {
+                  "finished_at": "2026-11-03T00:54:32Z",
+                  "goal": 1043,
+                  "goal_commit": "06dc3de880b402521726a58bd6735922b6c5c274",
+                  "merge_commit": "02bc6c2f21e1508406e6cfb666c16e61961ff708",
+                  "node": "run_tests",
+                  "target": "dev",
+                  "tree": "c6baab65505807deb96ce5e053588a5da47fff18"
+                },
+                "status": "unavailable"
+              }
+            },
+            "cpu_budget": 20,
+            "environment": {
+              "cpus": 20,
+              "platform": "linux",
+              "python": "3.14"
+            },
+            "goal_ms": 23601,
+            "parallel_commands": false,
+            "plan_sha256": "5c3b75410e044de92fc1b9c96f531c6d538ffd3c890b0563bb6bf6d23182e7a9",
+            "total_ms": 171133,
+            "verification_ms": 147532,
+            "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1",
+            "workers": {
+              "goal": 20,
+              "verification": 20
+            }
+          },
+          "tree": "5190ad825a3c6b7785d6220a9ef7fd5b3243f551"
         }
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "test_design": {
