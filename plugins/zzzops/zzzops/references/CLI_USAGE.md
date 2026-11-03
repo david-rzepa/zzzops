@@ -47,4 +47,4 @@ Response-key refusals include `details.why` for each `no_longer_live` id: `super
 
 **Round budgets:** `round_budget` gates per-stage limits on new material-finding rounds (default 10); see [adoption](MIGRATING.md#clean-sync-reviews-and-round-budgets).
 
-**Default policy updates.** `next` shows advisory `policy_update`; `validate` expands it with local edits, diff/apply commands and provenance records. Use bootstrap's “Update from the shipped defaults” to update, infer or decline through a policy branch; nothing is automatic. `.zzzops/TEMPLATE.json` pins blob ids; `templates/history/` holds old contents. `unknown_base` means upgrade before comparing; `newer_record` offers no replacement. Tombstones prevent older plugins resurrecting removed files. `policy_merge_markers` is a validation warning. Maintainers: run `.agents/template_history.py --write` for changed defaults; never prune history or reuse a removed file name.
+[Defaults](MIGRATING.md#shipped-default-updates).

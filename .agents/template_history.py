@@ -4,8 +4,11 @@
 History is append-only and deduplicated by normalised Git blob id. A removed
 file name must never be reused for a re-added default: choose a new name,
 because older engines treat a recognised tombstone as reviewed. --seed-ref is
-for the initial seed from published dev history; normal upkeep reads only the
+for published integration snapshots on the ref's first-parent history, never
+intermediate goal commits; normal upkeep reads only the
 current files and needs no Git history (so it also works in source bundles).
+The caller must choose a known merged integration ref: first-parent ancestry
+alone does not prove publication for an arbitrary ref or fast-forward history.
 """
 from __future__ import annotations
 
@@ -27,13 +30,13 @@ def content_id(data):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true", help="append missing current template versions")
-    parser.add_argument("--seed-ref", help="also preserve every template version reachable from this Git ref")
+    parser.add_argument("--seed-ref", help="also preserve template snapshots on this integration ref's first-parent history")
     args = parser.parse_args()
     versions = {(p.suffix, p.read_bytes().replace(b"\r\n", b"\n")) for p in TEMPLATE.rglob("*") if p.is_file()}
     if args.seed_ref:
         def git(*argv):
             return subprocess.check_output(["git", "-C", str(ROOT), *argv])
-        commits = git("log", "--format=%H", args.seed_ref, "--", REL).decode().splitlines()
+        commits = git("log", "--first-parent", "--format=%H", args.seed_ref, "--", REL).decode().splitlines()
         blobs = set()
         for commit in commits:
             for entry in git("ls-tree", "-r", "-z", commit, "--", REL).split(b"\0"):
