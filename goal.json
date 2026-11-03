@@ -222,15 +222,15 @@
       "status": "done"
     },
     "review_impl": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [
         {
           "id": "review_impl:1:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "implement",
           "target_attempt": 6,
           "target_fp": "v1:sha256:5d375e0fc452429996b3c0c1b20275189227b2d2ead73e36c1380950ae5e29b4",
@@ -238,36 +238,36 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-03T01:39:58Z",
+      "finished_at": "2026-11-03T01:51:24Z",
       "fp_parts": {
         "def": "v1:sha256:26d52f7c1e95a9a360138793f2fb0f00e219376e89af10aba678844b7efdb731",
         "inputs": {
-          "code": "v1:sha256:ddf95d18ae003da0661e8c2bc31243135e01a277bb698ebe609ef95f3300a704",
+          "code": "v1:sha256:4069cf3c1c2fd36502c3497702406302460309f14f8bc732467af43b1094179e",
           "doc": "v1:blob:3f7f884dc1f76f4d638f9e1f8bc3fe5c9aa0d288",
           "tests": "v1:sha256:0f416aef89d410554ab7b20d3152e5847fb8a751b4997a8f492ba863b4613954"
         },
         "policy": {},
-        "subject": "v1:sha256:5d375e0fc452429996b3c0c1b20275189227b2d2ead73e36c1380950ae5e29b4"
+        "subject": "v1:sha256:335b54521e29449f1982d7d4a8a2a7fac8366502eb1db57afa30080b5f4cbb29"
       },
-      "holder": "codex:takeover/1040-review-impl-sharded",
-      "input_fp": "v1:sha256:7e7a12fd022c9ef540060df1e64a3e1a74934f5143700b91b28f1e562df9b85b",
-      "ok": false,
+      "holder": "codex:takeover/1040-review-impl-normalized",
+      "input_fp": "v1:sha256:370f980cc750964de75c90ef8a612d3ca521635bb8ac63d333c2d230373a445c",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "de2ddb261d19908fb4415fecb525c992cae72706",
-          "commit": "1d3dd47dc1a7461636d039852738b9e03b9a923a",
+          "blob": "466e64f2733b6d121459c46fc3911277aee8ab1d",
+          "commit": "3ee61d12562070dd490344193efe9167d0415f3a",
           "path": ".zzzops/reviews/1040/review_impl.md"
         },
-        "summary": "Changes requested: distinct stable script names check-strategy.js and check-protocol.js normalize identically and falsely escalate a new failure as a repeat. The exact code tree passed all four recorded commands and 1008 canonical tests, and frozen tests are unchanged, but this missing boundary case needs a narrow correction."
+        "summary": "Approved: review_impl:1:1 is resolved. Normalization preserves stable command/test filenames and options, recognizes only documented temporary contexts, and keeps different-command round 1 versus true-repeat round 2. The final exact tree passed all four required commands, including 1011 canonical tests; frozen tests are unchanged."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "code": {
           "base": "61290a45d137ef839b244555c74b6e45a58a7fa6",
-          "change": "887f6f955c769394893d0cd7f5e6fb05ced73b8b",
-          "commit": "ae66e8722c6622441cf446fd90290fe8ba1b5834",
-          "tree": "88ad6a48b2511e3fa40dc119a1784c3cb751909f"
+          "change": "1a819d77c692c1aa7dd4d01c9901b570baa4cc0a",
+          "commit": "12d66a6a0dc319095bd630d114d77545d471f110",
+          "tree": "23bfd9ff30c37db4f0c62dd1775cbb66a4db9d7b"
         }
       },
       "status": "done"
