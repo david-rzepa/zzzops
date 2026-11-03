@@ -49,7 +49,20 @@
     "base": {
       "attempt": 5,
       "correction_runs": 4,
-      "findings": [],
+      "findings": [
+        {
+          "id": "base:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "base",
+          "target_attempt": 5,
+          "target_fp": "v1:sha256:1a04ab8209d1836b9715e2672c605f05bdb7671f8f42bd2ed75fda3d757e02a6",
+          "text": "G1040 merged; refresh combined branch before final implementation review and integration",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-03T01:29:23Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
