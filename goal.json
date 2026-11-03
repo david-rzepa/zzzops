@@ -33,6 +33,56 @@
   },
   "priority": "P1",
   "records": {
+    "adversary_design": {
+      "attempt": 1,
+      "correction_runs": 1,
+      "findings": [
+        {
+          "id": "adversary_design:1:1",
+          "impact": "A direct nonconflicting production-branch change during the run can be merged and deployed even though it was absent from the staged build, while both recorded approvals still name the same unchanged release tip; the owner and app users receive untested/unapproved combined code.",
+          "material": true,
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 5,
+          "target_fp": "v1:sha256:bee6c9f3d6fb3db7ffe149b4830be16f5b4f5ee763bafb48e597ad0973198fff",
+          "text": "Phase7 and A10 bind staging/production approval to the release tip alone, but an unchanged release tip does not prove that finishing into a moved production target deploys the staged code. At read_dev, git.line_finish checks the recorded line head and mergeability; a nonconflicting target-only commit survives the merge without changing that head. Extend the private release runbook and A10 evidence to capture the target tip and actual promotion candidate tree/artifact alongside the staged identity. Re-evaluate before the irreversible promotion whenever either relevant tip changes; if equality to accepted staging is lost or unproven, stop and re-stage/re-obtain the separate owner approvals rather than treating the unchanged release head as sufficient. Clarify that external staging evidence becoming stale is a root procedure, not an automatic engine guarantee. This needs no app/engine deploy-flow redesign or new privacy machinery.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-03T17:37:47Z",
+      "fp_parts": {
+        "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
+        "inputs": {
+          "doc": "v1:blob:982d3c13e410a3f3c6bf0584d8e1cce94d67cb06",
+          "spec": "v1:sha256:e2c063ee9322840387685a5c86388a130816b2a8e1960e4e6cdd0d7ede8870e3"
+        },
+        "policy": {},
+        "subject": "v1:sha256:bee6c9f3d6fb3db7ffe149b4830be16f5b4f5ee763bafb48e597ad0973198fff"
+      },
+      "holder": "codex:takeover/1037-adversary-design",
+      "input_fp": "v1:sha256:4f2b3562e31a10b3dc9a763a61ab3e1a0cf525f88ffc92dc34537d99544adb5d",
+      "ok": true,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "b599cf162254cac3951eaa5bcfa4e92847584e52",
+          "commit": "4055d9f3da28b46191f20c5fd54dd54dee1c0439",
+          "path": ".zzzops/reviews/1037/adversary_design.md"
+        },
+        "summary": "One material release-evidence gap: equal release tips do not guarantee staged/production content equality when the production target moves. Require a procedural target/candidate identity check and renewed staging/owner approvals when that proof changes. OD1–OD8, privacy convention and genuine both-harness participation otherwise remain intact."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "982d3c13e410a3f3c6bf0584d8e1cce94d67cb06",
+          "commit": "dbef3a2e2e23ddac93901aa87524043374d7ea4b"
+        }
+      },
+      "status": "done"
+    },
     "approve_design": {
       "attempt": 2,
       "correction_runs": 1,
