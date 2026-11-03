@@ -47,6 +47,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-03T04:07:58Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:2021ea3bbad9e3311f867ea7259cfc73411cea961eda76d201496e81df3ab2d2"
+        },
+        "policy": {},
+        "subject": "v1:sha256:260bea012334690e689bd73db4965af67c779d9752a8c47527e4dd266e24089f"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:756489c354b3ca443c6dcdf0c8b5c1e72355add2be0758e6f724a0de0d4021d3",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-03T04:07:58Z",
+        "decided_by": "Codex (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approve G1039 at exact PR head97cd76e9fb7006e0c6a47d2ea1f8ec5c8504d59b on dev8e5b98b6. Clean-sync carry uses U0 plus conservative binary union-position guards while retaining stored identities; semantic sync-review base edge and bounded evidence are implemented; round_budget opt-in counts new material agent rounds per stage with legacy behavior retained. Zero-budget empty-stage crash and card boundary regressions are fixed, full instruction guidance retained, original migration assertions preserved. Independent implementation review approved exacttree37acf87b; all seven required commands and1090/1090 canonical tests passed131.014s; all20CI checks pass including Windows/macOS. Frozen7 and shippeddefaultPOLICY unchanged; installed capability activation remains a separate reviewed step. Routine merge under explicit owner delegation."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "8e5b98b63dd2ad6c8f719fbf1bd5ac273c9af9a7",
+          "change": "41361dd2092e0e1347158b01e72176ba854e1497",
+          "commit": "ab919a9ed5e1655a442586979f88fe2106de76d8",
+          "tree": "37acf87b845f58778aa1dccb55dfe32c4d8dbf1d"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 1,
       "correction_runs": 0,
