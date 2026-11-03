@@ -129,7 +129,20 @@
     "implement": {
       "attempt": 8,
       "correction_runs": 7,
-      "findings": [],
+      "findings": [
+        {
+          "id": "implement:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "implement",
+          "target_attempt": 8,
+          "target_fp": "v1:sha256:4675f4be7437e1d545a4c29f4d107b296d26a3a264d1569fa6ff8af07c7d3ec7",
+          "text": "Windows native CI found CRLF fixture construction mismatch in new scoped-shell control; preserve exact comparison and use deterministic fixture bytes",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-03T02:17:11Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
