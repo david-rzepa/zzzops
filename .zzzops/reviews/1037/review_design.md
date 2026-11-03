@@ -1,39 +1,41 @@
-# G1037 design review, attempt 4
+# G1037 consolidated design review
 
-Approved. The reviewed subject is design blob `982d3c13e410a3f3c6bf0584d8e1cce94d67cb06`, compared with `3d5740027b00e0543fd2d9a6c0eeae3c3447bbac` and checked against integration commit `de5640d1c5909ea924450aeea6450497a78946f6` and the reviewed G1038–G1040 designs. There are no open prior findings on this card and no new finding.
+Approved with no findings. The plan preserves OD1–OD8, the private/public boundary and separate deployment decisions. It is a plan for gathering real observations, not a claim that the run or either harness's participation has already succeeded.
 
-## Spec and owner decisions
+I read the complete spec, attempt-5 design, current project intent, all seven applied lens instructions and the reconciled integration policy at `edb9b2c9aa317220a8e1340f27c40b6a4b6a1b5a`. I also checked the current migration checklist and recorded-tip release finishing behavior. I did not read other reviewers' artifacts, change the private app, deploy anything or run an external harness.
 
-OD1–OD8 are preserved verbatim with the existing identifying-word redactions. The nine-phase plan still covers migration of all open goals with releases, Release 1 execution, later-release holds, a real stacked dependent and post-dependency sync, a cut/sync/finish release, naturally encountered failure paths, defect goals, cost reporting and the lens re-score. The write-up remains generic, and app-specific plans and evidence remain in the private journal.
+## Intent
 
-The new text does not waive deployment approval: design approval authorizes only the planned repository work; staging and production each require their own owner approval. Staging and finish are tied to the same release tip, and a moved tip requires renewed decisions. The app's promotion steps stay outside the engine. Routine delegated approvals are distinguished from consequential owner choices, review-raised owner questions and deployment decisions; the actual decision-maker must be recorded. No deployment or private-app mutation was performed for this review.
+The plan exercises durable repository work through the project-owned graph and exposes defects before the whitepaper. It carries all counted legacy issues through owner-reviewed triage/release assignment, executes Release 1 and explicitly holds later releases rather than inventing work to manufacture observations. The default graph remains configurable, and deployment remains outside the engine. The already recorded scope/deployment/privacy decisions are preserved; no unresolved new owner choice is introduced.
 
-The design still excludes new scrub machinery, per-write gates and history-wide scans. A15 remains the one prepublication name/slug check on the report and this goal's public artifacts. No identifying app information appears in the reviewed artifact or this report.
+## Simplicity
 
-## Dependency adoption
+The nine phases reuse existing installation, bootstrap, migration, goal, policy and release mechanisms. The private journal is evidence and coordination rather than another engine state store. No custom process graph, permanent acceptance framework, injected product defect or new scrub machinery is introduced. The root-held run lease and milestone report provide a visible resumable run without multiplying child process goals.
 
-The revision fixes the important distinction between an engine feature being present and the run opting into it. Phase 3 retains template requirements and explicitly requires `release_lines`, `merge_sync`, `round_budget` and `blocked_findings`, with `finding_follows` required when that record form is used. A18 verifies the installed policy and both engines rather than assuming that copying POLICY activates everything.
+## Truth
 
-This matches the settled dependency designs:
+Required capability names and paired prompt/workflow adoption agree with the current contracts: `release_lines`, `merge_sync`, `round_budget`, `blocked_findings` and conditional `finding_follows`, without invented `owner_answers` or `sync_carry`. The plan distinguishes stack-ready base from the stronger dependency-merged precondition for the real run. G1024 reviewed versus inferred provenance, workflow-first reconciliation, sync/carry observations and live-findings behavior remain qualified correctly.
 
-- G1038 revision 3 gates merge mode on `merge_sync`; preserves forward history; uses scoped frozen tests and HEAD; squashes the PR onto the recorded synced base rather than an unrelated later trunk tip. The run adopts these rules and supersedes the older worker instruction to reorder test fixes before implementation. Empty tests or implementation parts are allowed as the dependency specifies.
-- G1039 revision 3 keeps the recorded change identities only when its per-node clean predicate accepts the sync. The revision explicitly allows conservative staling for altered goal lines and hand resolutions that are not accepted whole-side unions. The non-context `review_impl.inputs.base` edge and after-sync prompt are adopted together so implementation review re-runs even when the subject checkpoint is carried; verification re-runs for the changed tree. The per-stage budget is observed under `round_budget`, with no new counter or forced carry.
-- G1040 revision 2 requires the new design step 4 before or together with `blocked_findings`. The plan includes that pairing, distinguishes answered from unanswered owner questions and genuinely stale carriers, and observes surviving live corrections/refusals/check recurrence only when they occur. It neither manufactures failures nor claims unobserved paths passed.
+Both real harnesses must participate. Matching installed launchers is installation evidence only; it is not proof that a real Claude worker has run. That acceptance observation remains pending until actual participation is recorded. Unavailable harnesses delay the required observation rather than yield an assumed pass. Natural failure paths and clean carry are likewise reported not observed when absent; dependency tests are not misreported as dogfood observations.
 
-The current integration tip has `release_lines`, `finding_follows`, `lens_findings` and `lenses` but not the pending friction-fix capabilities. The design accurately requires all dependencies to merge before the real run and installation of the resulting merged build in both harnesses. It does not pretend those capabilities are already available. An unavailable harness delays the observation instead of producing an assumed pass.
+## Adversary
 
-G1026 uses history-backed human decisions and has no `owner_answers` capability; the plan no longer invents one. `sync_carry` is likewise correctly rejected as a provisional name. Branch retention advice and provenance recording are adopted from their owning dependency designs without expanding this goal into an engine change.
+The owner approves the real repository plan before writes, then confirms migration triage and the old-policy mapping. The owner's uncommitted state and existing sessions/worktrees are protected by the fresh-clone/read-only-owner-checkout boundary. Consequential decisions, owner questions and staging/production approvals remain the owner's. Delegates record their actual role and cannot manufacture owner quotes.
 
-## Feasibility, authority and validation
+Public artifacts stay generic; app-specific plan, identities, commands and transcripts remain private, and only anonymised results/totals are published. A15 follows the explicitly chosen one-time naming check. I require neither a new scrub gate nor a broader scan contrary to OD8.
 
-The revised base row is accurate: stack-ready engine operations may advance before dependencies merge, while this real run waits for all dependency merges as an explicit root precondition. The engine's existing `lines.finish` uses the approved recorded tip and rejects a moved live tip; separate outside-engine staging evidence remains a run obligation. No deploy-aware engine extension is proposed.
+## Concurrency
 
-A1–A20 give the later test writer and independent implementation reviewer concrete checks. The new A18 checks adoption; A19/A20 distinguish observed behavior from cases covered only by dependency tests. Cost totals remain recomputable from the privately held per-holder data, with only anonymized totals published. The existing owner-checkout snapshot and freeze checks remain. No permanent test helper, new stored format or custom graph is introduced.
+The explicit freeze, two clones, holder map and root-held renewing run lease provide a clear coordination boundary. Work on an urgent fix goes through an engine hotfix rather than a competing uncontrolled write. Phase order prevents beginning the real run on incomplete dependencies. Release-tip binding and renewed approval after movement prevent an earlier staging observation from authorizing a later tip. Policy pauses and intentionally stopped/lapsed phase recovery are observed through the existing engine contracts, not hand-edited state.
 
-The material risks are named: production impact, mixed builds, accidental removal of merge mode, adoption gaps, naming, owner load and dependency delay. Abort preserves the new engine and branches. Required separate approvals and the public/private boundary remain intact.
+## Rollout
 
-No design change is needed. No new owner question meets the project's threshold.
+The plan installs a merged build in both harnesses and checks actual available/required capabilities before use. It adopts gated behavior and the matching prompt/base edge together rather than assuming the copied POLICY enables everything. Required CI, verification and intent come from the target project/owner. Migration remains proposal-first, dependency-ordered and resumable; cleanup and deletion require the owner's word. The abort keeps the new engine and branches, respecting the restriction against removing merge_sync from open merge-synced work.
 
-## Dogfood notes
+The current line-finishing code uses the approved recorded sync tip for production and back-merges. The plan keeps the app's staging promotion outside the engine and requires its own approval, then a separate production/finish approval tied to the same staged tip. This design approval itself grants no staging or production deployment authority.
 
-None. This was a read-only source and design review followed by the contracted review submission.
+## Experience
+
+A1–A20 provide falsifiable checks and distinguish actual observations from not-observed cases. Milestone notes, per-goal/node cost totals, bounded disclosure of defects and a lens re-score give the whitepaper evidence without exposing app details. Missing harness participation, unresolved owner questions, blocked work and partial failure remain visible. The final independent implementation review reruns acceptance commands and recomputes report tables; it must not treat this design approval as completed acceptance.
+
+No prior finding is open on this card. No new engine interface, stored format or product policy is proposed by this review.
