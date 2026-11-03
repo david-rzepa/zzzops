@@ -289,14 +289,14 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-03T01:51:19Z",
+      "finished_at": "2026-11-03T02:18:54Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:670ac3e208148ec32452bef5310ede5567db8c6ea23039ddad783ff3c8080fae",
+          "code": "v1:sha256:91a04e2c5bf24921f648ebcc3b977e1232d51887ddcf5da67cbcdf13087239fd",
           "commands": "v1:sha256:66032a15fc7babe8a9dacf05626d9032570911439d06076f5e81ca39771a4f65"
         },
         "policy": {
@@ -305,8 +305,8 @@
           ]
         }
       },
-      "holder": "codex:takeover/1038-runtests-cardfix",
-      "input_fp": "v1:sha256:313265aa02f33c042d3a3567de5d97084efed101c714a726868d1346f4ba6df4",
+      "holder": "codex:takeover/1038-runtests-powershell-final",
+      "input_fp": "v1:sha256:269a7f1fd2ef15d3cfff3293d72e0af25d924702c9150f0df95e0c746f5fb06f",
       "ok": true,
       "output": {
         "result": {
@@ -314,70 +314,73 @@
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_merge_sync.py'",
               "exit": 0,
-              "milliseconds": 9249,
+              "milliseconds": 9352,
               "seconds": 9,
               "source": "goal",
-              "tail": " get the object allocation traceback\n/home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp2uqbrzyx/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...\n----------------------------------------------------------------------\nRan 32 tests in 9.171s\n\nOK\n"
+              "tail": " get the object allocation traceback\n/home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp3a5nxsas/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n...\n----------------------------------------------------------------------\nRan 32 tests in 9.275s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_conventional.py'",
               "exit": 0,
-              "milliseconds": 8284,
+              "milliseconds": 8274,
               "seconds": 8,
               "source": "goal",
-              "tail": " encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpw6hkevt3/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpqk6r1arm/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.......\n----------------------------------------------------------------------\nRan 10 tests in 8.219s\n\nOK\n"
+              "tail": " encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpedwpj6za/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n./home/dave/Work/dev/zzzops/.zzzops/worktrees/g1038/plugins/zzzops/zzzops/engine/worktree.py:34: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpwu69gafh/a/.git/info/exclude' mode='r' encoding='utf-8'>\n  existing = open(path, encoding=\"utf-8\").read() if os.path.exists(path) else \"\"\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.......\n----------------------------------------------------------------------\nRan 10 tests in 8.210s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_capabilities.py'",
               "exit": 0,
-              "milliseconds": 5595,
+              "milliseconds": 5615,
               "seconds": 5,
               "source": "goal",
-              "tail": "...........................\n----------------------------------------------------------------------\nRan 27 tests in 5.544s\n\nOK\n"
+              "tail": "...........................\n----------------------------------------------------------------------\nRan 27 tests in 5.567s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_design_docs.py'",
               "exit": 0,
-              "milliseconds": 300,
+              "milliseconds": 305,
               "seconds": 0,
               "source": "goal",
-              "tail": "...................................\n----------------------------------------------------------------------\nRan 35 tests in 0.253s\n\nOK\n"
+              "tail": "...................................\n----------------------------------------------------------------------\nRan 35 tests in 0.258s\n\nOK\n"
             },
             {
               "cmd": "python3 .github/scripts/run_product_validation.py --platform linux --local",
               "exit": 0,
-              "milliseconds": 135443,
-              "seconds": 135,
+              "milliseconds": 128765,
+              "seconds": 128,
               "source": "verification",
-              "tail": "test_engine_lenses.FullLensJourneyTests.test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body\", 30.794604763003008], [\"test_engine_journeys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 30.473806387999502], [\"test_engine_lenses.RenamedFullLensJourneyTests.test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body\", 30.229452817999118], [\"test_engine_branching.SyncTests.test_dev_moving_under_an_open_sync_pr\", 29.39516007399652]], \"executed_count\": 1034, \"completed_count\": 1034, \"worker_seconds\": [125.30586837999726, 119.63761870800226, 124.08244859299884, 125.24539217499841, 121.06312888499815, 128.68806152100296, 121.56189433200052, 128.1703787869992, 130.40372437199403, 133.62118241500139, 128.09890746999736, 115.90378073600004, 128.53720062699722, 117.26007356400078, 117.81827198900282, 126.5303035399993, 135.31078870399506, 128.5306222290019, 135.0183362930038, 128.66457407999405], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
+              "tail": "test_engine_journeys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 29.212505941999552], [\"test_engine_lenses.FullLensJourneyTests.test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body\", 29.033691960998112], [\"test_engine_lenses.RenamedFullLensJourneyTests.test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body\", 29.031645765004214], [\"test_engine_branching.SyncTests.test_dev_moving_under_an_open_sync_pr\", 28.42283938300534]], \"executed_count\": 1063, \"completed_count\": 1063, \"worker_seconds\": [123.01057831100479, 113.16818117399816, 121.03458707000391, 122.13262290199782, 111.87681642700045, 112.7084778339995, 118.6363232779986, 122.42930328199873, 127.04263868099952, 117.81277710400173, 124.66588222200517, 114.68436614999518, 125.01115309399756, 121.49526922299992, 126.51518536700314, 125.12507583299885, 128.6364441120022, 124.47590730599768, 126.35489015799976, 122.0171968959985], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
             }
           ],
           "passed": true,
           "timing": {
             "baseline": {
-              "reason": "legacy_timing",
+              "reason": "changed_commands_or_allocation",
               "source": {
-                "finished_at": "2026-11-03T00:54:32Z",
-                "goal": 1043,
-                "goal_commit": "06dc3de880b402521726a58bd6735922b6c5c274",
-                "merge_commit": "02bc6c2f21e1508406e6cfb666c16e61961ff708",
+                "finished_at": "2026-11-03T01:45:50Z",
+                "goal": 1040,
+                "goal_commit": "99d7220b4244384f4187d589a7b26dd364ca7da3",
+                "merge_commit": "41b4c50f755ea5ba76e8e4c6150ca5d91ed52a33",
                 "node": "run_tests",
                 "target": "dev",
-                "tree": "c6baab65505807deb96ce5e053588a5da47fff18"
+                "tree": "23bfd9ff30c37db4f0c62dd1775cbb66a4db9d7b"
               },
               "status": "unavailable",
               "verification": {
-                "reason": "legacy_timing",
+                "caveat": "informational; machine load and concurrent goal-command workload may differ",
+                "delta_ms": -10253,
                 "source": {
-                  "finished_at": "2026-11-03T00:54:32Z",
-                  "goal": 1043,
-                  "goal_commit": "06dc3de880b402521726a58bd6735922b6c5c274",
-                  "merge_commit": "02bc6c2f21e1508406e6cfb666c16e61961ff708",
+                  "finished_at": "2026-11-03T01:45:50Z",
+                  "goal": 1040,
+                  "goal_commit": "99d7220b4244384f4187d589a7b26dd364ca7da3",
+                  "merge_commit": "41b4c50f755ea5ba76e8e4c6150ca5d91ed52a33",
                   "node": "run_tests",
                   "target": "dev",
-                  "tree": "c6baab65505807deb96ce5e053588a5da47fff18"
+                  "tree": "23bfd9ff30c37db4f0c62dd1775cbb66a4db9d7b"
                 },
-                "status": "unavailable"
+                "status": "available",
+                "verification_ms": 139018,
+                "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1"
               }
             },
             "cpu_budget": 20,
@@ -386,18 +389,18 @@
               "platform": "linux",
               "python": "3.14"
             },
-            "goal_ms": 23428,
+            "goal_ms": 23546,
             "parallel_commands": false,
             "plan_sha256": "5c3b75410e044de92fc1b9c96f531c6d538ffd3c890b0563bb6bf6d23182e7a9",
-            "total_ms": 158871,
-            "verification_ms": 135443,
+            "total_ms": 152311,
+            "verification_ms": 128765,
             "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1",
             "workers": {
               "goal": 20,
               "verification": 20
             }
           },
-          "tree": "c1b90ea2a9989fc6934f2049fface1de3539bb7e"
+          "tree": "487cfc3e90368a905ed46f0745804dc8fdd2779d"
         }
       },
       "reason": "stale",
