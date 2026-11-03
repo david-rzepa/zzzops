@@ -2,24 +2,26 @@
 
 **Infinite backlog for agents. Finite bedtime for token-addicted humans.**
 
-ZzzOps is an agentic-engineering workflow for developers who want autonomous coding agents to bootstrap repositories and handle substantial work without constant supervision. Each goal is a small JSON document on its own Git branch; a configurable workflow of agent, human and Git/GitHub phases (design, review, approval, tests, implementation, checks, pull request, merge) runs over it, and agents always know exactly what to do next.
+ZzzOps is an agentic-engineering workflow for developers who want autonomous coding agents to bootstrap repositories and carry long-running work through durable, reviewable goals. Each goal lives on its own Git branch. A workflow owned by your project coordinates agents, independent reviews, checks and human decisions, so work can stop and resume without rebuilding the plan from chat history.
 
-Use ZzzOps when a task is too important or too long-lived to exist only in one chat. Agents keep moving, stop safely, and resume without you reconstructing the plan; you answer the decisions that are genuinely yours, batched.
+Use ZzzOps when a task is too important or too long-lived to exist only in one chat. It ships a default workflow you can customise; your decisions come back in batches.
 
 ## Get started
 
 ### 1. Install ZzzOps
 
-ZzzOps is an [Agent Plugin](https://agent-plugins.org/). For Codex, install it from the [official ZzzOps listing in the Codex Plugins Directory](https://chatgpt.com/plugins/plugins_6a7892fe4c548191a9e0dbfb8ac2c987), then open a new Codex task in the repository where you want to use it.
+ZzzOps is an [Agent Plugin](https://agent-plugins.org/). This page describes the Git-native engine under development on `dev` for v3. The latest published release is v2.1.0, the pre-reset engine; the workflow below needs a release containing the new engine.
 
-As a secondary Git option, pin an immutable release tag (this engine ships from v3.0.0; v2.x is the pre-reset engine):
+Once a supporting release is published, Codex users can install it from the [official ZzzOps listing in the Codex Plugins Directory](https://chatgpt.com/plugins/plugins_6a7892fe4c548191a9e0dbfb8ac2c987), then open a new Codex task in the target repository.
+
+As a secondary Git option, pin an immutable supporting release tag:
 
 ```powershell
 codex plugin marketplace add david-rzepa/zzzops@<release tag>
 codex plugin add zzzops@zzzops
 ```
 
-Claude Code users can install from this repository:
+Claude Code users can install a supporting release from this repository:
 
 ```powershell
 claude plugin marketplace add david-rzepa/zzzops@latest
@@ -44,7 +46,7 @@ Bootstrap writes `.zzzops/POLICY.json`, `.zzzops/workflow.json` and the node pro
 Use $add-zzzops-goal to capture <the thing we should eventually do>.
 ```
 
-You and the agent write the spec; the goal's design starts at once with a worker. Design approvals from several goals come back to you together.
+You and the agent write the spec, then a worker starts the design. If it needs an owner choice, the question comes back before it proceeds. Questions and design approvals from several goals are collected together.
 
 ### 4. Execute—and go to bed
 
@@ -52,13 +54,13 @@ You and the agent write the spec; the goal's design starts at once with a worker
 Use $execute-zzzops to work through all available goals until nothing safe remains.
 ```
 
-ZzzOps orders the work across goals (discovery first), dispatches agent phases to workers, runs the Git and GitHub steps itself, and asks you only for real decisions: design approvals, merge approvals, and questions agents could not answer. A goal that depends on another stacks its pull request on the dependency's, so it can be built and reviewed before the dependency merges; merges still happen in dependency order. Passing checks never replace your merge approval.
+The default workflow puts discovery first, dispatches workers, runs Git/GitHub operations, and brings design approvals, merge approvals and unresolved owner questions back to you. Delegating approvals does not let an agent invent an owner choice. Once a dependency has an integrated PR, a dependent goal can stack its PR on it, showing its own change before the dependency merges. Merges still happen in dependency order; passing checks never replace your merge approval.
 
 When you remember “one last thing,” add a goal instead of opening six files and seeing sunrise.
 
 ## What to read next
 
-- [How execution works](docs/EXECUTION.md) — goals, phases, corrections, stacked delivery, human decisions and recovery.
+- [How execution works](docs/EXECUTION.md) — goals, reviews, eligible carry after sync, checks, stacked delivery, optional release/hotfix lines and recovery.
 - [Skills](docs/SKILLS.md) and the [CLI reference](plugins/zzzops/zzzops/references/CLI_USAGE.md).
 - [Design and specification](docs/design/README.md) — the engine contract (SPEC) and its rationale (DESIGN).
 - [Maintaining ZzzOps](docs/MAINTAINING.md) — repository architecture, releases, CI, validation commands, file ownership, and prompt budgets.
@@ -69,7 +71,7 @@ When you remember “one last thing,” add a goal instead of opening six files 
 
 ZzzOps uses your existing Git and GitHub authentication and stores goals on Git branches of your repository (`zzzops/goal/*`), so goal visibility matches repository visibility. Do not put secrets, payment-card data, health information, government identifiers, or other restricted or raw sensitive data in goals; redact it or link to an approved private system.
 
-ZzzOps has no ZzzOps-operated server, telemetry, advertising, or commerce. It is independently developed and is not created, supported, certified, endorsed by, or affiliated with OpenAI or Anthropic. The installed control CLI requires Python 3.10 or newer.
+ZzzOps has no ZzzOps-operated server, telemetry, advertising, or commerce. It is independently developed and is not created, supported, certified, endorsed by, or affiliated with OpenAI or Anthropic. The installed control CLI requires Python 3.10 or newer. Repositories declare required engine capabilities, so an older plugin may need upgrading; `engine.min` is deprecated but still supported. Installing a new engine does not adopt its workflow or activate optional capabilities in an existing repository.
 
 The project is licensed under [Apache-2.0](LICENSE), including its patent grant. The license permits forks and reuse but does not grant rights to imply official endorsement or misuse the ZzzOps name.
 
