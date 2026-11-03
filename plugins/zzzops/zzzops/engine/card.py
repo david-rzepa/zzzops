@@ -5,16 +5,15 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
-import shlex
 
-from engine.identity import view_paths, Identity
+from engine.identity import Identity
 from engine.records import checkpoint_scope
 
 from engine.canon import canonical, iso
 from engine import schemas
 from engine.schemas import SHA, get_dotted, is_material, lens_label
 from engine.frontier import recorded_out, resolve
-from engine.render import clip, command, first_line, run_capability
+from engine.render import clip, command, first_line, run_capability, scoped_git_command
 from engine.schemas import SHA
 
 CARD_LIMIT = 4096
@@ -59,9 +58,9 @@ def view(reader, v):
 
 def checkpoint_view(cp, sub=None, scope=None, exclude=None, reader=None):
     """The card view of a checkpoint; `tree` only for a whole checkpoint or a `.tree` selector."""
-    paths = " ".join("':/'" if p == ":/" else shlex.quote(p) for p in view_paths(scope, exclude))
     out = {"commit": cp["commit"], "base": cp["base"], "change": cp["change"],
-           "diff": f"git diff {cp['base']} {cp['base'] if scope == [] else cp['commit']} -- {paths}"}
+           "diff": scoped_git_command(["diff", cp["base"], cp["base"] if scope == [] else cp["commit"]],
+                                      scope, exclude, quoted_root=True)}
     if sub in (None, "tree"):
         out["tree"] = cp["tree"]
     if len(scope or []) + len(exclude or []) > 12:
@@ -410,16 +409,17 @@ def previous(session, res, n, s) -> dict | None:
                 scope = checkpoint_scope(res.graph, subj, sr)
                 producer = res.graph.nodes[subj].get("preserve")
                 excluded = (((res.doc.get("records") or {}).get(producer) or {}).get("frozen") or []) if producer else []
-                paths = " -- " + " ".join(shlex.quote(p) for p in view_paths(scope, excluded))
                 if old["base"] == cur["base"]:
-                    prev["interdiff"] = f"git diff {old['commit']} {cur['commit']}" + paths
+                    prev["interdiff"] = scoped_git_command(["diff", old["commit"], cur["commit"]], scope, excluded)
                 else:
                     syncs = Identity(session.git).sync_merges(old["commit"], cur["commit"])
                     if syncs:
-                        prev["interdiff"] = f"git log -p --first-parent --no-merges {old['commit']}..{cur['commit']}" + paths
+                        prev["interdiff"] = scoped_git_command(
+                            ["log", "-p", "--first-parent", "--no-merges", f"{old['commit']}..{cur['commit']}"], scope, excluded)
                         prev["syncs"] = [f"git show --remerge-diff {c}" for c in syncs]
                     else:
-                        prev["interdiff"] = f"git range-diff {old['base']}..{old['commit']} {cur['base']}..{cur['commit']}" + paths
+                        prev["interdiff"] = scoped_git_command(
+                            ["range-diff", f"{old['base']}..{old['commit']}", f"{cur['base']}..{cur['commit']}"], scope, excluded)
             else:
                 prev["note"] = "previous version not available; review in full"
     if s.get("stale_because") == ["def"]:
