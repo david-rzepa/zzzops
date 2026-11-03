@@ -1,21 +1,13 @@
-# G1037 corrected-design review
+# G1037 independent design review, attempt 7
 
-Approved with no findings. I reviewed the changed design first, then checked its release procedure and acceptance check against the unchanged spec, OD1–OD8, project intent and the current line-finishing contract. No other review artifact was read.
+Approved with no findings. Reviewed the full card, design blob `2005eea5a61f11083eb5c99b91048b8935031c3d`, the complete change from attempt 6, the spec, unchanged policy/review instructions, and the coordinator-recorded owner answer. No other review of this subject was consulted.
 
-The correction closes an important distinction: an unchanged release head does not prove that the production merge contains only content observed in staging. The production target can carry additional nonconflicting changes. Phase 7 now identifies the resulting promotion candidate from both tips and the existing merge/build flow, including a deployable artifact when applicable. A10 requires evidence of what was actually staged and the resulting production content, rather than release-head equality alone.
+- **Intent:** OD9 reproduces the recorded owner quote exactly and explicitly supersedes mandatory dual-harness participation. The owner’s CLI-only scope is implemented throughout Outcome, Install, Execute, A1/A18 and reporting. The actual migration, real stacked dependent, release and measured report remain required. No new owner decision is unresolved.
+- **Simplicity:** An unused Claude installation or invocation is removed as a prerequisite. A separate clone remains available for the existing lease-reclaim observation without requiring another harness. No new graph, engine mechanism or permanent test is introduced.
+- **Truth:** Actual actor/holder, build, capabilities, validation and executed nodes/actions supply participation evidence. Installation, matching bytes and the owner’s assumption are expressly insufficient to establish Claude execution or measured equivalence. Unexecuted actors and missing measurements remain labelled honestly; invented runs and costs are forbidden.
+- **Adversary:** OD1–OD8 are unchanged by direct comparison. The private app remains anonymous, detailed evidence remains private, owner checkout/worktrees remain protected, and no scope override grants deployment authority.
+- **Concurrency:** The entire release procedure is byte-for-byte unchanged. Both relevant tips and candidate tree/artifact bind separate staging and production approvals. Freshness is re-evaluated before irreversible promotion and after waits/retries; changed or unproven identity stops promotion and requires restaging and renewed approvals. Movement must be excluded or accounted for through the irreversible step. These remain external root procedures, not engine guarantees.
+- **Rollout:** All dependencies must merge before the actual run. Protocol changes to A1/A18 must pass through test_design rather than implementation editing frozen acceptance checks. Actual writers retain required-capability checks, and actual reinstall/build associations are journaled.
+- **Experience:** The revised acceptance and report distinguish authorized Codex-only execution from untested harness equivalence. The confirmed freeze and separate deploying decisions remain clear. No need remains to wait for an unused executor.
 
-The root must refresh both tips and candidate proof immediately before irreversible promotion and after waits, retries or hotfixes. Changed or unproven identity stops the run for restaging and renewed separate owner approvals. If concurrent movement cannot be excluded or accounted for through the irreversible step using the existing flow, the procedure stops rather than claiming a guarantee the engine does not provide. The final observation checks the actual production merge/deployed content against the accepted candidate.
-
-I considered the correction through all seven applied lenses:
-
-- Intent: it preserves the owner's existing separate real staging/production decisions and CI/deploy agnosticism. No new product choice is made for the owner.
-- Simplicity: it strengthens the private runbook and A10 only, without another engine interface, new guard system or app deployment redesign.
-- Truth: it explicitly distinguishes root evidence/approval freshness from G1025's recorded line-head and mergeability checks. Successful CI or a conflict-free merge is not substituted for staged content identity.
-- Adversary: target-only changes, stale proof, retries and unproven artifact equality all stop promotion. Actual deployment authority still belongs to the owner.
-- Concurrency: the procedure addresses the check-to-promotion interval and intervening movement, including the case that the release head itself stays unchanged. It does not claim an atomic engine guard that does not exist.
-- Rollout: it uses the app's existing promotion flow and retains exact evidence privately; no deploying step is authorized by this design review.
-- Experience: the stop/restage/renewed-approval rule and required evidence are explicit, while the public report remains generic and cannot record a pass for missing proof.
-
-The prior privacy convention, fresh-clone/owner-checkout boundary, capability adoption, dependency preconditions, natural-observation rules and actual-harness attribution remain unchanged. Real participation by both harnesses is still a future acceptance requirement; matching installed launchers alone does not satisfy it. No private-app change, deployment or harness participation was performed in this review.
-
-This card has no prior open finding of mine to resolve. The independent adversarial finding remains for its own reviewer/filter to assess; this review does not record a status on another reviewer's behalf.
+Validation: read-only design/diff inspection and direct comparisons verified exact OD9 quotation, unchanged OD1–OD8 and unchanged release procedure. No suite was rerun, no private-app action was taken, and no usage reset was triggered. The card lists no open previous findings or corrections requiring response IDs.
