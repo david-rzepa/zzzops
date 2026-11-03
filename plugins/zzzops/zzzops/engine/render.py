@@ -5,8 +5,12 @@ its arguments."""
 
 from __future__ import annotations
 
+import base64
 import json
+import os
 import shlex
+import shutil
+import sys
 from dataclasses import dataclass, field
 
 from engine.canon import canonical, iso, parse_iso
@@ -61,6 +65,35 @@ def command(ctx: Ctx, argv: list) -> dict:
     argv = list(argv) + (["--repo", repo] if repo else [])
     return {"argv": argv, "command": ctx.prefix + " " + " ".join(shlex.quote(a) if a not in (LABEL, FILE) else a
                                                                  for a in argv)}
+
+
+def scoped_git_command(args, scope=None, exclude=None, quoted_root=False):
+    """A scoped Git command runnable in POSIX shells and PowerShell without expanding filenames."""
+    from engine.identity import view_paths
+    argv = ["git", *args, "--", *view_paths(scope, exclude)]
+    if any(any(c in arg for c in "'‘’‚‛“”") for arg in argv):
+        # Adjacent POSIX quote fragments are not one native argument in PowerShell.
+        # Keep exceptional filenames entirely inside data, never shell source.
+        python = None
+        for name in ("python3", "python"):
+            path = shutil.which(name)
+            try:
+                if path and os.path.samefile(path, sys.executable):
+                    python = name
+                    break
+            except OSError:
+                continue
+        if python is None and shutil.which("py"):
+            python = "py -3"
+        if python is None:
+            from engine.errors import Refused
+            raise Refused("environment", "Scoped diff filenames need the current Python on PATH as python3/python, "
+                          "or the supported py -3 launcher; no portable interpreter command is available.")
+        payload = base64.b64encode(json.dumps(argv).encode("ascii")).decode("ascii")
+        script = ('import base64,json,subprocess,sys;'
+                  'sys.exit(subprocess.call(json.loads(base64.b64decode(sys.argv[1])),shell=False))')
+        return python + " -c '" + script + "' " + payload
+    return " ".join("':/'" if quoted_root and a == ":/" else shlex.quote(a) for a in argv)
 
 
 def first_line(text: str, limit: int) -> str:
@@ -323,8 +356,7 @@ def approve_context(ctx: Ctx, res: GoalResult, n: str, vals: dict) -> list:
 
 
 def checkpoint_view(ctx: Ctx, cp: dict, scope=None, exclude=None) -> dict:
-    from engine.identity import view_paths
-    diff = f"git diff {cp['base']} {cp['base'] if scope == [] else cp['commit']} -- " + " ".join(shlex.quote(p) for p in view_paths(scope, exclude))
+    diff = scoped_git_command(["diff", cp["base"], cp["base"] if scope == [] else cp["commit"]], scope, exclude)
     view = {"commit": cp["commit"], "base": cp["base"], "diff": diff}
     stat = ctx.reader.diffstat(cp["base"], cp["commit"]) if scope is None and not exclude else None
     if stat:
