@@ -122,10 +122,10 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 5,
-      "correction_runs": 4,
+      "attempt": 6,
+      "correction_runs": 5,
       "findings": [],
-      "finished_at": "2026-11-03T16:38:20Z",
+      "finished_at": "2026-11-03T16:50:36Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -135,19 +135,22 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1024-final-history",
+      "holder": "codex:takeover/1024-sha-doc-fix",
       "input_fp": "v1:sha256:5b4e15d577e5fb8f4a392ee43adf8e514dea726fd87f7357b58495062bfde516",
       "ok": true,
       "output": {
         "code": {
           "base": "a1b3edb3cf200be9ca844fecb1623645285d3bac",
-          "change": "8606603bfe0d71e02ddcf12a93c578182941bbe2",
-          "commit": "1ba0b2744a8014e4ea019b2d848946eed0921af6",
-          "tree": "13fdcdbd857892931349c002706e991b5df9a7e7"
+          "change": "8bdab2e07950992b4c433b857b46865adc68644d",
+          "commit": "fe0412910deed913547ad26d6be204cb04634367",
+          "tree": "e6c6630f3f81aa95e45587b93fbd4eb97fea78b9"
         },
-        "summary": "Completed G1024 default-update notices, provenance, append-only normalized template history, reviewed tombstones and portable reviewed update commands. Refreshed history through the real updater from known merged integration a1b3edb3, retaining all 60 immutable prior blobs and adding exactly 11 versions from the four actual merged snapshots (71 total); first-parent integration selection excludes intermediate side-branch versions and is covered by a real-Git regression. Moved full update guidance to MIGRATING, preserving upstream contracts and passing capture 3698/3700 and execution 4211/8800 budgets. Independent prereview cleared the exact committed snapshot. Frozen defaults 18 tests passed (1.273s), frozen history 2 (0.002s), actual PowerShell followups 3 (0.451s), new real-Git regression 1 (0.078s), design docs 35 (0.264s), agent plugin 14 (0.162s), bundle 12 (2.842s), source template validation and diff checks passed. Frozen tests remain byte-identical to accepted source-free checkpoint 2f5b8206816fa8036e521a27e0e0cf90c1dc5d96. Canonical full verification remains for the root-owned run_tests operation; no installed policy or host cache changes."
+        "responses": {
+          "run_tests:failed": "fixed: Reproduced the sole failed current-guidance check: it recursively scanned the immutable historical test_design snapshot containing old <sha> wording. Narrowed only its template root to current templates/default, retaining original engine/references/skills coverage and assertions; preserved immutable historical bytes and all full-SHA current guidance. Exact failure and relevant controls now pass; independent prereview cleared."
+        },
+        "summary": "Narrowly corrected the legacy current-guidance scan to inspect templates/default alongside unchanged engine, references and skills coverage. Immutable historical snapshots preserve their original bytes; current checkpoint guidance retains full 40-hex SHA requirements and both original rejected-pattern assertions. Independently reviewed with no material findings. Exact regression passed (1 test, 0.005s), nearby DocsTests passed (6, 0.006s), required defaults passed (18; 2.859s process), required history passed (2, 0.003s); prompt budgets and diff checks passed. Frozen tests and historical blobs are unchanged. Canonical full verification remains root-owned."
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
