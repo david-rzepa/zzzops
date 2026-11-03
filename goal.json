@@ -184,34 +184,29 @@
       "status": "done"
     },
     "filter_design": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-03T17:39:10Z",
+      "finished_at": "2026-11-03T17:45:43Z",
       "fp_parts": {
-        "candidates": [
-          [
-            "adversary_design:1:1",
-            true
-          ]
-        ],
+        "candidates": [],
         "def": "v1:sha256:c83a5e0ec02bc9504ff118f774138ad5517f6b3a5885d1c28444982e78d23a9f",
         "inputs": {
-          "adversary": "v1:sha256:5014e5ca3045a24d10d2e7d48299e1e1f329c7803debd1bba963da4334ab0e56",
-          "doc": "v1:blob:982d3c13e410a3f3c6bf0584d8e1cce94d67cb06",
-          "review": "v1:sha256:c671be8899340a2c53b4466a12cfe56b825f0d27d0f9535869c24c2eb0e87207",
+          "adversary": "v1:sha256:4fb408a7ddefec118615e2db0b84f35cc20fcebf896a44012e7cff2b20b12939",
+          "doc": "v1:blob:0ec3a983598e99d34ae9ec1e15251670d013db4a",
+          "review": "v1:sha256:43c825e58e9c5b879fed9f4b10075e312f030b369bc290711d4d200485131403",
           "spec": "v1:sha256:e2c063ee9322840387685a5c86388a130816b2a8e1960e4e6cdd0d7ede8870e3"
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1037-filter-design",
-      "input_fp": "v1:sha256:db99087ce67d2ecd64e2a4e02e04ab38acbd1c0b6a528c7e999ab27b35c960f2",
+      "holder": "codex:takeover/1037-filter-design-r6",
+      "input_fp": "v1:sha256:2e38608c3f7d20c2c0faf9a4cc6116cc8b46549dceb18f9a5212482fedb56daa",
       "ok": true,
       "output": {
-        "summary": "Consolidated review approves all seven applied lenses; Adversary identifies one material release-evidence gap that reopens design. Equal release tips do not bind a moving production target or prove the promoted candidate equals accepted staging. Phase7/A10 and the private runbook must capture/recheck target and candidate identity, stop when equality is lost or unproven, and renew staging/separate owner approvals as needed. This implements OD3/OD6 procedurally without engine/deploy redesign. No non-material notes:0; verdicts are empty because material findings reopen automatically.",
+        "summary": "Both consolidated and Adversary reviews approve the corrected design. Phase7/A10 now bind separate owner approvals to release/production-target tips and the resulting staged promotion candidate tree/artifact; refresh before irreversible promotion and after waits/retries, with stop/restage/renewed approvals on changed or unproven identity. The prior material gap is resolved, OD1–OD8 and the external deployment boundary remain, and no candidate reopens the work. Notes:0; verdicts empty.",
         "verdicts": {}
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "review_design": {
