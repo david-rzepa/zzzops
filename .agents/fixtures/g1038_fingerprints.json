@@ -1,13 +1,18 @@
 {
-  "baseline": "de5640d1c5909ea924450aeea6450497a78946f6",
+  "baseline": "61290a45d137ef839b244555c74b6e45a58a7fa6",
   "journeys": {
     "graph12": "1f5dada7505f698b5ff2dca604c2d2aedffce4b11b0e9f67e287bd643ccfb128",
     "graph26": "367ec02f8e54187a049a5acd1ef59f59a5971e098a78895bece4975a5353e283",
-    "shipped": "0d12dae97c374ffbefe5aab1ffd7548343be1268fefba05ecac0811c6ced4fdd"
+    "shipped": "23c0a64c5f2f7f2e55c34cdfbe9d47b9ce0e9c868c00e812524496b085bf84e4"
   },
   "node_defs": {
     "graph12": "485fabb35236f83488b04ec4b5dbaba7bcea43dec483f88b5bca3ebbab5c7cea",
     "graph26": "dda4ebc08abbdd8f9dbcc92bcb994b71a03f6199bea3ed93f6393e7ad623e6f8",
-    "shipped": "9fda092662584570e58d39fe0ea6542af202ad419631fbf7ad288af65106080b"
+    "shipped": "fab125b86110d96d656fae8142794ac4af9b1f7a18ebc40a445aaf71169a4f14"
+  },
+  "previous_shipped_baseline": {
+    "baseline": "de5640d1c5909ea924450aeea6450497a78946f6",
+    "journey": "0d12dae97c374ffbefe5aab1ffd7548343be1268fefba05ecac0811c6ced4fdd",
+    "node_defs": "9fda092662584570e58d39fe0ea6542af202ad419631fbf7ad288af65106080b"
   }
 }
