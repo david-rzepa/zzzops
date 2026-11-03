@@ -1,29 +1,25 @@
-# G1036 adversarial design review
+# G1036 adversarial re-review — CLI-only refresh
 
 Approved, with no findings.
 
-Reviewed the complete assigned design blob `4046215ab26f8f387784b92a1a033c5d85f40af8`, specification `7806d84038b0c09525535bac83ca0a9ccf643a3a`, lens and review instructions. No other reviews of this subject were consulted. Source checks use read_dev `edb9b2c9aa317220a8e1340f27c40b6a4b6a1b5a`. This is a design verdict, not a claim that dogfood has happened or a paper has been written.
+Reviewed the full assigned card and exact interdiff from `4046215ab26f8f387784b92a1a033c5d85f40af8` to `2a239e92a02beb5c9dc03824485c183501bfc80a`. The complete preceding design, unchanged specification and instruction blobs were read in my preceding review; the diff and current affected sections establish the updated subject. No other reviews of this subject were read. read_dev remains `edb9b2c9aa317220a8e1340f27c40b6a4b6a1b5a`.
 
-## Evidence integrity and gaming
+## Scope authority and evidence integrity
 
-The cheapest unsafe shortcut would be to start writing from an approved dependency design or stack-ready base and present synthetic successes as dogfood results. The opening gate, §16 and W17 expressly prevent that: G1037 must merge and its actual anonymised report must exist before test_design, implement or paper/blog writing starts. W16 and the limitations distinguish measured real-run evidence, deterministic tests and not-observed cases. Missing evidence stays not measured; test fallback must be labeled beside the affected trace step. This prevents a convenient passing trace from laundering an unobserved private-app outcome into evaluation evidence.
+The dependency OD9 quote matches the authoritative implementation answer at G1037 goal commit `289372c9433e`, which I independently checked during the immediately preceding G1037 review. It confirms the freeze and permits Codex-only CLI execution. This updates acceptance scope without purporting to measure a second harness.
 
-The ledger binds factual claims to immutable checked source, tests, trace or report sections. Argued reliability/cost claims cite supporting rows and retain the small-sample and uncontrolled-run limitations. Ratios require denominators, populations, exclusions and distinct build/capability cohorts. Stage budget effects are not inferred from raw finding counts. Inspected `frontier.counts`/`base_only_review` at read_dev: the described no-checkpoint, git.base-only stale exemption is consistent with the implementation, including a finding-raising rerun. The cited oversized-previous card test exists; the design calls 4,096 bytes a target and requires measured exceptions to remain visible.
+The cheapest gaming route would be to treat that permission, an installed package, a matching build or a synthetic holder label as evidence that Claude participated or that harnesses performed equivalently. The revision explicitly closes that route in limitations, report inputs, W20 and reconciliation: actual actors/holders/builds/actions require evidence; labels alone are insufficient. Claude remains not executed unless independently evidenced. Missing actor-level measurements stay not measured, and an unexecuted actor cannot become a zero-cost comparison. Ratios use actual measured cohorts and explicit exclusions, while historical experiments retain separate attribution and samples.
 
-## Release and privacy boundary
+## Preserved boundaries
 
-W19, §6 and §7 carry G1037 attempt 6’s corrected candidate proof into the paper without claiming an automatic deployment gate. Source inspection of `lines.finish` confirms recorded line-tip and production-conflict checks; these do not establish equality with externally staged content. The plan requires reporting the actual A10 outcome, including missing/unequal proof and stops, rather than inferring safety from unchanged head, CI or mergeability. The synthetic release trace explicitly stages and deploys nothing.
+The actual writing gate remains explicit in the opening ordering statement, W17 and the new reconciliation: G1037 must merge and its anonymised report must exist before test_design, implement or whitepaper/blog writing starts. A stack-ready base, approved design or CLI-only permission cannot substitute. This design makes no run claim and does not begin writing.
 
-Only the anonymised public report is cited. App-specific identities, branch/artifact details and approval evidence remain private; public wording stays generic, with the existing name/slug check supplied privately. The plan adds no unapproved privacy machinery. Actual harness/build participation must come from the report, and advisory routing plus label-only independence are disclosed rather than represented as attestation.
+The candidate-bound external staging/production evidence contract, separate actual owner approvals, freshness checks, stops/restaging and final-content comparison are unchanged. Engine checks and root procedures remain distinct. The public paper relies only on anonymised report outcomes; detailed app identities and approval/artifact evidence remain private. No external blog publication, deployment or app-write authority is added. WD1–WD8, final source binding, card-size exception, budget exemption and observed/test-only/not-observed distinctions remain intact.
 
-## Publication and binding
+## Checks and limits
 
-The repository paper and blog draft are reviewable deliverables. External blog publication stays with the owner under WD4; this task grants no staging, production or external publication authority. The source-binding comparison covers the plugin package beyond engine code, with narrow version-manifest and rendered-provenance handling and all other differences reported. Final binding is prospective: writing must re-audit the final merged build and report, and later source/template changes trigger the recorded release-finish recheck. No new consequential owner choice is left undecided in this design.
-
-## Verification and limits
-
-Read-only review and bounded source/reference inspection; no test suite was necessary for this design judgment. No private-app action, deployment, source edit, paper text or usage reset was performed. Automated claim and ratio checks remain author aids; semantic truth and unsupported generalisation still require the expressly assigned implementation review.
+Read-only re-review, targeted current-section checks and integration-SPEC reference inspection. There is no source implementation change requiring a probe or suite. The plan is approved prospectively; real evidence and final checked source must still be reviewed when the paper is written. No app actions, paper text, product/policy edits, deployments or usage resets occurred.
 
 ## Dogfood notes
 
-None for this review.
+None for this re-review.
