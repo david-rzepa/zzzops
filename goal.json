@@ -211,9 +211,16 @@
       "status": "done"
     },
     "implement": {
+      "answer": {
+        "decided_at": "2026-11-03T18:01:46Z",
+        "decided_by": "Dave",
+        "quote": "Yeah, nothing else is modifying the target repo. We don't need to worry about Claude, we can assume Codex and Claude work similarly enough, we're dogfooding the CLI, not the model/harness",
+        "text": "The freeze is confirmed. Resume the CLI dogfood with Codex; genuine Claude participation is no longer required. Update the design and verification evidence to reflect this owner decision. Separate staging and production approvals remain required."
+      },
       "attempt": 1,
       "blocked": {
         "category": "decision",
+        "instructions": "The human answered: The freeze is confirmed. Resume the CLI dogfood with Codex; genuine Claude participation is no longer required. Update the design and verification evidence to reflect this owner decision. Separate staging and production approvals remain required.",
         "options": [
           "Confirm the freeze and resume when genuine second-harness availability is established",
           "Keep the private-app run paused"
@@ -222,7 +229,7 @@
         "reason": "The real private-app dogfood run is waiting for current owner confirmation that the approved freeze is in effect and for genuine Claude participation using the matching installed build. The last obser",
         "recommendation": "Keep the run paused until the owner confirms the freeze and actual second-harness availability is established. Preserve the prepared read-only evidence and all dirty owner state; do not substitute installation evidence, another actor/model or a banked usage reset.",
         "repeats": 1,
-        "waiting_for": "human"
+        "waiting_for": "agent"
       },
       "correction_runs": 0,
       "findings": [],
