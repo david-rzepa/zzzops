@@ -68,6 +68,7 @@ REQUIRED_FILES = {
     "zzzops/engine/session.py",
     "zzzops/engine/store.py",
     "zzzops/engine/test_cost.py",
+    "zzzops/engine/sync_review.py",
     "zzzops/engine/verbs.py",
     "zzzops/engine/worktree.py",
     "zzzops/templates/default/POLICY.json",

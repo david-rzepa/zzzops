@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 from engine.canon import parse_iso
 from engine.fingerprint import fp_parts as _fp_parts, input_fp, out_fp, stale_keys
-from engine.schemas import Graph, is_material
+from engine.schemas import Graph, is_material, required_caps
 
 ABSENT = object()
 
@@ -430,7 +430,7 @@ class GoalResult:
     notes: dict = field(default_factory=dict)        # target -> [(lens, finding, reason)] (filter-judged notes)
     stale: set = field(default_factory=set)          # carriers with a done record that is not fresh (G1028)
     stuck: dict | None = None
-    budget: dict = field(default_factory=dict)       # {"used", "limit", "over", "per_node"}
+    budget: dict = field(default_factory=dict)       # legacy total, or {limit, stages: {stage: counters}}
     close: bool = False                              # every terminal current but the goal is open
     busy: str | None = None                          # workspace node with a live lease
     target: dict | None = None                       # G1025: {"branch", "kind"} with branching on
@@ -557,7 +557,7 @@ def portfolio(docs: dict, graphs: dict, leases: dict, settings: dict, now: int, 
                 lctx["line_behind"] = bool((upstream.get(g) or {}).get("behind"))
         st, cur, live, notes, stale = frontier(graph, d, dep_view, goal_leases, settings, now, lctx)
         res = GoalResult(g, d, graph, st, cur, live, notes, stale=stale, target=target)
-        finish_goal(res, goal_leases, now)
+        finish_goal(res, goal_leases, now, settings)
         results[g] = res
         stuck = res.stuck is not None
         views[g] = {"kind": d["state"], "state": "stuck" if stuck else d["state"], "cur": cur,
@@ -618,7 +618,7 @@ def lease_guards(p: Portfolio, docs: dict, leases: dict, now: int):
     p.live_agents = sum(1 for res, n, L in valid if L.live(now) and res.graph.nodes[n]["kind"] == "agent")
 
 
-def finish_goal(res: GoalResult, goal_leases: dict, now: int):
+def finish_goal(res: GoalResult, goal_leases: dict, now: int, settings=None):
     st, graph, doc = res.st, res.graph, res.doc
     topo = graph.topo
     progress = any(st[n]["name"] in ("ready", "running", "reclaimable", "waiting", "needs_human") for n in topo)
@@ -634,8 +634,18 @@ def finish_goal(res: GoalResult, goal_leases: dict, now: int):
     records = doc.get("records") or {}
     per_node = {n: records[n]["correction_runs"] for n in agent if n in records and records[n]["correction_runs"]}
     used = sum(records[n]["correction_runs"] for n in agent if n in records)
-    limit = doc["budget"] if doc.get("budget") is not None else 3 * len(agent)
-    res.budget = {"used": used, "limit": limit, "over": used > limit, "per_node": per_node, "agents": len(agent)}
+    if "round_budget" in required_caps(settings):
+        limit = doc["budget"] if doc.get("budget") is not None else 10
+        stages = {}
+        for stage in ("discovery", "delivery"):
+            counters = {n: count for n, count in per_node.items() if graph.nodes[n]["stage"] == stage}
+            total = sum(counters.values())
+            stages[stage] = {"used": total, "over": total >= limit and any(graph.nodes[n]["stage"] == stage for n in agent),
+                             "per_node": counters}
+        res.budget = {"limit": limit, "stages": stages}
+    else:
+        limit = doc["budget"] if doc.get("budget") is not None else 3 * len(agent)
+        res.budget = {"used": used, "limit": limit, "over": used > limit, "per_node": per_node, "agents": len(agent)}
     for n in topo:
         L = goal_leases.get(n)
         if L and L.live(now) and graph.nodes[n].get("workspace") and st[n]["name"] == "running":
@@ -666,10 +676,32 @@ def live_input_changes(before: Portfolio, after: Portfolio, now: int, scope=None
     return out
 
 
-def counts(r0: dict | None, reason: str, old_parts: dict | None, parts: dict) -> int:
-    """1 when a new record counts toward the correction budget (SPEC §4.10)."""
+def budget_for(res: GoalResult, node: str) -> dict:
+    """The node's applicable budget; preserves the legacy total-budget shape."""
+    budget = res.budget
+    if "stages" not in budget:
+        return budget
+    stage = res.graph.nodes[node]["stage"]
+    return dict(budget["stages"][stage], limit=budget["limit"])
+
+
+def counts(r0: dict | None, reason: str, old_parts: dict | None, parts: dict, *,
+           graph=None, node=None, findings=None, attempt=None, settings=None) -> int:
+    """Charge a legacy correction, or one new material agent round under round_budget."""
+    rounds = "round_budget" in required_caps(settings)
+    if rounds:
+        if graph is None or graph.nodes.get(node, {}).get("kind") != "agent":
+            return 0
+        prior_ids = {f.get("id") for f in (r0 or {}).get("findings", [])}
+        prefix = f"{node}:{attempt}:"
+        material = any(isinstance(f.get("id"), str) and f["id"].startswith(prefix)
+                       and f["id"][len(prefix):].isdigit() and int(f["id"][len(prefix):]) > 0
+                       and f["id"] not in prior_ids and is_material(f) and "follows" not in f
+                       for f in findings or [])
+        if not material:
+            return 0
     if r0 is None:
-        return 0
+        return 1 if rounds else 0
     keys = stale_keys(old_parts, parts)
     # an input the definition added or removed (present on one side only, with `def` stale) is a policy change, not
     # a correction: like `def` itself it is exempt (G1022: adopting a new graph re-runs in-flight phases for free)
@@ -678,6 +710,13 @@ def counts(r0: dict | None, reason: str, old_parts: dict | None, parts: dict) ->
     if reason == "stale" and all(k in ("def", "candidates", "lenses") or k.startswith("policy.") or k in redefined
                                  for k in keys):
         return 0
+    if rounds and reason == "stale" and keys and not graph.checkpoint_outputs(node):
+        selectors = graph.selectors.get(node, {})
+        base_inputs = {f"inputs.{name}" for name, sel in selectors.items()
+                       if sel is not None and sel.kind == "node"
+                       and graph.nodes.get(sel.node, {}).get("op") == "git.base"}
+        if all(key in base_inputs for key in keys):
+            return 0
     return 1
 
 

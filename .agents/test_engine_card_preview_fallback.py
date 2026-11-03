@@ -4,7 +4,7 @@ import hashlib
 import unittest
 
 import engine_fixtures  # installs the engine import path
-from engine import card
+from engine import card, render
 from engine.canon import canonical
 
 
@@ -32,6 +32,35 @@ class PreviewFallbackTests(unittest.TestCase):
         self.assertEqual(80, len(clipped["summary"]))
         under_budget = {"context": {"checks": view}}
         self.assertEqual(under_budget, card.shrink(under_budget, None))
+
+
+    def test_short_instruction_reference_preserves_full_guidance_and_needs_a_storing_reader(self):
+        guidance = "Retain all security, privacy and credential guidance verbatim. " * 2
+        class Reader(render.Reader):
+            def __init__(self):
+                self.values = {}
+            def blob_view(self, text):
+                view = card._blob(None, text)
+                self.values[view["blob"]] = text
+                return view
+        original = {"instructions": {"security": {"text": guidance}},
+                    "inputs": {"base": "a" * 40}, "context": {"cost": {"duration_ms": 10}}, "padding": ""}
+        original["padding"] = "x" * (card.CARD_LIMIT + 10 - len(canonical(original)))
+        before = copy.deepcopy(original)
+        reader = Reader()
+        out = card.shrink(original, reader)
+        self.assertLessEqual(len(canonical(out)), card.CARD_LIMIT)
+        self.assertEqual(before, original)
+        self.assertEqual(original["inputs"], out["inputs"])
+        self.assertEqual(original["context"], out["context"])
+        reference = out["instructions"]["security"]
+        self.assertEqual({"blob", "read"}, set(reference))
+        self.assertEqual(guidance, reader.values[reference["read"].split()[-1]])
+        self.assertEqual(out, card.shrink(out, reader))
+        small = {"instructions": original["instructions"]}
+        self.assertEqual(small, card.shrink(small, reader))
+        for unavailable in (None, render.Reader()):
+            self.assertEqual(before, card.shrink(original, unavailable))
 
 
 if __name__ == "__main__":

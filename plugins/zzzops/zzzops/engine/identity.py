@@ -79,10 +79,11 @@ class Identity:
         return self._trees[commit]
 
     # ------------------------------------------------------------------ change and patch ids
-    def change(self, base: str, commit: str, paths: list[str] | None = None) -> str:
+    def change(self, base: str, commit: str, paths: list[str] | None = None, unified: int = 3) -> str:
         if paths == []:
             return ZERO
-        d = self.git.run(*CFG, f"--attr-source={commit}", "diff", *DIFF, base, commit, "--", *view_paths(paths), identity=True,
+        flags = [f"--unified={unified}" if flag.startswith("--unified=") else flag for flag in DIFF]
+        d = self.git.run(*CFG, f"--attr-source={commit}", "diff", *flags, base, commit, "--", *view_paths(paths), identity=True,
                          check=False, text=False)
         if d.returncode != 0:
             raise EngineError(f"git diff failed: {d.stderr.decode('utf-8', 'replace').strip().splitlines()[:1]}")

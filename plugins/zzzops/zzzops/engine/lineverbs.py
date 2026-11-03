@@ -143,7 +143,8 @@ def line_goal(s, kind, name, branch, cut, answer, key) -> tuple:
     ready = state.get("ready") or state
     out = {"decision": "approved", "summary": answer.get("summary") or f"cut {branch} from {frm} at {cut[:12]}",
            "decided_by": answer["decided_by"], "quote": answer["quote"], "decided_at": answer.get("decided_at") or iso(s.now)}
-    doc["records"][first] = rec.record("done", True, 1, "human", "new", None, ready["fp"], ready["parts"], out, [], s.now)
+    doc["records"][first] = rec.record("done", True, 1, "human", "new", None, ready["fp"], ready["parts"], out, [], s.now,
+                                                graph=graph, node=first, settings=settings)
     errs, _ = schemas.validate_goal(doc, None, docs, st.workflow)
     if errs:
         raise Refused("validation", "; ".join(errs[:5]), details={"errors": list(errs)})
