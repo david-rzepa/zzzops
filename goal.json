@@ -164,6 +164,40 @@
         }
       },
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-03T17:22:35Z",
+      "fp_parts": {
+        "def": "v1:sha256:c3cd59e2bdc6a869c5ae0e63162d1658cc63433985616cfc75a04424bb4b2df4",
+        "inputs": {
+          "base": "v1:sha256:cc25726eab1a2a69f62402e2c816652d5ef5bd453b38ff1755c2afd49dc8db93",
+          "doc": "v1:blob:982d3c13e410a3f3c6bf0584d8e1cce94d67cb06"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        "docs/dogfood/release-1-checks.md"
+      ],
+      "holder": "codex:takeover/1037-test-design",
+      "input_fp": "v1:sha256:a9a1be2883c4444fd0d08ba3bb4ef43e456f3441400f3758dbd33d937e6e9c8c",
+      "ok": true,
+      "output": {
+        "commands": [
+          "python3 -m json.tool docs/dogfood/release-1-run.json > /dev/null",
+          "cd .agents && python3 -m unittest test_design_docs.DesignDocsTests.test_relative_links_resolve test_engine_owner_questions.OwnerQuestionsTemplateTests.test_shipped_templates_still_validate"
+        ],
+        "tests": {
+          "base": "432a99b528dc6388ba73cc3ba3361b13aea5612d",
+          "change": "83a542167893cbc1807930cbb6841cf98a903958",
+          "commit": "6e282c5aa1e94e25e16f8e44c352169e62670fc2",
+          "tree": "46c2c081f123949f5e55ce5a6996733fe2f62976"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
