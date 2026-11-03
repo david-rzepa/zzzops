@@ -496,13 +496,24 @@ def _steps(card: dict) -> list:
         steps.append(("fold", "sync"))
     if any(len(v["summary"]) > 80 for v in _summaries(card)):
         steps.append(("clip", "summaries", 80))
+    # Small instructions can cost less as full read pointers without a preview.
+    steps += [("reference", *path) for _, path in blobs if path[0] == "instructions"]
     return steps
 
 
 def _apply(card: dict, step: tuple, reader) -> dict:
     card = copy.deepcopy(card)
     kind = step[0]
-    if kind == "fold":
+    if kind == "reference":
+        if reader is None:
+            return card
+        value = _blob(reader, card["instructions"][step[2]]["text"], SUMMARY)
+        if not (isinstance(value.get("blob"), str) and SHA.fullmatch(value["blob"])
+                and isinstance(value.get("read"), str) and value["read"]):
+            return card
+        value.pop("summary", None)
+        card["instructions"][step[2]] = value
+    elif kind == "fold":
         sync = card["sync"]
         detail = {k: v for k, v in sync.items() if k not in ("from", "to", "diff", "log", "detail")}
         card["sync"] = {k: sync[k] for k in ("from", "to", "diff", "log")}
@@ -541,19 +552,21 @@ def _apply(card: dict, step: tuple, reader) -> dict:
 def shrink_candidates(card: dict, reader=None) -> list:
     """The shrink steps that would make this card smaller, in the order `shrink` tries them."""
     n = len(canonical(card))
-    return [st for st in _steps(card) if len(canonical(_apply(card, st, None))) < n]
+    return [st for st in _steps(card)
+            if len(canonical(_apply(card, st, reader if st[0] == "reference" else None))) < n]
 
 
 def shrink(card: dict, reader) -> dict:
     """While the card is over 4,096 bytes, apply the first step that makes it smaller: drop `argv`, point
     `context.commands` at `commands_to_run`, clip blob summaries to 120 characters, then blob the largest
-    inline text, then clip remaining blob previews to 80 characters. Checkpoint views are never blobbed,
+    inline text, then clip remaining blob previews to 80 characters and try preview-free instruction references.
+    Checkpoint views are never blobbed,
     and a card never leaves larger than it entered."""
     for _ in range(100):
         n = len(canonical(card))
         if n <= CARD_LIMIT:
             return card
-        for st in shrink_candidates(card):
+        for st in shrink_candidates(card, reader):
             out = _apply(card, st, reader)
             if len(canonical(out)) < n:
                 card = out
