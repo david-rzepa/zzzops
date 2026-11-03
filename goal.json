@@ -315,38 +315,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-03T17:52:45Z",
+      "finished_at": "2026-11-03T18:15:38Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
-          "doc": "v1:blob:0ec3a983598e99d34ae9ec1e15251670d013db4a",
-          "tests": "v1:sha256:06d8af0a5171c4e011b0270dceacda98b1ec6d4f420b849ca9f599c6ffb00436"
+          "doc": "v1:blob:2005eea5a61f11083eb5c99b91048b8935031c3d",
+          "tests": "v1:sha256:57b016fa9a2420d9392f268be2d40af6e9915e929e1c864d9c6bd605b48537dd"
         },
         "policy": {},
-        "subject": "v1:sha256:2b526fc6583f0b531935e830713c128da831540190ce4055cdbcc18c91393731"
+        "subject": "v1:sha256:1e4ab2f5d7921ec3c9d2adc4755bd6881779883e66b249c64fe19e2f3e81c4be"
       },
-      "holder": "codex:takeover/1037-review-tests-r6",
-      "input_fp": "v1:sha256:e2495d6479f51db7b913bf1a521f8a0b74e954f7fad69528a1ebb3eba66e79e4",
+      "holder": "codex:takeover/1037-review-tests-r7",
+      "input_fp": "v1:sha256:319b0602bbe0f4225df51a7aad8307a55405d42c0965fb5f1ee90e2b7d27c74c",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "d757ae5f1dc3ddedae028ab52cbb2f032d99090c",
-          "commit": "07ce55a7b9afd4bc94e8cdfa6eb72dee91e3f489",
+          "blob": "8456cf6e4260842552944fa48a2436ce09a2cb30",
+          "commit": "84b1697d373108a840984b9fa51747278a5cde62",
           "path": ".zzzops/reviews/1037/review_tests.md"
         },
-        "summary": "Approved: A10 and the release procedure bind both tips, resulting candidate and actual staging/deployed identities, refresh proof before irreversible promotion and after waits/retries, and stop for changed/unproven evidence with restaging and renewed separate approvals. Privacy and real-run evidence remain intact. Complete measured cost context is proportionate (232ms); independent two validators pass, parser remains honest pre-run red. No findings or deployment authorization."
+        "summary": "Approved: protocol consistently applies explicit OD9 Codex-only CLI scope while requiring genuine executor/build/action evidence and forbidding fabricated Claude participation or equivalence. Unaffected acceptance and release/candidate, privacy, freeze and owner-state protections remain intact. Measured cost is complete/proportionate (207ms); independent two validators pass, parser remains expected pre-run red. No findings or deployment authorization."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "432a99b528dc6388ba73cc3ba3361b13aea5612d",
-          "change": "2fe69e39bb42442964a3d3f45ad771655a5697cd",
-          "commit": "ff4d123237b3210150eb09fa594b0bb7a9edbb1a",
-          "tree": "b065f97064d01890739141cf167a2f88b289d69b"
+          "change": "1f42f6b17af2f748b18bf4bd9ee4b6096cb4d5e3",
+          "commit": "d9751430c547984d64d663ed0df05d1b3115ade5",
+          "tree": "b994ddceb2ea870a2f42cd6fbab6f128284ec0ed"
         }
       },
       "status": "done"
