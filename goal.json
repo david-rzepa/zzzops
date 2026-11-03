@@ -46,6 +46,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-03T01:55:47Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:4069cf3c1c2fd36502c3497702406302460309f14f8bc732467af43b1094179e"
+        },
+        "policy": {},
+        "subject": "v1:sha256:335b54521e29449f1982d7d4a8a2a7fac8366502eb1db57afa30080b5f4cbb29"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:f8eac771838753d22412fc21967ce4e5600646777f1617f5ea5d8f5a204ddf8e",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-03T01:55:47Z",
+        "decided_by": "Codex (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approve G1040 at exact reviewed PR head24695b29f10a545609d06c054f00243cadb7b3ad. Independent official re-review approved conservative temporary-path normalization, distinct-script new failure versus true-repeat escalation, blocked/stale finding carry, and preserved frozen tests. All four required commands and1011/1011 canonical tests passed; all20CI checks passed. Routine merge under explicit owner delegation."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "61290a45d137ef839b244555c74b6e45a58a7fa6",
+          "change": "1a819d77c692c1aa7dd4d01c9901b570baa4cc0a",
+          "commit": "12d66a6a0dc319095bd630d114d77545d471f110",
+          "tree": "23bfd9ff30c37db4f0c62dd1775cbb66a4db9d7b"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 4,
       "correction_runs": 3,
