@@ -352,23 +352,23 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-03T17:50:05Z",
+      "finished_at": "2026-11-03T18:13:13Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
           "base": "v1:sha256:cc25726eab1a2a69f62402e2c816652d5ef5bd453b38ff1755c2afd49dc8db93",
-          "doc": "v1:blob:0ec3a983598e99d34ae9ec1e15251670d013db4a"
+          "doc": "v1:blob:2005eea5a61f11083eb5c99b91048b8935031c3d"
         },
         "policy": {}
       },
       "frozen": [
         "docs/dogfood/release-1-checks.md"
       ],
-      "holder": "codex:takeover/1037-test-design-r6",
-      "input_fp": "v1:sha256:659f0f818fadf0cc27dec556c11688dd5a369f04a68c8432ff36cb9f243ce41f",
+      "holder": "codex:takeover/1037-test-design-r7",
+      "input_fp": "v1:sha256:6b2c478faca79628a47b759ba2e1d02d50d01c85778d592b13a04d66621fa1b8",
       "ok": true,
       "output": {
         "commands": [
@@ -377,27 +377,30 @@
         ],
         "cost": {
           "changed_tests": [],
-          "checkpoint": "ff4d123237b3210150eb09fa594b0bb7a9edbb1a",
+          "checkpoint": "d9751430c547984d64d663ed0df05d1b3115ade5",
           "commands": [
             {
               "cmd": "python3 -m json.tool docs/dogfood/release-1-run.json > /dev/null",
-              "duration_ms": 82,
+              "duration_ms": 69,
               "exit": 1
             },
             {
               "cmd": "cd .agents && python3 -m unittest test_design_docs.DesignDocsTests.test_relative_links_resolve test_engine_owner_questions.OwnerQuestionsTemplateTests.test_shipped_templates_still_validate",
-              "duration_ms": 150,
+              "duration_ms": 138,
               "exit": 0
             }
           ],
-          "summary": "Documentation-only acceptance protocol refresh; no executable test cases added or changed, so changed_tests is empty. Durations measure complete recorded commands, not unmeasured manual review or future app checks. Existing document/template validators passed. JSON parsing failed because the actual run/data are not present yet; this is an honest pre-implementation red observation, not a completed run or product failure.",
-          "total_ms": 232
+          "summary": "Documentation-only protocol refresh for approved OD9 scope; no executable test cases added or changed. Durations measure complete commands, not manual review or future app checks. Existing link/template checks passed. JSON parser failed on absent future actual-run data: honest pre-implementation red observation, not private-app failure or completed-run evidence.",
+          "total_ms": 207
+        },
+        "responses": {
+          "implement:2:2": "fixed: Updated the frozen protocol throughout overview, prerequisites, A1/A12/A13/A18 and reporting for approved OD9 Codex-only CLI execution. Claude is not executed unless independently evidenced; installed bytes and owner assumption do not establish participation or equivalence. Real attribution, privacy, stacked/release criteria and separate staging/production approvals with candidate freshness are preserved."
         },
         "tests": {
           "base": "432a99b528dc6388ba73cc3ba3361b13aea5612d",
-          "change": "2fe69e39bb42442964a3d3f45ad771655a5697cd",
-          "commit": "ff4d123237b3210150eb09fa594b0bb7a9edbb1a",
-          "tree": "b065f97064d01890739141cf167a2f88b289d69b"
+          "change": "1f42f6b17af2f748b18bf4bd9ee4b6096cb4d5e3",
+          "commit": "d9751430c547984d64d663ed0df05d1b3115ade5",
+          "tree": "b994ddceb2ea870a2f42cd6fbab6f128284ec0ed"
         }
       },
       "reason": "stale",
