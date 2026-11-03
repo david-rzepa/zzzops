@@ -48,7 +48,20 @@
     "base": {
       "attempt": 3,
       "correction_runs": 2,
-      "findings": [],
+      "findings": [
+        {
+          "id": "base:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "base",
+          "target_attempt": 3,
+          "target_fp": "v1:sha256:69a8281cf5fe38794631bbdf7b0dd09951879968695b1862dbbc2804fd914297",
+          "text": "G1038/G1039/G1040/G1043 merged; synchronize actual default template versions before history refresh and final verification",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-02T22:59:12Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
