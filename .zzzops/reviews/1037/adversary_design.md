@@ -1,22 +1,24 @@
-# G1037 adversarial design review — attempt 6
+# G1037 adversarial design re-review — attempt 7
 
-Approved. Prior finding `adversary_design:1:1` is resolved; no new findings.
+Approved, with no new findings. No status is repeated for the already resolved prior finding.
 
-Reviewed the exact change from design blob `982d3c13e410a3f3c6bf0584d8e1cce94d67cb06` to `0ec3a983598e99d34ae9ec1e15251670d013db4a`, then the complete current design, unchanged specification, assigned lens and instructions. Checked the relevant release implementation at read_dev `edb9b2c9aa317220a8e1340f27c40b6a4b6a1b5a`. No other reviewers' reports were consulted.
+Read the assigned interdiff first, from `0ec3a983598e99d34ae9ec1e15251670d013db4a` to `2005eea5a61f11083eb5c99b91048b8935031c3d`, then the complete revised design. The unchanged specification and instruction blobs were already read in the preceding review; the current card governs this submission. No other reviews of this subject were consulted.
 
-## Finding disposition
+## Owner authority and truthful attribution
 
-`adversary_design:1:1` — resolved. Phase 7 now records both relevant tips, the resulting promotion candidate tree and applicable artifact identity, and evidence of what was actually staged. It explicitly includes target-only changes and rejects conflict-free mergeability as proof of equality. Separate owner staging and production decisions cover the same candidate; delegated routine approval cannot substitute. Before an irreversible promotion, including resumed finish operations, the root must refresh the proof after waits, retries and hotfixes. Relevant tip or proof changes require a stop, restaging and renewed separate approvals. If concurrent movement cannot be excluded or accounted for through promotion, the root must not proceed. Actual merged/deployed content is checked against the candidate; unequal or unproven content cannot pass A10.
+Independently compared OD9 with the recorded implementation answer in `289372c9433e:goal.json`, restricted to the implement record, and the coordinator-supplied private answer file. The quote matches exactly. The recorded answer confirms the freeze and permits CLI dogfood through Codex without genuine Claude participation, while preserving separate staging and production approvals. This is sufficient authority for the explicit override of the older dual-harness specification; it is not a reviewer or designer inventing a scope reduction.
 
-This addresses the prior synthetic counterexample: an unchanged release head can merge cleanly into a changed production target and yield different content. At read_dev, `finish` checks the recorded line head and production mergeability, and `merge_pr` matches the PR head; they do not supply the missing external staging guarantee. The revised design accurately assigns freshness to the root's procedure without claiming a new engine guarantee or requiring deployment-flow redesign.
+The obvious gaming path would be to count a Claude installation, matching package bytes or the owner's assumption as observed Claude execution or model equivalence. Install, Execute, A1/A18, reporting and risks explicitly reject that path. Only actual actors, holders, builds, validation and nodes/actions are recorded. Unexecuted Claude participation is labeled not executed, missing measurements remain unavailable, and no cross-harness cost or performance inference is permitted from a Codex-only run. The separate clone still supports the lease-reclaim observation without pretending that clone implies another harness.
 
-## Preserved boundaries
+## Preserved safety
 
-The correction leaves OD1–OD8 unchanged. Public material remains generic; app-specific runbooks and evidence stay private. The owner checkout and uncommitted state remain protected, migration mapping remains owner-reviewed, and abort preserves the new engine and branches without unapproved deletion. Actual matching builds and real participation of both harnesses remain required; unavailable participation delays observation. Failure evidence cannot be fabricated, and unobserved cases remain explicitly unobserved. No new consequential owner choice is introduced by requiring proof for the already chosen separate deployment approvals.
+The diff leaves Phase 7 and A10 unchanged. Separate actual owner staging and production decisions cover the same production candidate; both tips and candidate tree/artifact evidence remain required. Immediately before irreversible promotion and after waits/retries, changed or unproven proof causes a stop, restaging and renewed separate approvals. The root must not promote if concurrent movement cannot be excluded or accounted for. Actual production content must match the accepted candidate, and these are procedural checks rather than an automatic engine guarantee. The prior resolved release-target finding therefore stays resolved.
+
+OD1–OD8, the real stacked dependent/release, private-app anonymity, owner checkout and dirty-state protection, owner-reviewed migration mapping, no unapproved deletion, and honest observed/not-observed failure evidence remain. The correction neither fabricates a run result nor grants deployment approval. The accepted protocol must be refreshed by test_design; implement cannot silently rewrite its frozen acceptance file. That keeps the evidence change reviewable instead of retroactively weakening acceptance inside implementation.
 
 ## Verification and limits
 
-Read-only design re-review and integration-source inspection. The prior isolated Git counterexample already established the gap; it was not redundantly rerun. No suite, app action, deployment, repository source edit or usage reset was performed. Approval covers this design, not execution authority or either actual deployment decision.
+Read-only design and authoritative owner-record comparison. Source/read_dev and release mechanics are unchanged from the preceding reviewed revision; no redundant probe or suite was needed. No app write, deployment, source edit or usage reset occurred. Approval covers the corrected design, not actual execution success or either later deployment decision.
 
 ## Dogfood notes
 
