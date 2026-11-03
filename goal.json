@@ -215,14 +215,14 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 5,
+      "attempt": 6,
       "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-03T17:34:59Z",
+      "finished_at": "2026-11-03T17:43:29Z",
       "fp_parts": {
         "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
         "inputs": {
-          "doc": "v1:blob:982d3c13e410a3f3c6bf0584d8e1cce94d67cb06",
+          "doc": "v1:blob:0ec3a983598e99d34ae9ec1e15251670d013db4a",
           "spec": "v1:sha256:e2c063ee9322840387685a5c86388a130816b2a8e1960e4e6cdd0d7ede8870e3"
         },
         "lenses": [
@@ -256,25 +256,25 @@
             "serves": "Developers who delegate project work to coding agents, and the agents doing it."
           }
         },
-        "subject": "v1:sha256:bee6c9f3d6fb3db7ffe149b4830be16f5b4f5ee763bafb48e597ad0973198fff"
+        "subject": "v1:sha256:e1ca20ff12fc0e16ec7843d040a9881ced3116ea75b1f724729edf404fec7a64"
       },
-      "holder": "codex:takeover/1037-review-design-new",
-      "input_fp": "v1:sha256:cd9754d7091afb24d457b922a8a87d4953ae0f6e077d3195718232a0b6a0fdac",
+      "holder": "codex:takeover/1037-review-design-r6",
+      "input_fp": "v1:sha256:21d9e8d35115dbe26d516df64be840fcbe102305aea6f21572561c1cbadaeb10",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "8d83d48a5b33b9e5dda666083944ffd2c0dec8f5",
-          "commit": "2a13e30bd0e9abb784b179e13b853d0c4ac5b7d4",
+          "blob": "1d3f92b7fc17a52d25d29f4a48424daabe112040",
+          "commit": "7c1a59a578c6150af8e9516d9985b0fe40fce733",
           "path": ".zzzops/reviews/1037/review_design.md"
         },
-        "summary": "Approved across all seven lenses: preserves OD1–OD8, current capability/prompt adoption, real two-harness participation, honest unobserved cases, private reporting and separate exact-tip staging/production approvals. No new owner choice or material finding."
+        "summary": "Approved corrected plan: staging and separate production decisions now bind both tips and the resulting candidate tree/artifact, with fresh proof before irreversible promotion and stop/restage/renewed approvals on movement or uncertainty. Root procedure is correctly distinguished from engine guarantees; OD1–OD8 remain intact."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "982d3c13e410a3f3c6bf0584d8e1cce94d67cb06",
-          "commit": "dbef3a2e2e23ddac93901aa87524043374d7ea4b"
+          "blob": "0ec3a983598e99d34ae9ec1e15251670d013db4a",
+          "commit": "bc6a2ed2e48eb2881d34ca87ce8b999573a30e69"
         }
       },
       "status": "done"
