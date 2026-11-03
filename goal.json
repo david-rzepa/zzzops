@@ -136,14 +136,14 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 5,
+      "attempt": 6,
       "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-03T17:52:11Z",
+      "finished_at": "2026-11-03T18:15:40Z",
       "fp_parts": {
         "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
         "inputs": {
-          "doc": "v1:blob:4046215ab26f8f387784b92a1a033c5d85f40af8",
+          "doc": "v1:blob:2a239e92a02beb5c9dc03824485c183501bfc80a",
           "spec": "v1:sha256:7cacab7d2739a88c2f7c7d9773f294a4064599407fcc553561919fe77916b36c"
         },
         "lenses": [
@@ -177,25 +177,25 @@
             "serves": "Developers who delegate project work to coding agents, and the agents doing it."
           }
         },
-        "subject": "v1:sha256:5e637952941e2f5973c2905d7a453c89e11ca1617e9c6275e6e4f72a37bd5edc"
+        "subject": "v1:sha256:8ef6ef323058a87be7ae99dd1bfab0679fa0f55602ac5e56161e52a4a17cad21"
       },
-      "holder": "codex:takeover/1036-review-design",
-      "input_fp": "v1:sha256:a23b84238e03273351d3a156d267bc4bbb4d567a47029e0f7c0ea5bc5b172a5b",
+      "holder": "codex:takeover/1036-review-cli-only",
+      "input_fp": "v1:sha256:aef76ce2e37c95f70dbd30c2f3bd1a670bfcbfd364f761bd13a35998bb3c9a8e",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "a525229c1bfefb93ff0e2e99edec96108a9c91b4",
-          "commit": "44d8752bb4f930802bdc5eaf9d9f69ff0bf8d494",
+          "blob": "f761b12146ef076941c66e58ee89045536b79fb1",
+          "commit": "dfccc10c840abd2e790a73177b648634cd6196cf",
           "path": ".zzzops/reviews/1036/review_design.md"
         },
-        "summary": "Approved: revision 5 preserves the actual merged-report writing gate and faithfully distinguishes candidate-bound external release evidence from engine guarantees, without expanding scope or exposing the private app."
+        "summary": "Approved: revision 6 accurately adopts OD9’s CLI-only scope, preserves truthful actor/build and measured-cohort evidence, and leaves the actual merged-report writing gate and external release safety unchanged."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "4046215ab26f8f387784b92a1a033c5d85f40af8",
-          "commit": "b3ffb40fdc2287fcfcd403e0b5acece672741c48"
+          "blob": "2a239e92a02beb5c9dc03824485c183501bfc80a",
+          "commit": "1c9d0a6a24ea5d4bf649f5fe264213983d898977"
         }
       },
       "status": "done"
