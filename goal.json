@@ -268,38 +268,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-02T23:12:52Z",
+      "finished_at": "2026-11-03T00:47:04Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:a361e31ab8798ddb675ac6b835eda82dd46266c9",
-          "tests": "v1:sha256:37f77726f16c787978fbe63007db62f56fcaad1e0a64cc26ffb6fed021ea6384"
+          "tests": "v1:sha256:6abdb4b571ffa9b2fdb27251e599401b76bdb58028f8775328d810303749a92b"
         },
         "policy": {},
-        "subject": "v1:sha256:34a82aecb08abca0c729deeebadb0301cdc8635f6cf10b1159c0758c6b176ea9"
+        "subject": "v1:sha256:ac624c122019ec91237ba5c1033d9baab91d8d8d29e28ab7f5c4574e24ea096d"
       },
-      "holder": "codex:takeover/1043-review-tests-context",
-      "input_fp": "v1:sha256:767ef867b3eb0c735fa02d137eb27cad9e7f49c063428918a8807cda90878b2c",
+      "holder": "codex:takeover/1043-review-tests-ast-portability",
+      "input_fp": "v1:sha256:c019e80298b42341494ac3c05d97ab851cdfed3e946d93d2c49813b397c8042e",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "7f7c56e9fe5ca723d304918eda0e83ae8e8af1c4",
-          "commit": "6f88e27a2866e4d55425339b090b10a0db050edf",
+          "blob": "c9aab871130d244ad326637a0effc5362e68771e",
+          "commit": "0a0a6540c14282110792b39ff8f423380a6b58e9",
           "path": ".zzzops/reviews/1043/review_tests.md"
         },
-        "summary": "Approved the narrow context fixture correction at 5907d057. The journey now asserts cost is absent from identity-bearing inputs and reads context.cost, matching existing card.build routing for context:true. Complete cost equality/blob decoding, measured red/green command and prior substantive coverage remain unchanged. Tests checkpoint contains no product source."
+        "summary": "Approved AST portability correction at tests932af741. Canonical structural hashing preserves AST node kinds, child order and scalar/literal values while omitting absent/default-empty parser representation. Golden hashes independently match immutable audited de5640d1 property blob ebfd8a8c; property source is byte-identical. Guard and seed/step/assertion weakening controls pass on Python 3.10 and 3.14 (two tests, 0.015 s each). Only two test paths differ from the prior checkpoint; implementation remains reverted."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "575015a9831ccd2ce724c3125dd74dd20029c1b5",
-          "change": "1c5601dd8cb7003ca94e6e1b1dd523b8298f4b7b",
-          "commit": "5907d057e5a713e015635acecf85a33658106f49",
-          "tree": "085adbc9ad63a602f608d00e3742efa73602608b"
+          "change": "7aca72e202478b8393f23a11b0f24ddb45cc0469",
+          "commit": "932af741d3a7475c8ec63b8141549fa91330db30",
+          "tree": "1184ab7293cd48ad7f29dfaac0c0dd2de5058e67"
         }
       },
       "status": "done"
