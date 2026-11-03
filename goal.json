@@ -196,30 +196,22 @@
       "status": "done"
     },
     "implement": {
-      "answer": {
-        "decided_at": "2026-11-03T19:26:39Z",
-        "decided_by": "Dave",
-        "quote": "Try again",
-        "text": "The owner reports space is available; measured free space now exceeds 85 GiB. Resume with the existing local runner and its unchanged guard."
-      },
-      "attempt": 3,
+      "attempt": 4,
       "blocked": {
         "category": "decision",
-        "instructions": "The human answered: The owner reports space is available; measured free space now exceeds 85 GiB. Resume with the existing local runner and its unchanged guard.",
         "options": [
-          "Free at least 2 GiB from known authorized disposable storage, then retain the existing local runner",
-          "Explicitly authorize hosted runners for the required checks",
-          "Request a review of specific cleanup candidates; keep execution paused"
+          "Record the owner’s selection on the existing private design item and resume",
+          "Keep the run paused"
         ],
-        "question": "The two owner-required CI jobs for the approved history-only reconciliation are queued. No runners are registered and the existing local dispatcher is stopped with no retained VM or active job. Its documented guard requires 85 GiB free; the latest read shows 84.16 GiB. RAM is sufficient. No sufficient disposable task-owned artifact was found; trusted images and owner work must be preserved. How should CI capacity be restored? Staging and production deployments remain separately unapproved.",
-        "reason": "Required exact-head CI is queued while the local runner is below its existing disk-capacity guard.",
-        "recommendation": "Retain the existing local runner and its 85 GiB guard. Free at least 2 GiB through an authorized known-safe action; otherwise require an explicit hosted-runner decision. Do not delete owner work or images, weaken capacity checks, silently switch runners, bypass queued CI, or use any banked Codex usage reset.",
+        "question": "The private Release 1 integration design is blocked on an owner visual choice, already presented with concrete evidence in its own goal. Which of those private design options should be used, or should the run stay paused? The migration and current release assignments are preserved; the overall CLI dogfood and release remain incomplete.",
+        "reason": "The private Release 1 integration design is waiting for the owner’s visual choice.",
+        "recommendation": "Wait for the actual owner design choice and record it on the corresponding private goal before resuming. Preserve all original source and dirty owner state; do not assume the whole existing card candidate is approved. Keep later-release goals held. Existing legacy file/ref must not be cleaned without explicit authorization, and staging and production each retain their separate future approvals.",
         "repeats": 1,
-        "waiting_for": "agent"
+        "waiting_for": "human"
       },
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-03T18:43:25Z",
+      "finished_at": "2026-11-03T20:25:01Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -229,7 +221,7 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1037-implement-r3",
+      "holder": "codex:takeover/1037-implement-r4",
       "input_fp": "v1:sha256:701e78aa471f44d3963832d65d5b5dff1fef0b39c8be35209b2a2010a1f5020c",
       "last_output": {
         "code": {
@@ -242,7 +234,7 @@
       },
       "ok": false,
       "output": null,
-      "reason": "stale",
+      "reason": "retry",
       "status": "blocked"
     },
     "review_design": {
