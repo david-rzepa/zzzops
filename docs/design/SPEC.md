@@ -137,9 +137,11 @@ Developer clones that do not run ZzzOps may add the negative refspec `git config
 |---|---|---|
 | `.zzzops/POLICY.json` | On `I` | §3.2 |
 | `.zzzops/workflow.json` | On `I` | §3.1 |
+| `.zzzops/TEMPLATE.json` | On `I`, or `P` in a policy preview | Last-reviewed default blob ids and removed-file tombstones (G1024, §3.2). Advisory provenance, never fingerprinted. |
 | `.zzzops/prompts/<file>` | On `I` | Node prompts (§8.2) |
 | `.zzzops/reviews/<id>/<node>.md` | On work branches only | Artifacts (design, test plan, review reports). The review path is the constant `.zzzops/reviews`. |
 | `plugins/zzzops/zzzops/templates/default/` | Plugin | `POLICY.json`, `workflow.json`, `prompts/*.md`: the shipped templates (§8). |
+| `plugins/zzzops/zzzops/templates/history/` | Plugin | Append-only normalized template blobs, named `<git-blob-id>.<ext>` (G1024, §8.3). |
 | `<primary>/.zzzops/worktrees/g<id>` | Local | Goal worktree. `/.zzzops/worktrees/` is added to `<git-common-dir>/info/exclude` once. |
 | `<git-common-dir>/zzzops/coordinator` | Local | Best-effort mirror of the coordinator commit, for agents to browse. |
 | `<git-common-dir>/zzzops/coordinator.lock` | Local | Non-blocking file lock for the mirror update. |
@@ -285,6 +287,8 @@ There is no `review_path` field: the review path is the constant `.zzzops/review
 - Ranges are validated; a violation makes the policy invalid (global blocker, §4.3).
 - `instructions` keys match `^[a-z][a-z0-9_]*$`; texts are non-empty.
 - `merge.method` is not fingerprinted: it is advisory for the op. Under required signatures on `I`, use `squash` (GitHub signs squash commits).
+
+**Default provenance (G1024).** `.zzzops/TEMPLATE.json` is a separate advisory file, not a POLICY setting: `{"schema": 1, "template": "default", "files": {"<relative policy path>": "<40 lowercase hex blob id>" | null}, "removed"?: {"<path>": "<blob id>"}}`. Unknown keys, unsafe relative paths (absolute paths, empty/`.`/`..` components, backslashes, drive prefixes or control characters), malformed ids, or a path in both maps give `invalid_record`, never a policy error. IDs hash Git blob bytes after CRLF→LF normalization. Null means unknown provenance. `removed` preserves the last reviewed base for a default no longer shipped; all readers of schema 1 understand these tombstones. A newer schema gives `newer_record` with no replacement offer. Pre-G1024 engines ignore the file, so it requires no capability. Reading/writing it stales no node and cannot block work; it lands through a `zzzops/policy/*` branch (§8.3).
 
 ### 3.3 Goal document (`goal.json` on `zzzops/goal/g<id>`)
 
@@ -656,6 +660,8 @@ A **value view** is the value itself when its canonical form is at most 600 byte
 ```
 **Legacy item (G1015).** When pre-reset ZzzOps state remains, `next` and `validate` carry a top-level `legacy` object: `message`, `counts` (`issues`, `null` until counted; `files`; `refs` on `R`, counted only), `files` (at most 10), `skill` (`migrate-zzzops-repository`), `recheck`, `checked` and `dismiss`. It never pauses work. `validate` re-checks every time and adds `issues` (up to 100 per search, linked goal issues removed), `linked`, `queries` (the exact search strings) and `truncated`. `next` checks GitHub only when the cache key of `legacy.json` (§2.3) changes or its `retry_after` passes: 24 h after a transient failure or while the item is active, 7 days after `gh` is missing or unauthenticated. It never checks in the `next` embedded in a write, offline, or when `settings.legacy.ignore` is true. Old refs alone never make the item active: they are the archive (DESIGN §7). The check reads no issue bodies or comments.
 
+**Default updates (G1024).** Top-level `policy_update` is advisory, never a blocker/action. Explicit `next` (scoped or not) shows `kind`, `message`, a 12-hex `template` id, `counts: {files, edited_here}`, the first ten file paths and `expand: <cli> validate`. Advisory paths are trimmed before work/actions or human items to fit the normal output cap; `next` embedded in writes omits it. Only a valid loaded policy is compared, at `P = policy_commit` (preview ref included), using local blobs and the installed template/history with no network check or cache. A computation failure drops the notice without failing the verb.
+
 With `--all`, the output also carries `"goals": [{"id", "title", "state", "stage", "first_unfinished", "last_change"}]` for open and held goals (`last_change` = the goal tip's committer date), and no byte cap.
 
 **Checks timing in full approval context (G1043).** A configured input produced by `checks.run` exposes a concise timing summary and the complete result through its view/read reference. Show total local checks time and repository verification time, independently qualified whole-run and repository baselines (§5.3), their source/provenance or exact unavailable reason. An unavailable whole-run baseline must not hide an available `baseline.verification` delta. The repository delta is informational: concurrent goal workload and machine load may differ. Legacy command times never imply an invented total/delta. Unscoped compact items still expand through `next --goal G`; new timing remains context rather than approval identity.
@@ -676,6 +682,18 @@ With `--all`, the output also carries `"goals": [{"id", "title", "state", "stage
 | `validate` | `{"ok", "coordinator", "goals": {"<id>": ["<error>"]}, "policy": ["<error>"], "environment": ["<error>"], "warnings": [...], "legacy"?: <legacy item with the counted set>, "impact"?: <policy impact>}` |
 
 **Branch-deletion warning (G1031).** With usable `gh` and a loaded `settings.branching` key, repository `validate` makes one additional `gh api repos/<repo> --jq .delete_branch_on_merge` call with a 10 s timeout. Only the boolean true appends `auto_delete_head_branches` to `warnings`: merging a finish PR deletes the kept `release/` or `hotfix/` branch, and dependency deletion can close or move stacked and release PRs before the engine retargets them; turn the setting off (SETUP.md). False, absent/malformed output, an unknown repository, an API error or timeout is silent; `ok` is unchanged. No probe runs without branching, with unusable `gh`, in `validate --policy`, `next` or writes. The engine never changes the setting.
+
+**Full default update (G1024).** Repository `validate`, `validate --policy-ref` and valid `validate --policy --dir D` add `policy_update` with `kind`, `message`, `template`, `files`, `record`, `see` (MIGRATING) and `recheck` (directory validation). Kinds are `update` (drift), `no_record` (missing provenance), `invalid_record` (errors plus inferred replacement), and `newer_record` (upgrade instruction, no files/record). Valid equal defaults show no item. The short template id is the first 12 hex of SHA-256 over sorted `path + NUL + blob-id + LF` lines.
+
+Each listed file has `path`, `upstream` (`changed`, `added`, `removed`, `unknown_base`) and `local` (`unchanged`, `changed`, `deleted`, `absent`, `unknown`). Compare S (shipped id), B (recorded base), and L (repository id). A recorded B equal to S is quiet even with local customization; a null B is quiet when L equals S or both B and S are absent. Otherwise a known non-null B gives `changed`/`removed`, with local state from L versus B. A shipped path absent from the record gives `added`, even when a same-named local file exists. Untracked repository-owned files are ignored.
+
+A non-null B unknown to this engine's history and unequal to S is checked first: `unknown_base`, `local: unknown`, `note` to upgrade, no diff/apply. A tombstone is quiet when S is absent, or when its id equals S or is known in history; otherwise it is `unknown_base`. This prevents version-skew downgrades and removed-file ping-pong. Re-added defaults must use a new file name.
+
+`diff` runs quoted `git diff --no-index` from old to new default, or from the local file to the new default for unknown provenance; a removed file gets an old-to-local diff only when edited here. `apply` offers `merge` (three-way `git merge-file`, local/old/new) for changed defaults with a known base and local file, `copy` for additions absent locally, `delete: true` for unchanged removals, and `manual` for unknown provenance, local deletions/custom additions or locally edited removals. `unknown_base` offers neither operation. Repository paths are `.zzzops/...` or `<D>/...`; installed paths are absolute. Commands use POSIX quoting on Unix and PowerShell literal arguments with the call operator on Windows; an explicit ZZZOPS_PREFIX remains trusted caller syntax.
+
+`record: {path, reviewed, inferred?}` contains exact UTF-8 JSON content for an agent to write, never an automatic write. `reviewed` advances known shipped bases to S, preserves unknown bases unchanged, moves known removed bases to tombstones (drops null removed bases), and preserves existing tombstones without resurrection. Declining changes only this record, silencing the notice until S changes again. When every row is `unknown_base`, no record is offered. For `no_record`/`invalid_record`, `inferred` pins each local policy file that matches a shipped/history blob, otherwise null, omitting absent files; the notice shows the drift that inferred provenance would expose. Neither record nor notice changes fingerprints or readiness.
+
+All forms of `validate` also warn `policy_merge_markers` for POLICY.json, workflow.json or any prompt with a line beginning `<<<<<<< ` or `>>>>>>> `; the warning alone does not change `ok` (invalid JSON remains its existing error). These advisory reads and failures never block writes or create a capability.
 
 **Impact preview:** `{"G1002": {"<node>": {"before": "<state>", "after": "<state>"}}}`, listing only nodes whose state string changes, over the edited goals and their transitive dependents. A state string is the state name plus its reason, for example `ready (stale: inputs.spec)`.
 
@@ -2273,11 +2291,12 @@ The shipped `POLICY.json`, prompts and graph are configuration (owner decision, 
 
 ### 8.3 Templates and the bootstrap checklist
 - **Templates.** The plugin ships `plugins/zzzops/zzzops/templates/default/{POLICY.json, workflow.json, prompts/*.md}`, the source of truth for the defaults (§7, §8.1, §8.2). A CI test runs `validate --policy --dir <template>`.
+- **History (G1024).** `templates/history/<blob-id>.<ext>` preserves every normalized default version shipped on dev, deduplicated by Git blob id. It is append-only; `.agents/template_history.py --write` adds current files. `test_template_history.py` checks names/bytes, every current template, and the pinned published seed. History is bundled without enumerating it in REQUIRED_FILES; unavailable old bases degrade to `unknown_base`.
 - **No bootstrap verb and no `bootstrap.py`.** The bootstrap skill is a checklist over `validate`, the templates and plain `git`/`gh` commands. The surviving skills are bootstrap, add-goal and execute (plus any others DESIGN keeps).
 - **Checklist**, in order:
   1. **Choose `R` and `I`.** Greenfield: `git init -b <I>` and create `I` on `R` with the first commit, before any branch rules exist. Brownfield: use the existing trunk, or create `dev` from it and push.
   2. **Write the policy files** from the template, and capture the project's intent (`settings.intent`) with the owner, in their words: what it is for, whom it serves, what it deliberately is not, and the principles that must survive change (G1000). The template ships `TODO:` placeholders; `validate --policy` warns `intent_placeholder` until they are replaced. Then: `verification.commands` (the repository's canonical verify command); `required_ci` (only always-running required check names, read once with `gh api repos/{o}/{r}/rules/branches/{I}`); `goals.first_id` above the highest issue and PR number; `routing.tiers` for the harnesses in use; `integration_branch` = `I`.
-  3. **Validate:** `validate --policy` (needs no remote).
+  3. **Validate:** `validate --policy` (needs no remote). Before landing, write `.zzzops/TEMPLATE.json` from `policy_update.record.reviewed`, using a UTF-8 file tool; another validation shows no `policy_update` (G1024).
   4. **Land the files on `I`:** through a `zzzops/policy/bootstrap` branch and a PR when `I` is protected; otherwise a direct push.
   5. **Per clone:** `git config zzzops.integrationBranch <I>` when `I` is not the remote's HEAD branch (and `zzzops.remote`, `zzzops.committer` when needed).
   6. **Harness setup** (§1.5): the Codex profile or rules, the Claude Code `permissions.allow` entries, sandbox domains.
@@ -2286,6 +2305,8 @@ The shipped `POLICY.json`, prompts and graph are configuration (owner decision, 
   9. **Developer clones (optional):** the negative refspec `^refs/heads/zzzops/*` (§2.2).
   10. **Run `validate`** (environment, Git version, SHA-1, not shallow, harness probe, `gh`; with `settings.branching`, the best-effort branch-deletion warning, §3.16).
   11. **Capture the first goals** with the add-goal flow. Product discovery is ordinary goals; there is no harness or root-goal hierarchy.
+
+**Reviewed default updates (G1024).** Bootstrap's “Update from the shipped defaults” creates a local `zzzops/policy/defaults-<template>` worktree; decide `workflow.json` first using MIGRATING before copying/removing its prompts. Review each diff and apply/keep, resolve markers, write `record.reviewed` (or `inferred` without a review), validate, then push/preview the impact and seek the repository's approval. The PR records taken/kept/declined files; delete the branch after landing. Unknown bases require an upgrade first; if still unknown on the latest plugin, explicitly set that file base null or delete its tombstone and compare once manually. Prompt text alone stales nothing; a required rerun needs node `rev`. No policy file, including TEMPLATE.json, is edited in a goal.
 
 ### 8.4 `REPAIR.md` recipes referenced by this spec
 - **Forward commit** for a force-pushed goal (`goal_rewritten`, §4.2).

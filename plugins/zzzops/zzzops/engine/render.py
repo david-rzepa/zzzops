@@ -786,7 +786,7 @@ def goal_running(res: GoalResult) -> list:
 
 
 def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = False, blockers: list | None = None,
-                warnings: list | None = None, paused: bool = False, legacy: dict | None = None) -> dict:
+                warnings: list | None = None, paused: bool = False, legacy: dict | None = None, policy_update: dict | None = None) -> dict:
     """`blockers`: [{"kind", "message"}]; a message may contain "{n}" (the number of paused actions).
     `paused`: a blocker pauses every action. `legacy`: the pre-reset state item (G1015), shown only when active."""
     blockers = [dict(b) for b in (blockers or [])]
@@ -833,6 +833,10 @@ def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = 
            "warnings": warnings}
     if legacy:
         out["legacy"] = legacy
+    if policy_update:
+        out["policy_update"] = dict(policy_update)
+        if "files" in policy_update:
+            out["policy_update"]["files"] = list(policy_update["files"])
     if p.branching:
         out["releases"] = releases_view(ctx, p)
     if scope:
@@ -840,6 +844,11 @@ def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = 
     if all_:
         out["goals"] = [goal_summary(res, ctx) for g, res in sorted(p.goals.items())]
         return out
+    # Shrink optional advisory detail before hiding work or human decisions.
+    if policy_update:
+        notice = out["policy_update"]
+        while len(canonical(out)) > NEXT_LIMIT and notice.get("files"):
+            notice["files"].pop()
     dropped = {"actions": 0, "needs_human": 0}
     while len(canonical(out)) > NEXT_LIMIT and (out["actions"] or out["needs_human"]):
         key = "actions" if len(out["actions"]) >= len(out["needs_human"]) else "needs_human"

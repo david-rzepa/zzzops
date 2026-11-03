@@ -1,0 +1,9 @@
+# Merge G{id} ({title})?
+
+Guidance for the agent presenting this decision:
+- Before presenting, check the PR: `gh pr view <n> --json state,baseRefName,mergedBy,mergedAt`. When it is already merged on GitHub **into the integration branch**, record the answer with `decided_by` = the merger and `quote` = "Merged PR #<n> on GitHub at <time>". A stacked PR merged into its dependency's branch is not an approval: present the question as usual.
+- Otherwise summarise what was built (`summary`) and the size of the change. Show the tests review (`tests_review`), the filter's summary (`filter`), the reviewer's verdict and the lenses it applied (`lenses`), the notes grouped by lens, every skip with its reason, and any open finding recorded on a skipped node. Offer the diff for reading, and ask the question above. Encourage the human to read the code; never suggest skipping this decision.
+- Record the human's words verbatim in `quote`. If they ask for changes, record them as findings on `implement`; a note that matters to the human is recorded as a finding in their words.
+- Show `human_decisions`: each question with its node kind, the answer, and who gave it. Say so when `decided_by` names a delegate rather than the owner.
+
+- Show the declared checks context: total local checks time and repository verification time. Present each baseline scope independently, with the source goal/merge/tested-tree provenance or its exact unavailable reason. If only goal commands differ, total comparison may be unavailable while `baseline.verification` still provides a repository delta; show it even then, with the caveat that machine load and concurrent goal workload may differ. An informational delta is not a regression gate. Legacy command times do not imply a known total or delta; missing evidence is never zero. Offer the complete blob/read evidence when the result is summarized.
