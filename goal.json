@@ -113,10 +113,10 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 1,
-      "correction_runs": 0,
+      "attempt": 2,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-03T03:38:06Z",
+      "finished_at": "2026-11-03T03:58:29Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -126,19 +126,22 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1039-implement",
+      "holder": "codex:takeover/1039-four-regressions",
       "input_fp": "v1:sha256:8dfd3be8cc2e5ce54b69497a8b4653f8ce6cd1dd7e9ad2b6153404e0cdd0f1ea",
       "ok": true,
       "output": {
         "code": {
           "base": "8e5b98b63dd2ad6c8f719fbf1bd5ac273c9af9a7",
-          "change": "cadae6f2a0dadd1ee9145dc2a89d1954ea0f827d",
-          "commit": "234281913e079cde4225a7951b953adaf9595a22",
-          "tree": "b9ea5bd7510e5204acce299da31685ce055b3457"
+          "change": "41361dd2092e0e1347158b01e72176ba854e1497",
+          "commit": "ab919a9ed5e1655a442586979f88fe2106de76d8",
+          "tree": "37acf87b845f58778aa1dccb55dfe32c4d8dbf1d"
         },
-        "summary": "Clean merge syncs now retain checkpoint identities when their zero-context changes match and scoped hand resolutions preserve a complete union order; review cards add bounded semantic trunk hints through the approved base input. The opt-in round_budget capability counts new material-finding rounds per actor stage, including safe zero-limit handling, while legacy budget behavior and shipped policy requirements remain unchanged. All six required commands passed, affected budget/docs controls passed after the reviewed zero-limit fix, and independent core/budget pre-reviews cleared the final tree; all seven frozen files are unchanged."
+        "responses": {
+          "run_tests:failed": "fixed: Reproduced the four failures and distinguished two real 4136-byte card regressions from two superseded legacy fixture assumptions. Named short instructions may now become full blob/read references without previews only after prior strategies exhaust and only when actual size shrinks; unavailable/non-storing readers retain inline text. Actual two cards measure4028 bytes with exact raw Git readback of complete guidance and unchanged base/scope/cost/checks fields. Four original IDs plus two tiny controls passed6 tests/15.605s; 74 shrink/property/prompt/docs controls passed/.353s; all six required commands passed91 tests. Shipped definition includes the approved base tuple; only the isolated G1022 fixture opts out, keeping original counter assertions. Budget/caller source is byte-identical to23428191, frozen7 unchanged, and independent delta review cleared."
+        },
+        "summary": "Fixed the two sync-review card-size regressions with a final lossless short-instruction reference fallback after existing compaction, retaining complete readable guidance and all base/scope/cost evidence. Updated the exact shipped-definition expectation for the approved base input and isolated the original G1022 definition-only migration from that later semantic edge, preserving its original stale-state and counter assertions. All four original failures, 74 related controls and six required commands pass; independent review cleared the delta, while all seven frozen files and budget/caller source remain unchanged."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
