@@ -159,26 +159,26 @@
       "status": "done"
     },
     "integrate": {
-      "attempt": 1,
+      "attempt": 2,
       "blocked": {
         "category": "external",
         "op_state": {
           "pending_since": 1793672703,
-          "polls": 1
+          "polls": 2
         },
         "reason": "GitHub is computing mergeability",
-        "repeats": 1,
-        "retry_after": "2026-11-03T02:26:03Z",
+        "repeats": 2,
+        "retry_after": "2026-11-03T02:39:41Z",
         "waiting_for": "time"
       },
-      "correction_runs": 0,
+      "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-03T02:25:03Z",
+      "finished_at": "2026-11-03T02:37:41Z",
       "fp_parts": {
         "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
         "inputs": {
           "base": "v1:sha256:bff1cfbeacd03186a6a1462cee7e5268319567fb700dff411bff0d10d309affc",
-          "code": "v1:sha256:91a04e2c5bf24921f648ebcc3b977e1232d51887ddcf5da67cbcdf13087239fd"
+          "code": "v1:sha256:ff2d02182a5d39c9c6e33a175fa4ef4ff53b5f5ccbc10a5100c0369b9ecb8139"
         },
         "policy": {
           "verification.required_ci": [
@@ -186,11 +186,11 @@
           ]
         }
       },
-      "holder": "codex:takeover/1038-integrate-final",
-      "input_fp": "v1:sha256:53aca34f290ad933caced7ba6567db179cb6af1e9fa3d17b968169c90f39815c",
+      "holder": "codex:takeover/1038-integrate-windows-fixture",
+      "input_fp": "v1:sha256:f32472885c90f97a0e135107b2f645afa6c6793245aef8eb7bed843c9fd38719",
       "ok": false,
       "output": null,
-      "reason": "new",
+      "reason": "stale",
       "status": "blocked"
     },
     "review_design": {
