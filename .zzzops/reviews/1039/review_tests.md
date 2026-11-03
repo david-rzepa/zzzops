@@ -1,26 +1,13 @@
-# G1039 test review
+# G1039 test review, cross-file line-hit correction
 
-Changes requested for one narrow acceptance-coverage gap. Independent provenance and the remaining substantive coverage check out.
+Approved. `review_tests:1:1` is resolved; no new findings.
 
-## Finding: cover the cross-file plain-line hit from acceptance 1
+The interdiff from `35bc8034d7ef6df94e0031e5af7fc6f9cf2bb54d` to source-free checkpoint `7d3e0eb2ed6c07b8a88c3d1f1c579e20dd7aa630` adds one 57-line case to the existing sync-card test file. It changes no implementation, earlier assertion, replay record or golden value.
 
-`SyncCardTests.test_real_diffs_prioritize_hand_resolutions_and_semantic_hits_and_cap_at_twelve` uses forty files that both trunk and goal change. Its semantic example is `newName()` within one of those shared files. This proves some semantic prioritization, but it cannot establish the required G1027/graph26 case: trunk adds a new graph26 POLICY file containing a plain JSON line that the goal removes from a different template POLICY file.
+The new fixture uses actual Git to establish a common template POLICY with `"min": "0.0.0"`, a newly added trunk graph26 POLICY containing the same plain JSON line, and a goal that removes that line only from the different template path. Assertions explicitly prove that the two changed-path sets are exactly their respective distinct files, have empty intersection, and that graph26 content remains unchanged in the goal. Thus shared-file intersections cannot satisfy the case.
 
-A faulty implementation that only searches code-like names (and shared-file intersections) passes this test while omitting `.agents/fixtures/graph26/POLICY.json` from the sync card. The JSON key `min` is deliberately not a code-like snake/camel/uppercase name. Approved design §6.2 and acceptance 1 specifically require a direct removed-line match across different paths and identify that graph26 change as the motivating evidence.
+The actual card builder must include the graph26 path with a reason saying trunk adds the exact JSON line that the goal removes. A code-name-only heuristic cannot satisfy these assertions: `min` is a plain word rather than a snake/camel/uppercase code name. This directly covers the motivating acceptance case rather than merely asserting a generic semantic hit.
 
-Extend the existing small real-Git card fixture, or add one equally small case, so the goal removes `"min": "0.0.0"` from `templates/default/POLICY.json`, while trunk adds the same line under `.agents/fixtures/graph26/POLICY.json`. These paths must be different and the new graph26 file must not be in the goal's changed-file intersection. Assert the graph26 entry is present with a reason identifying the added line that the goal removes (not merely a shared-file or code-name reason). Preserve the hand-resolved-first ordering and bounded preview assertions already covered. No full goal journey, history-ref dependency or broad suite is needed.
+The supplied focused run reaches the absent-sync-section assertion after the real Git/plumbing checks, which is the expected red state before implementation. Recorded production sharded orchestration accounts for all 25 new IDs exactly once, no skips, in 1.0435 seconds. I did not repeat a broad suite.
 
-## Coverage and independent evidence retained
-
-I read the approved design revision 3, spec, full frozen diff and all three new test modules. The checkpoint changes only the seven intended test/fixture paths and no implementation.
-
-- Real Git fixtures check U0 versus stored U3 identities, context-only changes, both whole-file union orders, interleaving/dropped/moved/wrong-copy/mixed-hunk counterexamples, binary/missing versions, unrelated scope, contained checkpoints and memoized resolution work. The carry/frontier fixture verifies kept recorded changes and frozen paths, current design/test reviews, fresh tree checks and the new base-sensitive code review.
-- The material-round matrix distinguishes new material findings, notes, follows and carried/foreign findings, done agent records and op/human/blocked records. Exemptions distinguish non-checkpoint base-only stale nodes from checkpoint producers and code changes. Stage/frontier rendering and one tiny actual CLI journey check the stage-specific gate, continuation and legacy positional/shape compatibility.
-- Sync shrink tests cover size-sorted touching blobs, folding after blob steps, bounded detail, unchanged previous evidence, idempotence, the existing final 80-character preview and under-budget preservation. The template test checks only the approved review_impl base edge and leaves tests review/filter edges unchanged.
-- I independently matched all 54 literal replay rows to their named immutable goal records, including exact node attempt/status/reason, fingerprint parts and projected finding fields. Only minimal hashes/IDs/material/follows/target data are retained; no raw human questions or command tails are added. The literal expected totals remain G1026 3/4 and G1027 1/4.
-- I independently archived immutable `8e5b98b63dd2ad6c8f719fbf1bd5ac273c9af9a7` and regenerated the shipped node/journey golden with only `review_impl.inputs.base = {from: base.base_commit}`. Both match the fixture; the archived shipped POLICY was left unchanged. This does not authorize adding round_budget to the shipped POLICY: activation remains the later installed-policy step in design §3.6.
-- Recorded red evidence accounts for all 24 new IDs without skips in 0.8122 seconds. Collection is reported on Python 3.10 and 3.14. Those red results are intentional absent-feature evidence, not a passing product claim; the tiny CLI case still needs to reach its post-capability assertions after implementation.
-
-The approved design's blanket equality between diff(T,M) and the full listed conflict set is not required by these tests. The documented modify/delete scratch counterexamples remain fail-closed under the observable U0/union contract. No false equality assertion or extra algorithm is requested here.
-
-No broad suite was repeated, no product source was edited, and no owner decision is needed for this focused fixture correction.
+Prior carry/budget/shrink assessments and independent checks of all 54 immutable replay rows and the archived-base golden remain valid. Existing shared-path/name checks, hand-resolved-first ordering, capped detail, folding, last-resort preview and fixed-point assertions remain intact. The shipped POLICY activation restriction in design §3.6 is unchanged; implementation still must honor it.
