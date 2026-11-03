@@ -83,28 +83,28 @@
       "status": "done"
     },
     "design": {
-      "attempt": 5,
+      "attempt": 6,
       "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-03T17:49:03Z",
+      "finished_at": "2026-11-03T18:13:26Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
-          "dep_designs": "v1:sha256:3d66e8494353a2dbfcfaf342af50792fec0677f83e67d3cc5df1bd911f3a5965",
+          "dep_designs": "v1:sha256:771c57a88657a79d0b270f0dcf929993ac65695bbf65015aa72ad8049cdb5564",
           "spec": "v1:sha256:7cacab7d2739a88c2f7c7d9773f294a4064599407fcc553561919fe77916b36c"
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1036-design-refresh",
-      "input_fp": "v1:sha256:33468dd7d3a526429d667d9c0448925920db9720dfd0765fc8c4755c0aae5a02",
+      "holder": "codex:takeover/1036-design-cli-only",
+      "input_fp": "v1:sha256:b259bf65998ed9331972f9ebe66ddafd136c0831e11e992bde02acacf3a32536",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "4046215ab26f8f387784b92a1a033c5d85f40af8",
-          "commit": "b3ffb40fdc2287fcfcd403e0b5acece672741c48",
+          "blob": "2a239e92a02beb5c9dc03824485c183501bfc80a",
+          "commit": "1c9d0a6a24ea5d4bf649f5fe264213983d898977",
           "path": ".zzzops/reviews/1036/design.md"
         },
-        "summary": "Design-only refresh reconciles G1037 attempt 6’s corrected Phase 7/A10 release evidence: separate staging/production approvals bind both relevant tips and the resulting candidate tree/artifact, with repeated freshness checks, stop/restage/renewed approvals on changed or unproven identity, and actual-content comparison. The whitepaper plan distinguishes this external root procedure from engine tip/head/mergeability guarantees and from synthetic/test-only observations. WD1–WD8, anonymisation, ratios/trends, source/claim binding and the actual G1037 merged-report gate before writing remain unchanged; no paper, implementation, installed policy or external system is changed."
+        "summary": "Design-only refresh incorporates G1037 attempt 7’s recorded OD9: Codex-only CLI dogfood is permitted, with actual actor/holder/build/action evidence and Claude labelled not executed unless independently evidenced. The evaluation, limitations and synthetic trace distinguish scope authority from measured participation or untested model/harness equivalence, and ratios use only real measured cohorts. WD1–WD8, privacy, candidate-bound separate deployment approvals and the actual G1037 merged-report gate before whitepaper writing remain unchanged; no paper or implementation is produced."
       },
       "reason": "stale",
       "status": "done"
