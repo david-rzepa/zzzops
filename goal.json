@@ -184,6 +184,56 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_tests:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:4bfdf824f9d5b41f8437f71035b1e0789bbb984e95d2d8250177a4209c6a0b7e",
+          "text": "SyncCardTests currently uses only files changed by both trunk and goal, with newName() as its semantic example. A code-name/shared-file-only implementation can pass while missing acceptance 1: trunk adds .agents/fixtures/graph26/POLICY.json containing the plain JSON line \"min\": \"0.0.0\" that the goal removes from a different templates/default/POLICY.json. Extend the existing small Git/card fixture (or one equally small case) with those distinct paths, ensure graph26 is outside the shared changed-file intersection, and assert its touching entry explicitly identifies the added line the goal removes. Keep existing hand-resolution ordering/cap/shrink checks; no full journey or broad suite is needed.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-03T03:11:44Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:48db30e141b058f1e0aa82e4687321fdb6b2dc6e",
+          "tests": "v1:sha256:cc690ad00ba4271ca086fd5aaf0413d1e92216ee45bf2743f606699b6d4c50d6"
+        },
+        "policy": {},
+        "subject": "v1:sha256:4bfdf824f9d5b41f8437f71035b1e0789bbb984e95d2d8250177a4209c6a0b7e"
+      },
+      "holder": "codex:takeover/1039-review-tests",
+      "input_fp": "v1:sha256:6b90709ce942cfdac0ff7b5026b72cb8f3d6f2d4f2b54dc6282e9eb98a6e8d27",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "2484a3720174f4dc5351233109102fb6ebdd58a2",
+          "commit": "fc4c50dc7bc666050d4757e7a24d0f0a476e1995",
+          "path": ".zzzops/reviews/1039/review_tests.md"
+        },
+        "summary": "Substantive carry/budget/shrink coverage and independent literal/golden provenance check out. Add the explicit cross-file plain-JSON removed-line sync-card case required by acceptance 1; shared-file newName() coverage does not prove it."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "8e5b98b63dd2ad6c8f719fbf1bd5ac273c9af9a7",
+          "change": "2af2d3e598b361c198a25222eb020a680b30ba7a",
+          "commit": "35bc8034d7ef6df94e0031e5af7fc6f9cf2bb54d",
+          "tree": "afbb90bef4a75dcb893d1d22083c45b90866c8ab"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
