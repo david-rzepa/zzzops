@@ -310,14 +310,14 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-03T01:33:00Z",
+      "finished_at": "2026-11-03T01:45:50Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:5fe399bd76f08f2502cf18272e6267a73e52895b813d19bb89e72316ddf956a2",
+          "code": "v1:sha256:6ab6b9d9335f3b9ea82bf03635187ff5161d79736a24acf384f5dd823fdf0670",
           "commands": "v1:sha256:5d45432d37245e6a9235d3e695cde3fef2adbdba789c19f91e38956def733113"
         },
         "policy": {
@@ -326,8 +326,8 @@
           ]
         }
       },
-      "holder": "codex:takeover/1040-runtests-sharded",
-      "input_fp": "v1:sha256:3a812fc30e565f2c835e1a5f2070c64d54de6ac04b6df1c4df222ef00991b512",
+      "holder": "codex:takeover/1040-runtests-normalized",
+      "input_fp": "v1:sha256:dca27c27001d19f1938482b26d28784b4c280174820956802d6df52b0c8cbf94",
       "ok": true,
       "output": {
         "result": {
@@ -335,34 +335,34 @@
             {
               "cmd": "python3 -m unittest discover -s .agents -p test_engine_blocked_findings.py",
               "exit": 0,
-              "milliseconds": 11116,
+              "milliseconds": 11246,
               "seconds": 11,
               "source": "goal",
-              "tail": "....................\n----------------------------------------------------------------------\nRan 20 tests in 11.033s\n\nOK\n"
+              "tail": "....................\n----------------------------------------------------------------------\nRan 20 tests in 11.161s\n\nOK\n"
             },
             {
               "cmd": "python3 -m unittest discover -s .agents -p test_engine_owner_questions.py",
               "exit": 0,
-              "milliseconds": 72378,
-              "seconds": 72,
+              "milliseconds": 73015,
+              "seconds": 73,
               "source": "goal",
-              "tail": "........../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2510910 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2510914 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n............................../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 2525730 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 41 tests in 72.323s\n\nOK\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n"
+              "tail": "........../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 3322189 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n/usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 3322193 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n............................../usr/lib/python3.14/subprocess.py:1139: ResourceWarning: subprocess 3337167 is still running\n  _warn(\"subprocess %s is still running\" % self.pid,\nResourceWarning: Enable tracemalloc to get the object allocation traceback\n.\n----------------------------------------------------------------------\nRan 41 tests in 72.956s\n\nOK\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=4>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=6>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=7>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedWriter name=8>\n<sys>:0: ResourceWarning: unclosed file <_io.BufferedReader name=9>\n"
             },
             {
               "cmd": "cd .agents && python3 -m unittest test_engine_github.IntegrateTests.test_failure_after_a_fix_escalates",
               "exit": 0,
-              "milliseconds": 6291,
+              "milliseconds": 6382,
               "seconds": 6,
               "source": "goal",
-              "tail": ".\n----------------------------------------------------------------------\nRan 1 test in 6.245s\n\nOK\n"
+              "tail": ".\n----------------------------------------------------------------------\nRan 1 test in 6.334s\n\nOK\n"
             },
             {
               "cmd": "python3 .github/scripts/run_product_validation.py --platform linux --local",
               "exit": 0,
-              "milliseconds": 126996,
-              "seconds": 126,
+              "milliseconds": 139018,
+              "seconds": 139,
               "source": "verification",
-              "tail": "urneys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 29.616172286005167], [\"test_engine_lenses.FullLensJourneyTests.test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body\", 29.297263910004403], [\"test_engine_lenses.RenamedFullLensJourneyTests.test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body\", 28.989265155003523], [\"test_engine_journeys.JourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 28.006282447000558]], \"executed_count\": 1008, \"completed_count\": 1008, \"worker_seconds\": [120.55585976500151, 115.72051647300395, 116.68947609700263, 118.18904513600137, 116.42589120600314, 111.47930924299726, 121.38916472999699, 119.92459608300123, 123.65263553200202, 118.03907255800004, 121.31296972799464, 109.07417805599835, 121.67351814999711, 107.71001986999909, 112.36143026400532, 123.5672607689994, 126.84640325699729, 117.64362929799972, 126.33040359299775, 120.9697878490042], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
+              "tail": "ings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body\", 33.525617106002755], [\"test_engine_lenses.RenamedFullLensJourneyTests.test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body\", 31.928548076997686], [\"test_engine_lenses.RenamedFullLensJourneyTests.test_8_capture_to_merge_and_the_pr_body_lists_every_code_lens_and_the_skips\", 31.344863171994803], [\"test_engine_journeys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 30.79411253899889]], \"executed_count\": 1011, \"completed_count\": 1011, \"worker_seconds\": [134.06257135600026, 122.53627995799616, 127.37738080399868, 131.15813899899513, 120.8027575169981, 124.99547862499458, 136.00936497100338, 133.62511011199967, 135.69256913199933, 128.84747748699738, 131.0663885460017, 122.58757456100284, 136.29331504699803, 122.46103746200242, 123.4437110390063, 137.65218973899755, 138.88463118399523, 129.93238791300246, 132.65042360299412, 132.90836201899947], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
             }
           ],
           "passed": true,
@@ -399,18 +399,18 @@
               "platform": "linux",
               "python": "3.14"
             },
-            "goal_ms": 89785,
+            "goal_ms": 90643,
             "parallel_commands": false,
             "plan_sha256": "40a11c30f862e3ed00e189d742a5e38965de31b56ff6a8888867640182fafd9d",
-            "total_ms": 216781,
-            "verification_ms": 126996,
+            "total_ms": 229662,
+            "verification_ms": 139018,
             "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1",
             "workers": {
               "goal": 20,
               "verification": 20
             }
           },
-          "tree": "88ad6a48b2511e3fa40dc119a1784c3cb751909f"
+          "tree": "23bfd9ff30c37db4f0c62dd1775cbb66a4db9d7b"
         }
       },
       "reason": "stale",
