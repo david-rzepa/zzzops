@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -18,15 +19,16 @@ class ScopedShellTests(unittest.TestCase):
     def test_current_previous_and_approval_commands_preserve_literal_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = fx.make_repo(tmp)
+            repo.git("config", "core.autocrlf", "false")
             names = ["tests/O'Connor.py", "tests/curly’quote.py", "tests/low‚quote.py", "tests/reversed‛quote.py", "tests/space $dollar `tick`.py"]
             if os.name != "nt":
                 names += ["tests/mixed' $(touch INJECTED) `touch TICK` \"quote\" [*]?.py",
                           "tests/line'\nfeed.py"]
-            files = {name: "before\n" for name in names}
-            files.update({"impl/own.txt": "before\n", ".zzzops/reviews/1000/review.md": "before\n"})
+            files = {name: b"before\n" for name in names}
+            files.update({"impl/own.txt": b"before\n", ".zzzops/reviews/1000/review.md": b"before\n"})
             base = repo.commit(files, "test: before")
-            old = repo.commit({p: "middle\n" for p in files}, "test: middle")
-            tip = repo.commit({p: "after\n" for p in files}, "fix: after")
+            old = repo.commit({p: b"middle\n" for p in files}, "test: middle")
+            tip = repo.commit({p: b"after\n" for p in files}, "fix: after")
             cp = {"base": base, "commit": tip, "tree": repo.git("rev-parse", tip + "^{tree}"), "change": "a" * 40}
             old_cp = dict(cp, commit=old, change="b" * 40)
             class Reader(render.Reader):
@@ -87,9 +89,12 @@ class ScopedShellTests(unittest.TestCase):
         self.assertIsNotNone(shutil.which(shell), "The native CI shell must be installed")
         with tempfile.TemporaryDirectory() as tmp:
             repo = fx.make_repo(tmp)
+            repo.git("config", "core.autocrlf", "false")
             name = "tests/O'Connor.py"
-            base = repo.commit({name: "before\n", "impl/own.txt": "before\n"}, "test: before")
-            tip = repo.commit({name: "after\n", "impl/own.txt": "after\n"}, "fix: after")
+            base = repo.commit({name: b"before\n", "impl/own.txt": b"before\n"}, "test: before")
+            self.assertEqual(b"before\n", Path(repo.path, name).read_bytes())
+            tip = repo.commit({name: b"after\n", "impl/own.txt": b"after\n"}, "fix: after")
+            self.assertEqual(b"after\n", Path(repo.path, name).read_bytes())
             cp = {"base": base, "commit": tip, "tree": repo.git("rev-parse", tip + "^{tree}"), "change": "a" * 40}
             ctx = render.Ctx("zzzops", 0, {}, {})
             for command, scope, excluded in [
