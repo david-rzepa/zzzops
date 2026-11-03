@@ -302,16 +302,19 @@ class CarryContractTests(unittest.TestCase):
         renamed = build_graph("default", fx.renamed_workflow()["graphs"]["default"])
         self.assertEqual(["tests/a", "tests/z"], scope(renamed, fx.RENAME["test_design"], record))
 
-    def test_unchanged_checks_only_the_scoped_new_change(self):
+    def test_unchanged_compares_both_scoped_u0_changes(self):
         unchanged = self.required(carry, "unchanged")
         ident = Mock()
         ident.change.return_value = "same"
         old = {"base": "b0", "commit": "t0", "change": "same"}
         new = {"base": "b1", "commit": "m1", "change": "recorded"}
-        self.assertTrue(unchanged(ident, "test_design", "tests", old, new, ["tests/a"]))
-        ident.change.assert_called_once_with("b1", "m1", paths=["tests/a"])
-        ident.change.return_value = "different"
-        self.assertFalse(unchanged(ident, "test_design", "tests", old, new, ["tests/a"]))
+        with patch.object(carry, "resolved_paths", return_value=[], create=True):
+            self.assertTrue(unchanged(ident, "test_design", "tests", old, new, ["tests/a"]))
+            self.assertEqual(2, ident.change.call_count)
+            ident.change.assert_any_call("b0", "t0", paths=["tests/a"], unified=0)
+            ident.change.assert_any_call("b1", "m1", paths=["tests/a"], unified=0)
+            ident.change.side_effect = ["same", "different"]
+            self.assertFalse(unchanged(ident, "test_design", "tests", old, new, ["tests/a"]))
 
     def test_relocate_with_no_sync_does_not_invent_a_checkpoint(self):
         relocate = self.required(carry, "relocate")

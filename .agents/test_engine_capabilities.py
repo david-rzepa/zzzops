@@ -25,7 +25,7 @@ PLUGIN_ROOT = fx.PLUGIN_CODE.parent
 # Every capability shipped so far. A goal that adds a capability appends its name here (G1027 §3.1): a capability is
 # never removed. (G1022's `lenses` joins when it merges; it had not merged when these tests were written.)
 # finding_follows added at rebase onto G1028 (merged first); lenses added at rebase onto G1022 (merged first)
-SHIPPED = {"lens_findings", "finding_follows", "lenses", "release_lines", "test_cost", "blocked_findings", "merge_sync"}
+SHIPPED = {"lens_findings", "finding_follows", "lenses", "release_lines", "test_cost", "blocked_findings", "merge_sync", "round_budget"}
 
 
 def expected_build_id(plugin_code: Path = fx.PLUGIN_CODE) -> str:
