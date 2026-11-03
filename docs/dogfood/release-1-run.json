@@ -2,7 +2,7 @@
   "schema": 1,
   "status": "in_progress",
   "complete": false,
-  "as_of_utc": "2026-11-03T20:52:47.266641+00:00",
+  "as_of_utc": "2026-11-03T21:03:58.109955+00:00",
   "scope": "CLI dogfood; interim bootstrap/migration milestone, not release acceptance",
   "actors": [
     {
@@ -64,7 +64,7 @@
       "release": 1,
       "state": "open",
       "depends_on": [],
-      "phase_status": "test_design_running_after_current_discovery_and_base"
+      "phase_status": "test_design_reopened_by_recorded_review_finding"
     },
     {
       "alias": "goal-B",
@@ -73,7 +73,7 @@
       "depends_on": [
         "goal-A"
       ],
-      "phase_status": "design_ready"
+      "phase_status": "design_reviews_running"
     },
     {
       "alias": "goal-C",
@@ -182,10 +182,29 @@
         "node": "design",
         "attempt": 1,
         "wait_seconds": 706.0
+      },
+      {
+        "goal_alias": "goal-B",
+        "node": "design",
+        "attempt": 1,
+        "wait_seconds": 101.0
       }
     ],
-    "blocked_agent_question_wait_seconds_subset": 981.0,
-    "blocked_agent_wait_population": "Only deduplicated completed blocked-agent question intervals with recorded answers on the two observed private goals, including the subsequently deferred initial goal. Excludes outer-run waits, routine approval items and unanswered/in-flight questions."
+    "blocked_agent_question_wait_seconds_subset": 1082.0,
+    "blocked_agent_wait_population": "Deduplicated recorded answered blocked-agent intervals on the three observed private goals, including the subsequently deferred initial goal. Excludes outer-run waits, routine approvals and unanswered/in-flight questions; per-question sum is not unique elapsed owner time.",
+    "stored_stage_counter_snapshot": {
+      "goal-C": {
+        "discovery": 0
+      },
+      "goal-A": {
+        "discovery": 0,
+        "delivery": 1
+      },
+      "goal-B": {
+        "discovery": 0
+      }
+    },
+    "stored_stage_counter_scope": "Snapshot sums of actual stored correction counters for agent nodes grouped by the declared actor stage. Not model token counts, not a forced budget exercise; later results remain pending."
   },
   "lens_rescore": {
     "status": "pending",
@@ -256,7 +275,7 @@
     {
       "id": "A11",
       "status": "pending",
-      "reason": "A real CI-dispatcher failure and safe completed-job recovery were observed; the specified failure-path matrix is not complete."
+      "reason": "A real test review finding reopened test design; safe dispatcher recovery was also observed. Remaining failure paths are not yet complete."
     },
     {
       "id": "A12",
@@ -310,5 +329,20 @@
   "scope_updates": [
     "Owner approved the existing non-deferred integration visual/UX direction; source partition and normal goal reviews remain in progress."
   ],
-  "phase_observed_at_utc": "2026-11-03T20:48:00.170556+00:00"
+  "phase_observed_at_utc": "2026-11-03T21:00:49.504836+00:00",
+  "failure_paths": {
+    "review_finding_reopens_target": {
+      "status": "observed",
+      "evidence_alias": "observation-08"
+    },
+    "failing_verification_check": {
+      "status": "pending"
+    },
+    "expired_private_lease_reclaim": {
+      "status": "pending"
+    },
+    "policy_branch_pause": {
+      "status": "pending"
+    }
+  }
 }

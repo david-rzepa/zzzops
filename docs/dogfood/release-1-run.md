@@ -16,7 +16,7 @@ The existing local CI dispatcher encountered a provider-request failure after it
 
 ## Measured subset and limits
 
-The four required administrative CI jobs total **776 runner seconds (12.93 minutes)**. The JSON lists each duration so the sum is reproducible. This excludes queues, VM lifecycle overhead, product goals and agent work. Two deduplicated blocked-agent questions have recorded answer waits totaling 981 seconds. This subset includes the subsequently deferred initial goal and excludes outer-run waits, routine approvals and unanswered questions. Per-goal tokens, charged rounds, money and total owner waits remain unavailable until actual transcripts and final populations are reconciled. No lens re-score is claimed.
+The four required administrative CI jobs total **776 runner seconds (12.93 minutes)**. The JSON lists each duration so the sum is reproducible. This excludes queues, VM lifecycle overhead, product goals and agent work. 3 deduplicated blocked-agent questions have recorded answer waits totaling 1082 seconds. This subset includes the subsequently deferred initial goal and excludes outer-run waits, routine approvals and unanswered questions. The per-question sum is not unique elapsed owner time. Per-goal tokens, charged rounds, money and total owner waits remain unavailable until actual transcripts and final populations are reconciled. No lens re-score is claimed.
 
 Public goal and evidence labels are explicit anonymized aliases. The private journal retains actual commands, executors, source identities, decisions and read-only replay evidence.
 
@@ -36,7 +36,7 @@ Pass entries describe only the named interim observations. Pending entries remai
 | A8 | pending | The actual dependent source work and post-dependency sync have not finished. |
 | A9 | pending | Release cut, sync and finish have not occurred. |
 | A10 | pending | Staging and production remain separately unapproved; candidate identity evidence is not complete. |
-| A11 | pending | A real CI-dispatcher failure and safe completed-job recovery were observed; the specified failure-path matrix is not complete. |
+| A11 | pending | A real test review finding reopened test design; safe dispatcher recovery was also observed. Remaining failure paths are not yet complete. |
 | A12 | pending | The final defect inventory has not been reconciled. Existing application-runner friction is distinct from an engine defect. |
 | A13 | pending | Only the four required administrative CI job durations are measured here; per-goal agent/token/cost totals remain unavailable. |
 | A14 | pending | No final review cohort or lens re-score is available. |
@@ -49,6 +49,6 @@ Pass entries describe only the named interim observations. Pending entries remai
 
 ## Next boundary
 
-The owner approved the existing non-deferred visual/UX direction. The integration design, both design reviews, filtering, approval and base are current; test design is running. The genuine dependent is ready for design. Source partition, ordinary reviews and the dependent candidate’s exact approval boundary remain part of the goal workflow. The retired file/ref remain preserved pending explicit cleanup authorization.
+The owner approved the existing non-deferred visual/UX direction. The integration design, both design reviews, filtering, approval and base are current. A real test review finding reopened test design; its correction is ready. The genuine dependent’s design reviews are running. Source partition, ordinary reviews and the dependent candidate’s exact approval boundary remain part of the goal workflow. The retired file/ref remain preserved pending explicit cleanup authorization.
 
 Complete the real Release 1 integration and dependent work through design, tests, independent review and exact-head CI. Record actual carry/stale and budget behavior rather than forcing it. Release cut, staging and production remain distinct future gates. Staging and production each need a separate explicit owner approval bound to both relevant tips and the resulting candidate tree/artifact; refresh that proof before irreversible promotion and after waits or retries. Changed or unproven evidence requires a stop, restaging and renewed separate approvals.
