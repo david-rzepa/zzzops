@@ -335,6 +335,7 @@ There is no `review_path` field: the review path is the constant `.zzzops/review
   "input_fp": "v1:sha256:…",            // the fingerprint the work was done against (§4.8)
   "fp_parts": {"def": "…", "inputs": {"…": "…"}, "policy": {}, "subject"?: "…"},   // §4.8
   "output": { },                        // object keyed by output name; null when status is "blocked"
+  "last_output"?: { },                  // blocked agent only: replaced done output, when blocked_findings is required
   "findings": [ ],                      // array of findings (§3.6) carried by this record; an op's Blocked record keeps
                                         // the previous record's findings unchanged and inert (§5.1)
   "blocked"?: { },                      // §3.7; present iff status is "blocked"
@@ -353,6 +354,8 @@ There is no `review_path` field: the review path is the constant `.zzzops/review
 - `status == "blocked"`: always `false`.
 
 A done record with `ok == false` must carry at least one open finding; submit refuses it otherwise (§4.14).
+
+**Held output (G1040).** A blocked agent record may keep `last_output`, an object containing the done output it replaced (or copied from the previous blocked record). Only a policy requiring `blocked_findings` writes it; reading is unconditional. It is refused on a done record or an op/human record. Pass 1 reads it as a done output (§4.9); pass 2 still waits for the blocked node. `answer` preserves it; carry-forward never rewrites a non-done record.
 
 ### 3.5 Checkpoint and artifact values
 
@@ -376,7 +379,8 @@ A done record with `ok == false` must carry at least one open finding; submit re
                                     // An op target answers by a later attempt (§4.9 pass 1)
  "text": "…",                       // text, non-empty
  "status": "open",                  // "open" | "resolved" | "waived"
- "response": null,                  // the target's response copied at the carrier's re-run, or null
+ "response": null,                  // target response copied on carrier re-run; an op copies it only for a repeated
+                                    // failure with the same normalized text (§4.14), otherwise null
  "rounds": 1,                       // int ≥ 1; new findings start at 1 (§4.14)
  "upheld": false,                   // bool; set by a human "uphold" answer
  "note": null,                      // string | null; set by waive/uphold answers, reopen and edits
@@ -482,7 +486,7 @@ State: <open|held|closed>
 Strings in `responses` start with `fixed: ` or `disputed: ` followed by non-empty text.
 
 - **Checkpoint overrides (G1016)** must be a full 40-hex sha; ref names such as `HEAD` and short shas are refused with `validation`. `edit`'s `{"commit"}`-only record completion (§4.18) applies the same rule, and a missing commit is refused instead of stored as null.
-- **Responses that do not match (G1016).** When the keys of `responses` differ from the live correction ids, `submit` refuses with `validation` and `details: {"respond_to": [{"id", "from", "target", "text", "upheld", "full"?}], "no_longer_live": [ids]}`, hint: "Findings arrived while you ran: answer each in `responses` … (drop the ones under no_longer_live), then resubmit." Texts longer than the inline limit are clipped, with `full` as a view.
+- **Responses that do not match (G1016, G1040).** When the keys of `responses` differ from the live correction ids, `submit` refuses with `validation` and `details: {"respond_to": [{"id", "from", "target", "text", "upheld", "full"?}], "no_longer_live": [ids], "why": {id: code}}`. Texts longer than the inline limit are clipped, with `full` as a view. `details.why` explains each extra response in order: `superseded` (no latest record holds the id); `resolved` or `waived` (that status); `other_target`; `target_blocked` (this target has a blocked record with no held output); `target_changed` (no target fingerprint or a mismatch with its current/held output); otherwise `not_live` (including a stale op, note or pending filter). The message lists `respond to: ...; no longer live: id (code), ...`. The hint asks “Answer each finding under respond_to” only for missing responses (some may have arrived after the card), and “Drop each response under no_longer_live (details.why says why it is not live), then resubmit” only for extra ones.
 - **Closed ids and `follows` (G1028).** An id from `previous.resolved` (resolved or waived) restated as `resolved` is a no-op; restated as `open` it is refused with `validation`, "already resolved: <ids>" (or "already waived"), hint: a closed finding cannot be reopened by status; raise a new finding with `"follows": "<id>"`. An id the reviewer's latest record does not hold is refused with "unknown finding ids: …" and `details.needs_status` (the open ids). A new finding's `follows` must name a finding of this reviewer's latest record; if that finding is open, this submit must resolve it. Submit refuses `follows` unless the policy keeps older engines away from the key (its required set contains capability `finding_follows`, §4.5), and a non-review node's finding with `follows` is refused.
 - **Lens findings (G1000).** A review with a `filter` (§3.1) gives each new finding `impact` (non-empty text: what goes wrong if it is ignored) and `material` (bool). A filter node's output file gives `verdicts`: `{"<finding id>": {"verdict": "keep" | "note", "reason": "…"}}` for exactly the non-material `candidates` on its card.
 
@@ -819,6 +823,7 @@ def write_goals(verb, ids, mutate, extra=None, retry=True):
 - **`engine_version_check()`** applies the floor before every write. There is no ceiling: an engine never refuses a policy for requiring too little.
 - **Older engines.** An engine from before capabilities reads `requires` as an unknown key and reports `policy_invalid` (work paused, writes refused): it fails closed. Upgrade it; never remove the key (the trade-off against `evo:H4` is in DESIGN §3.10).
 - **What ships with a new capability** (one list): a new goal schema (reading is still gated by the goal schemas the engine knows, below; the capability gates the policy that lets an engine write them); any change to fingerprint, canonical-JSON, `code_tree` or `change` semantics; any op `version`; the lease message format; any new POLICY or workflow key, field or op; any new record or finding key. The goal that makes the change adds `engine/capabilities/<name>.txt` in its own PR, and its rollout adds `<name>` to `settings.engine.requires` before the first such write.
+- **Blocked findings (G1040, capability `blocked_findings`).** Writes `last_output` only on blocked agent records, preserving findings on the output a block replaced. Require `blocked_findings` in the same policy PR as the revised design step 4, or after it, never before: the prompt exempts owner questions that `human_decisions` already answers and answers those corrections rather than blocking again. The default template's `requires` is unchanged by this capability's introduction.
 - **`follows` (G1028, capability `finding_follows`).** The finding key `follows` (§3.6) is read only by engines with `finding_follows`, so `submit` writes it only while the policy's required set contains `finding_follows`; the policy branch that adds it to `settings.engine.requires` comes first.
 - **Goal schemas.** An engine reads every goal schema it has shipped. Known schemas today: `{1, 2}`. Schema 2 (G1025, capability `release_lines`) adds only the optional `flow` (§3.3), so a write picks the schema from the document instead of always writing the newest: schema 2 for a document with `flow`, schema 1 otherwise (clearing `flow` writes schema 1). `flow` is set only while the policy has `settings.branching`, which requires `release_lines`; so an older engine sees as *newer* only line goals and hotfix members, and every other goal is unaffected. A goal whose schema is newer than the engine knows is *newer*: writes to it are refused with `engine_too_old`, and its dependents show `waiting: engine upgrade`, never a stuck item.
 - **Fingerprint versions** (§4.8): a record's fingerprint is compared only in the version it carries. An engine computes only its own version, so a record in another version is stale. A version is bumped only when the old one is unsafe (it missed changes), always together with a new capability; the cost is that every open goal re-runs its nodes. There is no multi-version support.
@@ -1001,14 +1006,17 @@ def frontier(g, doc, graph, dep_view, leases, settings, now):
   N, topo = graph.nodes, topological_order(graph)
   R = {n: doc.records[n] for n in topo if n in doc.records and n not in doc.skip}
   # ---- pass 1: liveness, from recorded values only (never from this pass's states)
-  recorded = lambda p: recorded_out(doc, p)
+  H = {n: (dict(r, status="done", output=r.last_output) if r.status == "blocked" and "last_output" in r else r)
+       for n, r in R.items()}                         # held outputs; only pass 1 uses this view
+  recorded = lambda p: (SKIPPED if p in doc.skip else H[p].output
+                       if p in H and H[p].status == "done" else MISSING("no_record"))
   live = {n: [] for n in topo}                       # target -> [(carrier, finding)]
   for c in topo:
     if c not in R or R[c].status != "done": continue
     vals, missing = resolve(c, recorded, dep_view)
     subj = N[c].review.subject if N[c].review else None
-    fresh = (not missing and not (subj and (subj not in R or R[subj].status != "done"))
-             and input_fp(fp_parts(N[c], vals, R.get(subj))) == R[c].input_fp)
+    fresh = (not missing and not (subj and (subj not in H or H[subj].status != "done"))
+             and input_fp(fp_parts(N[c], vals, H.get(subj), records=H)) == R[c].input_fp)
     for f in R[c].findings:
       t = f.target
       if not fresh and t != c and N[c].kind == "op": continue   # G1028: an op re-observes; its stale findings are never
@@ -1016,12 +1024,13 @@ def frontier(g, doc, graph, dep_view, leases, settings, now):
                                                      # live while its target's output is unchanged (the test below); c is in
                                                      # `stale`, and cards mark it stale_review
       if (f.status == "open" and f.target_fp is not None and t in N and t in R
-          and R[t].status == "done" and f.target_fp == out_fp(R[t])
+          and H[t].status == "done" and f.target_fp == out_fp(H[t])
           and not (N[t].kind == "op" and t != c and R[t].attempt > f.target_attempt)):
         live[t].append((c, f))                       # an op target with a later attempt than the one the finding was
                                                      # raised against answered it, even with byte-identical output; no
                                                      # clock comparison; the carrier then re-decides (op-finding cap, §4.9)
-  # ---- pass 2: states, in topological order
+  # ---- pass 2: states, in topological order; uses R and ordinary recorded_out, never H
+  recorded = lambda p: recorded_out(doc, p)
   cur, st = {}, {}
   def current_out(p):
     if p in doc.skip: return SKIPPED
@@ -1084,6 +1093,8 @@ def escalates(target, carrier, f):
 - **`deps_conflict`.** A `git.base` record `Blocked {waiting_for: dependency}` keeps the node `waiting` while its fingerprint matches. Whenever any dependency's PR head or merge commit changes, the inputs change, the node is `ready (stale)` and runs again; the wait ends when the stack set combines cleanly (§5.2).
 - **Held goals** are evaluated the same way. Their states are reported, their leases show as running, and they offer no actions or human items.
 - **Closed goals** are not evaluated; dependents read them through `dep_view` (§4.10).
+
+**Blocked targets (G1040).** Pass 1's recorded-input, subject/fingerprint and target-liveness reads use the held-output view H: a finding needs a done target, or a blocked agent target with `last_output` read as done with that output. A carrier stale only because the output was hidden is fresh, not in `stale`; its op findings and fresh filter verdicts stay live, without `stale_review` or `carried_findings`. A genuinely stale carrier (for example a spec edit, or a consumer of an older output) still follows G1028. The old finding's exact target fingerprint prevents resurrection. Pass 2 and running fingerprints use ordinary records, so consumers continue waiting for the held node's retry.
 
 **Carried findings (G1028).** `frontier` also returns `stale`, the carriers with a done record that is not fresh. A finding of such a carrier on another node is *carried*: it is live while open and while its `target_fp` equals the target's current `out_fp`, for agent and human carriers; op carriers' findings are not carried. A stale filtered lens uses its filter's latest done record, fresh or not: a material finding is carried, a non-material one only with the verdict `keep` (a `note` stays a note; an unjudged non-material finding is not carried). The carry ends when the target produces a new output; the stale review then re-runs and gives the finding a status.
 
@@ -1231,6 +1242,7 @@ def next(scope_goals=None, all=False):
   - `blocked`: `question`, `options` (with `commands` rendered) and `recommendation` from the blocked record; `fp` = the record's `input_fp`; `answer_template` = §3.12 blocked shape.
   - `dispute`: `question` = "`<carrier>` and `<target>` disagree on <id>: '<text>'. `<target>` answered: '<response>'. Uphold the finding (the target must fix it) or waive it?"; `fp` = the carrier record's `input_fp`; the command is `answer <g> <carrier> --fp <fp> --file <F>`; `answer_template` = §3.12 dispute shape. When the carrier is an op, the options are uphold (the answer file), `reopen <g> <carrier> --note "<why>"` (re-observe, for example a flaky check, §4.18), skip the op (`edit`, `{"set": {"skip.<carrier>": "<reason>"}}`; omitted when the op is terminal, §3.3 rule 3) or cancel; never waive, because waiving cannot make a check pass.
   - `crash_loop`, `budget`, `stuck`, `close`: as in §4.10; no `fp` (they are answered with `start`, `edit` or `reopen`).
+  - **Dispute response (G1040):** the question shows the finding's copied `response`, falling back to the target's recorded `output.responses[id]` for historical op findings whose response is null.
   - **`since`** = when the item became pending: for `approve`, the latest `finished_at` among the records its inputs and subject come from; for `blocked`, the record's `finished_at`; for `dispute`, the carrier record's `finished_at`; for `crash_loop`, the lease's `last_active` (or the record's `finished_at`); for goal-level items, the goal tip's committer date.
 
 ### 4.12 Leases: claim, renew, reclaim, abandon, orphans, capacity
@@ -1378,7 +1390,7 @@ def submit(g, X, N, label, output=None, artifact=None, blocked=None):
 ```
 - **Superseded is fenced by the push itself:** a reclaim between this fetch and the push changes the lease tip, so the atomic push is rejected and the retry sees a different `Attempt`.
 - **Lost responses** are recognized only for the same holder (`r0.holder == label`). A different holder that finds the lease gone is told `superseded`, never `applied`.
-- **`submit_blocked`**: validate §3.11; `rec = {"status": "blocked", "ok": false, "attempt": N, "holder": L.holder, "reason": L.reason, "correction_runs": <as above>, "input_fp": L.input_fp, "fp_parts": L.fp_parts, "output": null, "findings": [], "blocked": {category, waiting_for, reason, instructions?, question?, options?, recommendation?, "repeats": r}, "prompt": L.prompt, "finished_at": …}`, where `r = r0.blocked.repeats + 1` if `r0` is blocked with the same `waiting_for` and, unless that is `agent`, the same `reason`; else 1. For agent waits the reason is the agent's own wording, so it is ignored (§4.9 repeat cap). Workspace nodes run `sync(g, "dirty_ok")` and push committed local work if "ahead" (no checkpoint is recorded). Same push as a normal submit.
+- **`submit_blocked`**: validate §3.11; `rec = {"status": "blocked", "ok": false, "attempt": N, "holder": L.holder, "reason": L.reason, "correction_runs": <as above>, "input_fp": L.input_fp, "fp_parts": L.fp_parts, "output": null, "findings": [], "blocked": {category, waiting_for, reason, instructions?, question?, options?, recommendation?, "repeats": r}, "prompt": L.prompt, "finished_at": …}`, where `r = r0.blocked.repeats + 1` if `r0` is blocked with the same `waiting_for` and, unless that is `agent`, the same `reason`; else 1. For agent waits the reason is the agent's own wording, so it is ignored (§4.9 repeat cap). Workspace nodes run `sync(g, "dirty_ok")` and push committed local work if "ahead" (no checkpoint is recorded). Same push as a normal submit. With `blocked_findings` required, an agent stores `last_output = r0.output` when the replaced record is done, else copies `r0.last_output`, omitting the key when there is no prior output. Other node kinds never store it (G1040).
 - The embedded `next` reuses this invocation's snapshot, advanced by the refs just pushed (§4.2).
 
 **Findings processing:**
@@ -1434,7 +1446,7 @@ def process_findings(X, r0, out, L):
   return result, ok
 ```
 - A finding is **escalated** when it is live, `rounds ≥ 2`, not upheld, its target is an agent node, and its carrier is not a human node (§4.9). For agent and human carriers, rounds grow only on a carried-over finding whose agent target answered `disputed:`: escalation means a dispute the reviewer keeps open. New findings always start at round 1.
-- **Op findings** (§5.1) use fixed ids. Recurrence is read from the **target's** recorded `responses`, which survive the Blocked records an op writes in between: `rounds = 2` when the target is an agent node and its current output has a response (`fixed:` or `disputed:`) to the same id, else 1. `upheld` and `note` are carried from the finding with that id on the op's previous record, which is the latest done record's finding or the unchanged copy a Blocked op record keeps (§5.1), so they survive polls. `repeats` = that previous finding's `repeats` + 1 when it was open and its `carrier_fp` equals this record's `input_fp`, else 1, and `carrier_fp` = this record's `input_fp` (§4.9 op-finding cap; `x2:M2`). A Blocked op record's copy keeps both unchanged, so only a done record with unchanged inputs advances the count. `target_fp` and `target_attempt` come from the same `fence` as for agent findings. So a check that fails again after the agent claimed a fix (or disputed it) goes to the human. Carry-forward drops responses whose findings are gone (§4.21), so an old `fixed:` does not count as a recurrence forever.
+- **Op findings** (§5.1) use fixed ids. With `p` the prior finding on the op's previous record, recurrence requires the **same normalized text**: `norm(p.text) == norm(text)`. `norm` first replaces only eight-character lowercase/digit/underscore random tempfile components in positively identified temporary namespaces: default `tmp` names directly under path components `tmp`, `temp`, `Temp` or `T` (slash or backslash separators), or names with the documented prefixes `zzzops-card-budget-`, `zzzops-claude-acceptance-`, `.zzzops-cleanup-` or `.legacy-`. The component must end at a path separator, dot, whitespace, quote, colon or end of text; its prefix stays intact. It then replaces `0x`/`0X` hex object addresses, hex runs of at least seven characters, and decimal numbers (including fractions), each with `#`; all remaining text compares exactly. Other temporary-looking names conservatively remain distinct, rather than erasing stable command/test basenames. Thus changing test or command names remains a new failure, while timings, commit ids, object addresses and tempfile randomness do not distinguish a recurrence. `rounds = 2` only when the target is an agent, its current output answers that id and the normalized text matches; otherwise 1. `response` copies that actual response only at round 2, otherwise null. `upheld` is retained only for the same normalized text; `note` is copied from `p` as before. A different second failure is a new round even though it has the same id. `repeats` = the prior finding's `repeats` + 1 when it was open and its `carrier_fp` equals this record's `input_fp`, else 1, and `carrier_fp` = this record's `input_fp` (§4.9 op-finding cap; `x2:M2`). A Blocked op record keeps these findings unchanged, so only a done record with unchanged inputs advances that count. `target_fp` and `target_attempt` use the same fence as agent findings. Carry-forward drops responses whose findings are gone (§4.21).
 - **Responses for nodes that cannot write prose.** For op nodes the engine fills `responses[id] = "fixed: re-run by <op>"`, and for human nodes `"fixed: re-answered by <decided_by>"`, for every live finding targeting the node. These automatic responses never count toward rounds, because their targets are not agent nodes.
 
 **Filtered lenses and filters (G1000, G1020).**
@@ -1757,6 +1769,7 @@ def start_op(g, X, label, reclaim, force):
          (same lease) and finish with its result; repeat until the contention deadline (§4.4)
   after a successful finishing push: if result.after_push, call it; a failure is reported under "warnings", never undone
 ```
+- **Blocked op records never store `last_output`** (G1040); that optional key belongs only to blocked agents (§3.4).
 - **Blocked op records keep the findings.** An op's Blocked record carries the previous record's findings unchanged. They are inert, because liveness needs a done carrier (§4.9 pass 1), but `upheld`, `note`, `rounds`, `repeats` and `carrier_fp` survive CI polls and other waits (§4.14).
 An op that crashes or hangs leaves its lease to expire; `start --reclaim` retries it, and the crash-loop cap (§4.10) stops repetition. Every op starts by observing, so a retry is safe.
 

@@ -990,7 +990,9 @@ def validate_goal(doc, old=None, all_docs: dict | None = None, workflow: dict | 
                 elif (nodes[n].get("skippable", True) is False and not reading
                       and n not in ((old or {}).get("skip") or {})):
                     e.add(f"goal.skip.{n}", f"{n} is not skippable (skippable: false in workflow.json)")
-            for n in records:
+            for n, r in records.items():
+                if n in nodes and isinstance(r, dict) and "last_output" in r and nodes[n]["kind"] != "agent":
+                    e.add(f"goal.records.{n}.last_output", "only agent records keep a blocked output")
                 if n not in nodes:
                     warnings.append({"kind": "orphan_record", "message": f"G{doc['id']}: record of removed node {n!r} is ignored"})
     # rule 4: dependencies exist, acyclic, release order
@@ -1103,7 +1105,7 @@ def largest_paths(doc, k=5):
 # ----------------------------------------------------------------------------------------------- record (§3.4–§3.7)
 
 RECORD_KEYS = {"status", "ok", "attempt", "holder", "reason", "correction_runs", "input_fp", "fp_parts", "output",
-               "findings", "blocked", "answer", "reviewed", "frozen", "carried_by", "prompt", "finished_at"}
+               "findings", "blocked", "answer", "reviewed", "frozen", "carried_by", "prompt", "finished_at", "last_output"}
 
 
 def validate_record(r) -> list:
@@ -1150,6 +1152,8 @@ def validate_record(r) -> list:
             e.add("record.output", "must be an object")
         if "blocked" in r:
             e.add("record.blocked", "present only when status is blocked")
+    if "last_output" in r and (r["status"] != "blocked" or not isinstance(r["last_output"], dict)):
+        e.add("record.last_output", "an object on blocked agent records only")
     if not isinstance(r["findings"], list):
         e.add("record.findings", "must be an array")
     else:

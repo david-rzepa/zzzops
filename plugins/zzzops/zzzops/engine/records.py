@@ -41,7 +41,7 @@ def response_of(doc: dict, target: str, fid: str) -> str:
 RESPOND_INLINE = 600
 
 
-def check_responses(responses: dict, corrections: list, carriers: dict | None = None, view=None):
+def check_responses(responses: dict, corrections: list, carriers: dict | None = None, view=None, why=None):
     """Keys equal the live correction ids; 'fixed: '/'disputed: '; no dispute of an upheld finding.
 
     On a key mismatch the refusal lists the findings to answer (`carriers`: id -> carrying node; `view(text)` gives
@@ -50,11 +50,12 @@ def check_responses(responses: dict, corrections: list, carriers: dict | None = 
     given = set(responses or {})
     if given != ids:
         missing, extra = sorted(ids - given), sorted(given - ids)
+        reasons = {fid: why(fid) if why else "not_live" for fid in extra}
         msg = []
         if missing:
             msg.append("respond to: " + ", ".join(missing))
         if extra:
-            msg.append("no live finding: " + ", ".join(extra))
+            msg.append("no longer live: " + ", ".join(f"{fid} ({reasons[fid]})" for fid in extra))
         respond_to = []
         for f in sorted((f for f in corrections if f["id"] in missing), key=lambda f: f["id"]):
             item = {"id": f["id"], "from": (carriers or {}).get(f["id"], f["id"].split(":")[0]), "target": f["target"],
@@ -64,9 +65,15 @@ def check_responses(responses: dict, corrections: list, carriers: dict | None = 
                 if view is not None:
                     item["full"] = view(f["text"])
             respond_to.append(item)
-        raise Refused("validation", "; ".join(msg), details={"respond_to": respond_to, "no_longer_live": extra},
-                      hint="Findings arrived while you ran: answer each in `responses` with 'fixed: …' or 'disputed: …' "
-                           "(drop the ones under no_longer_live), then resubmit.")
+        hints = []
+        if missing:
+            hints.append("Answer each finding under respond_to in `responses` with 'fixed: …' or 'disputed: …'; "
+                         "some may have been raised after your card was printed. "
+                         "Check no_longer_live and details.why for obsolete response keys and their reasons.")
+        if extra:
+            hints.append("Drop each response under no_longer_live (details.why says why it is not live), then resubmit.")
+        raise Refused("validation", "; ".join(msg),
+                      details={"respond_to": respond_to, "no_longer_live": extra, "why": reasons}, hint=" ".join(hints))
     for f in corrections:
         text = responses[f["id"]]
         if not re.match(r"^(fixed|disputed): \S", text or ""):
@@ -185,6 +192,20 @@ def human_findings(graph: Graph, X: str, r0: dict | None, given: list, attempt: 
     return result
 
 
+# Only known temporary namespaces identify random filename components. Ordinary
+# command/test basenames, including eight-letter suffixes, remain significant.
+TEMP_NAME = re.compile(
+    r"(?P<prefix>[/\\](?:tmp|temp|Temp|T)[/\\]tmp|(?<![\w.-])"
+    r"(?:zzzops-card-budget-|zzzops-claude-acceptance-|\.zzzops-cleanup-|\.legacy-))"
+    r"[a-z0-9_]{8}(?=$|[/\\.\s'\":])")
+NORM = re.compile(r"0[xX][0-9a-fA-F]+|[0-9a-fA-F]{7,}|[0-9]+(?:\.[0-9]+)?")
+
+
+def norm(text: str) -> str:
+    text = TEMP_NAME.sub(lambda m: m.group("prefix") + "#", text)
+    return NORM.sub("#", text)
+
+
 def op_findings(graph: Graph, doc: dict, X: str, r0: dict | None, raised: list, producers: dict, input_fp: str,
                 fence) -> list:
     """Op findings: `raised` = [{"key", "input", "text"}] -> findings with fixed ids (SPEC §4.14, §5.1)."""
@@ -197,12 +218,14 @@ def op_findings(graph: Graph, doc: dict, X: str, r0: dict | None, raised: list, 
             raise Refused("engine_bug", f"op finding {fid} names input {item['input']!r}, which has no producer")
         p = prev.get(fid)
         r = response_of(doc, T, fid)
-        rounds = 2 if graph.nodes[T]["kind"] == "agent" and r else 1
+        text = item["text"][:4096]
+        same = p is not None and norm(p["text"]) == norm(text)
+        rounds = 2 if graph.nodes[T]["kind"] == "agent" and r and same else 1
         repeats = (p.get("repeats", 1) + 1) if p and p["status"] == "open" and p.get("carrier_fp") == input_fp else 1
         tf, ta = fence(T)
-        out.append({"id": fid, "target": T, "target_fp": tf, "target_attempt": ta, "text": item["text"][:4096],
-                    "status": "open", "response": None, "rounds": rounds,
-                    "upheld": p["upheld"] if p else False, "note": p["note"] if p else None,
+        out.append({"id": fid, "target": T, "target_fp": tf, "target_attempt": ta, "text": text,
+                    "status": "open", "response": r if rounds == 2 else None, "rounds": rounds,
+                    "upheld": p["upheld"] if p and same else False, "note": p["note"] if p else None,
                     "repeats": repeats, "carrier_fp": input_fp})
     return out
 
