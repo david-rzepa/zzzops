@@ -265,14 +265,14 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 6,
+      "attempt": 7,
       "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-03T17:43:29Z",
+      "finished_at": "2026-11-03T18:08:20Z",
       "fp_parts": {
         "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
         "inputs": {
-          "doc": "v1:blob:0ec3a983598e99d34ae9ec1e15251670d013db4a",
+          "doc": "v1:blob:2005eea5a61f11083eb5c99b91048b8935031c3d",
           "spec": "v1:sha256:e2c063ee9322840387685a5c86388a130816b2a8e1960e4e6cdd0d7ede8870e3"
         },
         "lenses": [
@@ -306,25 +306,25 @@
             "serves": "Developers who delegate project work to coding agents, and the agents doing it."
           }
         },
-        "subject": "v1:sha256:e1ca20ff12fc0e16ec7843d040a9881ced3116ea75b1f724729edf404fec7a64"
+        "subject": "v1:sha256:4d60ffed07b36307e48bf3e0e00f511f49b3d3affbdbe2f049ea8981810b0b85"
       },
-      "holder": "codex:takeover/1037-review-design-r6",
-      "input_fp": "v1:sha256:21d9e8d35115dbe26d516df64be840fcbe102305aea6f21572561c1cbadaeb10",
+      "holder": "codex:takeover/1037-review-design-r7",
+      "input_fp": "v1:sha256:04a59729cc099a50c442a94e725bbd7d08c8c490d3bcb564ba6e3bfde28514f3",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "1d3f92b7fc17a52d25d29f4a48424daabe112040",
-          "commit": "7c1a59a578c6150af8e9516d9985b0fe40fce733",
+          "blob": "cf7c9e7acc0b21e9cd5d6f571c47b68b121c38cf",
+          "commit": "3e5c5179506851321af12da5c40021411699dbea",
           "path": ".zzzops/reviews/1037/review_design.md"
         },
-        "summary": "Approved corrected plan: staging and separate production decisions now bind both tips and the resulting candidate tree/artifact, with fresh proof before irreversible promotion and stop/restage/renewed approvals on movement or uncertainty. Root procedure is correctly distinguished from engine guarantees; OD1–OD8 remain intact."
+        "summary": "Approved: OD9 exactly records the owner’s CLI-only scope override, requires truthful actual-executor evidence, and preserves all private-state and candidate-bound release approval/freshness requirements."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "0ec3a983598e99d34ae9ec1e15251670d013db4a",
-          "commit": "bc6a2ed2e48eb2881d34ca87ce8b999573a30e69"
+          "blob": "2005eea5a61f11083eb5c99b91048b8935031c3d",
+          "commit": "4bf38cfd123369fd27f5c19de8b01f27c1c05fb2"
         }
       },
       "status": "done"
