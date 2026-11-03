@@ -131,30 +131,60 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 4,
+      "attempt": 5,
       "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-02T22:00:42Z",
+      "finished_at": "2026-11-03T17:34:59Z",
       "fp_parts": {
-        "def": "v1:sha256:a27b44b80ec4e17f1b84dc7b7399a156b3eb9f8037cb9646054ce4e63fb9ebb7",
+        "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
         "inputs": {
           "doc": "v1:blob:982d3c13e410a3f3c6bf0584d8e1cce94d67cb06",
           "spec": "v1:sha256:e2c063ee9322840387685a5c86388a130816b2a8e1960e4e6cdd0d7ede8870e3"
         },
-        "policy": {},
+        "lenses": [
+          "intent",
+          "simplicity",
+          "truth",
+          "adversary",
+          "concurrency",
+          "rollout",
+          "experience"
+        ],
+        "policy": {
+          "intent": {
+            "not": [
+              "A general project-management suite.",
+              "A ceremony framework: every mechanism must prevent a real failure worth its cost.",
+              "A second source of truth beside Git.",
+              "An engine that invents human decisions or acts without authority.",
+              "A deploy, CI or release-publishing tool: its release support is a branching strategy.",
+              "Inherently opinionated: it ships an opinionated default graph, but every opinion (graph, lenses, prompts, policy) can be customised by the project."
+            ],
+            "principles": [
+              "Git is the store; state is visible and repairable by hand.",
+              "A small engine; the graph, prompts and policy belong to the project.",
+              "Human authority is explicit: approvals may be delegated, but decisions with big consequences go to the owner, batched.",
+              "Reviews are independent, and a finding must matter.",
+              "Guard against drift at both levels: from what a goal asked for, and from the project's original intent. A goal that departs from the project's intent is flagged when it is added, and the owner either changes the goal or amends the intent.",
+              "Prefer deleting to adding; keep prompts distilled."
+            ],
+            "purpose": "Let coding agents carry long-running repository work through durable, reviewable goals, so a developer can stop supervising without losing progress, priorities or control.",
+            "serves": "Developers who delegate project work to coding agents, and the agents doing it."
+          }
+        },
         "subject": "v1:sha256:bee6c9f3d6fb3db7ffe149b4830be16f5b4f5ee763bafb48e597ad0973198fff"
       },
-      "holder": "codex:takeover/1037-review-design",
-      "input_fp": "v1:sha256:c8354f7f24ca95d03d33654c96c512b9f0cd3b46e13de0733942521049a9dbe6",
+      "holder": "codex:takeover/1037-review-design-new",
+      "input_fp": "v1:sha256:cd9754d7091afb24d457b922a8a87d4953ae0f6e077d3195718232a0b6a0fdac",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "4d16a63abcef3ff1d626ca203d721822214dc416",
-          "commit": "f088127a946c7678a7be42211c52795f2d1400f8",
+          "blob": "8d83d48a5b33b9e5dda666083944ffd2c0dec8f5",
+          "commit": "2a13e30bd0e9abb784b179e13b853d0c4ac5b7d4",
           "path": ".zzzops/reviews/1037/review_design.md"
         },
-        "summary": "Attempt 5 preserves OD1–OD8 and the nine-phase plan, while explicitly adopting the reviewed merge_sync/round_budget/blocked_findings modes and their paired prompts/workflow edge. Separate deployment approvals and exact-tip staging remain, the actual run waits for all dependency merges and both harnesses, and clean-carry/finding paths are recorded only when observed. No new finding or owner question."
+        "summary": "Approved across all seven lenses: preserves OD1–OD8, current capability/prompt adoption, real two-harness participation, honest unobserved cases, private reporting and separate exact-tip staging/production approvals. No new owner choice or material finding."
       },
       "reason": "stale",
       "reviewed": {
