@@ -1,20 +1,13 @@
-# G1036 whitepaper design review, revision 4
+# G1036 independent design review
 
-Decision: approved. Both round-3 findings are resolved; no new finding is raised. This approves the design only, not writing before the dependency/report gate or external publication.
+Approved with no findings. Reviewed design blob `4046215ab26f8f387784b92a1a033c5d85f40af8`, its complete changed diff, the card inputs and instructions, the referenced G1037 attempt 6 design, and release finish source at the card’s integration commit. Other reviewers’ artifacts were not consulted.
 
-## Findings resolved
+- **Intent:** The practitioner-first paper, technical explanation, accessible diagrams, synthetic trace, explicit build binding and candid limitations satisfy the spec. WD1–WD8 are byte-for-byte unchanged. The blog remains a draft for the owner to publish.
+- **Simplicity:** The refresh changes the paper plan and acceptance evidence, with no engine guard, deployment mechanism, new public evidence format or permanent CI coupling. The source-binding and claim checks serve the stated publication failure modes.
+- **Truth:** The checked finish implementation uses the recorded sync tip, refuses a moved line and checks production conflicts before merging. It does not bind external staging to a production target or artifact. Revision 5 correctly preserves that distinction in the mechanism, T9, limitations, report requirements and W19. Real observations, cited tests and unobserved cases remain distinct; missing evidence is never success. Earlier budget and card-target corrections remain intact.
+- **Adversary:** Only the anonymised report is public evidence. App-specific identifiers, deployment details and approval records stay private. Synthetic release output cannot stand in for actual staging or production equality.
+- **Concurrency:** Both relevant tips and the resulting candidate matter. Freshness is re-evaluated before irreversible promotion and after waits or retries; changed or unproven proof requires stopping, restaging and renewed separate approvals. This is explicitly the external root procedure, not an atomic engine guarantee.
+- **Rollout:** The root must record G1037 merge and actual report availability before G1036 test_design or implement begins. Dependency approval, an integrated head or stack readiness grants no writing or deployment authority. Final claims are re-audited against the eventual immutable checked build, with the existing release-finish recheck retained.
+- **Experience:** The paper and report keep clear evidence labels, ratios with denominators and caveats, accessible diagram prose and explicit limitations. The revised acceptance checks make the external-release explanation reviewable without exposing the private app.
 
-- **review_design:3:1:** §3 item 7.6, T8, §7 and W15/W16 now state the exact G1039 §3.5 exemption: a node with no checkpoint outputs that starts stale only on git.base-selecting inputs is exempt even if it raises a new material finding. The design distinguishes refused-carry checkpoint nodes and changed-subject reviews that count normally when they add a qualifying new finding. Trace/check evidence now includes stale keys, output classification and actual counter effect; evaluation distinguishes raw findings, charged rounds and exempt reruns.
-- **review_design:3:2:** the definition calls 4,096 bytes a target, identifies the oversized-previous fixed point and cites the existing test. T2 reports actual size and overruns; limitations, report inputs and W18 preserve the exception and require checked-build evidence before claiming a hard maximum. G1019 remains outside the prerequisite chain and no engine fix is added. Byte-size observations do not relax the owner’s absolute token/cost restrictions.
-
-## Retained review conclusions
-
-WD1–WD8 are byte-for-byte unchanged from revision 3. The explicit G1037 merge plus anonymised-report gate still blocks writing even if base is stack-ready. The forward merge-sync, exact PR tree, change-based carry and paired blocked-findings/prompt account remains intact. Real observations, cited tests and not-observed cases stay distinct; no dogfood outcome or unmeasured timing result is invented. Public content remains generic about the private app. Venue/byline, claim binding, ratio restrictions, diagrams and the owner-published external blog boundary remain unchanged.
-
-## Verification
-
-Read the fresh card, responses and revision-4 design; compared its full diff with revision 3 and checked the owner-decision section for exact equality. Compared the corrected budget statements with G1039 revision 3 §3.5 and the card exception with the previously verified checked-build implementation/regression. Only design text changed, so no further engine test run was needed.
-
-## Dogfood notes
-
-None. Card and CLI behaved as expected.
+Validation was read-only: source inspection, full design/diff review and a direct comparison of the recorded owner-decision section. No tests or suites were rerun, no paper was written, no private-app action was taken and no usage reset was triggered. There are no open prior findings on this card; already resolved IDs are not restated.
