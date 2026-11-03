@@ -49,35 +49,35 @@
       "status": "done"
     },
     "approve_design": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-03T17:53:58Z",
+      "finished_at": "2026-11-03T18:17:31Z",
       "fp_parts": {
         "def": "v1:sha256:d04fc5094a85157b7e25b3020caaee316324161c59b30d25d4aabb2e5c24f0ed",
         "inputs": {
-          "doc": "v1:blob:4046215ab26f8f387784b92a1a033c5d85f40af8",
-          "filter": "v1:sha256:6b3cce5257aa7c2c6d01931c14623016e9a3f3b77c1604d87b8e3d4b15cda0f5",
-          "summary": "v1:sha256:b43eb20560dd48fe8180529ba461bf537e48f36ebd944612ff327fa3ebfcbfca"
+          "doc": "v1:blob:2a239e92a02beb5c9dc03824485c183501bfc80a",
+          "filter": "v1:sha256:c117c2c46bda11859ffee2cc42fcce8a8cd7a6610740ff1cffb4885af78c1585",
+          "summary": "v1:sha256:1e8b845aa843345e766e992c39b85e7188c9129e88dbd2db8f46d561081fb63b"
         },
         "policy": {},
-        "subject": "v1:sha256:5e637952941e2f5973c2905d7a453c89e11ca1617e9c6275e6e4f72a37bd5edc"
+        "subject": "v1:sha256:8ef6ef323058a87be7ae99dd1bfab0679fa0f55602ac5e56161e52a4a17cad21"
       },
       "holder": "human",
-      "input_fp": "v1:sha256:73d3288222f939a5613b122cc47e06eec1414abb956b5335393fcda20def9674",
+      "input_fp": "v1:sha256:d86ff4a01a26c8cb18aa6be16796a0651d32cf0ca0ea499e2f2f5aff10b640a3",
       "ok": true,
       "output": {
-        "decided_at": "2026-11-03T17:53:58Z",
+        "decided_at": "2026-11-03T18:17:31Z",
         "decided_by": "Codex (root agent), delegated by Dave",
         "decision": "approved",
         "quote": "Do not wait for my approval",
-        "summary": "Approve the independently reviewed whitepaper design refresh preserving the actual merged dogfood report prerequisite, privacy, and the distinction between engine guarantees and deployment procedures."
+        "summary": "Approve the independently reviewed whitepaper design refresh reflecting the CLI-only dogfood and requiring truthful actual evidence and the merged report before writing."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "4046215ab26f8f387784b92a1a033c5d85f40af8",
-          "commit": "b3ffb40fdc2287fcfcd403e0b5acece672741c48"
+          "blob": "2a239e92a02beb5c9dc03824485c183501bfc80a",
+          "commit": "1c9d0a6a24ea5d4bf649f5fe264213983d898977"
         }
       },
       "status": "done"
