@@ -2,7 +2,7 @@
   "schema": 1,
   "status": "in_progress",
   "complete": false,
-  "as_of_utc": "2026-11-03T21:03:58.109955+00:00",
+  "as_of_utc": "2026-11-03T21:18:49.593715+00:00",
   "scope": "CLI dogfood; interim bootstrap/migration milestone, not release acceptance",
   "actors": [
     {
@@ -64,7 +64,7 @@
       "release": 1,
       "state": "open",
       "depends_on": [],
-      "phase_status": "test_design_reopened_by_recorded_review_finding"
+      "phase_status": "implementation_running_after_current_test_review"
     },
     {
       "alias": "goal-B",
@@ -73,7 +73,7 @@
       "depends_on": [
         "goal-A"
       ],
-      "phase_status": "design_reviews_running"
+      "phase_status": "base_waiting_for_dependency_integrate"
     },
     {
       "alias": "goal-C",
@@ -132,7 +132,8 @@
     "status": "not_cut",
     "staging_approval": "not_granted",
     "production_approval": "not_granted",
-    "candidate_proof": "pending"
+    "candidate_proof": "pending",
+    "source_identity_rule": "Existing controller requires the full Git repository tree plus pinned acceptance/artifact proof; the engine reduced code_tree is insufficient."
   },
   "costs": {
     "population": "Only required CI jobs for history-only reconciliation and policy bootstrap, excluding all product-goal work, queue time, VM boot/teardown and agent work.",
@@ -198,7 +199,7 @@
       },
       "goal-A": {
         "discovery": 0,
-        "delivery": 1
+        "delivery": 2
       },
       "goal-B": {
         "discovery": 0
@@ -275,7 +276,7 @@
     {
       "id": "A11",
       "status": "pending",
-      "reason": "A real test review finding reopened test design; safe dispatcher recovery was also observed. Remaining failure paths are not yet complete."
+      "reason": "Natural test-review findings reopened test design and were corrected through review; safe dispatcher recovery was also observed. Remaining failure paths are not yet complete."
     },
     {
       "id": "A12",
@@ -329,7 +330,7 @@
   "scope_updates": [
     "Owner approved the existing non-deferred integration visual/UX direction; source partition and normal goal reviews remain in progress."
   ],
-  "phase_observed_at_utc": "2026-11-03T21:00:49.504836+00:00",
+  "phase_observed_at_utc": "2026-11-03T21:15:18.236963+00:00",
   "failure_paths": {
     "review_finding_reopens_target": {
       "status": "observed",
