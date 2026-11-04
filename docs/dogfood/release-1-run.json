@@ -2,7 +2,7 @@
   "schema": 1,
   "status": "in_progress",
   "complete": false,
-  "as_of_utc": "2026-11-04T00:31:34.429239+00:00",
+  "as_of_utc": "2026-11-04T02:45:55.069700+00:00",
   "scope": "CLI dogfood; interim bootstrap/migration milestone, not release acceptance",
   "actors": [
     {
@@ -56,7 +56,10 @@
       "files": 1,
       "refs": 1,
       "notice_present": true,
-      "owner_disposition": "Keep both intact; visible notice retained, no deletion or dismissal."
+      "owner_disposition": "Keep both intact; visible notice retained, no deletion or dismissal.",
+      "reported_refs_during_sync": 2,
+      "genuine_old_refs": 1,
+      "false_positive_explanation": "Current engine sync ref counted as old; tracked separately in public engine goal1044. No current operation ref is cleanup-authorized."
     }
   },
   "goals": [
@@ -125,8 +128,8 @@
     {
       "alias": "goal-D",
       "release": 1,
-      "state": "open",
-      "phase_status": "corrective_design_active_after_full_staging_producer_failure",
+      "state": "closed",
+      "phase_status": "merged_after_full_image_verification_and_official_ci",
       "scope_note": "New corrective work from the real run; not part of the eleven-goal migrated inventory."
     }
   ],
@@ -137,19 +140,20 @@
     "end_of_run_check": "pending"
   },
   "release": {
-    "status": "staging_producer_failed_before_deployment",
-    "staging_approval": "granted for attempted candidate only",
+    "status": "corrected_and_synced_waiting_renewed_staging_approval",
+    "staging_approval": "prior failed candidate only; renewed approval required for corrected candidate",
     "production_approval": "not_granted",
-    "candidate_proof": "source full-tree equivalence proved; full producer failed and controller rejected candidate before backup/restore/browser/seal",
+    "candidate_proof": "corrected source full-tree merge equivalence proven; new-source staging producer/artifact acceptance pending",
     "source_identity_rule": "Existing controller requires the full Git repository tree plus pinned acceptance/artifact proof; the engine reduced code_tree is insufficient.",
     "evidence_alias": "observation-16",
-    "profile_constraint": "Local native evidence used a fixture ICC profile. Actual full CI authenticated the cache, resolved image provenance and successfully prepared the locked real print profile; subsequent studio controls failed, so no final native/staging readiness is certified.",
+    "profile_constraint": "The correction verification image passed native card checks with the exact default production ICC hash; earlier fixture runs remain historical. This is preflight, not actual corrected release staging acceptance.",
     "staging_operation_performed": false,
     "staging_acceptance": "none",
     "legacy_owner_answer": "Keep both intact (Recommended)",
     "staging_owner_answer": "Approve this staging run",
     "failure_evidence_alias": "observation-18",
-    "changed_candidate_rule": "Any source/candidate change requires reviewed correction, fresh full-tree/build evidence and renewed separate staging approval."
+    "changed_candidate_rule": "Any source/candidate change requires reviewed correction, fresh full-tree/build evidence and renewed separate staging approval.",
+    "corrected_candidate_evidence_alias": "observation-20"
   },
   "costs": {
     "population": "Actual provider job execution intervals across administrative/product CI and the attempted staging producer/controller. Required checks and other workflow jobs remain separately identifiable. Copied successful retry intervals count once; queues, VM lifecycle and agent work are excluded.",
@@ -289,13 +293,14 @@
       }
     ],
     "product_ci_runner_wall_seconds": 1109.0,
-    "observed_required_ci_runner_wall_seconds": 2896.0,
-    "observed_required_ci_runner_minutes": 48.266666666666666,
+    "observed_required_ci_runner_wall_seconds": 6662.0,
+    "observed_required_ci_runner_minutes": 111.03333333333333,
     "ci_evidence_aliases": [
       "observation-13",
       "observation-15",
       "observation-17",
-      "observation-18"
+      "observation-18",
+      "observation-20"
     ],
     "staging_workflow_jobs": [
       {
@@ -324,9 +329,60 @@
       }
     ],
     "staging_workflow_runner_wall_seconds": 1121.0,
-    "observed_ci_job_execution_count": 17,
-    "observed_all_ci_runner_wall_seconds": 3006.0,
-    "observed_all_ci_runner_minutes": 50.1
+    "observed_ci_job_execution_count": 25,
+    "observed_all_ci_runner_wall_seconds": 6772.0,
+    "observed_all_ci_runner_minutes": 112.86666666666666,
+    "corrective_verification_jobs": [
+      {
+        "phase": "verification-initial",
+        "check_alias": "required-check-2",
+        "conclusion": "success",
+        "runner_wall_seconds": 237.0
+      },
+      {
+        "phase": "verification-initial",
+        "check_alias": "required-check-1",
+        "conclusion": "failure",
+        "runner_wall_seconds": 154.0
+      },
+      {
+        "phase": "verification-corrected-full-image",
+        "check_alias": "required-check-1",
+        "conclusion": "success",
+        "runner_wall_seconds": 2810.0
+      },
+      {
+        "phase": "verification-corrected-full-image",
+        "check_alias": "required-check-2",
+        "conclusion": "success",
+        "runner_wall_seconds": 186.0
+      },
+      {
+        "phase": "official-corrective-pr",
+        "check_alias": "required-check-1",
+        "conclusion": "success",
+        "runner_wall_seconds": 122.0
+      },
+      {
+        "phase": "official-corrective-pr",
+        "check_alias": "required-check-2",
+        "conclusion": "success",
+        "runner_wall_seconds": 59.0
+      },
+      {
+        "phase": "release-line-sync",
+        "check_alias": "required-check-1",
+        "conclusion": "success",
+        "runner_wall_seconds": 121.0
+      },
+      {
+        "phase": "release-line-sync",
+        "check_alias": "required-check-2",
+        "conclusion": "success",
+        "runner_wall_seconds": 77.0
+      }
+    ],
+    "corrective_verification_runner_wall_seconds": 3766.0
   },
   "lens_rescore": {
     "status": "pending",
@@ -365,10 +421,10 @@
     },
     {
       "id": "A5",
-      "status": "pending",
-      "reason": "Both initial Release 1 product goals merged; an additional corrective goal is active after the full staging producer failed.",
+      "status": "pass",
+      "reason": "Both initial product goals and the staging correction merged; the release itself is unfinished.",
       "scope": "observed product/stack milestone; release remains incomplete",
-      "evidence_alias": "observation-19"
+      "evidence_alias": "observation-20"
     },
     {
       "id": "A6",
@@ -392,12 +448,12 @@
     {
       "id": "A9",
       "status": "pending",
-      "reason": "A real release was cut and synced; finish remains pending after separate staging and production gates."
+      "reason": "The actual release was cut and synced again after correction; finish remains pending after successful staging and separate production approval."
     },
     {
       "id": "A10",
       "status": "pending",
-      "reason": "Owner approved the attempted staging candidate; its full producer failed and the controller skipped backup, staging and seal. No accepted deployment or production approval exists."
+      "reason": "The old approved candidate failed before deployment. The corrected full-tree candidate is proven and awaits renewed staging approval and actual original artifacts/acceptance."
     },
     {
       "id": "A11",
@@ -407,12 +463,12 @@
     {
       "id": "A12",
       "status": "pending",
-      "reason": "The final defect inventory has not been reconciled. Existing application-runner friction is distinct from an engine defect."
+      "reason": "One nonblocking generic engine defect is durably captured as public goal1044, still open; no hidden fix or installation is claimed. Final inventory audit remains pending."
     },
     {
       "id": "A13",
       "status": "pending",
-      "reason": "Seventeen unique executed workflow jobs total 3,006 seconds, including failures; required checks are separately identified. Final agent/token/cost populations remain unavailable."
+      "reason": "Twenty-five unique executed provider jobs total 6,772 seconds, with required checks separately identified. Final agent/token/cost populations remain unavailable."
     },
     {
       "id": "A14",
@@ -456,7 +512,7 @@
   "scope_updates": [
     "Owner approved the existing non-deferred integration visual/UX direction; source partition and normal goal reviews remain in progress."
   ],
-  "phase_observed_at_utc": "2026-11-04T00:27:36Z",
+  "phase_observed_at_utc": "2026-11-04T02:38:58Z",
   "failure_paths": {
     "review_finding_reopens_target": {
       "status": "observed",
@@ -515,5 +571,17 @@
   "execution_added_goals": {
     "corrective_product_goals": 1,
     "release_line_goals": 1
-  }
+  },
+  "generic_engine_defects": [
+    {
+      "goal": 1044,
+      "status": "captured_open",
+      "summary": "Current release-sync ref falsely counted as pre-reset state",
+      "blocking": false,
+      "fix_merged": false,
+      "fix_installed": false,
+      "observed_build": "0.0.0-dev f017a54d3e9f",
+      "evidence_alias": "observation-21"
+    }
+  ]
 }
