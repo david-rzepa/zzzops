@@ -37,7 +37,10 @@ DOCUMENT = ("query($labelled:String!,$marked:String!){"
             "marked: search(type:ISSUE, query:$marked, first:100){issueCount nodes{... on Issue{number}}}}")
 
 OLD_FILES = (".zzzops/PROJECT_AUDIT.md", ".zzzops/BOOTSTRAP.json", ".zzzops/ZZZOPS_LOCK.json", ".zzzops/rules")
-NEW_REF = re.compile(r"^refs/heads/zzzops/(?:(?:goal|work|pr|stack)/g\d+|lease/g\d+/.+|policy/.+)$")
+# Only canonical line ids and the producers' literal slots are current sync refs.
+NEW_REF = re.compile(
+    r"^refs/heads/zzzops/(?:(?:goal|work|pr|stack)/g\d+|lease/g\d+/.+|policy/.+"
+    r"|sync/g[1-9][0-9]*/(?:integration|release)\Z)$")
 AUTH = re.compile(r"gh auth login|HTTP 401|authentication", re.I)
 REPO = re.compile(r"^(?:https://|ssh://)?(?:git@)?[^/:]+[/:]([^/]+)/([^/]+?)(?:\.git)?/?$")
 
