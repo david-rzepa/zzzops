@@ -2,7 +2,7 @@
   "schema": 1,
   "status": "in_progress",
   "complete": false,
-  "as_of_utc": "2026-11-03T23:04:38.203270+00:00",
+  "as_of_utc": "2026-11-04T00:01:33.549600+00:00",
   "scope": "CLI dogfood; interim bootstrap/migration milestone, not release acceptance",
   "actors": [
     {
@@ -62,18 +62,18 @@
     {
       "alias": "goal-A",
       "release": 1,
-      "state": "merged",
+      "state": "closed",
       "depends_on": [],
-      "phase_status": "merged_after_reviewed_correction_and_fresh_required_ci"
+      "phase_status": "merged_after_review_and_exact_head_required_ci"
     },
     {
       "alias": "goal-B",
       "release": 1,
-      "state": "open",
+      "state": "closed",
       "depends_on": [
         "goal-A"
       ],
-      "phase_status": "post_dependency_merge_sync_complete_test_review_pending"
+      "phase_status": "merged_after_review_and_exact_head_required_ci"
     },
     {
       "alias": "goal-C",
@@ -129,14 +129,16 @@
     "end_of_run_check": "pending"
   },
   "release": {
-    "status": "not_cut",
+    "status": "cut_and_synced_waiting_for_staging_approval",
     "staging_approval": "not_granted",
     "production_approval": "not_granted",
-    "candidate_proof": "pending",
-    "source_identity_rule": "Existing controller requires the full Git repository tree plus pinned acceptance/artifact proof; the engine reduced code_tree is insufficient."
+    "candidate_proof": "actual source full-tree merge equivalence proven; staged artifact/acceptance proof pending",
+    "source_identity_rule": "Existing controller requires the full Git repository tree plus pinned acceptance/artifact proof; the engine reduced code_tree is insufficient.",
+    "evidence_alias": "observation-16",
+    "profile_constraint": "Native output used an explicitly selected fixture ICC profile; the actual locked production profile and full-build cloud access are not certified by that evidence."
   },
   "costs": {
-    "population": "Required CI jobs for administrative reconciliation/bootstrap and the first product integration, excluding queues, VM lifecycle and agent work. Administrative and product subsets remain separately identifiable.",
+    "population": "Required CI execution intervals across administrative reconciliation/bootstrap and both product integrations, including failed attempts. Copied successful job intervals in retry API responses count once; queues, VM lifecycle and agent work are excluded.",
     "administrative_ci_jobs": [
       {
         "phase": "ancestry-reconciliation",
@@ -202,7 +204,8 @@
         "delivery": 6
       },
       "goal-B": {
-        "discovery": 0
+        "discovery": 0,
+        "delivery": 0
       }
     },
     "stored_stage_counter_scope": "Snapshot sums of actual stored correction counters for agent nodes grouped by the declared actor stage. Not model token counts, not a forced budget exercise; later results remain pending.",
@@ -234,14 +237,50 @@
         "check_alias": "required-check-2",
         "conclusion": "success",
         "runner_wall_seconds": 105.0
+      },
+      {
+        "goal_alias": "goal-B",
+        "phase": "initial-integration",
+        "check_alias": "required-check-1",
+        "conclusion": "failure",
+        "runner_wall_seconds": 87.0
+      },
+      {
+        "goal_alias": "goal-B",
+        "phase": "initial-integration",
+        "check_alias": "required-check-2",
+        "conclusion": "success",
+        "runner_wall_seconds": 83.0
+      },
+      {
+        "goal_alias": "goal-B",
+        "phase": "failed-check-retry",
+        "check_alias": "required-check-1",
+        "conclusion": "failure",
+        "runner_wall_seconds": 65.0
+      },
+      {
+        "goal_alias": "goal-B",
+        "phase": "corrected-integration",
+        "check_alias": "required-check-2",
+        "conclusion": "success",
+        "runner_wall_seconds": 83.0
+      },
+      {
+        "goal_alias": "goal-B",
+        "phase": "corrected-integration",
+        "check_alias": "required-check-1",
+        "conclusion": "success",
+        "runner_wall_seconds": 181.0
       }
     ],
-    "product_ci_runner_wall_seconds": 610.0,
-    "observed_required_ci_runner_wall_seconds": 1386.0,
-    "observed_required_ci_runner_minutes": 23.1,
+    "product_ci_runner_wall_seconds": 1109.0,
+    "observed_required_ci_runner_wall_seconds": 1885.0,
+    "observed_required_ci_runner_minutes": 31.416666666666668,
     "ci_evidence_aliases": [
       "observation-13",
-      "observation-15"
+      "observation-15",
+      "observation-17"
     ]
   },
   "lens_rescore": {
@@ -280,8 +319,10 @@
     },
     {
       "id": "A5",
-      "status": "pending",
-      "reason": "One Release 1 goal merged; the dependent goal remains unfinished."
+      "status": "pass",
+      "reason": "Both Release 1 product goals completed and merged through the reviewed workflow.",
+      "scope": "observed product/stack milestone; release remains incomplete",
+      "evidence_alias": "observation-16"
     },
     {
       "id": "A6",
@@ -297,23 +338,25 @@
     },
     {
       "id": "A8",
-      "status": "pending",
-      "reason": "Real dependent test work preceded the parent merge and survived the post-merge forward sync. Final dependent verification and integrated tree equality remain pending."
+      "status": "pass",
+      "reason": "Real dependent tests preceded the parent merge; forward sync retained that history and file blobs, and final reviewed/tested/integrated/merged trees agree.",
+      "scope": "observed product/stack milestone; release remains incomplete",
+      "evidence_alias": "observation-16"
     },
     {
       "id": "A9",
       "status": "pending",
-      "reason": "Release cut, sync and finish have not occurred."
+      "reason": "A real release was cut and synced; finish remains pending after separate staging and production gates."
     },
     {
       "id": "A10",
       "status": "pending",
-      "reason": "Staging and production remain separately unapproved; candidate identity evidence is not complete."
+      "reason": "Current source tips and resulting full candidate tree are proven; staging artifacts/acceptance and separate owner approvals remain pending."
     },
     {
       "id": "A11",
       "status": "pending",
-      "reason": "Natural test-review findings reopened test design and were corrected through review; safe dispatcher recovery was also observed. Remaining failure paths are not yet complete."
+      "reason": "Natural review findings, CI failures, retry and correction were observed. Stopped-worker expiry/reclaim and a policy-change pause remain unaudited."
     },
     {
       "id": "A12",
@@ -323,7 +366,7 @@
     {
       "id": "A13",
       "status": "pending",
-      "reason": "Eight required CI job durations are measured across administrative and initial/corrected product subsets; final per-goal agent/token/cost totals remain unavailable."
+      "reason": "Thirteen unique required CI execution intervals, including two failed jobs, are measured; final agent/token/cost populations remain unavailable."
     },
     {
       "id": "A14",
@@ -367,14 +410,15 @@
   "scope_updates": [
     "Owner approved the existing non-deferred integration visual/UX direction; source partition and normal goal reviews remain in progress."
   ],
-  "phase_observed_at_utc": "2026-11-03T23:03:15Z",
+  "phase_observed_at_utc": "2026-11-03T23:59:58Z",
   "failure_paths": {
     "review_finding_reopens_target": {
       "status": "observed",
       "evidence_alias": "observation-08"
     },
     "failing_verification_check": {
-      "status": "pending"
+      "status": "observed",
+      "evidence_alias": "observation-17"
     },
     "expired_private_lease_reclaim": {
       "status": "pending"
@@ -394,15 +438,16 @@
     "completion_evidence_alias": "observation-15"
   },
   "stack_observation": {
-    "status": "in_progress",
+    "status": "complete",
     "dependency_integrated_unmerged": true,
     "dependent_based_on_dependency_pr_checkpoint": true,
     "dependent_own_checkpoint_and_postmerge_sync": "observed",
-    "evidence_alias": "observation-14",
+    "evidence_alias": "observation-16",
     "dependent_own_checkpoint_before_parent_merge": true,
     "dependency_subsequently_merged": true,
     "postmerge_forward_sync_completed": true,
     "own_checkpoint_ancestry_and_four_path_blobs_preserved": true,
-    "final_tested_integrated_dependent_identity": "pending"
+    "final_tested_integrated_dependent_identity": "proven including actual merge tree",
+    "dependent_subsequently_merged": true
   }
 }
