@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "status": "in_progress",
+  "status": "blocked",
   "complete": false,
-  "as_of_utc": "2026-11-04T18:06:59.188139+00:00",
+  "as_of_utc": "2026-11-04T18:44:59.496467+00:00",
   "scope": "CLI dogfood; measured execution evidence, not final release acceptance",
   "actors": [
     {
@@ -131,6 +131,13 @@
       "state": "closed",
       "phase_status": "merged_after_full_image_verification_and_official_ci",
       "scope_note": "New corrective work from the real run; not part of the eleven-goal migrated inventory."
+    },
+    {
+      "alias": "goal-E",
+      "release": 1,
+      "state": "open",
+      "phase_status": "blocked_external_download_before_exact_source_full_image_verification",
+      "scope_note": "Second corrective goal from the actual run; not part of the migrated inventory."
     }
   ],
   "aliases": "Anonymized aliases only; actual identifiers, holders, immutable inputs and replay commands resolve in the private journal.",
@@ -296,8 +303,8 @@
       }
     ],
     "product_ci_runner_wall_seconds": 1109.0,
-    "observed_required_ci_runner_wall_seconds": 8880.0,
-    "observed_required_ci_runner_minutes": 148.0,
+    "observed_required_ci_runner_wall_seconds": 9262.0,
+    "observed_required_ci_runner_minutes": 154.36666666666667,
     "ci_evidence_aliases": [
       "observation-13",
       "observation-15",
@@ -334,9 +341,9 @@
       }
     ],
     "staging_workflow_runner_wall_seconds": 1121.0,
-    "observed_ci_job_execution_count": 31,
-    "observed_all_ci_runner_wall_seconds": 9227.0,
-    "observed_all_ci_runner_minutes": 153.78333333333333,
+    "observed_ci_job_execution_count": 32,
+    "observed_all_ci_runner_wall_seconds": 9609.0,
+    "observed_all_ci_runner_minutes": 160.15,
     "corrective_verification_jobs": [
       {
         "phase": "verification-initial",
@@ -439,7 +446,17 @@
       "population": "Recorded outer-run corrected-staging question from blocked finish to actual owner answer. Separate from earlier private-product question subset; per-question wait, not total unique owner time.",
       "evidence_alias": "observation-24"
     },
-    "corrected_staging_runner_wall_seconds": 2455.0
+    "corrected_staging_runner_wall_seconds": 2455.0,
+    "corrective_followup_jobs": [
+      {
+        "goal_alias": "goal-E",
+        "phase": "temporary-full-image-verification",
+        "check_alias": "required-check-1",
+        "conclusion": "failure",
+        "runner_wall_seconds": 382.0,
+        "failure_phase": "public action setup download"
+      }
+    ]
   },
   "lens_rescore": {
     "status": "pending",
@@ -478,10 +495,10 @@
     },
     {
       "id": "A5",
-      "status": "pass",
-      "reason": "Both initial product goals and the staging correction merged; the release itself is unfinished.",
+      "status": "pending",
+      "reason": "Both initial goals and the first correction merged; a second corrective goal is blocked before exact-source nondeployment full image verification. The release is unfinished.",
       "scope": "observed product/stack milestone; release remains incomplete",
-      "evidence_alias": "observation-20"
+      "evidence_alias": "observation-27"
     },
     {
       "id": "A6",
@@ -525,7 +542,7 @@
     {
       "id": "A13",
       "status": "pending",
-      "reason": "Thirty-one observed executed provider intervals total 9,227 seconds; copied successful retry intervals and skipped jobs are excluded. Final agent/token/cost populations remain unavailable."
+      "reason": "Thirty-two observed completed provider intervals total 9,609 seconds; copied retry successes, queued and skipped jobs are excluded. Final agent/token/cost populations remain unavailable."
     },
     {
       "id": "A14",
@@ -565,7 +582,12 @@
       "reason": "The final naturally occurring block/finding/check cases have not been audited."
     }
   ],
-  "blocking_decision": null,
+  "blocking_decision": {
+    "category": "external",
+    "waiting_for": "agent",
+    "reason": "Pinned public action archive download remained incomplete from both host and guest; exact-source nondeployment full image verification is pending.",
+    "resume_condition": "Restore complete public archive availability, then resume the private correction through exact-source full image verification and normal review/release workflow. Changed candidate requires renewed staging approval; production and finish remain separately unapproved."
+  },
   "scope_updates": [
     "Owner approved the existing non-deferred integration visual/UX direction; source partition and normal goal reviews remain in progress."
   ],
@@ -627,7 +649,7 @@
     "scope": "Historical original candidate failure; not the corrected attempt."
   },
   "execution_added_goals": {
-    "corrective_product_goals": 1,
+    "corrective_product_goals": 2,
     "release_line_goals": 1
   },
   "generic_engine_defects": [
@@ -669,5 +691,17 @@
     "actual_staging_acceptance": "none",
     "production_finish": "not approved",
     "evidence_alias": "observation-25"
+  },
+  "corrective_followup": {
+    "alias": "goal-E",
+    "status": "blocked_external",
+    "local_controls": "passed; scratch profile controls do not replace final image default-profile verification",
+    "full_image_verification": "pending; temporary verification job failed during public action setup download",
+    "public_archive_probe": "Host and guest both returned HTTP200 but incomplete bodies at the bounded probe; availability not proven",
+    "observer_recovery": "Exact completed job, deregistered runner and owned guest proved under lock; diagnostics preserved, only completed overlay removed and existing dispatcher restarted",
+    "other_required_check": "queued at last provider observation; no cancellation or retry by observer",
+    "staging_acceptance": "none",
+    "production_finish": "unapproved",
+    "evidence_alias": "observation-27"
   }
 }

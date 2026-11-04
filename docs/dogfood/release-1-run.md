@@ -25,7 +25,7 @@ The corrected producer failed at a cloud-authentication precondition before prof
 
 ## Measured subset and limits
 
-Across thirty-one observed completed execution intervals, provider job wall time totals **9,227 seconds (153.78 minutes)**: 776 administrative, 1,109 initial product integration, 1,121 original staging, 3,766 corrective verification/integration/sync and 2,455 corrected staging/retry/controller seconds. Required checks account for **8,880 seconds (148 minutes)**; other workflow jobs are separate. Failed jobs count, while skipped jobs and copied successful retry intervals do not count again. These are observed subsets, not a final billing or total release cost; queues, VM overhead and agent cost are not estimated.
+Across thirty-two observed completed execution intervals, provider job wall time totals **9,609 seconds (160.15 minutes)**: 776 administrative, 1,109 initial product integration, 1,121 original staging, 3,766 corrective verification/integration/sync, 2,455 corrected staging/retry/controller and 382 corrective setup-failure seconds. Required checks account for **9,262 seconds (154.37 minutes)**; other workflow jobs are separate. Failed jobs count, while skipped jobs and copied successful retry intervals do not count again. These are observed subsets, not a final billing or total release cost; queues, VM overhead and agent cost are not estimated.
 
 Three recorded private-product question intervals total 1,082 seconds. One separate outer staging-question interval totals 49,983 seconds. These per-question populations include the deferred initial goal and exclude other waits; neither sum is unique elapsed owner time. Tokens, final charged rounds, money and full owner waits remain unavailable until final transcript/population reconciliation. No lens re-score is claimed.
 
@@ -41,7 +41,7 @@ Pass entries describe only the named interim observations. Pending entries remai
 | A2 | fail | Owner explicitly retained both legacy items; their visible notice remains, so this legacy-absence expectation is unmet. No cleanup or suppression was performed. |
 | A3 | pass | Reviewed policy, provenance, capabilities, prompts and instruction mapping landed. |
 | A4 | pass | All twelve counted old issues closed; eleven migrated goals have explicit releases and source links. |
-| A5 | pass | Both initial product goals and the staging correction merged; the release itself is unfinished. |
+| A5 | pending | Both initial goals and the first correction merged; a second corrective goal is blocked before exact-source nondeployment full image verification. The release is unfinished. |
 | A6 | pass | Eight Release 2 goals and the owner-deferred Release 3 goal are held; the deferred goal had initial design work while it was still in Release 1. |
 | A7 | pending | Final command/ref audit remains pending. |
 | A8 | pass | Real dependent tests preceded the parent merge; forward sync retained that history and file blobs, and final reviewed/tested/integrated/merged trees agree. |
@@ -49,7 +49,7 @@ Pass entries describe only the named interim observations. Pending entries remai
 | A10 | pending | Both corrected producer attempts failed; their fresh controllers skipped all backup/staging/seal jobs. Source approval remains recorded, but no accepted staging or separate production/finish approval exists. |
 | A11 | pending | Natural review/CI failures, one same-source failed-job retry and safe completed-runner recovery were observed. Other planned failure paths remain individually unaudited. |
 | A12 | pending | The captured generic engine defect merged as public goal1044; actual staging executors still use pinned pre-fix build f017a54d3e9f. No reinstall or hidden fix is claimed. |
-| A13 | pending | Thirty-one observed executed provider intervals total 9,227 seconds; copied successful retry intervals and skipped jobs are excluded. Final agent/token/cost populations remain unavailable. |
+| A13 | pending | Thirty-two observed completed provider intervals total 9,609 seconds; copied retry successes, queued and skipped jobs are excluded. Final agent/token/cost populations remain unavailable. |
 | A14 | pending | No final review cohort or lens re-score is available. |
 | A15 | pending | The final complete artifact set has not been published/reviewed; this milestone receives its own one-time name check. |
 | A16 | pending | Start snapshot and later metadata/source-ref comparisons are preserved; end-of-run comparison remains pending. |
@@ -58,9 +58,15 @@ Pass entries describe only the named interim observations. Pending entries remai
 | A19 | pending | A clean sync preserved the dependent test change and file blobs while updating its base/checkpoint. Other carry/stale and base-only review cases remain unaudited. |
 | A20 | pending | The final naturally occurring block/finding/check cases have not been audited. |
 
+## External verification blocker
+
+A second corrective goal passed local controls but its exact-source, nondeployment full image verification remains pending. The temporary full verification job failed while downloading a pinned public action archive. Bounded host and guest probes both received HTTP200 with incomplete bodies; neither proves restored availability. The completed failed job consumed 382 seconds. The other required check was still queued at the last observation. No observer retry or cancellation occurred. A second safe runner recovery proved provider completion, deregistration and exact owned guest identity under lock, preserved diagnostics, removed only its completed overlay and restarted the existing dispatcher. This changes no source, credentials, images or guards.
+
+The outer phase is blocked on this external dependency. Resume only after complete archive availability and exact-source full image verification, then follow normal correction review and release-line processing. Any changed candidate needs fresh full-tree/artifact proof and renewed staging approval. No staging acceptance, production action or release finish is claimed.
+
 ## Next boundary
 
-Both initial product goals and the later correction are merged. The same approved corrected candidate failed two producer attempts; the bounded retry reached a new startup timeout after profile gates passed. The next diagnosis belongs to the normal private workflow. Prior failures, original producer attempts and recovery proof remain preserved. No further retry, source change, accepted staging, production action or release finish is claimed. Both genuine legacy records stay intact; the known sync-ref false positive is captured by merged G1044, while the actual executor remains on its pinned earlier build.
+Both initial product goals and the later correction are merged. The same approved corrected candidate failed two producer attempts; the bounded retry reached a new startup timeout after profile gates passed. The second correction remains in the normal private workflow, blocked before full image verification. Prior failures, original producer attempts and recovery proof remain preserved. No further staging retry, accepted staging, production action or release finish is claimed. Both genuine legacy records stay intact; the known sync-ref false positive is captured by merged G1044, while the actual executor remains on its pinned earlier build.
 
 Complete the actual staging, production and release-finish gates and final evidence audits. Record actual carry/stale and budget behavior rather than forcing it. Staging and production each need a separate explicit owner approval bound to both relevant tips and the resulting candidate full repository tree and pinned artifact identity; the reduced engine code-tree value alone is insufficient. Refresh that proof before irreversible promotion and after waits or retries. Changed or unproven evidence requires a stop, restaging and renewed separate approvals.
 
