@@ -78,6 +78,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-04T03:02:43Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:904d944d619b7163e90790728e792c1e68d8a34beb6868eda310c8daa23d498a"
+        },
+        "policy": {},
+        "subject": "v1:sha256:dc8ecd1b0becf870dd200d3bf0d5724b81cde0fc080a1ded049e4876094a629b"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:a6d9d7d15c3d157fefd41d8e69efd0db8bc233d8a58944eebff6d993beb6431c",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-04T03:02:43Z",
+        "decided_by": "Codex (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Ok great, let's execute the rest of the goals on the stack, then merge everything",
+        "summary": "Approve reviewed sync-ref legacy-detection fix at exact PR head 151fc826d902d4b314dada3146145de7256f4c21 after required checks."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "edb9b2c9aa317220a8e1340f27c40b6a4b6a1b5a",
+          "change": "ce92008aabc182b6184ac797e5cf65b41dba69fb",
+          "commit": "b6becd955eada100b2da6021df349cf4069f5cf7",
+          "tree": "f0c94cd2b92a64a403d43db5fcf237fbac4dc320"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 1,
       "correction_runs": 0,
