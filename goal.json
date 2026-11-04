@@ -8,7 +8,35 @@
     "issue": null
   },
   "priority": "P2",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-04T02:34:08Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "spec": "v1:sha256:2e68fbc90a59c32a8004574f0cc6c3d1f9ef9458d88e1af935115481afef71d4"
+        },
+        "policy": {}
+      },
+      "holder": "codex:takeover/1044-design",
+      "input_fp": "v1:sha256:1e53b62ea3836ea2436ca31cbc1e2bfb4263579f26d0f36f0d30bbc4c8c80ddc",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "b0b4a302dc8c624e70410bb1d996ca5ab75477b3",
+          "commit": "ac433d2e094e2479af6ee13e496886a8af4c7f89",
+          "path": ".zzzops/reviews/1044/design.md"
+        },
+        "summary": "Recognize only the complete current line-operation ref shapes zzzops/sync/g<positive canonical decimal>/integration and /release, verified against back_merge and all callers. Preserve existing current-ref alternatives, unknown/legacy counting, item activation and bounded network/cache behavior; the detector digest naturally refreshes cached counts. Focused mixed-inventory, near-miss and displayed-count regressions plus contract docs are planned, with no ref/policy/release changes or private-project information."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
