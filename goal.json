@@ -226,6 +226,43 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-04T02:45:08Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:148df91a9d596921dba5ab02a63aec49ae60a0c3",
+          "tests": "v1:sha256:9102eb81c2ddb154d3dbcd5c216ddbeaf3be5354bb9882c5b44e45e7984561e3"
+        },
+        "policy": {},
+        "subject": "v1:sha256:5c269b7161bf8c8d548d6328f53366fa57046c8fcd58c3e3a24821c9d29835eb"
+      },
+      "holder": "codex:takeover/1044-review-tests",
+      "input_fp": "v1:sha256:9519384647f3b71b7b328afceafa2b9358b010496ffede7ee3d436f906aede3d",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "d7f1d976669daad0005d34d9850bd179ae2891a6",
+          "commit": "c3051a328ffe2eebce65d8edb217ceb17312cc0f",
+          "path": ".zzzops/reviews/1044/review_tests.md"
+        },
+        "summary": "Approved: strict producer-supported sync shapes, adversarial unknown preservation, prior alternatives, actual CLI disclosure/cache and unchanged refs-only activation are covered with meaningful measured red evidence and a complete bounded verification plan."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "edb9b2c9aa317220a8e1340f27c40b6a4b6a1b5a",
+          "change": "e617d06cf65e9546af0dd699c6a884e969c7fa43",
+          "commit": "1cf127d5385c301a0489bd5a1d5d34775ce5deff",
+          "tree": "9e4057a87efe3f799c364dbd31879c8789e3ab0c"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
