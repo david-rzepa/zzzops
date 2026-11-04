@@ -255,6 +255,52 @@
       },
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-04T02:52:51Z",
+      "fp_parts": {
+        "def": "v1:sha256:ba0e80cd449a16330f3e62cea7fab93aad71b666081fd28f1c0386cf4f3d2d24",
+        "inputs": {
+          "base": "v1:sha256:f3c1d6418827240437c8cefadeca52b00dd522e8f8fcf83086555d1272630edb",
+          "code": "v1:sha256:904d944d619b7163e90790728e792c1e68d8a34beb6868eda310c8daa23d498a",
+          "doc": "v1:blob:148df91a9d596921dba5ab02a63aec49ae60a0c3",
+          "tests": "v1:sha256:9102eb81c2ddb154d3dbcd5c216ddbeaf3be5354bb9882c5b44e45e7984561e3"
+        },
+        "lenses": [
+          "compliance",
+          "correctness",
+          "missing",
+          "tests",
+          "craft"
+        ],
+        "policy": {},
+        "subject": "v1:sha256:dc8ecd1b0becf870dd200d3bf0d5724b81cde0fc080a1ded049e4876094a629b"
+      },
+      "holder": "codex:takeover/1044-review-impl",
+      "input_fp": "v1:sha256:79f3c70ee3c2ac89c1b4eea8b0a33bfe30514d9b9dae78f59a5d6519f917b471",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "e9028c998a5a5387f7d2bcbd52d059817c2badb4",
+          "commit": "fe68c2c06bdc77ab9f2c4ae00f78c7efaf80cc20",
+          "path": ".zzzops/reviews/1044/review_impl.md"
+        },
+        "summary": "Approved: exact producer-supported sync shapes are excluded while unknown refs, prior classifications, activation and cache behavior remain unchanged; frozen tests and complete1121-test verification are preserved."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "edb9b2c9aa317220a8e1340f27c40b6a4b6a1b5a",
+          "change": "ce92008aabc182b6184ac797e5cf65b41dba69fb",
+          "commit": "b6becd955eada100b2da6021df349cf4069f5cf7",
+          "tree": "f0c94cd2b92a64a403d43db5fcf237fbac4dc320"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 1,
       "correction_runs": 0,
