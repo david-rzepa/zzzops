@@ -225,6 +225,106 @@
         }
       },
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-04T02:43:17Z",
+      "fp_parts": {
+        "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
+        "inputs": {
+          "base": "v1:sha256:f3c1d6418827240437c8cefadeca52b00dd522e8f8fcf83086555d1272630edb",
+          "doc": "v1:blob:148df91a9d596921dba5ab02a63aec49ae60a0c3"
+        },
+        "policy": {}
+      },
+      "frozen": [
+        ".agents/test_engine_legacy_sync.py"
+      ],
+      "holder": "codex:takeover/1044-test-design",
+      "input_fp": "v1:sha256:7b914824c65c2e9ebaf9d8ec52038dda66f8264495a38df24add86b1ebd8cf2f",
+      "ok": true,
+      "output": {
+        "commands": [
+          "python3 -m unittest discover -s .agents -p 'test_engine_legacy_sync.py' -v --durations 0",
+          "PYTHONPATH=.agents python3 -m unittest -v --durations 0 test_engine_legacy.CacheTests test_engine_legacy.EmbeddedAndOfflineTests test_engine_legacy.FailureTests test_engine_legacy.BoundedCostTests test_engine_capabilities.DetectorTests",
+          "python3 -m unittest discover -s .agents -p 'test_design_docs.py' -v --durations 0",
+          "python3 -m unittest discover -s .agents -p 'test_agent_plugin.py' -v --durations 0"
+        ],
+        "cost": {
+          "changed_tests": [
+            {
+              "duration_ms": 365,
+              "id_or_scope": "test_engine_legacy_sync.SyncRefDisclosureTests.test_sync_only_is_cached_clean_and_old_refs_alone_still_do_not_activate",
+              "observation": "Expected red before implementation: current sync refs incorrectly count as legacy. unittest per-test duration includes setup/cleanup; report precision is milliseconds, with 0 meaning below printed precision."
+            },
+            {
+              "duration_ms": 311,
+              "id_or_scope": "test_engine_legacy_sync.SyncRefDisclosureTests.test_validate_discloses_only_old_ref_with_a_separate_active_signal",
+              "observation": "Expected red before implementation: current sync refs incorrectly count as legacy. unittest per-test duration includes setup/cleanup; report precision is milliseconds, with 0 meaning below printed precision."
+            },
+            {
+              "duration_ms": 1,
+              "id_or_scope": "test_engine_legacy_sync.SyncRefCountTests.test_complete_producer_shapes_are_current_independent_of_goal_membership",
+              "observation": "Expected red before implementation: current sync refs incorrectly count as legacy. unittest per-test duration includes setup/cleanup; report precision is milliseconds, with 0 meaning below printed precision."
+            },
+            {
+              "duration_ms": 1,
+              "id_or_scope": "test_engine_legacy_sync.SyncRefCountTests.test_adversarial_near_misses_remain_counted_individually",
+              "observation": "Passed: preserved adversarial/compatibility/error behavior. unittest per-test duration includes setup/cleanup; report precision is milliseconds, with 0 meaning below printed precision."
+            },
+            {
+              "duration_ms": 0,
+              "id_or_scope": "test_engine_legacy_sync.SyncRefCountTests.test_mixed_inventory_counts_only_genuine_old_and_unknown_refs",
+              "observation": "Expected red before implementation: current sync refs incorrectly count as legacy. unittest per-test duration includes setup/cleanup; report precision is milliseconds, with 0 meaning below printed precision."
+            },
+            {
+              "duration_ms": 0,
+              "id_or_scope": "test_engine_legacy_sync.SyncRefCountTests.test_remote_failure_is_unknown_not_a_false_clean_zero",
+              "observation": "Passed: preserved adversarial/compatibility/error behavior. unittest per-test duration includes setup/cleanup; report precision is milliseconds, with 0 meaning below printed precision."
+            },
+            {
+              "duration_ms": 0,
+              "id_or_scope": "test_engine_legacy_sync.SyncRefCountTests.test_existing_current_alternatives_keep_their_previous_behavior",
+              "observation": "Passed: preserved adversarial/compatibility/error behavior. unittest per-test duration includes setup/cleanup; report precision is milliseconds, with 0 meaning below printed precision."
+            }
+          ],
+          "checkpoint": "1cf127d5385c301a0489bd5a1d5d34775ce5deff",
+          "commands": [
+            {
+              "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_legacy_sync.py' -v --durations 0",
+              "duration_ms": 759,
+              "exit": 1
+            },
+            {
+              "cmd": "PYTHONPATH=.agents python3 -m unittest -v --durations 0 test_engine_legacy.CacheTests test_engine_legacy.EmbeddedAndOfflineTests test_engine_legacy.FailureTests test_engine_legacy.BoundedCostTests test_engine_capabilities.DetectorTests",
+              "duration_ms": 6018,
+              "exit": 0
+            },
+            {
+              "cmd": "python3 -m unittest discover -s .agents -p 'test_design_docs.py' -v --durations 0",
+              "duration_ms": 323,
+              "exit": 0
+            },
+            {
+              "cmd": "python3 -m unittest discover -s .agents -p 'test_agent_plugin.py' -v --durations 0",
+              "duration_ms": 241,
+              "exit": 0
+            }
+          ],
+          "summary": "New file: 7 tests, 3 passing methods and 4 expected failing methods (6 failure reports including 3 exact-ref subtests), no errors/skips. Current sync-only cache incorrectly stores 3 instead of 0; mixed active CLI counts 4 instead of 1; synthetic mixed inventory 5 instead of 2. Near misses, prior alternatives and remote failures pass. Existing cache/retry/offline/bounded-cost/detector controls18/18; docs35/35; package14/14. New-file whole command759ms, reported summed test bodies678ms (rounded individual durations); total recorded whole commands7341ms. No product implementation or remote service/release operations. Canonical policy sharded full verification remains normal run_tests/CI responsibility.",
+          "total_ms": 7341
+        },
+        "tests": {
+          "base": "edb9b2c9aa317220a8e1340f27c40b6a4b6a1b5a",
+          "change": "e617d06cf65e9546af0dd699c6a884e969c7fa43",
+          "commit": "1cf127d5385c301a0489bd5a1d5d34775ce5deff",
+          "tree": "9e4057a87efe3f799c364dbd31879c8789e3ab0c"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 1,
