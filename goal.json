@@ -12,7 +12,20 @@
     "design": {
       "attempt": 1,
       "correction_runs": 0,
-      "findings": [],
+      "findings": [
+        {
+          "id": "design:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:1a37ca53fd137b5b9f9b9f89f5eb7714dd8b5866ec98c0b0995f57e451af8c98",
+          "text": "Correct the ref table citation: it is SPEC section 2.1, not section 1.8; retain actual producer-derived namespace scope.",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-04T02:34:08Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
