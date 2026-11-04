@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-04T16:47:04Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [],
   "graph": "default",
   "id": 1044,
@@ -292,21 +297,10 @@
       "status": "done"
     },
     "merge": {
-      "attempt": 1,
-      "blocked": {
-        "category": "external",
-        "op_state": {
-          "pending_since": 1793761374,
-          "polls": 1
-        },
-        "reason": "GitHub blocks the merge (required reviews, checks, signatures or queue); satisfy it on GitHub or merge there",
-        "repeats": 1,
-        "retry_after": "2026-11-04T03:32:54Z",
-        "waiting_for": "time"
-      },
+      "attempt": 2,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-04T03:02:54Z",
+      "finished_at": "2026-11-04T16:47:04Z",
       "fp_parts": {
         "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
         "inputs": {
@@ -314,12 +308,15 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1044-merge",
+      "holder": "codex:takeover/1044-merge-r2",
       "input_fp": "v1:sha256:b8bcf6768b291072a36ae6f2b1f8b9250f674d5c52d54ef59415194a50a14aab",
-      "ok": false,
-      "output": null,
-      "reason": "new",
-      "status": "blocked"
+      "ok": true,
+      "output": {
+        "merge_commit": "c455b09914b49fd65e169f91a4f79110e3e2540b",
+        "merged_at": "2026-11-04T03:03:48Z"
+      },
+      "reason": "retry",
+      "status": "done"
     },
     "review_design": {
       "attempt": 1,
@@ -702,6 +699,6 @@
   "schema": 1,
   "skip": {},
   "spec": "During release sync, validate can count an engine-created zzzops/sync/g<ID>/integration branch as pre-reset state. Recognize documented current operation-owned ref shapes in legacy detection while retaining detection of genuinely old or unknown refs. Verify actual release-operation namespaces against their producers and add focused deterministic coverage for a genuine legacy ref alongside a current sync ref. Do not broadly ignore unknown zzzops refs.",
-  "state": "open",
+  "state": "closed",
   "title": "Exclude current release-operation refs from legacy detection"
 }
