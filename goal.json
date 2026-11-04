@@ -161,6 +161,31 @@
       "reason": "new",
       "status": "done"
     },
+    "filter_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-04T02:53:40Z",
+      "fp_parts": {
+        "candidates": [],
+        "def": "v1:sha256:5fab78ee7a74554d9897b964ee764247bd55068d6c3b2a64932fad9704979c4b",
+        "inputs": {
+          "code": "v1:sha256:904d944d619b7163e90790728e792c1e68d8a34beb6868eda310c8daa23d498a",
+          "doc": "v1:blob:148df91a9d596921dba5ab02a63aec49ae60a0c3",
+          "review": "v1:sha256:fe2af99902e2665ca0ccc807828296e1e1eafdbaec93f1db19939990577dbbfb"
+        },
+        "policy": {}
+      },
+      "holder": "codex:takeover/1044-filter-impl",
+      "input_fp": "v1:sha256:14af2ad56e63598320a476d84a76803dc41d095ccf589605fbccf8e87f3d24f5",
+      "ok": true,
+      "output": {
+        "summary": "Implementation review approves the minimal classifier extension: exact producer-supported integration/release sync refs are excluded, while existing namespace handling, unknown refs, activation, cache invalidation/scheduling and bounded remote cost remain preserved. Frozen tests are unchanged and complete1121-test verification is reported passing. No open findings/candidates or notes remain; verdicts empty. No policy, template, capability, stored-format or ref mutation is introduced.",
+        "verdicts": {}
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "implement": {
       "attempt": 1,
       "correction_runs": 0,
