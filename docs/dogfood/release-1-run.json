@@ -2,7 +2,7 @@
   "schema": 1,
   "status": "in_progress",
   "complete": false,
-  "as_of_utc": "2026-11-04T00:01:33.549600+00:00",
+  "as_of_utc": "2026-11-04T00:31:34.429239+00:00",
   "scope": "CLI dogfood; interim bootstrap/migration milestone, not release acceptance",
   "actors": [
     {
@@ -55,7 +55,8 @@
       "issues": 0,
       "files": 1,
       "refs": 1,
-      "notice_present": true
+      "notice_present": true,
+      "owner_disposition": "Keep both intact; visible notice retained, no deletion or dismissal."
     }
   },
   "goals": [
@@ -120,6 +121,13 @@
       "alias": "later-goal-08",
       "release": 2,
       "state": "held"
+    },
+    {
+      "alias": "goal-D",
+      "release": 1,
+      "state": "open",
+      "phase_status": "corrective_design_active_after_full_staging_producer_failure",
+      "scope_note": "New corrective work from the real run; not part of the eleven-goal migrated inventory."
     }
   ],
   "aliases": "Anonymized aliases only; actual identifiers, holders, immutable inputs and replay commands resolve in the private journal.",
@@ -129,16 +137,22 @@
     "end_of_run_check": "pending"
   },
   "release": {
-    "status": "cut_and_synced_waiting_for_staging_approval",
-    "staging_approval": "not_granted",
+    "status": "staging_producer_failed_before_deployment",
+    "staging_approval": "granted for attempted candidate only",
     "production_approval": "not_granted",
-    "candidate_proof": "actual source full-tree merge equivalence proven; staged artifact/acceptance proof pending",
+    "candidate_proof": "source full-tree equivalence proved; full producer failed and controller rejected candidate before backup/restore/browser/seal",
     "source_identity_rule": "Existing controller requires the full Git repository tree plus pinned acceptance/artifact proof; the engine reduced code_tree is insufficient.",
     "evidence_alias": "observation-16",
-    "profile_constraint": "Native output used an explicitly selected fixture ICC profile; the actual locked production profile and full-build cloud access are not certified by that evidence."
+    "profile_constraint": "Local native evidence used a fixture ICC profile. Actual full CI authenticated the cache, resolved image provenance and successfully prepared the locked real print profile; subsequent studio controls failed, so no final native/staging readiness is certified.",
+    "staging_operation_performed": false,
+    "staging_acceptance": "none",
+    "legacy_owner_answer": "Keep both intact (Recommended)",
+    "staging_owner_answer": "Approve this staging run",
+    "failure_evidence_alias": "observation-18",
+    "changed_candidate_rule": "Any source/candidate change requires reviewed correction, fresh full-tree/build evidence and renewed separate staging approval."
   },
   "costs": {
-    "population": "Required CI execution intervals across administrative reconciliation/bootstrap and both product integrations, including failed attempts. Copied successful job intervals in retry API responses count once; queues, VM lifecycle and agent work are excluded.",
+    "population": "Actual provider job execution intervals across administrative/product CI and the attempted staging producer/controller. Required checks and other workflow jobs remain separately identifiable. Copied successful retry intervals count once; queues, VM lifecycle and agent work are excluded.",
     "administrative_ci_jobs": [
       {
         "phase": "ancestry-reconciliation",
@@ -275,13 +289,44 @@
       }
     ],
     "product_ci_runner_wall_seconds": 1109.0,
-    "observed_required_ci_runner_wall_seconds": 1885.0,
-    "observed_required_ci_runner_minutes": 31.416666666666668,
+    "observed_required_ci_runner_wall_seconds": 2896.0,
+    "observed_required_ci_runner_minutes": 48.266666666666666,
     "ci_evidence_aliases": [
       "observation-13",
       "observation-15",
-      "observation-17"
-    ]
+      "observation-17",
+      "observation-18"
+    ],
+    "staging_workflow_jobs": [
+      {
+        "role": "required-check-2",
+        "conclusion": "success",
+        "runner_wall_seconds": 162.0,
+        "required_ci_check": true
+      },
+      {
+        "role": "required-check-1",
+        "conclusion": "failure",
+        "runner_wall_seconds": 849.0,
+        "required_ci_check": true
+      },
+      {
+        "role": "analytics-publication",
+        "conclusion": "success",
+        "runner_wall_seconds": 76.0,
+        "required_ci_check": false
+      },
+      {
+        "role": "candidate-verification",
+        "conclusion": "failure",
+        "runner_wall_seconds": 34.0,
+        "required_ci_check": false
+      }
+    ],
+    "staging_workflow_runner_wall_seconds": 1121.0,
+    "observed_ci_job_execution_count": 17,
+    "observed_all_ci_runner_wall_seconds": 3006.0,
+    "observed_all_ci_runner_minutes": 50.1
   },
   "lens_rescore": {
     "status": "pending",
@@ -300,8 +345,9 @@
     },
     {
       "id": "A2",
-      "status": "pending",
-      "reason": "The issue inventory is clear, but a retained old file/ref still produces a legacy notice. No cleanup or dismissal is claimed."
+      "status": "fail",
+      "reason": "Owner explicitly retained both legacy items; their visible notice remains, so this legacy-absence expectation is unmet. No cleanup or suppression was performed.",
+      "evidence_alias": "observation-18"
     },
     {
       "id": "A3",
@@ -319,10 +365,10 @@
     },
     {
       "id": "A5",
-      "status": "pass",
-      "reason": "Both Release 1 product goals completed and merged through the reviewed workflow.",
+      "status": "pending",
+      "reason": "Both initial Release 1 product goals merged; an additional corrective goal is active after the full staging producer failed.",
       "scope": "observed product/stack milestone; release remains incomplete",
-      "evidence_alias": "observation-16"
+      "evidence_alias": "observation-19"
     },
     {
       "id": "A6",
@@ -351,7 +397,7 @@
     {
       "id": "A10",
       "status": "pending",
-      "reason": "Current source tips and resulting full candidate tree are proven; staging artifacts/acceptance and separate owner approvals remain pending."
+      "reason": "Owner approved the attempted staging candidate; its full producer failed and the controller skipped backup, staging and seal. No accepted deployment or production approval exists."
     },
     {
       "id": "A11",
@@ -366,7 +412,7 @@
     {
       "id": "A13",
       "status": "pending",
-      "reason": "Thirteen unique required CI execution intervals, including two failed jobs, are measured; final agent/token/cost populations remain unavailable."
+      "reason": "Seventeen unique executed workflow jobs total 3,006 seconds, including failures; required checks are separately identified. Final agent/token/cost populations remain unavailable."
     },
     {
       "id": "A14",
@@ -410,7 +456,7 @@
   "scope_updates": [
     "Owner approved the existing non-deferred integration visual/UX direction; source partition and normal goal reviews remain in progress."
   ],
-  "phase_observed_at_utc": "2026-11-03T23:59:58Z",
+  "phase_observed_at_utc": "2026-11-04T00:27:36Z",
   "failure_paths": {
     "review_finding_reopens_target": {
       "status": "observed",
@@ -449,5 +495,25 @@
     "own_checkpoint_ancestry_and_four_path_blobs_preserved": true,
     "final_tested_integrated_dependent_identity": "proven including actual merge tree",
     "dependent_subsequently_merged": true
+  },
+  "staging_attempt": {
+    "status": "failed_closed",
+    "studio_tests": {
+      "total": 746,
+      "passed": 740,
+      "failed": 4,
+      "cancelled": 2
+    },
+    "producer": "failed",
+    "controller_candidate_verification": "failed",
+    "production_backup": "skipped",
+    "staging_restore_and_browser_acceptance": "skipped",
+    "seal": "skipped",
+    "known_prior_cleanup_signature": "not established; observed preview parent timeout was180seconds",
+    "evidence_alias": "observation-18"
+  },
+  "execution_added_goals": {
+    "corrective_product_goals": 1,
+    "release_line_goals": 1
   }
 }
