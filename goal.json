@@ -38,6 +38,71 @@
       },
       "reason": "reopened",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-04T02:37:47Z",
+      "fp_parts": {
+        "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
+        "inputs": {
+          "doc": "v1:blob:148df91a9d596921dba5ab02a63aec49ae60a0c3",
+          "spec": "v1:sha256:2e68fbc90a59c32a8004574f0cc6c3d1f9ef9458d88e1af935115481afef71d4"
+        },
+        "lenses": [
+          "intent",
+          "simplicity",
+          "truth",
+          "adversary",
+          "concurrency",
+          "rollout",
+          "experience"
+        ],
+        "policy": {
+          "intent": {
+            "not": [
+              "A general project-management suite.",
+              "A ceremony framework: every mechanism must prevent a real failure worth its cost.",
+              "A second source of truth beside Git.",
+              "An engine that invents human decisions or acts without authority.",
+              "A deploy, CI or release-publishing tool: its release support is a branching strategy.",
+              "Inherently opinionated: it ships an opinionated default graph, but every opinion (graph, lenses, prompts, policy) can be customised by the project."
+            ],
+            "principles": [
+              "Git is the store; state is visible and repairable by hand.",
+              "A small engine; the graph, prompts and policy belong to the project.",
+              "Human authority is explicit: approvals may be delegated, but decisions with big consequences go to the owner, batched.",
+              "Reviews are independent, and a finding must matter.",
+              "Guard against drift at both levels: from what a goal asked for, and from the project's original intent. A goal that departs from the project's intent is flagged when it is added, and the owner either changes the goal or amends the intent.",
+              "Prefer deleting to adding; keep prompts distilled."
+            ],
+            "purpose": "Let coding agents carry long-running repository work through durable, reviewable goals, so a developer can stop supervising without losing progress, priorities or control.",
+            "serves": "Developers who delegate project work to coding agents, and the agents doing it."
+          }
+        },
+        "subject": "v1:sha256:c4e7166479a0bd50316f964f887d3bd87fa8b4d35e37b968ccf8096bebf8bb8b"
+      },
+      "holder": "codex:takeover/1044-review-design",
+      "input_fp": "v1:sha256:284f60e7f85a20e4ee6e5fe856b29b4401caf442513619d7eacf6335f152735d",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "3fc2ba4eb890c6739fece69619205f6d5e7b2652",
+          "commit": "f35727f50915835e382eed6771b5e937eae59adf",
+          "path": ".zzzops/reviews/1044/review_design.md"
+        },
+        "summary": "Approved: exact integration/release sync-ref shapes match immutable producer callsites; unknown legacy refs, activation rules, cache behavior and bounded network cost remain preserved."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "148df91a9d596921dba5ab02a63aec49ae60a0c3",
+          "commit": "8ca18eac47a30a607fcf92b1bd4ed7d20f1d781a"
+        }
+      },
+      "status": "done"
     }
   },
   "release": 1,
