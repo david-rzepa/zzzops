@@ -161,6 +161,35 @@
       "reason": "new",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-04T02:48:41Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:f3c1d6418827240437c8cefadeca52b00dd522e8f8fcf83086555d1272630edb",
+          "doc": "v1:blob:148df91a9d596921dba5ab02a63aec49ae60a0c3",
+          "tests": "v1:sha256:9102eb81c2ddb154d3dbcd5c216ddbeaf3be5354bb9882c5b44e45e7984561e3"
+        },
+        "policy": {}
+      },
+      "holder": "codex:takeover/1044-implement",
+      "input_fp": "v1:sha256:d41c4dd08dcd97da5b1fba3de66c52ec4285b4dbcf767ac09240b3f1be10ec3b",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "edb9b2c9aa317220a8e1340f27c40b6a4b6a1b5a",
+          "change": "ce92008aabc182b6184ac797e5cf65b41dba69fb",
+          "commit": "b6becd955eada100b2da6021df349cf4069f5cf7",
+          "tree": "f0c94cd2b92a64a403d43db5fcf237fbac4dc320"
+        },
+        "summary": "Legacy ref counts now exclude exactly the current line-operation sync refs with canonical positive ASCII IDs and literal integration/release slots, while unknown names and all existing alternatives retain their behavior. Existing activation, cache invalidation, failure handling and remote-call budgets are preserved, and SPEC/DESIGN/HISTORY document the narrow recognition rule. All four required checks passed (7 new regression tests in 1.083s wall, 18 legacy/cache/cost checks, 35 documentation checks and 14 package checks); frozen tests were unchanged."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 1,
       "correction_runs": 0,
