@@ -196,29 +196,22 @@
       "status": "done"
     },
     "implement": {
-      "answer": {
-        "decided_at": "2026-11-03T20:33:12Z",
-        "decided_by": "Dave",
-        "quote": "Approved existing designs",
-        "text": "The owner approved the existing non-Maps designs; their exact decision has been recorded on the private design goal. Resume the run."
-      },
-      "attempt": 4,
+      "attempt": 5,
       "blocked": {
         "category": "decision",
-        "instructions": "The human answered: The owner approved the existing non-Maps designs; their exact decision has been recorded on the private design goal. Resume the run.",
         "options": [
-          "Record the owner’s selection on the existing private design item and resume",
+          "Approve the privately pinned corrected staging run only",
           "Keep the run paused"
         ],
-        "question": "The private Release 1 integration design is blocked on an owner visual choice, already presented with concrete evidence in its own goal. Which of those private design options should be used, or should the run stay paused? The migration and current release assignments are preserved; the overall CLI dogfood and release remain incomplete.",
-        "reason": "The private Release 1 integration design is waiting for the owner’s visual choice.",
-        "recommendation": "Wait for the actual owner design choice and record it on the corresponding private goal before resuming. Preserve all original source and dirty owner state; do not assume the whole existing card candidate is approved. Keep later-release goals held. Existing legacy file/ref must not be cleaned without explicit authorization, and staging and production each retain their separate future approvals.",
+        "question": "The corrected Release 1 candidate has completed its reviewed correction, exact-head CI and line sync. The private renewed staging package pins the actual release and production target, full merge candidate tree, existing targets and checks. Approve staging this corrected candidate through the existing guarded build/backup/restored-staging acceptance flow, or keep the run paused? The prior approval covered the failed candidate only; production and release finish remain separately unapproved.",
+        "reason": "Fresh explicit staging approval is required for the corrected candidate after the earlier approved candidate failed before deployment.",
+        "recommendation": "Review the precise private corrected-candidate package and approve staging only if acceptable. Preserve both legacy items intact and their visible warning under the owner’s recorded choice. Refresh all relevant tips/full-tree/artifact proof before action; changed or unproven content needs revised approval. Do not promote production or finish the release from this staging answer.",
         "repeats": 1,
-        "waiting_for": "agent"
+        "waiting_for": "human"
       },
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-03T20:25:01Z",
+      "finished_at": "2026-11-04T02:54:01Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -228,7 +221,7 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1037-implement-r4",
+      "holder": "codex:takeover/1037-implement-r5",
       "input_fp": "v1:sha256:701e78aa471f44d3963832d65d5b5dff1fef0b39c8be35209b2a2010a1f5020c",
       "last_output": {
         "code": {
