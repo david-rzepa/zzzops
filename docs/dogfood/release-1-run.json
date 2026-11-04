@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "status": "in_progress",
+  "status": "blocked",
   "complete": false,
-  "as_of_utc": "2026-11-04T02:45:55.069700+00:00",
+  "as_of_utc": "2026-11-04T02:53:34.314943+00:00",
   "scope": "CLI dogfood; interim bootstrap/migration milestone, not release acceptance",
   "actors": [
     {
@@ -508,7 +508,14 @@
       "reason": "The final naturally occurring block/finding/check cases have not been audited."
     }
   ],
-  "blocking_decision": null,
+  "blocking_decision": {
+    "waiting_for": "human",
+    "question": "Fresh explicit staging approval for the privately pinned corrected Release 1 candidate, or keep the run paused.",
+    "previous_staging_scope": "Earlier approval covered the failed candidate only.",
+    "legacy_disposition": "Keep both intact (Recommended); visible notice preserved.",
+    "production_finish": "Not approved.",
+    "evidence_alias": "observation-20"
+  },
   "scope_updates": [
     "Owner approved the existing non-deferred integration visual/UX direction; source partition and normal goal reviews remain in progress."
   ],
