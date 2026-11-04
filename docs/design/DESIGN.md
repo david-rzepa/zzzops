@@ -1253,6 +1253,8 @@ There is no compatibility layer for retired internals. ZzzOps is not used to man
    - **Housekeeping:** closing moot or delivered issues, and removing stale labels, is optional.
 4. **Delete nothing.** The reset never deletes or rewrites branches, worktrees, refs, issues or comments. Old comments stay on GitHub untouched as the archive.
 
+**Current operation evidence (G1044).** Line back-merges retain `refs/heads/zzzops/sync/g<id>/integration` and `refs/heads/zzzops/sync/g<id>/release` (§2.1 of SPEC). These complete shapes with canonical positive ASCII decimal ids are current engine evidence, even after the line closes or its PR merges. The names-only legacy classifier excludes them without another lookup; arbitrary sync suffixes and unknown refs remain counted. A broad namespace exemption would hide genuine old/custom refs. This changes neither preservation nor the rule that refs alone do not activate a legacy item.
+
 **Preservation facts for whoever cleans up later** (from G §1.6):
 - **Branches with unmerged work:** `fix/467-live-base-evidence` (local only, plus dirty edits), `feat/557-test-plan`, `spike/566-release-stack-flow` (local only), `fix/588-test-correction-recovery` (local only), `fix/663-validation-baseline`, `fix/523-explain-portfolio-order`.
 - **Worktrees:** 17 have real uncommitted edits or untracked proposals.
