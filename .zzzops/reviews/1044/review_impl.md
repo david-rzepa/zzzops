@@ -1,0 +1,17 @@
+# G1044 independent implementation review
+
+Approved, no findings. Reviewed b6becd955eada100b2da6021df349cf4069f5cf7 against immutable base edb9b2c9aa317220a8e1340f27c40b6a4b6a1b5a, approved design148df91a9d596921dba5ab02a63aec49ae60a0c3 and frozen tests1cf127d5385c301a0489bd5a1d5d34775ce5deff. No other review of this implementation was consulted.
+
+Compliance: production code changes only NEW_REF. The exact sync/g[1-9][0-9]*/integration or release alternative matches the actual line producer and its literal callsites. Existing alternatives remain textually unchanged. SPEC, DESIGN and HISTORY describe the same bounded correction; no policy, template, capability, stored format, producer, ref mutation or authority change appears.
+
+Correctness: the new alternative uses ASCII digits and an absolute end anchor inside the existing anchored expression. Zero, leading zeros, signs, non-ASCII digits, unknown slots/namespaces, suffixes, trailing paths and case variations remain unknown. Existing numeric handling for other namespaces remains compatible. count_refs parsing, one remote call, exception/nonzero-exit behavior, active(), cache keys and invalidation, retry scheduling and previous-result fallback are unchanged. Source digest invalidation occurs naturally from the classifier edit.
+
+Missing: searched the submitted tree for NEW_REF/count_refs and engine-owned ref classification. There is one legacy classifier shared by callers. store.ENGINE_REFS remains deliberately broader for a separate ownership purpose and must not replace this detector. Producer/ref-table documentation remains consistent; no duplicated legacy classifier was left behind.
+
+Tests: frozen test file is byte-identical to its accepted checkpoint. Mixed inventory and individual canonical shapes detect the original defect; table-driven near misses detect broad/prefix exemptions and accidental compatibility narrowing. Failure controls distinguish unknown from clean zero. Two real local Git/CLI cases prove exact active disclosure, cached count and warm reuse, and check the zero cached count explicitly when no legacy item is active. Unknown refs alone remain counted but inactive. Existing detector-key/cache/offline/retry/bounded-cost controls cover the unchanged surrounding behavior.
+
+Recorded verification: new seven-test command passes in1065ms (bodies996ms), compared with expected-red759ms before implementation; the two bounded CLI fixtures explain the material contribution. Existing controls18/18, docs35/35 and package14/14 pass. Canonical sharded verification completed1121/1121 with zero failures/errors in136531ms; total recorded checks144096ms. Earlier timing is informational: changed goal-command allocation and machine load prevent a like-for-like performance claim. Checked tree f0c94cd2b92a64a403d43db5fcf237fbac4dc320 differs from submitted checkpoint only by pre-existing review artifacts, with no source change.
+
+Craft: the small inline regex extension and explanatory comment fit the existing implementation. No additional state, dependency, fetch or abstraction was introduced.
+
+Independent verification: source-extracted actual classifier/count_refs from immutable base and submitted code;14 boundary controls including an absolute-end newline control, mixed count6 with one unchanged ls-remote call, retained prior namespace behavior, and frozen file identity all pass. Bounded probe13.973ms. No broad suite repeated, source edited, deployment performed, private project detail published or banked usage reset triggered.
