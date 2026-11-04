@@ -1,0 +1,18 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [],
+  "graph": "default",
+  "id": 1044,
+  "links": {
+    "issue": null
+  },
+  "priority": "P2",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "During release sync, validate can count an engine-created zzzops/sync/g<ID>/integration branch as pre-reset state. Recognize documented current operation-owned ref shapes in legacy detection while retaining detection of genuinely old or unknown refs. Verify actual release-operation namespaces against their producers and add focused deterministic coverage for a genuine legacy ref alongside a current sync ref. Do not broadly ignore unknown zzzops refs.",
+  "state": "open",
+  "title": "Exclude current release-operation refs from legacy detection"
+}
