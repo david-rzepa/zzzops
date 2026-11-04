@@ -2,8 +2,8 @@
   "schema": 1,
   "status": "in_progress",
   "complete": false,
-  "as_of_utc": "2026-11-04T17:18:25.519903+00:00",
-  "scope": "CLI dogfood; interim bootstrap/migration milestone, not release acceptance",
+  "as_of_utc": "2026-11-04T18:06:59.188139+00:00",
+  "scope": "CLI dogfood; measured execution evidence, not final release acceptance",
   "actors": [
     {
       "harness": "Codex",
@@ -140,10 +140,10 @@
     "end_of_run_check": "pending"
   },
   "release": {
-    "status": "corrected_staging_producer_in_progress",
+    "status": "corrected_staging_and_bounded_retry_failed_before_host_operations",
     "staging_approval": "renewed explicit owner approval granted for corrected candidate",
     "production_approval": "not_granted",
-    "candidate_proof": "root refreshed exact tips and full candidate tree before approved staging fast-forward; original corrected-source producer now running, acceptance pending",
+    "candidate_proof": "same approved full-tree source retained; both corrected producer attempts failed and their fresh controllers skipped backup/staging/seal",
     "source_identity_rule": "Existing controller requires the full Git repository tree plus pinned acceptance/artifact proof; the engine reduced code_tree is insufficient.",
     "evidence_alias": "observation-16",
     "profile_constraint": "The correction verification image passed native card checks with the exact default production ICC hash; earlier fixture runs remain historical. This is preflight, not actual corrected release staging acceptance.",
@@ -155,7 +155,8 @@
     "corrected_candidate_evidence_alias": "observation-20",
     "original_staging_owner_answer": "Approve this staging run",
     "staging_owner_answer": "Ok so nothing easy to fix came out of this, let's just continue the deployment",
-    "current_evidence_alias": "observation-22"
+    "current_evidence_alias": "observation-25",
+    "actual_staging_acceptance": "none"
   },
   "costs": {
     "population": "Actual provider job execution intervals across administrative/product CI and the attempted staging producer/controller. Required checks and other workflow jobs remain separately identifiable. Copied successful retry intervals count once; queues, VM lifecycle and agent work are excluded.",
@@ -295,15 +296,16 @@
       }
     ],
     "product_ci_runner_wall_seconds": 1109.0,
-    "observed_required_ci_runner_wall_seconds": 7111.0,
-    "observed_required_ci_runner_minutes": 118.51666666666667,
+    "observed_required_ci_runner_wall_seconds": 8880.0,
+    "observed_required_ci_runner_minutes": 148.0,
     "ci_evidence_aliases": [
       "observation-13",
       "observation-15",
       "observation-17",
       "observation-18",
       "observation-20",
-      "observation-22"
+      "observation-22",
+      "observation-25"
     ],
     "staging_workflow_jobs": [
       {
@@ -332,9 +334,9 @@
       }
     ],
     "staging_workflow_runner_wall_seconds": 1121.0,
-    "observed_ci_job_execution_count": 26,
-    "observed_all_ci_runner_wall_seconds": 7221.0,
-    "observed_all_ci_runner_minutes": 120.35,
+    "observed_ci_job_execution_count": 31,
+    "observed_all_ci_runner_wall_seconds": 9227.0,
+    "observed_all_ci_runner_minutes": 153.78333333333333,
     "corrective_verification_jobs": [
       {
         "phase": "verification-initial",
@@ -388,19 +390,56 @@
     "corrective_verification_runner_wall_seconds": 3766.0,
     "corrected_staging_workflow_jobs": [
       {
+        "phase": "corrected-attempt-1",
         "role": "required-check-2",
         "conclusion": "success",
         "runner_wall_seconds": 449.0,
         "required_ci_check": true
+      },
+      {
+        "phase": "corrected-attempt-1",
+        "role": "required-check-1",
+        "conclusion": "failure",
+        "runner_wall_seconds": 1218.0,
+        "required_ci_check": true
+      },
+      {
+        "phase": "corrected-attempt-1",
+        "role": "analytics-publication",
+        "conclusion": "success",
+        "runner_wall_seconds": 177.0,
+        "required_ci_check": false
+      },
+      {
+        "phase": "corrected-attempt-1",
+        "role": "candidate-verification",
+        "conclusion": "failure",
+        "runner_wall_seconds": 28.0,
+        "required_ci_check": false
+      },
+      {
+        "phase": "same-source-failed-jobs-retry",
+        "role": "required-check-1",
+        "conclusion": "failure",
+        "runner_wall_seconds": 551.0,
+        "required_ci_check": true
+      },
+      {
+        "phase": "same-source-failed-jobs-retry",
+        "role": "candidate-verification",
+        "conclusion": "failure",
+        "runner_wall_seconds": 32.0,
+        "required_ci_check": false
       }
     ],
-    "corrected_staging_cost_scope": "Only completed jobs currently measured; running build and later publication/controller work remain pending, not zero.",
+    "corrected_staging_cost_scope": "Six newly executed original/retry/controller intervals; successful Staff/analytics intervals copied into retry metadata count once, skipped jobs excluded.",
     "outer_answered_staging_wait_subset": {
       "question_count": 1,
       "wait_seconds": 49983.0,
       "population": "Recorded outer-run corrected-staging question from blocked finish to actual owner answer. Separate from earlier private-product question subset; per-question wait, not total unique owner time.",
       "evidence_alias": "observation-24"
-    }
+    },
+    "corrected_staging_runner_wall_seconds": 2455.0
   },
   "lens_rescore": {
     "status": "pending",
@@ -471,12 +510,12 @@
     {
       "id": "A10",
       "status": "pending",
-      "reason": "Renewed owner approval covers the corrected candidate, whose original producer is running. Accepted staging artifacts and separate production/finish approval remain pending."
+      "reason": "Both corrected producer attempts failed; their fresh controllers skipped all backup/staging/seal jobs. Source approval remains recorded, but no accepted staging or separate production/finish approval exists."
     },
     {
       "id": "A11",
       "status": "pending",
-      "reason": "Natural review findings, CI failures, retry and correction were observed. Stopped-worker expiry/reclaim and a policy-change pause remain unaudited."
+      "reason": "Natural review/CI failures, one same-source failed-job retry and safe completed-runner recovery were observed. Other planned failure paths remain individually unaudited."
     },
     {
       "id": "A12",
@@ -486,7 +525,7 @@
     {
       "id": "A13",
       "status": "pending",
-      "reason": "Twenty-six completed provider job intervals total 7,221 seconds; current running/later jobs remain pending. One outer staging-answer wait adds a separately scoped 49,983 seconds; final agent/token/cost populations remain unavailable."
+      "reason": "Thirty-one observed executed provider intervals total 9,227 seconds; copied successful retry intervals and skipped jobs are excluded. Final agent/token/cost populations remain unavailable."
     },
     {
       "id": "A14",
@@ -530,7 +569,7 @@
   "scope_updates": [
     "Owner approved the existing non-deferred integration visual/UX direction; source partition and normal goal reviews remain in progress."
   ],
-  "phase_observed_at_utc": "2026-11-04T17:15:20Z",
+  "phase_observed_at_utc": "2026-11-04T18:02:21Z",
   "failure_paths": {
     "review_finding_reopens_target": {
       "status": "observed",
@@ -605,11 +644,30 @@
     }
   ],
   "corrected_staging_attempt": {
-    "status": "producer_in_progress",
-    "completed_required_checks": 1,
-    "build": "in_progress",
-    "actual_staging_acceptance": "pending",
+    "status": "failed_closed",
+    "source_unchanged_during_one_bounded_retry": true,
+    "first_attempt": {
+      "producer": "failed cloud authentication precondition before profile preparation",
+      "controller_candidate_verification": "failed",
+      "host_jobs": "all skipped"
+    },
+    "bounded_retry": {
+      "producer": "failed studio controls",
+      "profile_retrieval": "succeeded",
+      "profile_preparation": "succeeded",
+      "studio_tests": {
+        "total": 758,
+        "passed": 757,
+        "failed": 1,
+        "cancelled": 0
+      },
+      "failure": "Staff HTTP startup timed out after approximately 15 seconds; underlying cause not established",
+      "controller_candidate_verification": "failed",
+      "host_jobs": "all skipped"
+    },
+    "safe_runner_recovery": "Completed retry guest was retained when provider proof lagged; exact terminal/deregistered/owned identity checked under lock, diagnostics preserved and only its overlay cleaned before existing dispatcher restart",
+    "actual_staging_acceptance": "none",
     "production_finish": "not approved",
-    "evidence_alias": "observation-22"
+    "evidence_alias": "observation-25"
   }
 }
