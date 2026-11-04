@@ -10,23 +10,10 @@
   "priority": "P2",
   "records": {
     "design": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 0,
-      "findings": [
-        {
-          "id": "design:reopen:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:1a37ca53fd137b5b9f9b9f89f5eb7714dd8b5866ec98c0b0995f57e451af8c98",
-          "text": "Correct the ref table citation: it is SPEC section 2.1, not section 1.8; retain actual producer-derived namespace scope.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-04T02:34:08Z",
+      "findings": [],
+      "finished_at": "2026-11-04T02:35:56Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -35,18 +22,21 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1044-design",
+      "holder": "codex:takeover/1044-design-r2",
       "input_fp": "v1:sha256:1e53b62ea3836ea2436ca31cbc1e2bfb4263579f26d0f36f0d30bbc4c8c80ddc",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "b0b4a302dc8c624e70410bb1d996ca5ab75477b3",
-          "commit": "ac433d2e094e2479af6ee13e496886a8af4c7f89",
+          "blob": "148df91a9d596921dba5ab02a63aec49ae60a0c3",
+          "commit": "8ca18eac47a30a607fcf92b1bd4ed7d20f1d781a",
           "path": ".zzzops/reviews/1044/design.md"
         },
-        "summary": "Recognize only the complete current line-operation ref shapes zzzops/sync/g<positive canonical decimal>/integration and /release, verified against back_merge and all callers. Preserve existing current-ref alternatives, unknown/legacy counting, item activation and bounded network/cache behavior; the detector digest naturally refreshes cached counts. Focused mixed-inventory, near-miss and displayed-count regressions plus contract docs are planned, with no ref/policy/release changes or private-project information."
+        "responses": {
+          "design:reopen:1": "fixed: both remote-ref table references now cite SPEC §2.1, verified at the card read_dev commit; the canonical positive-id integration|release scope remains unchanged."
+        },
+        "summary": "Corrected both ref-table citations to SPEC §2.1; actual producer-derived namespace scope and all detector/cache/privacy decisions are unchanged. Recognize only the complete current line-operation ref shapes zzzops/sync/g<positive canonical decimal>/integration and /release, verified against back_merge and all callers. Preserve existing current-ref alternatives, unknown/legacy counting, item activation and bounded network/cache behavior; the detector digest naturally refreshes cached counts. Focused mixed-inventory, near-miss and displayed-count regressions plus contract docs are planned, with no ref/policy/release changes or private-project information."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     }
   },
