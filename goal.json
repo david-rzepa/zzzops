@@ -196,29 +196,18 @@
       "status": "done"
     },
     "implement": {
-      "answer": {
-        "decided_at": "2026-11-04T16:47:04Z",
-        "decided_by": "Dave",
-        "quote": "Ok so nothing easy to fix came out of this, let's just continue the deployment",
-        "text": "Proceed with the privately pinned corrected staging candidate and guarded build, backup and restored-staging acceptance; production and release finish remain separately unapproved."
-      },
-      "attempt": 5,
+      "attempt": 6,
       "blocked": {
-        "category": "decision",
-        "instructions": "The human answered: Proceed with the privately pinned corrected staging candidate and guarded build, backup and restored-staging acceptance; production and release finish remain separately unapproved.",
-        "options": [
-          "Approve the privately pinned corrected staging run only",
-          "Keep the run paused"
-        ],
-        "question": "The corrected Release 1 candidate has completed its reviewed correction, exact-head CI and line sync. The private renewed staging package pins the actual release and production target, full merge candidate tree, existing targets and checks. Approve staging this corrected candidate through the existing guarded build/backup/restored-staging acceptance flow, or keep the run paused? The prior approval covered the failed candidate only; production and release finish remain separately unapproved.",
-        "reason": "Fresh explicit staging approval is required for the corrected candidate after the earlier approved candidate failed before deployment.",
-        "recommendation": "Review the precise private corrected-candidate package and approve staging only if acceptable. Preserve both legacy items intact and their visible warning under the owner’s recorded choice. Refresh all relevant tips/full-tree/artifact proof before action; changed or unproven content needs revised approval. Do not promote production or finish the release from this staging answer.",
-        "repeats": 1,
+        "category": "external",
+        "instructions": "Resume the private corrective workflow only after complete pinned public archive availability is demonstrated. Complete exact-source nondeployment full image/default-profile verification, normal independent review and release-line processing. Preserve the private handoff, original failures, all owner work and both retained legacy items. A changed candidate requires fresh full-tree/artifact proof and renewed explicit staging approval. No accepted staging exists; production and release finish remain separately unapproved. Do not automatically rerun, change credentials or use a banked usage reset.",
+        "reason": "Public action archive downloads are incomplete from both host and guest; exact-source nondeployment full image verification remains pending.",
+        "recommendation": "Keep this outer phase blocked while the external download dependency and private corrective verification remain unresolved; root coordinates subsequent authorized execution.",
+        "repeats": 2,
         "waiting_for": "agent"
       },
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-04T02:54:01Z",
+      "finished_at": "2026-11-04T18:46:16Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -228,7 +217,7 @@
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1037-implement-r5",
+      "holder": "codex:takeover/1037-implement-r6",
       "input_fp": "v1:sha256:701e78aa471f44d3963832d65d5b5dff1fef0b39c8be35209b2a2010a1f5020c",
       "last_output": {
         "code": {
