@@ -56,6 +56,7 @@ class Ctx:
     goal_dates: dict = field(default_factory=dict)       # id -> goal tip committer date (seconds)
     repo: str | None = None                              # worker-facing commands carry --repo <primary> (G1028)
     targets: dict = field(default_factory=dict)          # G1025: branch -> tip of the production and line branches
+    goal_docs: dict = field(default_factory=dict)        # locally read line documents, including closed lines
 
 
 def command(ctx: Ctx, argv: list) -> dict:
@@ -796,10 +797,15 @@ def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = 
     acts, items, waiting, running = [], [], [], []
     out_acts = out_items = 0
     wake = []
+    release_items = {"actions": [], "needs_human": [], "waiting": []}
     for g in sorted(p.goals):
         res = p.goals[g]
         a, w = goal_actions(ctx, p, res) if res.doc["state"] == "open" else ([], [])
         h = human_items(ctx, res, full) if res.doc["state"] == "open" else []
+        if p.branching:
+            release_items["actions"] += [item for _, item in a]
+            release_items["needs_human"] += [item for _, item in h]
+            release_items["waiting"] += goal_waiting(res) + w
         if g not in in_scope:
             out_acts += len(a)
             out_items += len(h)
@@ -814,8 +820,12 @@ def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = 
                 wake.append(parse_iso(s["retry_after"]))
             if s["name"] == "running":
                 wake.append(s["lease"].expires_at)
-    if p.branching and scope is None:
-        items += line_items(ctx, p, full)
+    if p.branching:
+        notifications = line_items(ctx, p, full)
+        release_items["needs_human"] += [dict(item, expand=command(ctx, ["next", "--all"]))
+                                          for _, item in notifications]
+        if scope is None:
+            items += notifications
     acts.sort(key=lambda x: x[0])
     items.sort(key=lambda x: x[0])
     actions = [a for _, a in acts]
@@ -839,6 +849,8 @@ def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = 
             out["policy_update"]["files"] = list(policy_update["files"])
     if p.branching:
         out["releases"] = releases_view(ctx, p)
+        from engine import release_summary
+        out["releases"]["summaries"] = release_summary.build(ctx, p, release_items, paused=paused, global_blockers=blockers)
     if scope:
         out["also_pending"] = {"human": out_items, "actions": 0 if paused else out_acts}
     if all_:
@@ -849,6 +861,8 @@ def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = 
         notice = out["policy_update"]
         while len(canonical(out)) > NEXT_LIMIT and notice.get("files"):
             notice["files"].pop()
+    if p.branching:
+        release_summary.trim(out, NEXT_LIMIT, canonical)
     dropped = {"actions": 0, "needs_human": 0}
     while len(canonical(out)) > NEXT_LIMIT and (out["actions"] or out["needs_human"]):
         key = "actions" if len(out["actions"]) >= len(out["needs_human"]) else "needs_human"
