@@ -203,25 +203,25 @@
       "status": "done"
     },
     "filter_impl": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T20:03:00Z",
+      "finished_at": "2026-11-14T20:33:43Z",
       "fp_parts": {
         "candidates": [],
         "def": "v1:sha256:5fab78ee7a74554d9897b964ee764247bd55068d6c3b2a64932fad9704979c4b",
         "inputs": {
-          "code": "v1:sha256:fc094a10350b2d29da9a1d7904ede359dcaf174d6f6765e16869ad134aa6532a",
-          "doc": "v1:blob:cf5f4303629f8dd290edc690a00d433058591e9f",
-          "review": "v1:sha256:a3f9bb1301c692fdf0f4fe1f5b0b299d292b1c0ac35641ff8acaffb278a8c245"
+          "code": "v1:sha256:26f0094e34c48fa1b8df2b7a4a12bdfd90e4b06b58a839168a356118c4c7a96f",
+          "doc": "v1:blob:dfc3746610ef409bc7cb56b3bb1383fbe328301a",
+          "review": "v1:sha256:57071919af6dbe68ca63da6f7191b8993b956669babf5cc8ef810e6beaf97cb3"
         },
         "policy": {}
       },
-      "holder": "codex:wp1036-r3/filter-impl-3",
-      "input_fp": "v1:sha256:6ce81ec5bc3a4ec3ed6c4b803b39797ba92066324cba5f29b9233550b7746c42",
+      "holder": "codex:wp1036-r5/filter-impl-4",
+      "input_fp": "v1:sha256:4c030483741f13e009857972f9ed0f76386dac9ab29b7d00a9f752f3986a93c6",
       "ok": true,
       "output": {
-        "summary": "The independent implementation reviewer approved across all five lenses with no findings. There are zero candidate notes and no material findings, so no work reopens and the implementation can proceed to integration and approval.",
+        "summary": "The focused implementation reviewer approved the introduction, primary-cited Prior Work, bounded Future Work and blog removal with no findings. There are zero candidate notes and no material findings; no work reopens and the implementation can proceed to integration and approval.",
         "verdicts": {}
       },
       "reason": "stale",
