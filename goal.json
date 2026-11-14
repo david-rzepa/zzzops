@@ -158,6 +158,31 @@
       "reason": "new",
       "status": "done"
     },
+    "filter_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T23:18:11Z",
+      "fp_parts": {
+        "candidates": [],
+        "def": "v1:sha256:5fab78ee7a74554d9897b964ee764247bd55068d6c3b2a64932fad9704979c4b",
+        "inputs": {
+          "code": "v1:sha256:23bb4f18c9022ee889844e3205a212b33ddd92095b019c8a39091a279ec03a99",
+          "doc": "v1:blob:9e9475ecec33c072c79dc2ac8927dafe2e6f88b4",
+          "review": "v1:sha256:9adf4e6b3a53c7fbc6d0682d5ddae67aa3103d6462bf33b78265715a5a2955c0"
+        },
+        "policy": {}
+      },
+      "holder": "codex:cleanup1047/filter_impl-1",
+      "input_fp": "v1:sha256:e5e28e73681d4dc4c4a156650f454632faab2e70690608681c4d7c2be441991a",
+      "ok": true,
+      "output": {
+        "summary": "Implementation review: approved. No material findings or candidate notes reopen work; there are 0 notes to classify.",
+        "verdicts": {}
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "implement": {
       "attempt": 1,
       "correction_runs": 0,
