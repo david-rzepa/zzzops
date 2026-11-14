@@ -161,8 +161,8 @@ class PolicyTests(StoreBase):
         self.assertEqual([], out["blockers"])
         self.assertIn("policy_branch_landed", [x["kind"] for x in out["warnings"]])
         # squash landing: same .zzzops/ content, different commit
-        self.policy_branch({".zzzops/prompts/review_impl.md": "squashed\n"}, topic="sq")
-        self.w.push_dev({".zzzops/prompts/review_impl.md": "squashed\n"}, "chore(zzzops): squash")
+        self.policy_branch({".zzzops/prompts/review.md": "squashed\n"}, topic="sq")
+        self.w.push_dev({".zzzops/prompts/review.md": "squashed\n"}, "chore(zzzops): squash")
         out = self.w.ok("b", "next")
         self.assertEqual([], out["blockers"])
 

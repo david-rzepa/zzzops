@@ -45,7 +45,7 @@ import unittest
 import engine_fixtures as fx
 from engine import schemas
 from test_engine_lenses import Pilot
-from test_engine_review_lenses import (GOLDEN, ReviewWorld, fixture, prompt_text, read_text_view, shipped, tag)
+from test_engine_review_lenses import (ReviewWorld, prompt_text, read_text_view, shipped, tag)
 
 OWNER_Q = ("owner question: Q1 (from review): should the new CLI output key be called `decisions` or "
            "`human_decisions`? Options: A `human_decisions`, B `decisions`. Recommendation: A.")
@@ -181,19 +181,23 @@ class NoFormatChangeTests(unittest.TestCase):
         self.assertNotIn("answers", schemas.RECORD_KEYS)
         self.assertNotIn("human_decisions", schemas.RECORD_KEYS)
 
-    def test_golden_node_def_fp_values_are_unchanged(self):
+    def test_instruction_and_context_metadata_are_outside_the_definition_allowlist(self):
         from engine.fingerprint import node_def_fp
-        golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
-        for graph in ("graph12", "graph26"):
-            nodes = fixture(graph, "workflow.json")["graphs"]["default"]["nodes"]
-            self.assertEqual(golden[graph], {n: node_def_fp(nd) for n, nd in nodes.items()}, graph)
+        for n, definition in shipped("workflow.json")["graphs"]["default"]["nodes"].items():
+            with self.subTest(node=n):
+                changed = copy.deepcopy(definition)
+                changed["description"] = "Different guidance for the same operation."
+                changed["instructions"] = ["owner_questions"]
+                changed.setdefault("inputs", {})["owner_context"] = {
+                    "from": "goal.title", "context": True, "optional": True}
+                self.assertEqual(node_def_fp(definition), node_def_fp(changed))
+                changed["rev"] = definition.get("rev", 0) + 1
+                self.assertNotEqual(node_def_fp(definition), node_def_fp(changed))
 
     def test_listing_the_instruction_changes_no_node_def_fp(self):
         """D1: `instructions` is not fingerprinted, so listing `owner_questions` stales no record."""
         from engine.fingerprint import node_def_fp
-        golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
         nodes = shipped("workflow.json")["graphs"]["default"]["nodes"]
-        self.assertEqual(golden["graph26"]["adversary_design"], node_def_fp(nodes["adversary_design"]))
         for n in ("design", "review_design", "adversary_design", "review_impl"):
             bare = copy.deepcopy(nodes[n])
             bare["instructions"] = [i for i in bare.get("instructions") or [] if i != "owner_questions"]
@@ -779,14 +783,21 @@ class OwnerFilterTests(OwnerWorld):
         self.assertEqual("ready (reopened)", self.p.states(g)["design"])
 
 
-class Graph12OwnerQuestionTests(unittest.TestCase):
-    """On graph12 (unfiltered review_design, no `material` key) an owner question is accepted and is material."""
+class UnfilteredOwnerQuestionTests(unittest.TestCase):
+    """A small unfiltered reviewer accepts an owner question without a material key."""
 
     def test_accepted_and_material(self):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp, True)
         w = fx.World(tmp)
-        w.bootstrap(workflow=fx.stub_ops_workflow())
+        wf = fx.load_template("workflow.json")
+        source = wf["graphs"]["default"]["nodes"]
+        nodes = {n: copy.deepcopy(source[n]) for n in ("design", "review_design")}
+        nodes["design"]["inputs"] = {"spec": {"from": "goal.spec"}}
+        nodes["review_design"]["review"] = {"subject": "design"}
+        nodes["review_design"].pop("lenses", None)
+        wf["graphs"]["default"] = {"terminal": ["review_design"], "nodes": nodes}
+        w.bootstrap(workflow=wf)
         A, B = fx.Agent(w, "a", "claude:aaaa/w-1"), fx.Agent(w, "b", "codex:bbbb/w-2")
         g = w.new(title="Cut")["created"]["id"]
         c = A.start(g, "design")

@@ -18,7 +18,7 @@ def tiny_workflow():
     return {"schema": 1, "graphs": {"default": {"terminal": ["check"], "nodes": {
         "write": {"kind": "agent", "stage": "discovery", "prompt": "design.md", "inputs": {"spec": {"from": "goal.spec"}},
                   "outputs": {"summary": "text", "doc": "artifact"}},
-        "check": {"kind": "agent", "stage": "discovery", "prompt": "review_design.md", "review": {"subject": "write"},
+        "check": {"kind": "agent", "stage": "discovery", "prompt": "review.md", "review": {"subject": "write"},
                   "inputs": {"doc": {"from": "write.doc"}}}}}}}
 
 

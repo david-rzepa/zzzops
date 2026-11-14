@@ -74,7 +74,26 @@ def corrections(s, node="design"):
 def review(s, node="review_design", findings=None):
     to(s, node)
     s.start(1, node)
-    return s.submit(1, node, findings=findings or [{"text": "ordinary defect"}])
+    graph = s.graph(1)
+    prepared = [dict(f) for f in findings or [{"text": "ordinary defect"}]]
+    for finding in prepared:
+        if "id" in finding:
+            continue
+        if graph.filter_of(node):
+            finding.setdefault("impact", "The requested behavior is incorrect.")
+            finding.setdefault("material", True)
+        if graph.lens_defs(node):
+            finding.setdefault("lens", graph.applied_lenses(node, s.docs[1]["skip"])[0])
+    record = s.submit(1, node, findings=prepared)
+    flt = graph.filter_of(node)
+    if flt:
+        # Findings become live after every current reviewer and its filter join.
+        for sibling in graph.reviewers(flt):
+            if sibling != node and s.st(1, sibling)["name"] == "ready":
+                s.step(1, sibling)
+        if s.st(1, flt)["name"] == "ready":
+            s.step(1, flt)
+    return record
 
 
 def refusal(s, node, responses):

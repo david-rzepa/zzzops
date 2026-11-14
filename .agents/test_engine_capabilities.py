@@ -188,7 +188,12 @@ class LegacyMinTests(CapWorld):
     def test_policy_dir_validate_warns_too(self):
         nowhere = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, nowhere, True)
-        rc, out = self.w.run("a", "validate", "--policy", "--dir", str(fx.TEMPLATES), cwd=nowhere)   # min 0.0.0
+        policy_dir = Path(nowhere) / "legacy-floor"
+        shutil.copytree(fx.TEMPLATES, policy_dir)
+        policy = fx.load_template("POLICY.json")
+        policy["settings"]["engine"] = {"min": "0.0.0"}
+        (policy_dir / "POLICY.json").write_text(json.dumps(policy), encoding="utf-8")
+        rc, out = self.w.run("a", "validate", "--policy", "--dir", str(policy_dir), cwd=nowhere)
         self.assertEqual(0, rc, out)
         self.assertIn("engine_min_deprecated", self.kinds(out["warnings"]))
 

@@ -26,6 +26,10 @@ def checkpoint_workflow():
     nodes["base"]["inputs"] = {k: v for k, v in nodes["base"]["inputs"].items() if k in ("heads", "prs", "merges")}
     nodes["test_design"]["inputs"] = {"base": {"from": "base.base_commit"}}
     nodes["review_tests"]["inputs"] = {"tests": {"from": "test_design.tests.change"}}
+    # This scenario tests commit/checkpoint rules, without filtered review rounds.
+    nodes["test_design"]["outputs"].pop("cost")
+    nodes["review_impl"]["review"] = {"subject": "implement"}
+    nodes["review_impl"].pop("lenses")
     nodes["implement"]["inputs"] = {
         "base": {"from": "base.base_commit"}, "tests": {"from": "test_design.tests.change"},
         "tests_review": {"from": "review_tests.summary", "context": True}}

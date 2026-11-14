@@ -120,23 +120,23 @@ class SyncCardTests(msf.OpFixture):
 
     def test_cross_file_plain_json_line_added_by_trunk_is_a_removed_line_hit(self):
         template = 'plugins/zzzops/zzzops/templates/default/POLICY.json'
-        graph26 = '.agents/fixtures/graph26/POLICY.json'
+        other_policy = 'examples/consumer/POLICY.json'
         with_min = b'{\n  "engine": {\n    "min": "0.0.0"\n  }\n}\n'
         without_min = b'{\n  "engine": {\n  }\n}\n'
         before = self.publish({template: with_min}, 'test: common template policy')
         self.w.seed.git('fetch', '-q', 'origin', 'zzzops/work/g1000')
         self.w.seed.git('merge', '--ff-only', 'FETCH_HEAD')
-        onto = self.trunk({graph26: with_min})
-        # The goal inherits the new graph26 file and never edits it.
+        onto = self.trunk({other_policy: with_min})
+        # The goal inherits this unrelated policy file and never edits it.
         self.wt.git('reset', '--hard', onto)
         current = self.publish({template: without_min}, 'feat: remove obsolete minimum')
         trunk_paths = set(self.git.out('diff', '--name-only', before, onto).splitlines())
         goal_paths = set(self.git.out('diff', '--name-only', onto, current).splitlines())
-        self.assertEqual({graph26}, trunk_paths)
+        self.assertEqual({other_policy}, trunk_paths)
         self.assertEqual({template}, goal_paths)
         self.assertFalse(trunk_paths & goal_paths)
-        self.assertEqual(self.git.out('show', f'{onto}:{graph26}'),
-                         self.git.out('show', f'{current}:{graph26}'))
+        self.assertEqual(self.git.out('show', f'{onto}:{other_policy}'),
+                         self.git.out('show', f'{current}:{other_policy}'))
         wf = fx.load_template('workflow.json')
         wf['graphs']['default']['nodes']['review_impl']['inputs']['base'] = {'from': 'base.base_commit'}
         sim = Sim(workflow=wf)
@@ -169,8 +169,8 @@ class SyncCardTests(msf.OpFixture):
             card = C.build(session, res, 'review_impl', state, lease)
         self.assertIn('sync', card)
         entries = {x['path']: x for x in card['sync']['touching']}
-        self.assertIn(graph26, entries)
-        entry = entries[graph26]
+        self.assertIn(other_policy, entries)
+        entry = entries[other_policy]
         self.assertIn('trunk adds', entry['why'])
         self.assertIn('"min": "0.0.0"', entry['why'])
         self.assertIn('a line the goal removes', entry['why'])
