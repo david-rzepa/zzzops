@@ -158,6 +158,35 @@
       "reason": "new",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T23:10:21Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:916723b6ef3ec5991b4a66ad87c937d8a430cf09fee7fc556a75ecd8c5143157",
+          "doc": "v1:blob:9e9475ecec33c072c79dc2ac8927dafe2e6f88b4",
+          "tests": "v1:sha256:5d93afe45d49f987aedbe9194f7d0182c521e187bd575e0ce4f538dcf07cc787"
+        },
+        "policy": {}
+      },
+      "holder": "codex:cleanup1047/implement-1",
+      "input_fp": "v1:sha256:6386a10afd3ff2b6d9118ab27a99e4c4a40a0d08f4017b6ac1fc16fb506f947a",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "4bc7b4deba5f1a98595ab795cdb5c088c14b3c66",
+          "change": "42a28be1d7f329657ac36d1adee25666a29684d3",
+          "commit": "a3163c252a4f316630b75029d8c77f369f2dcc5a",
+          "tree": "866c6da30229481039892be52761401adaf0cdee"
+        },
+        "summary": "Removed the shipped template-history archive and seed tool, and simplified defaults notices to opaque schema-1 equality receipts with explicit manual local/current comparisons. Current templates, repository customizations and local deletions are preserved; missing/invalid receipts offer the current shipped snapshot without historical inference, while the existing newer-schema guard remains. Updated bootstrap, migration and contract guidance to retire historical workflow/archive procedures."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 1,
       "correction_runs": 0,
