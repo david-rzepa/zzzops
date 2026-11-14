@@ -13,36 +13,36 @@
   "priority": "P1",
   "records": {
     "adversary_design": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T17:07:06Z",
+      "finished_at": "2026-11-14T18:50:11Z",
       "fp_parts": {
         "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
         "inputs": {
-          "doc": "v1:blob:9c056c03d9f2e0238eadcef88eef497970e66e6a",
-          "spec": "v1:sha256:73bd62c790e63230e34d07e5650e64d5fbbf40846b9a3caff40d3f6e7f77130a"
+          "doc": "v1:blob:7aa4db7dc9cac42eaaa2b947bb4097cf8152e896",
+          "spec": "v1:sha256:ac36af7a5392b04435578723c09196211b5841cd0840836793092d73c249c10a"
         },
         "policy": {},
-        "subject": "v1:sha256:160e82af71ae434dea78da8bb9c9284f8e1c7dfedf459d7063d4bfa0638c635f"
+        "subject": "v1:sha256:c50607aa459c786e1049eb50854d7323582ea1f47c037b4d0f1a181820b13aa6"
       },
-      "holder": "codex:wp1036/adversary-design-7",
-      "input_fp": "v1:sha256:b72ea1ca986a2bf14c0d1e61e667c99e4ad13191ee40148b7fc793cd458116fc",
+      "holder": "codex:wp1036/adversary-design-8",
+      "input_fp": "v1:sha256:6c37925d10688337ce75895d688f19270100f5a58e8b59e7cf898ffa22d3ba55",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "54c20a3c93e705b2750658686da1971d31c3efe9",
-          "commit": "9fcbf3eff3cb9e249e39fcd86759c10ba3f71e19",
+          "blob": "c17fefe360b1d7ce728ea31b107ba49f864eeec5",
+          "commit": "89780d6983af531533384c293e6176a8a05316e3",
           "path": ".zzzops/reviews/1036/adversary_design.md"
         },
-        "summary": "Approved: the refreshed design states the implementation's adversarial, provenance and privacy boundaries without unsupported guarantees."
+        "summary": "Approved: the concept-paper design bounds determinism, customization and novelty claims while keeping implementation assurance detail in supporting material."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "9c056c03d9f2e0238eadcef88eef497970e66e6a",
-          "commit": "e9879f02f796415e9497ad8431f6d2f6657466b4"
+          "blob": "7aa4db7dc9cac42eaaa2b947bb4097cf8152e896",
+          "commit": "6256e22ec52aecd7ca119503e7cda791c173df41"
         }
       },
       "status": "done"
