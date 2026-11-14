@@ -276,4 +276,6 @@ One row per change to the contract after revision 6.3 was approved, in merge ord
 | G1024 | this PR | SPEC §2.3, §3.2, §3.15–§3.16, §8.3; DESIGN §3.10, §10 | Advisory `policy_update`, separate TEMPLATE.json provenance/tombstones, append-only template history, working diff/merge advice, inferred/reviewed records and version-skew protection. Reviewed policy branches handle adoption/declines; validation warns on merge markers. |
 | G1044 | this PR | SPEC §3.15; DESIGN §7 | Legacy detection excludes only complete current line-operation refs with canonical positive ASCII goal ids and literal integration/release slots from SPEC §2.1; unknown sync names remain counted, with existing activation, cache and bounded-cost behavior preserved. |
 
+| G1045 | this PR | SPEC §3.15; DESIGN §3.16a | Read-only derived release/hotfix summaries reuse portfolio actions and recorded production/back-merge evidence, locally hydrate closed line receipts, keep ordinary closed members ledger-only, honor paused/offline suppression and trim advisory detail before actionable output. Existing fields and execution behavior are preserved. |
+
 Worked examples in DESIGN §4 and SPEC (finding ids such as `review_impl:2:1`, the 12-node walkthroughs) still use revision 6.3's node names. They illustrate mechanisms that the lens graph keeps unchanged.
