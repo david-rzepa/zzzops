@@ -299,30 +299,30 @@
       "status": "done"
     },
     "merge": {
-      "attempt": 2,
+      "attempt": 3,
       "blocked": {
         "category": "external",
         "op_state": {
           "pending_since": 1794678146,
           "polls": 2
         },
-        "reason": "GitHub blocks the merge (required reviews, checks, signatures or queue); satisfy it on GitHub or merge there",
-        "repeats": 2,
-        "retry_after": "2026-11-14T19:46:04Z",
-        "waiting_for": "time"
+        "question": "G1036 merge: GitHub blocks the merge (required reviews, checks, signatures or queue); satisfy it on GitHub or merge there, for 181 minutes. Fix it, or answer 'wait' to keep waiting.",
+        "reason": "GitHub blocks the merge (required reviews, checks, signatures or queue); satisfy it on GitHub or merge there for 181 minutes",
+        "repeats": 1,
+        "waiting_for": "human"
       },
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T19:16:04Z",
+      "finished_at": "2026-11-14T20:43:26Z",
       "fp_parts": {
         "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
         "inputs": {
-          "pr": "v1:sha256:7921600ef0522f5256229f25b700e4c94a2b41000033065fe9d234096487aa19"
+          "pr": "v1:sha256:188460aac7d14235b598f131d9812bedc915517b049bdcc3ae2c6986ba532f6d"
         },
         "policy": {}
       },
-      "holder": "codex:wp1036/merge-2",
-      "input_fp": "v1:sha256:88f496a80961aedd5cac00a91c0d71ef03b9f2df3e58b1209f623b35275a5a49",
+      "holder": "codex:wp1036-r5/merge-observe",
+      "input_fp": "v1:sha256:230121b4c4a59ede534a906876b2c5e6e7cb65e6251eb0051d7c324111cf0ad5",
       "ok": false,
       "output": null,
       "reason": "stale",
