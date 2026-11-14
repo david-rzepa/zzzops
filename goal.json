@@ -11,7 +11,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T21:36:51Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:bf884cff4da795010990db44e761edb649e0cfe2f8c30e1455e0ba71991d3b51",
+          "spec": "v1:sha256:6163c1c9c5147e66ad416e6fc3067011d5affc2a15828d5d429be6f9115bbe14"
+        },
+        "policy": {}
+      },
+      "holder": "codex:paperpin1046/design-1",
+      "input_fp": "v1:sha256:89ee3fed75f2520bd6786deff9ad42f23a5516f7caa959dfa2551a7c8146713f",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "b3e703a51d1b35335d22c2574b30f3da045388d0",
+          "commit": "b273149e780292ad5ed48ce152c4ff142bed87b5",
+          "path": ".zzzops/reviews/1046/design.md"
+        },
+        "summary": "Mechanically updates only the whitepaper Implementation note after verified real publication, preserving all settled paper content and the no-blog decision. Implementation cannot be claimed or started until root supplies a real tag/commit/asset receipt; actual public metadata and matching build facts must be verified and recorded before any pin is written."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
