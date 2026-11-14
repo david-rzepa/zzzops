@@ -224,7 +224,7 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 1,
       "findings": [
         {
@@ -232,7 +232,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:6d53f94923863a44647ba1768ed18f57456191fe59afac414cc6c340e230c1a0",
@@ -240,7 +240,7 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-14T22:54:22Z",
+      "finished_at": "2026-11-14T22:58:48Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
@@ -248,21 +248,21 @@
           "tests": "v1:sha256:5d93afe45d49f987aedbe9194f7d0182c521e187bd575e0ce4f538dcf07cc787"
         },
         "policy": {},
-        "subject": "v1:sha256:6d53f94923863a44647ba1768ed18f57456191fe59afac414cc6c340e230c1a0"
+        "subject": "v1:sha256:5641c6405ae7ee03700b2470b0ac1925c9a1c7c11f8c15147abe5bdab74a5397"
       },
-      "holder": "codex:cleanup1047/review_tests-1",
-      "input_fp": "v1:sha256:4e5df08d0c6808ef21eeb1f488e855cb4ecb8c0adfa344fc86436e5b09ed3d5f",
-      "ok": false,
+      "holder": "codex:cleanup1047/review_tests-2",
+      "input_fp": "v1:sha256:244c77135567c46be4364e3f57903c5132b63d9b87d0686b07627d08204b2146",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "aca77451cf3e7cb6855470c705af78ac9220c023",
-          "commit": "f405cbc229e3db97e1b40374c85352d380ecbd12",
+          "blob": "41e9f70aa45d27afeab8e9d1ac64cabb1f2b3dc5",
+          "commit": "54a7310123df12752ec3316adcf15e98ed46dab0",
           "path": ".zzzops/reviews/1047/review_tests.md"
         },
-        "summary": "Changes requested only for the goal command: replace duplicated host-bound full validation/report capture with a portable focused defaults command; frozen migration tests and final red/green accounting are otherwise sound."
+        "summary": "Approved: prior command finding resolved by measured portable defaults-only command; frozen test identity and original full RED evidence are unchanged, and mandatory full validation remains once."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "4bc7b4deba5f1a98595ab795cdb5c088c14b3c66",
