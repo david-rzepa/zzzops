@@ -16,7 +16,7 @@ The pre-reset engine's features, the R id of their removal, and what replaces th
 | Heartbeat daemon, capacity ledger, label phase leases, `reserve`, observed-stop recovery, response store | R10 | Lease branches; reclaim on expiry. Automatic renewal: removed. |
 | Installation-validation gate, `plugin_freshness`, the legacy-cleanup gate | R11 | `validate` and the package self-check; retired installs are detected again by the `legacy` item (no gate). |
 | v1 goal and phase model, intent/skill routing, the 52-operation dispatcher | R12 | The 11-verb CLI. |
-| Ceremony nodes, the 37-node INIT_PLAN graph, repository/publication authorization nodes | R13 | The 12-node default graph (`approve_understanding` became `approve_design`). |
+| Ceremony nodes, the 37-node INIT_PLAN graph, repository/publication authorization nodes | R13 | The current shipped default graph (`approve_understanding` became `approve_design` in the reset). G1047 retires the old complete graph fixtures and layout-upgrade recipes. |
 | Revision 5 runtime guards: engine self-test, verb-scoped diff check, clock-skew refusal, `edit --yes`, orphan-lease pruning, WIP push in `renew` | R14 | CI tests; engine floor and ceiling; warnings instead of refusals. |
 | `bootstrap.py`, `--intent bootstrap`, `BOOTSTRAP.json` provenance and review checkpoint | R15 | The bootstrap skill, a checklist over `validate` and the shipped templates. |
 | `zzzops-feedback` issues | D9 | The feedback feature was dropped. Triage each issue on its content. |

@@ -1,19 +1,17 @@
-"""Read-only shipped-default provenance and update notices (G1024, SPEC §3.16)."""
+"""Read-only current-default comparison and review receipts (SPEC §3.16)."""
 from __future__ import annotations
 
 import hashlib
 import json
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import re
 import shlex
 import sys
 
 TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "templates/default"
-HISTORY_DIR = TEMPLATE_DIR.parent / "history"
 OID = re.compile(r"[0-9a-f]{40}")
 POWERSHELL = sys.platform == "win32"
-UNKNOWN = "recorded by a newer or unreleased plugin: upgrade the plugin to compare"
 
 
 def blob_id(data):
@@ -24,10 +22,6 @@ def blob_id(data):
 def shipped():
     return {p.relative_to(TEMPLATE_DIR).as_posix(): p.read_bytes()
             for p in sorted(Path(TEMPLATE_DIR).rglob("*")) if p.is_file()}
-
-
-def history_ids():
-    return {p.stem for p in Path(HISTORY_DIR).glob("*") if p.is_file() and OID.fullmatch(p.stem)}
 
 
 def read_record(data):
@@ -63,54 +57,27 @@ def read_record(data):
     return (None, "invalid_record", errors) if errors else (record, "update", [])
 
 
-def inferred(local, known):
-    return {"schema": 1, "template": "default", "files": {
-        path: blob_id(data) if blob_id(data) in known else None for path, data in sorted(local.items())}}
-
-
-def reviewed(record, ids, known):
-    files, removed = {}, dict(record.get("removed", {}))
-    for path in sorted(set(ids) | set(record["files"])):
-        if path in removed:
-            continue
-        base = record["files"].get(path)
-        if base is not None and base not in known and base != ids.get(path):
-            files[path] = base                    # never downgrade a newer/unreleased plugin's provenance
-        elif path in ids:
-            files[path] = ids[path]
-        elif base is not None:
-            removed[path] = base
-    out = {"schema": 1, "template": "default", "files": files}
-    if removed:
-        out["removed"] = removed
-    return out
-
-
-def compare(record, local, ids, known):
+def compare(record, local, ids):
+    files = record["files"] if record else {}
+    removed = record.get("removed", {}) if record else {}
     rows = []
-    for path in sorted(set(ids) | set(record["files"]) | set(record.get("removed", {}))):
+    for path in sorted(set(ids) | set(files) | set(removed)):
         source = ids.get(path)
-        tombstone = record.get("removed", {}).get(path)
-        base = record["files"].get(path)
+        base = files.get(path)
         content = local.get(path)
         here = blob_id(content) if content is not None else None
-        if path in record.get("removed", {}):
-            if source is None or tombstone == source or tombstone in known:
-                continue
-            rows.append((path, "unknown_base", "unknown", tombstone))
+        # A legacy tombstone records absence, not an archived version to restore.
+        if path in removed and source is None:
             continue
-        if base is not None and base != source and base not in known:
-            rows.append((path, "unknown_base", "unknown", base))
+        if path in files and (base == source or (base is None and here == source)):
             continue
-        if path in record["files"] and (base == source or (base is None and here == source)):
-            continue
-        if path not in record["files"]:
+        if path not in files:
             upstream, state = "added", "absent" if here is None else "changed"
         else:
             upstream = "changed" if source else "removed"
             state = ("unknown" if base is None else "deleted" if here is None
                      else "unchanged" if here == base else "changed")
-        rows.append((path, upstream, state, base))
+        rows.append((path, upstream, state))
     return rows
 
 
@@ -131,22 +98,16 @@ def cli_shell(prefix, *args):
 def item(local, raw_record, prefix, directory, full):
     current = shipped()
     ids = {p: blob_id(data) for p, data in current.items()}
-    known = history_ids() | set(ids.values())
     record, kind, errors = read_record(raw_record)
     template = hashlib.sha256("".join(f"{p}\0{oid}\n" for p, oid in sorted(ids.items())).encode()).hexdigest()[:12]
     if kind == "newer_record":
         return {"kind": kind, "message": "Default record written by a newer engine: upgrade the plugin to see default updates.",
                 "template": template, **({} if full else {"expand": cli_shell(prefix, "validate")})}
-    inferred_record = inferred(local, known) if record is None else None
-    record = record or inferred_record
-    rows = compare(record, local, ids, known)
+    rows = compare(record, local, ids)
     if not rows and kind == "update":
         return None
-    edited = sum(state in ("changed", "unknown", "deleted") for _, _, state, _ in rows)
-    unknown_only = bool(rows) and all(upstream == "unknown_base" for _, upstream, _, _ in rows)
-    message = ("This repository's default record was written by a newer or unreleased plugin: upgrade the plugin to see default updates."
-               if unknown_only else
-               f"The shipped default policy differs from this repository's last review: {len(rows)} files "
+    edited = sum(state in ("changed", "unknown", "deleted") for _, _, state in rows)
+    message = (f"The shipped default policy differs from this repository's last review: {len(rows)} files "
                f"({edited} also edited here). Review or decline through a zzzops/policy/* branch "
                "(bootstrap skill, Update from the shipped defaults); other work is not blocked.")
     if kind in ("no_record", "invalid_record"):
@@ -157,32 +118,22 @@ def item(local, raw_record, prefix, directory, full):
                       expand=cli_shell(prefix, "validate"))
         return result
     result["files"] = []
-    for path, upstream, state, base in rows:
+    for path, upstream, state in rows:
         local_path = Path(directory) / path
         new = Path(TEMPLATE_DIR).resolve() / path
-        old = Path(HISTORY_DIR).resolve() / (str(base) + PurePosixPath(path).suffix)
         row = {"path": str(local_path), "upstream": upstream, "local": state}
-        if upstream == "unknown_base":
-            row["note"] = UNKNOWN
-        elif upstream == "removed":
-            row["apply"] = {"delete": True} if state == "unchanged" else {"manual": "kept: edited here" if state == "changed" else "deleted here"}
-            if state == "changed":
-                row["diff"] = shell("git", "diff", "--no-index", "--", old, local_path)
-        elif upstream == "added" and state == "absent":
-            row["apply"] = {"copy": str(new)}
-        elif base is None or state in ("unknown", "deleted") or upstream == "added":
-            row["apply"] = {"manual": "deleted here; compare the new default by hand" if state == "deleted"
-                            else "no shipped version matches this file: compare it with the new default by hand"}
-            if path in local:
-                row["diff"] = shell("git", "diff", "--no-index", "--", local_path, new)
+        if upstream == "removed":
+            manual = "absent from current defaults; decide manually whether to keep this local choice"
+        elif path not in local:
+            manual = "absent locally; inspect the current default and decide manually whether to retain that absence"
         else:
-            row["diff"] = shell("git", "diff", "--no-index", "--", old, new)
-            row["apply"] = {"merge": shell("git", "merge-file", "-L", "here", "-L", "old-default", "-L", "new-default", local_path, old, new)}
+            manual = "compare local and current defaults; choose any edits manually"
+        row["apply"] = {"manual": manual}
+        if path in local and path in ids:
+            row["diff"] = shell("git", "diff", "--no-index", "--", local_path, new)
         result["files"].append(row)
-    if not unknown_only:
-        result["record"] = {"path": str(Path(directory) / "TEMPLATE.json"), "reviewed": reviewed(record, ids, known)}
-        if inferred_record is not None:
-            result["record"]["inferred"] = inferred_record
+    result["record"] = {"path": str(Path(directory) / "TEMPLATE.json"),
+                        "reviewed": {"schema": 1, "template": "default", "files": ids}}
     if errors:
         result["errors"] = errors
     result["see"] = str(Path(__file__).resolve().parents[1] / "references/MIGRATING.md") + " (read the workflow.json section before merging)"
