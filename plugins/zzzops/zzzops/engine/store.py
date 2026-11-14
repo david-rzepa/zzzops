@@ -384,7 +384,8 @@ def read_state(git: Git, snap: Snapshot, all_goals: bool = False, wanted=()) -> 
             st.policy_branches.append(info)
     # 3. and 4. goal documents
     named = {int(g) for g in wanted}
-    wanted = [g for g, c in sorted(commits.items()) if all_goals or g in named or c.trailer("State") != "closed"]
+    wanted = [g for g, c in sorted(commits.items()) if all_goals or g in named or c.trailer("State") != "closed"
+              or (st.settings is not None and st.settings.get("branching") is not None and c.trailer("Line"))]
     raw_docs = {}
     for g in wanted:
         raw_docs[g] = read_goal_json(git, snap.goals[g])
