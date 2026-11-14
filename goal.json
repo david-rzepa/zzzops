@@ -435,38 +435,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T19:52:08Z",
+      "finished_at": "2026-11-14T20:22:27Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
-          "doc": "v1:blob:cf5f4303629f8dd290edc690a00d433058591e9f",
+          "doc": "v1:blob:dfc3746610ef409bc7cb56b3bb1383fbe328301a",
           "tests": "v1:sha256:d1b819ee6603e0d12a36b6ea6471b3a63dd503237ea65e8eb224c99b8633284b"
         },
         "policy": {},
-        "subject": "v1:sha256:7819c15444c4c172094c452394826dcc50fe99bfaa90daf225bfcc83c496894a"
+        "subject": "v1:sha256:fc25f2e6059ba8fe3328fc387fb46721d39d25d9f623bec195cfebc92de122fa"
       },
-      "holder": "codex:wp1036-r3/review-tests-3",
-      "input_fp": "v1:sha256:a47a88102fc6cdaff98b948417d4d5de039fff4ad6333289e758eed2a67b35fb",
+      "holder": "codex:wp1036-r5/review-tests-4",
+      "input_fp": "v1:sha256:529802a44d34089e50d7a4b9a022a7e724281d96895cd324ddc59c8af0732a19",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "a14bf7fd036eb7e8e35dc9d724cde34715a87c45",
-          "commit": "75e89f4342f61a2f056e94b3a1e4347669cd0f12",
+          "blob": "7a7e0fffd3feb7781ad11d86969136d0de78ee3e",
+          "commit": "62bac21f37d21f0056e3e30ef44501d4bf6b0f79",
           "path": ".zzzops/reviews/1036/review_tests.md"
         },
-        "summary": "Approved: test_design retires only the obsolete goal-specific checker as design9 authorizes, replaces its evidence/size commands with a passing documentation whitespace check, and preserves independent editorial review and repository-required validation."
+        "summary": "Approved: unchanged tests and the existing passing documentation whitespace command match design11; removing the blog path preserves editorial review and policy-required repository validation without new test infrastructure."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "c455b09914b49fd65e169f91a4f79110e3e2540b",
           "change": "0000000000000000000000000000000000000000",
-          "commit": "a01e22ce96349f804d4e554dcf969506a4e0df31",
-          "tree": "d1c6023e89fbecccba6bf6b1c205b58c63186a29"
+          "commit": "775cc322764ef7c9db9c0e04bdef59c1c93d56e6",
+          "tree": "81ec923ee2451bfc3913fec5fcd2c64835aab0bb"
         }
       },
       "status": "done"
