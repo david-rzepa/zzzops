@@ -144,6 +144,8 @@ class IntegrateConflictTests(ConflictBase):
         self.w.ok("a", "reopen", str(g), "base", "--note", "dev moved")
         self.assertEqual("done", self.op(g, "base")["ran"]["outcome"])
         self.assertTrue(self.op(g, "run_tests")["ran"]["ok"])
+        self.assertEqual("ready (stale: inputs.base)", self.states(g)["review_impl"])
+        self.review(self.B, g, "review_impl")
         out = self.op(g, "integrate")
         h2 = self.pr_head(g)
         self.assertNotEqual(h1, h2)
