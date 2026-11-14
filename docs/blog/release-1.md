@@ -6,36 +6,32 @@ Draft for owner publication · 14 November 2026
 
 Drafted and reviewed with AI agents.
 
-An agent needs more than a request. It needs instructions, relevant information and some way to know what to do when a result arrives. Who makes those choices?
+**Deterministic progressive disclosure** is an architectural pattern in which software selects the information and instructions an agent receives from explicit inputs and rules, rather than relying on the agent's reasoning to decide what to disclose.
 
-One answer is to let the agent decide what to retrieve and what to do next. Another is to have software make some of those decisions using explicit inputs and rules. I call the latter pattern **deterministic progressive disclosure**: deterministic software selects the information and instructions an agent receives from the inputs and rules it has been given, rather than relying on the agent's own reasoning to decide what to disclose.
+An agent needs a task, context and instructions. Sometimes it should discover these through exploration. In a known process, software can make some of those choices directly. A user's selection can choose one prompt; a tool result can select another; a review can provide the correction needed for the next handoff. The agent still does the reasoning within the task.
 
-The idea applies to agentic software generally. A user choice might select one set of instructions; a tool result might select another. The agent still uses judgment to do the task. The software determines the handoff, and can change that handoff as inputs and results change. The inputs themselves may come from people, tools or earlier agent work.
+For example, an assistant might offer a brief explanation or a detailed comparison. The user chooses, a rule supplies the corresponding instructions and sources, and the agent writes the response. The disclosure decision is explicit without prescribing the answer. The same idea can extend across sessions when requests, results and outstanding decisions are recorded durably.
 
-For a simple example, imagine an assistant that can produce either a brief explanation or a detailed comparison. The user chooses a format, and a rule provides the corresponding instructions alongside the source material. The assistant interprets the sources and writes the answer. The rule does not write it; it makes the choice of task explicit.
+The [working paper](../WHITEPAPER.md) introduces this general pattern and uses ZzzOps as an illustration. It presents a design argument and proposed applications, without claiming measured superiority. This owner-publication draft describes a development snapshot, not an official release.
 
-This distinction becomes useful to consider when work spans several steps. A design can be written, reviewed, corrected and approved by different participants. Each participant needs to understand the current task and the decisions that led to it. A long conversation can preserve history, but it does not necessarily identify the next task or the information needed for it. Explicit handoffs aim to make that progression easier to inspect and resume.
+## A reusable engine and a customizable process
 
-The new [working paper](../WHITEPAPER.md) introduces the pattern and illustrates it with ZzzOps. It is a design argument, not a benchmark or a claim that the approach is always better. Its source appendix binds the illustration to a checked development snapshot; this draft is not an official release announcement.
+ZzzOps separates a mostly unopinionated coordination engine from an opinionated, repository-owned workflow, policy and prompts. It ships one default process, which repositories can adapt. The workflow is a graph of tasks and prerequisite links without dependency loops.
 
-## A reusable engine and an opinionated process
+The engine keeps common rules for valid state, eligibility, result freshness and coordinated writes. The repository chooses process details within those constraints: tasks, instructions, inputs, reviews and approval arrangements. This is how deterministic disclosure can support different ways of working without requiring a different engine for each one.
 
-ZzzOps separates a mostly unopinionated coordination engine from a repository-owned process. The engine interprets a workflow, policy and prompts. The repository can customize the tasks, their prerequisites, instructions, reviews and approval choices supported by the engine. ZzzOps also ships one opinionated default as a starting point.
+The engine computes a **frontier** of what can proceed and what must wait. That frontier can expose several eligible actions, not just one next task. Two independent reviews, for example, can receive separate cards and run in parallel while later work waits for them. Capacity and shared-workspace constraints still apply.
 
-The workflow is a graph: tasks are connected by prerequisite links without dependency loops. The engine applies common rules for valid state, eligibility, result freshness and coordinated writes. Those are real constraints; “mostly unopinionated” does not mean the engine has no assumptions. The point is that different repositories can make different process choices while using the same coordination model.
+Each eligible agent action carries a capability requirement, and task cards list configured model suggestions. A coordinator can use this guidance to choose different models for different tasks. The coordinator or harness launches the workers; the engine does not autonomously dispatch models or verify which one ran.
 
-This separation shows why deterministic disclosure need not mean a single rigid way of working. Each repository states its process. The engine uses the declared state and rules to select the next eligible work and the initial instructions and context for the worker. The process is opinionated; the mechanism interpreting it is reusable.
+When a review finds a missing constraint, the configured process can return it to the design task as a correction. A revised design can be reviewed again, then presented for the configured human decision. Results change the state, and the system recomputes eligible work and the context to disclose. Workers supply judgment; software coordinates the handoffs.
 
-Suppose a workflow calls for a design, review and approval. At first, the design can be ready while review waits. A worker receives a task card with the instructions and inputs selected for the design. After the design is submitted, the engine recomputes what can proceed and a reviewer receives the relevant subject and review instructions. If the review identifies a missing constraint, the configured process can return that finding to the design worker as a correction. A revised design can then be reviewed, followed by the configured human decision.
+## Where the idea could go
 
-That sequence is synthetic. It shows the intended relationship between coordination and judgment: the software selects and records the handoffs; the workers contribute the design, critique and correction. The card is an initial disclosure, not a security boundary, and a participant may need to inspect more material.
+The paper's Future Work section proposes uses across agentic software. Automated coordinators could build on eligible tasks and explicit resource rules to schedule parallel work and route tasks to models. Research applications could change instructions as sources arrive or analyses disagree. User-facing assistants could adapt their handoffs to explicit choices or application state. Human decision handoffs could gather the relevant alternatives and context before work proceeds.
 
-## A design choice, with responsibilities
+These are proposed directions, distinct from ZzzOps' existing multiple-action and model-guidance support. Each asks the same question: which disclosure decisions should software make explicitly, and which should remain with people or agents?
 
-Explicit rules make coordination choices visible, but they can also encode the wrong choices. A workflow may omit context, use an unsuitable instruction or put a decision at the wrong point. Deterministic selection does not make a result true or a review complete. A record that matches its declared inputs does not prove that every relevant input was declared.
+Explicit rules can encode bad choices or omit important information. They need review and maintenance. Deterministic selection does not establish correct reasoning, complete reviews, secure isolation or successful external actions. A simple task may need no formal workflow, and an unfamiliar problem may call for agent-led exploration.
 
-There are situations where agent-led exploration is the right starting point, especially when the path and sources are unknown. A small task may need no formal workflow at all. A system can also combine approaches: give an agent a defined exploration task, let it find material, and use the result to select a later handoff.
-
-For ZzzOps, customization brings responsibility. Repository owners need to review the process they declare and keep it current. Engine checks coordinate work under that process; they do not replace human authority, guarantee secure isolation or prove that a Git merge deployed an application. The paper describes those boundaries and links to the specification and tests for readers who want the implementation details.
-
-The intended contribution is a way to think about the boundary between software coordination and agent judgment. Deterministic progressive disclosure makes some decisions about what an agent sees explicit and repeatable. It leaves the process designer responsible for choosing those decisions, and leaves the agent and reviewers responsible for the quality of the work performed with them.
+The aim is to make a useful boundary visible: software can select tasks and context through rules, people can retain authority over decisions, and agents can exercise judgment in the work they are given.
