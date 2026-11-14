@@ -228,30 +228,30 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T19:55:54Z",
+      "finished_at": "2026-11-14T20:25:43Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
           "base": "v1:sha256:92fb166bb2d877c78854032c50996843982ef4f5cff7b5a092fb2d8ca03148d7",
-          "doc": "v1:blob:cf5f4303629f8dd290edc690a00d433058591e9f",
+          "doc": "v1:blob:dfc3746610ef409bc7cb56b3bb1383fbe328301a",
           "tests": "v1:sha256:d1b819ee6603e0d12a36b6ea6471b3a63dd503237ea65e8eb224c99b8633284b"
         },
         "policy": {}
       },
-      "holder": "codex:wp1036-r3/implement-3",
-      "input_fp": "v1:sha256:ee20af174b4b20ffa30bab9268001cc09e42861ae54fc327e3bebb06d70d20f0",
+      "holder": "codex:wp1036-r5/implement-4",
+      "input_fp": "v1:sha256:6cd96098d7ddd6714f529923a417b1b7ebdf7a4d0c02e8be2ef3808f11a59324",
       "ok": true,
       "output": {
         "code": {
           "base": "c455b09914b49fd65e169f91a4f79110e3e2540b",
-          "change": "20d23cf45efdd7700d57822b9a97dc512a3a7f72",
-          "commit": "669b4b7cabc49d11ad1eb5f7c6ece0d26b9adce6",
-          "tree": "81ec923ee2451bfc3913fec5fcd2c64835aab0bb"
+          "change": "378ade22b8079bcca74ccbe266fb41297d5e8a43",
+          "commit": "fad289123f0a66cf1063b8f9a8f2bcb785821cbe",
+          "tree": "10c4ea3b5644838b9e1a1b0eab5f86608e2ecd19"
         },
-        "summary": "Simplified the concept paper and aligned blog/README, replacing the bulky evidence ledger with a short implementation note. The paper now explains multiple eligible frontier actions, independent parallel work, and capability/model guidance while keeping actual dispatch with the coordinator or harness. Added clearly proposed Future Work applications for automated orchestration, research, state-adaptive assistants and human decision handoffs."
+        "summary": "Added a plain introduction to ZzzOps and a concise Prior Work section linking established HCI, staged Skills loading, rule-triggered scoped instructions, existing exact-term usage and workflow coordination. The paper acknowledges overlapping terminology and mechanisms without priority or superiority claims, and frames Future Work as applications and refinements. Removed the blog draft while preserving the accepted general definition, customizable-layer architecture and parallel-action/model-guidance explanation."
       },
       "reason": "stale",
       "status": "done"
