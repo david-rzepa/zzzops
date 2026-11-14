@@ -48,35 +48,35 @@
       "status": "done"
     },
     "approve_design": {
-      "attempt": 7,
+      "attempt": 8,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-14T19:49:06Z",
+      "finished_at": "2026-11-14T20:20:10Z",
       "fp_parts": {
         "def": "v1:sha256:d04fc5094a85157b7e25b3020caaee316324161c59b30d25d4aabb2e5c24f0ed",
         "inputs": {
-          "doc": "v1:blob:cf5f4303629f8dd290edc690a00d433058591e9f",
-          "filter": "v1:sha256:89adb30842aa56aa8b9a0bb8e15d6d8ba196b6e10f045954a3f97ca7947917fd",
-          "summary": "v1:sha256:8b9737827edc59d175e9b9a637fa2da7b4ae43a665daae8c553ba7c631544abe"
+          "doc": "v1:blob:dfc3746610ef409bc7cb56b3bb1383fbe328301a",
+          "filter": "v1:sha256:f87f6447914d8e281edaa63f74828ddb8248ee7048b3b920ea89fcb8e237eeeb",
+          "summary": "v1:sha256:1a9be9b5b03a662c4c522cd60b8b05001f3cc7ad6c68c199e6f5e2ddd68ab87a"
         },
         "policy": {},
-        "subject": "v1:sha256:844056719c08f645494764d8e1b3762aae2ac7ddb9b4e3646515ccccee7b1033"
+        "subject": "v1:sha256:a04b0a612ca46064c384b151d974472c16b9f2f808a8bf23388dbcc15ebab9a1"
       },
       "holder": "human",
-      "input_fp": "v1:sha256:6736d4f41ddb21df5f826fdcd2eed2e713938ab0da98970e10835855ece03be1",
+      "input_fp": "v1:sha256:2a3ff1d27aac58c4bde548d903ec0d941fe4268564a758a24c1221b6327000ff",
       "ok": true,
       "output": {
-        "decided_at": "2026-11-14T19:49:06Z",
+        "decided_at": "2026-11-14T20:20:10Z",
         "decided_by": "Codex (root agent), delegated by Dave",
         "decision": "approved",
         "quote": "Do not wait for my approval",
-        "summary": "Approve design9 implementing the latest explicit owner direction: multiple eligible actions and task-model guidance, concise proposed Future Work, and retirement of bulky public evidence/checker requirements. Independent reviews and filter have no findings. Existing engine invariants and GitHub gates remain."
+        "summary": "Approve design11 applying the latest explicit owner direction: a concise ZzzOps introduction, blog removal superseding WD3/WD4, and researched Prior Work acknowledging existing terminology and mechanisms without priority claims. Independent reviews and filter have zero findings; existing engine and GitHub gates remain."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "cf5f4303629f8dd290edc690a00d433058591e9f",
-          "commit": "9cbe96f76c13fa7b2b5685043ea368a200bcba55"
+          "blob": "dfc3746610ef409bc7cb56b3bb1383fbe328301a",
+          "commit": "d49b092ccc7f4bdf986b7813426edc1025f1a733"
         }
       },
       "status": "done"
