@@ -177,26 +177,26 @@
       "status": "done"
     },
     "filter_design": {
-      "attempt": 5,
+      "attempt": 6,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T19:48:26Z",
+      "finished_at": "2026-11-14T20:19:36Z",
       "fp_parts": {
         "candidates": [],
         "def": "v1:sha256:c83a5e0ec02bc9504ff118f774138ad5517f6b3a5885d1c28444982e78d23a9f",
         "inputs": {
-          "adversary": "v1:sha256:c1f357dee6b4729c98e606993fd969ce0053798df5218a5b64309c9bb3332ec7",
-          "doc": "v1:blob:cf5f4303629f8dd290edc690a00d433058591e9f",
-          "review": "v1:sha256:fdb8ee490eb905c92403aae8ffd1889896e715c5469b7d2b09a73ba3169e4fa0",
-          "spec": "v1:sha256:e86e62dabf813637e866b635680c1f962d5da0a87be9af2dbf8c873856ecb9f4"
+          "adversary": "v1:sha256:859dbef38545624dbeffa6ee47f087dff742b10a0460edae174e8c54037b2578",
+          "doc": "v1:blob:dfc3746610ef409bc7cb56b3bb1383fbe328301a",
+          "review": "v1:sha256:a92c11a08a6b0a03c6c021e4cf74cb50ff296e20ee23e181eab00408325bfd0c",
+          "spec": "v1:sha256:6f4a422c90f600655791c8de70c6b4db4e37acb3d58274ece1693f41ed69b2b0"
         },
         "policy": {}
       },
-      "holder": "codex:wp1036-r3/filter-design-9",
-      "input_fp": "v1:sha256:dad48a1f144ebb153ba4566b7b937fa30522afcf5181491fca9b11aa50ed5374",
+      "holder": "codex:wp1036-r5/filter-design-11",
+      "input_fp": "v1:sha256:5d272fbd24bda602e9e2f4f4d69e47ba1c31764e2ca405bfc5511fe5f1bccb82",
       "ok": true,
       "output": {
-        "summary": "Both the multi-lens design reviewer and the independent adversarial reviewer approved the simplified revision. There are zero candidate notes, no material findings, and no work to reopen; the design can proceed to approval.",
+        "summary": "Both focused design reviews approved the ZzzOps introduction, blog removal and substantive Prior Work amendment. There are zero candidate notes and no material findings; no work reopens and the design can proceed to approval.",
         "verdicts": {}
       },
       "reason": "stale",
