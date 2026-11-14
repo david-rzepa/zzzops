@@ -150,28 +150,28 @@
       "status": "done"
     },
     "design": {
-      "attempt": 9,
+      "attempt": 10,
       "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-14T19:44:32Z",
+      "finished_at": "2026-11-14T20:10:26Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
           "dep_designs": "v1:sha256:d0703625f9457fd9740830f12dd16828745df6edf4b11fa5787394a059e02855",
-          "spec": "v1:sha256:e86e62dabf813637e866b635680c1f962d5da0a87be9af2dbf8c873856ecb9f4"
+          "spec": "v1:sha256:4b8f5d449cef1d6c75cc3ffe6cc051d925c87311a583e02aef5f42818f434696"
         },
         "policy": {}
       },
-      "holder": "codex:wp1036-r3/design-9",
-      "input_fp": "v1:sha256:59b9bcaf9aad4f0a0129f57688161832131c32f0996b78109514bc29e0f93434",
+      "holder": "codex:wp1036-r4/design-10",
+      "input_fp": "v1:sha256:4122c3e82b91a5d2a319cc387f4079dd5ebd5708ed110d28cbe0757dcd8c9778",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "cf5f4303629f8dd290edc690a00d433058591e9f",
-          "commit": "9cbe96f76c13fa7b2b5685043ea368a200bcba55",
+          "blob": "17b9b6e95a4a12e222333a94c07c700bf1d5d2d4",
+          "commit": "8e20ea197a766c58a81aa25e83310ad69e01f518",
           "path": ".zzzops/reviews/1036/design.md"
         },
-        "summary": "Simplifies the conceptual paper while making the frontier a set of eligible actions that supports independent parallel work and task-specific capability/model guidance. Separates implemented eligibility and routing guidance from coordinator/harness dispatch and proposed automated routing, and adds concrete Future Work applications across agentic software. Retires the obsolete manual evidence checker through test_design, removes bulky public evidence material, preserves prior owner choices and existing GitHub gates, and aligns paper, blog and README."
+        "summary": "Adds a concise introduction explaining what ZzzOps is, whom it serves, durable coordination across sessions and release branching/merge scope before the existing illustration. Removes the blog file and operative blog requirements, explicitly superseding historical WD3/WD4 while preserving the settled paper design and all verification/GitHub gates."
       },
       "reason": "stale",
       "status": "done"
