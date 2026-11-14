@@ -82,35 +82,35 @@
       "status": "done"
     },
     "approve_merge": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T17:37:22Z",
+      "finished_at": "2026-11-14T19:11:39Z",
       "fp_parts": {
         "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
         "inputs": {
-          "code": "v1:sha256:b8684f51fa996995b772c1cce252b7dadd7cbddfcd8f6f5be520c28de727c18c"
+          "code": "v1:sha256:0b1ed8587de31cce87f741426eef0f763cca5195ca0f60adab3b4467f52e8763"
         },
         "policy": {},
-        "subject": "v1:sha256:11c680b75c7e5ba492bfc2921bed727b52de5ace87fce883cee50ddbdb5ac4e6"
+        "subject": "v1:sha256:89093ccc4151a68db812db2955a10a7cf6d4f2ecc6e6f189f96dbab05c6b2797"
       },
       "holder": "human",
-      "input_fp": "v1:sha256:8e6a7cf86f47caadaca1d4cda62d2c7d7b688c27905533eb91613c98dbf6f159",
+      "input_fp": "v1:sha256:595675d6419048d4f78223a580b5153ca971fed2baa28938a43b15f70699916a",
       "ok": true,
       "output": {
-        "decided_at": "2026-11-14T17:37:22Z",
+        "decided_at": "2026-11-14T19:11:39Z",
         "decided_by": "Codex (root agent), delegated by Dave",
         "decision": "approved",
         "quote": "Do not wait for my approval",
-        "summary": "Approve the independently reviewed whitepaper, blog draft and README navigation at implementation 580987251909105fb202d84648828e8271abf08c; all local policy checks passed and no findings remain. PR #773 targets dev. Required CI and the recorded exact-head gate still govern the merge."
+        "summary": "Approve the independently reviewed conceptual rewrite at 93889189b5b5, implementing all three owner feedback points: a general definition-first DPD paper, accessible scientific argument focused on philosophy, and central mostly unopinionated engine/customizable opinionated workflow architecture. Local checks passed with no review findings; PR #773 targets dev. Required CI, exact-head checks and GitHub review rules still govern merge."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "code": {
           "base": "c455b09914b49fd65e169f91a4f79110e3e2540b",
-          "change": "9a8e10553ed58308f76555258f764ced7180c856",
-          "commit": "580987251909105fb202d84648828e8271abf08c",
-          "tree": "dfc6665a482a9efa4f813b0f71190b5173fa5f6d"
+          "change": "adbd79a2a6853e91c919371c875fc3423325e406",
+          "commit": "93889189b5b58cb99d73d9e700a8e2e11dfe5b7e",
+          "tree": "1e2aaa7768acebe9afcf49288c80cd1b402c409c"
         }
       },
       "status": "done"
