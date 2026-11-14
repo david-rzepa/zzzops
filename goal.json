@@ -13,36 +13,36 @@
   "priority": "P1",
   "records": {
     "adversary_design": {
-      "attempt": 5,
+      "attempt": 7,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T19:46:56Z",
+      "finished_at": "2026-11-14T20:18:23Z",
       "fp_parts": {
         "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
         "inputs": {
-          "doc": "v1:blob:cf5f4303629f8dd290edc690a00d433058591e9f",
-          "spec": "v1:sha256:e86e62dabf813637e866b635680c1f962d5da0a87be9af2dbf8c873856ecb9f4"
+          "doc": "v1:blob:dfc3746610ef409bc7cb56b3bb1383fbe328301a",
+          "spec": "v1:sha256:6f4a422c90f600655791c8de70c6b4db4e37acb3d58274ece1693f41ed69b2b0"
         },
         "policy": {},
-        "subject": "v1:sha256:844056719c08f645494764d8e1b3762aae2ac7ddb9b4e3646515ccccee7b1033"
+        "subject": "v1:sha256:a04b0a612ca46064c384b151d974472c16b9f2f808a8bf23388dbcc15ebab9a1"
       },
-      "holder": "codex:wp1036-r3/adversary_design-9",
-      "input_fp": "v1:sha256:66b2317c0a221f230fd7aa9a635eee8a4e1370f2c928e1bfaa1b024a9fee9733",
+      "holder": "codex:wp1036-r5/adversary_design-11",
+      "input_fp": "v1:sha256:1893255d8307e30f8c4007cc91a5d25e75d2bd30b5d283a59490fa8ab7074094",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "4c963b895c12f61306e2d6c0eab6623d92d4e9d4",
-          "commit": "ff7837c4195f7a46139eda4e9c9f358b719472de",
+          "blob": "542187c004a553b90d292bb57d24c5d5ba7efd09",
+          "commit": "705db56c31f72e46505847fb816f2f938f794e36",
           "path": ".zzzops/reviews/1036/adversary_design.md"
         },
-        "summary": "Approved: the simplified design bounds parallel eligibility and model guidance, retires only the goal-specific checker through test_design, and preserves engine invariants, repository verification and GitHub approval gates."
+        "summary": "Approved: the focused introduction/blog-removal/Prior Work amendment preserves authority and release boundaries and explicitly acknowledges exact prior terminology without novelty, priority or superiority claims."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "cf5f4303629f8dd290edc690a00d433058591e9f",
-          "commit": "9cbe96f76c13fa7b2b5685043ea368a200bcba55"
+          "blob": "dfc3746610ef409bc7cb56b3bb1383fbe328301a",
+          "commit": "d49b092ccc7f4bdf986b7813426edc1025f1a733"
         }
       },
       "status": "done"
