@@ -310,7 +310,8 @@ class Session:
         return render.Ctx(prefix=cli_prefix(), now=self.now, settings=settings, coordinator=st.coordinator,
                           reader=GitReader(self), goal_commits=dict(self.snap.goals),
                           goal_dates={g: c.committer_date for g, c in st.goal_commits.items()},
-                          repo=self.git.primary if worker else None, targets=dict(self.snap.targets))
+                          repo=self.git.primary if worker else None, targets=dict(self.snap.targets),
+                          goal_docs={g: d for g, d in st.docs.items() if (d.get("flow") or {}).get("line")})
 
     def warnings(self, p) -> list:
         st = self.state
