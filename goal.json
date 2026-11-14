@@ -324,15 +324,15 @@
       "status": "blocked"
     },
     "review_design": {
-      "attempt": 9,
+      "attempt": 11,
       "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-14T19:46:49Z",
+      "finished_at": "2026-11-14T20:18:25Z",
       "fp_parts": {
         "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
         "inputs": {
-          "doc": "v1:blob:cf5f4303629f8dd290edc690a00d433058591e9f",
-          "spec": "v1:sha256:e86e62dabf813637e866b635680c1f962d5da0a87be9af2dbf8c873856ecb9f4"
+          "doc": "v1:blob:dfc3746610ef409bc7cb56b3bb1383fbe328301a",
+          "spec": "v1:sha256:6f4a422c90f600655791c8de70c6b4db4e37acb3d58274ece1693f41ed69b2b0"
         },
         "lenses": [
           "intent",
@@ -365,25 +365,25 @@
             "serves": "Developers who delegate project work to coding agents, and the agents doing it."
           }
         },
-        "subject": "v1:sha256:844056719c08f645494764d8e1b3762aae2ac7ddb9b4e3646515ccccee7b1033"
+        "subject": "v1:sha256:a04b0a612ca46064c384b151d974472c16b9f2f808a8bf23388dbcc15ebab9a1"
       },
-      "holder": "codex:wp1036-r3/review_design-9",
-      "input_fp": "v1:sha256:3be0b07fc1ab6b0c7fee204adc9173a09801c14db9198023520303a69d691d12",
+      "holder": "codex:wp1036-r5/review_design-11",
+      "input_fp": "v1:sha256:b2683b036f83358858a9e9ce300b2932f54620d0e5bbd5e57e114f4173842a32",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "f53f41d81b7e8eb07817db4dcdfddf81255314f9",
-          "commit": "2c83773a2014c1860adc643193981a23981c8a80",
+          "blob": "e41f403668dfa0e170b4033c05bf48f12c667e5a",
+          "commit": "775cc322764ef7c9db9c0e04bdef59c1c93d56e6",
           "path": ".zzzops/reviews/1036/review_design.md"
         },
-        "summary": "Approved: the concise revision plan explains multiple eligible actions and task-model guidance accurately, separates dispatch and proposed automation, and retires obsolete evidence machinery through test_design without changing engine behavior or gates."
+        "summary": "Approved: the focused amendment introduces ZzzOps for unfamiliar readers, removes the superseded blog deliverable, and adds selective primary-source Prior Work with explicit acknowledgment of prior terminology/mechanism overlap and no priority or superiority claims."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "cf5f4303629f8dd290edc690a00d433058591e9f",
-          "commit": "9cbe96f76c13fa7b2b5685043ea368a200bcba55"
+          "blob": "dfc3746610ef409bc7cb56b3bb1383fbe328301a",
+          "commit": "d49b092ccc7f4bdf986b7813426edc1025f1a733"
         }
       },
       "status": "done"
