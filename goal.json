@@ -177,26 +177,26 @@
       "status": "done"
     },
     "filter_design": {
-      "attempt": 4,
+      "attempt": 5,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T18:52:14Z",
+      "finished_at": "2026-11-14T19:48:26Z",
       "fp_parts": {
         "candidates": [],
         "def": "v1:sha256:c83a5e0ec02bc9504ff118f774138ad5517f6b3a5885d1c28444982e78d23a9f",
         "inputs": {
-          "adversary": "v1:sha256:acb9cde61afa05470685d388eb55ed28451ad712503b2bca12d9659666e5abec",
-          "doc": "v1:blob:7aa4db7dc9cac42eaaa2b947bb4097cf8152e896",
-          "review": "v1:sha256:d21c746a12a89548eeecaccc18f03c4c7bf6cf3efca8ff2036eedcba543b0292",
-          "spec": "v1:sha256:ac36af7a5392b04435578723c09196211b5841cd0840836793092d73c249c10a"
+          "adversary": "v1:sha256:c1f357dee6b4729c98e606993fd969ce0053798df5218a5b64309c9bb3332ec7",
+          "doc": "v1:blob:cf5f4303629f8dd290edc690a00d433058591e9f",
+          "review": "v1:sha256:fdb8ee490eb905c92403aae8ffd1889896e715c5469b7d2b09a73ba3169e4fa0",
+          "spec": "v1:sha256:e86e62dabf813637e866b635680c1f962d5da0a87be9af2dbf8c873856ecb9f4"
         },
         "policy": {}
       },
-      "holder": "codex:wp1036/filter-design-8",
-      "input_fp": "v1:sha256:0bfa7681a3647d5199abad4e658a7dd3b12c10e6937a030ac60967b9bdd78c87",
+      "holder": "codex:wp1036-r3/filter-design-9",
+      "input_fp": "v1:sha256:dad48a1f144ebb153ba4566b7b937fa30522afcf5181491fca9b11aa50ed5374",
       "ok": true,
       "output": {
-        "summary": "Both the scope review and adversarial review approved the revised concept-paper design. There are zero candidate notes and no material findings to reopen the design. The design presents deterministic progressive disclosure as a general concept, centers the mostly unopinionated engine and customizable workflow layers, and places supporting implementation evidence in an appendix.",
+        "summary": "Both the multi-lens design reviewer and the independent adversarial reviewer approved the simplified revision. There are zero candidate notes, no material findings, and no work to reopen; the design can proceed to approval.",
         "verdicts": {}
       },
       "reason": "stale",
