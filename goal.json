@@ -82,35 +82,35 @@
       "status": "done"
     },
     "approve_merge": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T19:11:39Z",
+      "finished_at": "2026-11-14T20:04:14Z",
       "fp_parts": {
         "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
         "inputs": {
-          "code": "v1:sha256:0b1ed8587de31cce87f741426eef0f763cca5195ca0f60adab3b4467f52e8763"
+          "code": "v1:sha256:fc094a10350b2d29da9a1d7904ede359dcaf174d6f6765e16869ad134aa6532a"
         },
         "policy": {},
-        "subject": "v1:sha256:89093ccc4151a68db812db2955a10a7cf6d4f2ecc6e6f189f96dbab05c6b2797"
+        "subject": "v1:sha256:bf29602040fbc1f93c75bda4a56ea48193b1b23a8d19cca7461faa8d1e487ff3"
       },
       "holder": "human",
-      "input_fp": "v1:sha256:595675d6419048d4f78223a580b5153ca971fed2baa28938a43b15f70699916a",
+      "input_fp": "v1:sha256:b5b73096e5d53018ec5d62c2aaa1a8a8fd670c11523e2517f5decfdd026ebffc",
       "ok": true,
       "output": {
-        "decided_at": "2026-11-14T19:11:39Z",
+        "decided_at": "2026-11-14T20:04:14Z",
         "decided_by": "Codex (root agent), delegated by Dave",
         "decision": "approved",
         "quote": "Do not wait for my approval",
-        "summary": "Approve the independently reviewed conceptual rewrite at 93889189b5b5, implementing all three owner feedback points: a general definition-first DPD paper, accessible scientific argument focused on philosophy, and central mostly unopinionated engine/customizable opinionated workflow architecture. Local checks passed with no review findings; PR #773 targets dev. Required CI, exact-head checks and GitHub review rules still govern merge."
+        "summary": "Approve the independently reviewed concise paper/blog/README revision at 669b4b7cabc4, implementing the latest owner request for multiple eligible actions, task-model guidance and proposed future uses while removing bulky evidence machinery. All1121 required local tests passed with zero failures/errors. PR773 targets dev at36f659e4e493; required fresh CI and GitHub approval rules still govern merge."
       },
       "reason": "stale",
       "reviewed": {
         "code": {
           "base": "c455b09914b49fd65e169f91a4f79110e3e2540b",
-          "change": "adbd79a2a6853e91c919371c875fc3423325e406",
-          "commit": "93889189b5b58cb99d73d9e700a8e2e11dfe5b7e",
-          "tree": "1e2aaa7768acebe9afcf49288c80cd1b402c409c"
+          "change": "20d23cf45efdd7700d57822b9a97dc512a3a7f72",
+          "commit": "669b4b7cabc49d11ad1eb5f7c6ece0d26b9adce6",
+          "tree": "81ec923ee2451bfc3913fec5fcd2c64835aab0bb"
         }
       },
       "status": "done"
