@@ -60,6 +60,7 @@ When you remember “one last thing,” add a goal instead of opening six files 
 
 ## What to read next
 
+- [Deterministic progressive disclosure](docs/WHITEPAPER.md) — the workflow mechanism and its audit boundaries.
 - [How execution works](docs/EXECUTION.md) — goals, reviews, eligible carry after sync, checks, stacked delivery, optional release/hotfix lines and recovery.
 - [Skills](docs/SKILLS.md) and the [CLI reference](plugins/zzzops/zzzops/references/CLI_USAGE.md).
 - [Design and specification](docs/design/README.md) — the engine contract (SPEC) and its rationale (DESIGN).
