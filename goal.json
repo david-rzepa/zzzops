@@ -329,15 +329,15 @@
       "status": "blocked"
     },
     "review_design": {
-      "attempt": 8,
+      "attempt": 9,
       "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-14T18:51:37Z",
+      "finished_at": "2026-11-14T19:46:49Z",
       "fp_parts": {
         "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
         "inputs": {
-          "doc": "v1:blob:7aa4db7dc9cac42eaaa2b947bb4097cf8152e896",
-          "spec": "v1:sha256:ac36af7a5392b04435578723c09196211b5841cd0840836793092d73c249c10a"
+          "doc": "v1:blob:cf5f4303629f8dd290edc690a00d433058591e9f",
+          "spec": "v1:sha256:e86e62dabf813637e866b635680c1f962d5da0a87be9af2dbf8c873856ecb9f4"
         },
         "lenses": [
           "intent",
@@ -370,25 +370,25 @@
             "serves": "Developers who delegate project work to coding agents, and the agents doing it."
           }
         },
-        "subject": "v1:sha256:c50607aa459c786e1049eb50854d7323582ea1f47c037b4d0f1a181820b13aa6"
+        "subject": "v1:sha256:844056719c08f645494764d8e1b3762aae2ac7ddb9b4e3646515ccccee7b1033"
       },
-      "holder": "codex:wp1036/review-design-8",
-      "input_fp": "v1:sha256:f6e1f759eafbbebdcadc28932575a0fcc67d0de769533ec90bd94930a70fc308",
+      "holder": "codex:wp1036-r3/review_design-9",
+      "input_fp": "v1:sha256:3be0b07fc1ab6b0c7fee204adc9173a09801c14db9198023520303a69d691d12",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "08fd6ceb243c67de780c7e2f0d032d751f21ee36",
-          "commit": "0b58deb22366e19152053ad6975e0e2136a91e77",
+          "blob": "f53f41d81b7e8eb07817db4dcdfddf81255314f9",
+          "commit": "2c83773a2014c1860adc643193981a23981c8a80",
           "path": ".zzzops/reviews/1036/review_design.md"
         },
-        "summary": "Approved: the design makes general deterministic disclosure and the customizable engine/workflow architecture one accessible conceptual argument; no findings."
+        "summary": "Approved: the concise revision plan explains multiple eligible actions and task-model guidance accurately, separates dispatch and proposed automation, and retires obsolete evidence machinery through test_design without changing engine behavior or gates."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "7aa4db7dc9cac42eaaa2b947bb4097cf8152e896",
-          "commit": "6256e22ec52aecd7ca119503e7cda791c173df41"
+          "blob": "cf5f4303629f8dd290edc690a00d433058591e9f",
+          "commit": "9cbe96f76c13fa7b2b5685043ea368a200bcba55"
         }
       },
       "status": "done"
