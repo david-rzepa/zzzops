@@ -1,6 +1,6 @@
-# G1036 design 10: introduce ZzzOps and remove the blog
+# G1036 design 11: introduction, Prior Work and no blog
 
-Focused amendment, 14 November 2026. Design 9's conceptual structure, parallel-action/model-guidance distinctions, Future Work, evidence simplification and checker retirement remain settled. This amendment replaces all operative blog requirements in earlier designs.
+Focused amendment, 14 November 2026. Design 9's conceptual structure, parallel-action/model-guidance distinctions, Future Work, evidence simplification and checker retirement remain settled. This amendment replaces all operative blog requirements in earlier designs and adds the requested selective Prior Work section.
 
 ## Owner decisions
 
@@ -13,8 +13,8 @@ WD1–WD8, from the 2026-11-01 interview relayed by the coordinator, remain hist
 | WD2 | “Progressive disclosure” | The general architectural idea remains central. |
 | WD3 | “Repo page + blog post” | Paper and README remain; blog deliverable superseded below. |
 | WD4 | “External, you publish” | Historical blog publication choice; no blog deliverable remains. |
-| WD5 | “Brief related-work section” | Generic positioning without superiority claims. |
-| WD6 | “Coin "deterministic progressive disclosure"” | Introduce the term without priority claims. |
+| WD5 | “Brief related-work section” | Concise substantive Prior Work with primary citations; no superiority claims. |
+| WD6 | “Coin "deterministic progressive disclosure"” | Historical quote; exact prior term use is acknowledged, with no coinage or priority claim. |
 | WD7 | “Your name” | David Rzepa with agent drafting/review disclosure. |
 | WD8 | “Ratios and trends only” | Conditional; no performance evidence planned. |
 
@@ -40,10 +40,28 @@ Latest owner steering, relayed by the coordinator for attempt 10 on 2026-11-14:
 
 This explicitly supersedes WD3/WD4's blog deliverable and publication plan; their quotations remain historical only. No new owner choice is required.
 
+Additional owner requirement, relayed by the coordinator for attempt 11 on 2026-11-14:
+
+> A Prior Work section about progressive disclosure and any other similar concepts (including if there's existing work like determinstic progressive disclosure)
+
+The requested primary-source research is complete in the coordinator's verified research notes. Existing use of the exact phrase was found; WD6 is historical wording, not permission for a coinage or historical-priority claim.
+
 ## Focused change
 
 At the beginning of “ZzzOps as an illustration,” before the architecture discussion, introduce it in one short paragraph: repository-based goal and release management for coding agents, serving repository owners and developers who coordinate durable goals, workers, reviews, checks and human decisions across sessions. Explain release support as branching and merge coordination, with deployment handled separately. Then continue the existing illustration. Preserve the immediate general DPD definition and the rest of the approved concise paper.
 
 Delete `docs/blog/release-1.md`. Remove operative blog-draft references from the design, README where present, and PR description. The paper and README link are the deliverables. Keeping the blog as an unused draft would contradict the latest instruction; a broader rewrite is unnecessary.
 
-Review the introduction for a reader unfamiliar with ZzzOps, truthful release scope, absence of broken references, and the focused diff. Reuse existing whitespace/local verification and ordinary independent review/approval gates; no new tests or infrastructure. Preserve SPEC/DESIGN, runtime, policy, templates and schemas. Update PR #773 while respecting its existing GitHub blocker and rules; no external publication.
+## Prior Work plan
+
+Add a selective 250–350-word Prior Work section after “The pattern,” replacing the generic related-approaches paragraph. Keep the central argument concise. Use direct primary links and explain who selects each disclosure step; avoid an exhaustive survey or bibliography detached from the argument.
+
+Begin with established HCI usage. The original [Star interface article](https://guidebookgallery.org/articles/designingthestaruserinterface/) (1982) describes relevant object properties as progressive disclosure; use it as an early example, not proof of origin. [Nielsen's discussion](https://www.nngroup.com/articles/progressive-disclosure/) (2006) distinguishes optional complexity from staged task sequences. Explain the overlap in showing material as interaction state changes, while recognizing that agent instructions are a different application. Do not import usability benefits as measured evidence for ZzzOps.
+
+Then compare agent context loading. [Agent Skills](https://www.anthropic.com/research/equipping-agents-for-the-real-world-with-agent-skills) automatically supplies metadata before the model chooses relevant skills and further resources: a hybrid, not wholly agent-led system. Official [Claude Code scoped-memory documentation](https://code.claude.com/docs/en/memory#how-claudemd-files-load) describes software-triggered instruction loading on file access. An agent may choose the operation, while the loader chooses the accompanying material. That already overlaps the paper's general definition; context guidance is not behavioral enforcement.
+
+Explicitly acknowledge [dotagents](https://dotagents.io/), which already uses the exact phrase “deterministic progressive disclosure” and proposes harness-driven scoped instruction loading. Cite this undated project self-description for terminology and overlap only, not vendor comparisons, validation or earliest priority. The checked page was observed on 14 November 2026.
+
+Finally, [Building effective agents](https://www.anthropic.com/research/building-effective-agents) documents predefined workflows, routing and parallelization. Recognize existing explicit coordination and tailored handoffs; a workflow branch can itself use a model. Close by locating this paper's contribution in articulating the selection boundary and illustrating frontier/cards in ZzzOps, without claiming to originate the term or underlying mechanism. The research is selective and cannot establish historical first or absence of other work.
+
+Review the new section for accurate attribution, accessible overlap/distinction and bounded claims; review the introduction for a reader unfamiliar with ZzzOps, truthful release scope, absence of broken references, and the focused diff. Reuse existing whitespace/local verification and ordinary independent review/approval gates; no new tests or infrastructure. Preserve SPEC/DESIGN, runtime, policy, templates and schemas. Update PR #773 while respecting its existing GitHub blocker and rules; no external publication.
