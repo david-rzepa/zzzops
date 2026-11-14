@@ -40,7 +40,7 @@ class BaseJourney(Journey):
         wtd = self.A.worktree(g)
         c = self.A.start(g, "test_design")
         wtd.commit(tests or {f"tests/t{g}.txt": "t1\n"}, f"test: G{g}")
-        self.A.submit(g, "test_design", c, {"commands": ["true"]})
+        self.A.submit(g, "test_design", c, {"commands": ["true"], "cost": {}})
         self.review(self.B, g, "review_tests")
         c = self.A.start(g, "implement")
         wtd.commit(code or {f"src/m{g}.py": "x = 1\n"}, f"feat: G{g}")
@@ -90,10 +90,12 @@ class RestackTests(BaseJourney):
         self.assertEqual(wtd.git("rev-parse", "HEAD"), self.w.remote_git("rev-parse", f"refs/heads/zzzops/work/g{g}"))
         self.assertTrue(wtd.git("merge-base", "--is-ancestor", dev, "HEAD") == "")
 
-    def test_clean_restack_carries_and_reruns_only_tree_bound_nodes(self):
+    def test_clean_restack_carries_and_reruns_tree_and_base_bound_nodes(self):
         g = self.goal()
         self.deliver(g)
-        before = {n: self.record(g, n)["attempt"] for n in ("design", "approve_design", "review_tests", "review_impl")}
+        before = {n: self.record(g, n)["attempt"] for n in
+                  ("design", "review_design", "adversary_design", "filter_design", "approve_design",
+                   "review_tests", "review_impl", "filter_impl")}
         self.w.push_dev({"other.txt": "o\n"})
         self.w.ok("a", "reopen", str(g), "base", "--note", "dev moved")
         out = self.op(g, "base")
@@ -102,11 +104,14 @@ class RestackTests(BaseJourney):
         self.assertEqual("ready (stale: inputs.code)", st["run_tests"])
         self.assertTrue(self.op(g, "run_tests")["ran"]["ok"])
         st = self.states(g)
-        for n in ("review_tests", "review_impl", "test_design", "implement", "design", "approve_design"):
+        self.assertEqual("ready (stale: inputs.base)", st["review_impl"])
+        self.review(self.B, g, "review_impl")
+        st = self.states(g)
+        for n in (*before, "test_design", "implement"):
             self.assertEqual("current", st[n], (n, st))
         self.assertEqual("needs_human (approve)", st["approve_merge"])
         after = {n: self.record(g, n)["attempt"] for n in before}
-        self.assertEqual(before, after)
+        self.assertEqual({n: attempt + (n == "review_impl") for n, attempt in before.items()}, after)
         self.assertEqual("base", self.record(g, "implement")["carried_by"])
 
     def resolve(self, wtd, files):
@@ -156,7 +161,7 @@ class RestackTests(BaseJourney):
         out = self.op(g, "base")
         self.assertEqual([], out.get("carried") or [])
         c = self.A.start(g, "test_design")
-        self.A.submit(g, "test_design", c, {"commands": ["true"]})
+        self.A.submit(g, "test_design", c, {"commands": ["true"], "cost": {}})
         record = self.record(g, "test_design")
         cp = record["output"]["tests"]
         tests = cp["commit"]
@@ -200,7 +205,8 @@ class StackTests(BaseJourney):
         self.integrate(a)
         b = self.w.new(title="B", depends_on=[a])["created"]["id"]
         self.deliver(b)
-        approve_attempts = self.record(b, "review_impl")["attempt"]
+        before = {n: self.record(b, n)["attempt"] for n in
+                  ("design", "approve_design", "review_tests", "review_impl", "filter_impl")}
         # the dependency's PR head moves (a correction): b's base goes stale and restacks cleanly
         wa = self.A.worktree(a)
         self.w.ok("a", "reopen", str(a), "implement", "--note", "polish")
@@ -214,8 +220,11 @@ class StackTests(BaseJourney):
         out = self.op(b, "base")
         self.assertEqual(["test_design", "implement"], out["carried"])
         self.op(b, "run_tests")
+        self.assertEqual("ready (stale: inputs.base)", self.states(b)["review_impl"])
+        self.review(self.B, b, "review_impl")
         self.assertEqual("current", self.states(b)["review_impl"])
-        self.assertEqual(approve_attempts, self.record(b, "review_impl")["attempt"])
+        after = {n: self.record(b, n)["attempt"] for n in before}
+        self.assertEqual({n: attempt + (n == "review_impl") for n, attempt in before.items()}, after)
 
     def test_two_dependencies_combine_and_transitive_ones_do_not(self):
         a = self.goal()

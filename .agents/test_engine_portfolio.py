@@ -52,10 +52,14 @@ class DependencyTests(Base):
         s = self.s
         s.goal(1001)
         s.goal(1002, deps=[1001])
-        # the dependent's design waits for the dependency's reviewed design only
+        # The dependent waits for the current reviewed design, including the filter join.
         self.assertEqual("blocked", s.st(1002, self.n("design"))["name"])
         s.step(1001, self.n("design"))
         s.step(1001, self.n("review_design"))
+        self.assertEqual("blocked", s.st(1002, self.n("design"))["name"])
+        s.step(1001, self.n("adversary_design"))
+        self.assertEqual("blocked", s.st(1002, self.n("design"))["name"])
+        s.step(1001, self.n("filter_design"))
         self.assertEqual("ready", s.st(1002, self.n("design"))["name"])
         out = self.next()
         self.assertIn((1002, self.n("design")), [(a["goal"], a["node"]) for a in out["actions"]])
@@ -147,9 +151,7 @@ class GoalLevelTests(Base):
     def test_budget_suppresses_agent_actions_but_not_ops_or_humans(self):
         s = self.s
         s.goal(1, budget=0)
-        s.step(1, self.n("design"))
-        s.step(1, self.n("review_design"))
-        s.start(1, self.n("approve_design"))if False else None
+        self.drive_to(1, "approve_design")
         s.answer(1, self.n("approve_design"), decision="changes_requested", quote="redo")
         s.step(1, self.n("design"))                                  # a counted re-run: 1 > 0
         res = s.eval().goals[1]
@@ -158,12 +160,14 @@ class GoalLevelTests(Base):
         self.assertEqual([], [a for a in out["actions"] if a["kind"] == "agent"])
         b = [i for i in out["needs_human"] if i["kind"] == "budget"][0]
         self.assertIn("used 1 correction runs (limit 0)", b["question"])
-        self.assertEqual({"budget": 1 + 3 * 6}, b["options"][0]["file"]["set"])
+        self.assertEqual({"budget": res.budget["used"] + 3 * res.budget["agents"]},
+                         b["options"][0]["file"]["set"])
 
-    def test_default_budget_is_eighteen(self):
+    def test_default_budget_is_three_runs_per_agent(self):
         s = self.s
         s.goal(1)
-        self.assertEqual(18, s.eval().goals[1].budget["limit"])
+        agents = [n for n, nd in s.graph(1).nodes.items() if nd["kind"] == "agent"]
+        self.assertEqual(3 * len(agents), s.eval().goals[1].budget["limit"])
 
     def test_stale_on_def_or_policy_does_not_count(self):
         s = self.s
@@ -176,8 +180,7 @@ class GoalLevelTests(Base):
     def test_crash_loop_on_over_budget_agent_prints_raise_first(self):
         s = self.s
         s.goal(1, budget=0)
-        s.step(1, self.n("design"))
-        s.step(1, self.n("review_design"))
+        self.drive_to(1, "approve_design")
         s.answer(1, self.n("approve_design"), decision="changes_requested", quote="redo")
         s.step(1, self.n("design"))
         s.answer(1, self.n("approve_design")) if s.st(1, self.n("approve_design"))["name"] == "needs_human" else None

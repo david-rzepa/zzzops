@@ -47,26 +47,23 @@ class DefaultNoticeFollowups(unittest.TestCase):
             self.assertTrue(command.startswith("& 'git' "))
             self.assertIn("'Dave''s defaults/$literal.md'", command)
 
-    def test_printed_diff_merge_and_recheck_run_in_powershell(self):
+    def test_manual_diff_and_recheck_run_in_powershell(self):
         executable = shutil.which("pwsh") or shutil.which("powershell")
         if not executable:
             self.skipTest("PowerShell is unavailable; native Windows runners provide it")
         with tempfile.TemporaryDirectory(prefix="Dave's defaults $literal ") as tmp:
             root = Path(tmp)
-            old, new, local = [root / p for p in ("old default.md", "new default.md", "here.md")]
-            old.write_text("before\n")
-            new.write_text("after\n")
+            shipped, local = [root / p for p in ("current default.md", "here.md")]
+            shipped.write_text("after\n")
             local.write_text("before\n")
             def run(command):
                 return subprocess.run([executable, "-NoProfile", "-NonInteractive", "-Command", command],
                                       cwd=tmp, capture_output=True, text=True)
             with patch.object(defaults, "POWERSHELL", True):
-                result = run(defaults.shell("git", "diff", "--no-index", "--", old, new))
+                result = run(defaults.shell("git", "diff", "--no-index", "--", local, shipped))
                 self.assertEqual(1, result.returncode, result.stderr)
                 self.assertIn("+after", result.stdout)
-                result = run(defaults.shell("git", "merge-file", local, old, new))
-                self.assertEqual(0, result.returncode, result.stderr)
-                self.assertEqual("after\n", local.read_text())
+                self.assertEqual("before\n", local.read_text(), "manual comparison preserves the local choice")
                 policy = root / "repository policy"
                 shutil.copytree(fx.TEMPLATES, policy)
                 # Without an override, Python/entrypoint paths are quoted too.

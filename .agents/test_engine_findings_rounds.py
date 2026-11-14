@@ -42,6 +42,7 @@ from engine import schemas
 from engine.card import previous
 from engine.canon import canonical
 from engine.errors import Refused
+from engine.ops import OPS
 from test_engine_lifecycle import Journey
 
 CAPS_DIR = fx.PLUGIN_CODE / "engine" / "capabilities"
@@ -77,6 +78,7 @@ class SimBase(unittest.TestCase):
 
     def setUp(self):
         self.s = Sim(workflow=self.workflow)
+        self.assertEqual([], schemas.validate_workflow(self.s.workflow, self.s.policy, fx.prompt_exists, OPS))
 
     def st(self, n, g=1):
         return self.s.st(g, n)
@@ -101,7 +103,26 @@ class SimBase(unittest.TestCase):
 
     def review(self, n, findings, decision=None, g=1):
         self.s.start(g, n)
-        return self.s.submit(g, n, findings=findings, decision=decision)
+        nd = self.s.graph(g).nodes[n]
+        prepared = [dict(f) for f in findings]
+        for finding in prepared:
+            if "id" not in finding and nd.get("lenses"):
+                finding.setdefault("lens", self.s.graph(g).applied_lenses(n, self.s.docs[g]["skip"])[0])
+            if "id" not in finding and nd.get("review", {}).get("filter"):
+                finding.setdefault("impact", "The requested behavior is incorrect.")
+                finding.setdefault("material", True)
+        record = self.s.submit(g, n, findings=prepared, decision=decision)
+        # Current default reviews publish their corrections at the declared
+        # filter join. The small lens scenario deliberately controls its filter.
+        flt = nd.get("review", {}).get("filter")
+        if self.workflow is None and flt:
+            for sibling, definition in self.s.graph(g).nodes.items():
+                if (sibling != n and definition.get("review", {}).get("filter") == flt
+                        and self.s.st(g, sibling)["name"] == "ready"):
+                    self.s.step(g, sibling)
+            if self.s.st(g, flt)["name"] == "ready":
+                self.s.step(g, flt)
+        return record
 
     def refused(self, n, findings, decision=None, g=1) -> Refused:
         self.s.start(g, n)
@@ -115,15 +136,39 @@ def lens_workflow():
     return {"schema": 1, "graphs": {"default": {"terminal": ["approve"], "nodes": {
         "design": {"kind": "agent", "stage": "discovery", "prompt": "design.md",
                    "inputs": {"spec": {"from": "goal.spec"}}, "outputs": {"summary": "text", "doc": "artifact"}},
-        "lens": {"kind": "agent", "stage": "discovery", "prompt": "review_design.md",
+        "lens": {"kind": "agent", "stage": "discovery", "prompt": "review.md",
                  "review": {"subject": "design", "filter": "filt"},
                  "inputs": {"spec": {"from": "goal.spec"}, "doc": {"from": "design.doc"}}},
         "filt": {"kind": "agent", "stage": "discovery", "prompt": "design.md", "skippable": False,
                  "inputs": {"spec": {"from": "goal.spec"}, "doc": {"from": "design.doc"},
-                            "lens": {"from": "lens.summary"}},
+                            "lens": {"from": "lens.summary", "optional": True}},
                  "outputs": {"summary": "text", "verdicts": "object"}},
         "approve": {"kind": "human", "stage": "discovery", "prompt": "approve_design.md", "review": {"subject": "design"},
                     "inputs": {"summary": {"from": "design.summary"}, "filter": {"from": "filt.summary"}}}}}}}
+
+
+def restatement_workflow():
+    """A single author/reviewer pair isolates closed-id record rules from filter joins."""
+    source = fx.load_template("workflow.json")["graphs"]["default"]["nodes"]
+    design, review = source["design"], source["review_design"]
+    design["inputs"] = {"spec": {"from": "goal.spec"}}
+    review["review"] = {"subject": "design"}
+    review.pop("lenses")
+    return {"schema": 1, "graphs": {"default": {"terminal": ["review_design"],
+            "nodes": {"design": design, "review_design": review}}}}
+
+
+def follows_workflow():
+    """Six nodes cover checkpoint targets and check reruns with an unfiltered review."""
+    source = fx.stub_base_workflow()["graphs"]["default"]["nodes"]
+    nodes = {n: source[n] for n in ("design", "base", "test_design", "implement", "run_tests", "review_impl")}
+    nodes["design"]["inputs"] = {"spec": {"from": "goal.spec"}}
+    nodes["base"]["inputs"] = {}
+    nodes["implement"]["inputs"].pop("tests_review")
+    nodes["review_impl"]["inputs"].pop("base")
+    nodes["review_impl"]["review"] = {"subject": "implement"}
+    nodes["review_impl"].pop("lenses")
+    return {"schema": 1, "graphs": {"default": {"terminal": ["review_impl"], "nodes": nodes}}}
 
 
 # --------------------------------------------------------------------------------------------- 1-5: carry
@@ -227,6 +272,8 @@ class LensCarryTests(SimBase):
 
 
 class RestatementTests(SimBase):
+    workflow = restatement_workflow()
+
     def setup_rounds(self):
         """review_design:1 raises F1, F2, F3; round 2 resolves F1, keeps F2, and F3 is waived (as edit does)."""
         self.s.goal(1)
@@ -280,6 +327,8 @@ class RestatementTests(SimBase):
 
 
 class FollowsRuleTests(SimBase):
+    workflow = follows_workflow()
+
     def impl_finding(self, text="rename x", target=None):
         self.s.goal(1)
         self.to("review_impl")
@@ -489,10 +538,12 @@ class FollowsJourney(Journey):
                       artifact="# D2\n")
         return self.B.start(g, "review_design")
 
-    def follow_up(self):
+    def follow_up(self, card):
         return {"decision": "changes_requested", "summary": "half done", "findings": [
             {"id": "review_design:1:1", "status": "resolved"},
-            {"text": "the rollback half is still missing", "follows": "review_design:1:1"}]}
+            {"text": "the rollback half is still missing", "follows": "review_design:1:1",
+             "lens": card["lenses"]["apply"][0],
+             "impact": "The rollback cannot be carried out safely.", "material": True}]}
 
 
 class FollowsGateTests(FollowsJourney):
@@ -500,7 +551,7 @@ class FollowsGateTests(FollowsJourney):
         g = self.goal()
         c = self.first_round(g)
         self.assertNotIn("follows", c["output_schema"]["findings"])
-        rc, err = self.B.submit(g, "review_design", c, self.follow_up(), artifact="# r\n", ok=False)
+        rc, err = self.B.submit(g, "review_design", c, self.follow_up(c), artifact="# r\n", ok=False)
         self.assertEqual("validation", err["error"]["code"], err)
         msg = err["error"]["message"]
         if G1027_MERGED:
@@ -524,7 +575,8 @@ class FollowsRoundTripTests(FollowsJourney):
         g = self.goal()
         c = self.first_round(g)
         self.assertIn("follows", c["output_schema"]["findings"])          # mentioned once it is required
-        self.B.submit(g, "review_design", c, self.follow_up(), artifact="# r\n")
+        self.B.submit(g, "review_design", c, self.follow_up(c), artifact="# r\n")
+        self.finish_review_join(self.B, g, "review_design")
         doc = self.show(g)["goal"]
         new = next(f for f in doc["records"]["review_design"]["findings"] if f["id"] == "review_design:2:1")
         self.assertEqual(("review_design:1:1", "design", False), (new["follows"], new["target"], new["upheld"]))
@@ -541,6 +593,7 @@ class FollowsRoundTripTests(FollowsJourney):
         self.B.submit(g, "review_design", c, {"decision": "approved", "summary": "ok",
                                               "findings": [{"id": "review_design:2:1", "status": "resolved"}]},
                       artifact="# ok\n")
+        self.finish_review_join(self.B, g, "review_design")
         item = self.item(self.w.ok("a", "next", "--goal", str(g)), "approve_design")
         self.assertIn("follows: review_design:2:1 ← review_design:1:1", item["facts"])
 

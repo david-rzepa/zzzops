@@ -11,10 +11,18 @@ from engine.schemas import build_graph
 
 class CostAdoptionTests(unittest.TestCase):
     def test_adding_required_cost_output_stales_writer_and_preserves_prior_evidence(self):
-        sim = Sim()
+        # Start with only the cost declaration absent from the current graph;
+        # adoption must change a previously completed writer's definition.
+        workflow = engine_fixtures.load_template("workflow.json")
+        nodes = workflow["graphs"]["default"]["nodes"]
+        nodes["test_design"]["outputs"].pop("cost")
+        for node in ("review_tests", "review_impl"):
+            nodes[node]["inputs"].pop("cost")
+        sim = Sim(workflow=workflow)
         sim.goal(1)
         self.assertTrue(sim.drive(1, until="review_impl"))
         previous = copy.deepcopy(sim.docs[1]["records"]["test_design"])
+        self.assertNotIn("cost", previous["output"])
         workflow = copy.deepcopy(sim.workflow)
         nodes = workflow["graphs"]["default"]["nodes"]
         nodes["test_design"]["outputs"]["cost"] = "object"

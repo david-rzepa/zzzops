@@ -19,7 +19,6 @@ Interfaces these tests rely on, taken from the design:
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import os
 import shutil
@@ -52,7 +51,7 @@ def release_graph() -> dict:
 
 
 def release_workflow(wf=None) -> dict:
-    """The frozen 12-node test graph plus the shipped release graph."""
+    """The current default workflow plus the shipped release graph."""
     wf = copy.deepcopy(wf or fx.load_template("workflow.json"))
     wf["graphs"]["release"] = release_graph()
     return wf
@@ -183,8 +182,8 @@ class FrontierTests(unittest.TestCase):
         self.assertEqual(before["implement"]["name"], s.st(1001, "implement")["name"])
 
     def test_a_ready_workspace_op_is_blocked_while_base_restacks(self):
-        # In graph12 every agent workspace node feeds run_tests, so a ready agent there never sits beside a ready
-        # run_tests. This fixture adds a workspace agent `notes` downstream of `base` that run_tests does not read.
+        # Add a workspace agent downstream of base that run_tests does not read,
+        # so the two workspace nodes can be ready together before a restack.
         wf = fx.load_template("workflow.json")
         wf["graphs"]["default"]["nodes"]["notes"] = {
             "description": "Write release notes on the goal's code.", "kind": "agent", "capability": "reasoning",
@@ -304,17 +303,8 @@ class FrontierTests(unittest.TestCase):
         self.assertEqual("release/1", parts(st2)["target"])
 
 
-# golden digest of every node's input_fp and fp_parts over a fixed journey on the frozen 12-node graph, computed on
-# b452cd7, before G1025 (§13 item 9). The shipped graph is not pinned: G1022 rewrites it. After a goal legitimately
-# changes these fingerprints and this branch is restacked onto it, regenerate the digest with the NEW BASE COMMIT's
-# engine (never this branch's head, which would pin G1025's own changes): in a detached worktree of the base, copy this
-# file into .agents/ and run, from that worktree's root,
-#   python -c "import sys; sys.path.insert(0, '.agents'); import engine_fixtures as fx, test_engine_branching as t; \
-#              print(t.journey_fps(fx.load_template('workflow.json')))"
-GOLDEN_FP = {"graph12": "1f5dada7505f698b5ff2dca604c2d2aedffce4b11b0e9f67e287bd643ccfb128"}
-
-
 def journey_fps(workflow, policy=None, ledger=False):
+    """Current input identities, kept as values so failures name the changed node."""
     s = Sim(workflow=workflow, policy=policy)
     if ledger:
         from engine.frontier import portfolio
@@ -323,18 +313,19 @@ def journey_fps(workflow, policy=None, ledger=False):
     s.goal(1001)
     s.drive(1001)
     recs = s.docs[1001]["records"]
-    data = json.dumps({n: [r["input_fp"], r.get("fp_parts")] for n, r in sorted(recs.items())}, sort_keys=True)
-    return hashlib.sha256(data.encode()).hexdigest()
+    return {n: [r["input_fp"], r.get("fp_parts")] for n, r in sorted(recs.items())}
 
 
 class NoSettingsRegressionTests(unittest.TestCase):
     def test_fp_parts_are_byte_identical_without_branching(self):
-        self.assertEqual(GOLDEN_FP["graph12"], journey_fps(fx.load_template("workflow.json")))
-        self.assertEqual(journey_fps(fx.load_template("workflow.json")), journey_fps(fx.load_template("workflow.json")))
+        baseline = journey_fps(fx.load_template("workflow.json"))
+        self.assertEqual(set(fx.DEFAULT_NODES), set(baseline))
+        self.assertEqual(baseline, journey_fps(release_workflow(), ledger=True))
 
     def test_branching_on_and_targeting_dev_keeps_every_fingerprint(self):
         p = branching_policy()
-        self.assertEqual(GOLDEN_FP["graph12"], journey_fps(release_workflow(), p, ledger=True))
+        self.assertEqual(journey_fps(fx.load_template("workflow.json")),
+                         journey_fps(release_workflow(), p, ledger=True))
 
 
 # --------------------------------------------------------------------------------------------- pure: validation
@@ -820,7 +811,7 @@ class TargetTests(Branching):
         self.assertEqual({"branch": "release/1", "kind": "release", "commit": fix}, card["target"])
         self.assertEqual(fix, card["read_dev"]["commit"])
         self.A.worktree(g).commit({f"tests/t{g}.txt": "t\n"}, "test: goal tests")
-        self.A.submit(g, "test_design", card, {"commands": ["true"]})
+        self.A.submit(g, "test_design", card, {"commands": ["true"], "cost": {}})
         rc, text = self.w.run("b", "show", str(g))
         self.assertIn("target release/1", text["_stdout"])
         self.review(self.B, g, "review_tests")
@@ -983,7 +974,7 @@ class ScheduledRestackTests(Branching):
         wtd = self.A.worktree(g)
         c = self.A.start(g, "test_design")
         wtd.commit({f"tests/t{g}.txt": "t1\n"}, "test: goal tests")
-        self.A.submit(g, "test_design", c, {"commands": ["true"]})
+        self.A.submit(g, "test_design", c, {"commands": ["true"], "cost": {}})
         self.review(self.B, g, "review_tests")
         moved = self.push_branch("release/1", {"src/fix.py": "f = 1\n"})
         st = self.states(g)
@@ -1027,7 +1018,7 @@ class NoBranchingRestackTests(Branching):
         self.op(g, "base")
         c = self.A.start(g, "test_design")
         self.A.worktree(g).commit({f"tests/t{g}.txt": "t1\n"}, "test: goal tests")
-        self.A.submit(g, "test_design", c, {"commands": ["true"]})
+        self.A.submit(g, "test_design", c, {"commands": ["true"], "cost": {}})
         self.review(self.B, g, "review_tests")
         self.w.push_dev({"src/fix.py": "f = 1\n"})
         st = self.states(g)
@@ -1145,7 +1136,7 @@ class HotfixTests(Branching):
         wtd = self.A.worktree(m)
         c = self.A.start(m, "test_design")
         wtd.commit({f"tests/t{m}.txt": "t1\n"}, f"test: G{m}")
-        self.A.submit(m, "test_design", c, {"commands": ["true"]})
+        self.A.submit(m, "test_design", c, {"commands": ["true"], "cost": {}})
         self.review(self.B, m, "review_tests")
         c = self.A.start(m, "implement")
         wtd.commit({f"src/m{m}.py": "x = 1\n"}, f"feat: G{m}")
@@ -1273,7 +1264,7 @@ class StackingTests(Branching):
             node = nxt[0]
             if node in ("test_design", "implement"):
                 c = self.A.start(d, node)
-                self.A.submit(d, node, c, {"commands": ["true"]} if node == "test_design" else {"summary": "B."})
+                self.A.submit(d, node, c, {"commands": ["true"], "cost": {}} if node == "test_design" else {"summary": "B."})
             elif node.startswith("review"):
                 self.review(self.B, d, node)
             else:

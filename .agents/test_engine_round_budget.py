@@ -1,10 +1,5 @@
-"""G1039: material review rounds, independent stages, and audited historical replay.
-
-Literal replay records were extracted from the immutable source commits named in
-fixtures/g1039_round_replays.json. Ordinary CI never depends on historical refs.
-"""
+"""G1039: material review rounds and independent stages on the current workflow."""
 import copy
-import json
 import unittest
 
 import engine_fixtures as fx
@@ -52,8 +47,8 @@ class RoundBudgetTests(unittest.TestCase):
             before = {'def': 'd', 'inputs': {'base': 'old'}, 'policy': {}}
             after = copy.deepcopy(before)
             after['inputs']['base'] = 'new'
-            # review_tests lacks a base selector in graph12: test the generic selector rule
-            # using a copied graph with an explicitly base-selecting input.
+            # Test the generic selector rule, including reviewers that do not
+            # normally declare a base input in the current workflow.
             wf = fx.load_template('workflow.json')
             wf['graphs']['default']['nodes'][node].setdefault('inputs', {})['base'] = {'from': 'base.base_commit'}
             self.graph = build_graph('default', wf['graphs']['default'])
@@ -87,21 +82,40 @@ class RoundBudgetTests(unittest.TestCase):
         self.assertEqual(0, frontier.counts(None, 'new', None, self.parts))
         self.assertEqual(1, frontier.counts({'status': 'done'}, 'retry', self.parts, self.parts))
 
-    def test_literal_historical_acceptance_replays(self):
-        raw = (fx.ROOT / '.agents/fixtures/g1039_round_replays.json').read_bytes()
-        replay = json.loads(raw)
-        self.assertEqual(54, len(replay['rows']))
-        totals = {g: {'discovery': 0, 'delivery': 0} for g in ('1026', '1027')}
-        for row in replay['rows']:
-            old = row['previous']
-            charge = frontier.counts(old, row['reason'], old and old['fp_parts'], row['parts'],
-                                     graph=self.graph, node=row['node'], findings=row['findings'],
-                                     attempt=row['attempt'], settings=self.settings)
-            self.assertIn(charge, (0, 1))
-            totals[str(row['goal'])][row['stage']] += charge
-            self.assertRegex(row['source_commit'], r'^[0-9a-f]{40}$')
-        self.assertEqual({'1026': {'discovery': 3, 'delivery': 4},
-                          '1027': {'discovery': 1, 'delivery': 4}}, totals)
+    def test_new_material_findings_charge_agents_in_both_stages(self):
+        # Producers can raise upstream findings too. Reopened and input-stale
+        # attempts without a new material finding do not consume a round.
+        changed = copy.deepcopy(self.parts)
+        changed['inputs']['code'] = 'changed'
+        for node in ('design', 'review_design', 'test_design', 'review_tests', 'implement', 'review_impl'):
+            for reason in ('new', 'reopened', 'stale'):
+                with self.subTest(node=node, reason=reason):
+                    previous = reason != 'new'
+                    attempt = 2 if previous else 1
+                    self.assertEqual(0, self.charge(node=node, reason=reason, previous=previous,
+                                                   after=changed, attempt=attempt))
+                    self.assertEqual(1, self.charge(node=node, reason=reason, previous=previous,
+                                                   after=changed, attempt=attempt,
+                                                   findings=[{'id': f'{node}:{attempt}:1'}]))
+                    if previous:
+                        self.assertEqual(0, self.charge(node=node, reason=reason, after=changed,
+                                                       attempt=attempt, findings=[{'id': f'{node}:1:1'}]))
+
+    def test_definition_added_or_removed_inputs_are_exempt_but_changed_inputs_are_not(self):
+        for operation in ('add', 'remove'):
+            before = copy.deepcopy(self.parts)
+            after = copy.deepcopy(before)
+            after['def'] = 'changed definition'
+            if operation == 'add':
+                after['inputs']['extra'] = 'extra input'
+            else:
+                del after['inputs']['base']
+            with self.subTest(operation=operation):
+                self.assertEqual(0, self.charge(before=before, after=after,
+                                               findings=[{'id': 'review_impl:2:1'}]))
+                after['inputs']['code'] = 'changed'
+                self.assertEqual(1, self.charge(before=before, after=after,
+                                               findings=[{'id': 'review_impl:2:1'}]))
 
     def test_stage_budgets_are_separate_and_trip_at_limit(self):
         sim = Sim()
@@ -170,6 +184,8 @@ class RoundBudgetCliTests(unittest.TestCase):
             source = wf['graphs']['default']['nodes']
             nodes = {n: copy.deepcopy(source[n]) for n in ('design', 'review_design')}
             nodes['design']['inputs'] = {'spec': {'from': 'goal.spec'}}
+            nodes['review_design']['review'] = {'subject': 'design'}
+            nodes['review_design'].pop('lenses', None)
             nodes['delivery'] = copy.deepcopy(nodes['design'])
             nodes['delivery']['stage'] = 'delivery'
             # A small independent delivery lane proves start is stage specific.

@@ -38,7 +38,7 @@ class TemplateTests(unittest.TestCase):
         self.assertEqual([], schemas.validate_policy(self.policy))
         self.assertEqual([], schemas.validate_workflow(self.wf, self.policy, fx.prompt_exists, OPS))
 
-    def test_default_graph_has_twelve_nodes_and_replay_pos(self):
+    def test_current_default_graph_has_replay_pos(self):
         nodes = self.wf["graphs"]["default"]["nodes"]
         self.assertEqual(fx.DEFAULT_NODES, list(nodes))
         self.assertIn("replay_pos", nodes["base"]["outputs"])
@@ -238,7 +238,8 @@ class InputFileTests(unittest.TestCase):
         self.g = schemas.build_graph("default", fx.load_template("workflow.json")["graphs"]["default"])
 
     def test_submit_outputs(self):
-        self.assertEqual([], schemas.validate_submit_output(self.g, "test_design", {"commands": ["make test"]}))
+        self.assertEqual([], schemas.validate_submit_output(self.g, "test_design", {"commands": ["make test"], "cost": {}}))
+        self.assertTrue(schemas.validate_submit_output(self.g, "test_design", {"commands": ["make test"]}))
         self.assertEqual([], schemas.validate_submit_output(
             self.g, "implement", {"summary": "s", "code": {"commit": "a" * 40}, "responses": {"x:1:1": "fixed: done"}}))
         self.assertTrue(schemas.validate_submit_output(self.g, "implement", {"summary": "s", "responses": {"x": "ok"}}))

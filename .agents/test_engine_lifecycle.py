@@ -47,11 +47,59 @@ class Journey(unittest.TestCase):
         return self.w.ok(clone, "answer", str(g), self.n(node), "--fp", it["fp"], "--file", self.w.file(ans))
 
     def review(self, agent, g, node, decision="approved", findings=None):
+        """Review a subject and complete its declared reviewer/filter join."""
         c = agent.start(g, self.n(node))
         prior = [{"id": f["id"], "status": "resolved"} for f in (c.get("previous") or {}).get("findings", [])
                  if f["status"] == "open"]
-        out = {"decision": decision, "summary": "review", "findings": prior + (findings or [])}
-        return agent.submit(g, self.n(node), c, out, artifact="# review\n")
+        nd = self.w.workflow["graphs"]["default"]["nodes"][self.n(node)]
+        new = [dict(f) for f in findings or []]
+        for finding in new:
+            if "id" in finding:
+                continue
+            if nd.get("lenses"):
+                finding.setdefault("lens", c["lenses"]["apply"][0])
+            if nd.get("review", {}).get("filter"):
+                finding.setdefault("impact", "The requested behavior is incorrect.")
+                finding.setdefault("material", True)
+        out = {"decision": decision, "summary": "review", "findings": prior + new}
+        result = agent.submit(g, self.n(node), c, out, artifact="# review\n")
+        return self.finish_review_join(agent, g, node) or result
+
+    def finish_review_join(self, agent, g, node):
+        """Complete ready sibling reviews/filter after a direct reviewer submit.
+
+        Tests of an incomplete join submit their reviewer card directly and
+        deliberately omit this helper. Current or explicitly skipped reviewers
+        retain their state; a blocked join fails instead of hiding a new gate.
+        """
+        nodes = self.w.workflow["graphs"]["default"]["nodes"]
+        flt = nodes[self.n(node)].get("review", {}).get("filter")
+        if not flt:
+            return None
+        result = None
+        states = self.show(g)["states"]
+        # Optional reviewers still run when ready; an optional input is no reason
+        # to omit a shipped node from these real CLI journeys.
+        for sibling, definition in nodes.items():
+            if sibling != self.n(node) and definition.get("review", {}).get("filter") == flt:
+                if states[sibling] == "current" or states[sibling].startswith("skipped"):
+                    continue
+                self.assertTrue(states[sibling].startswith("ready"), (sibling, states))
+                card = agent.start(g, sibling)
+                previous = [{"id": f["id"], "status": "resolved"}
+                            for f in (card.get("previous") or {}).get("findings", []) if f["status"] == "open"]
+                result = agent.submit(g, sibling, card,
+                                      {"decision": "approved", "summary": "review", "findings": previous},
+                                      artifact="# independent review\n")
+        states = self.show(g)["states"]
+        if states[flt] != "current":
+            self.assertTrue(states[flt].startswith("ready"), (flt, states))
+            judge = fx.Agent(self.w, agent.clone, "claude:cccc/filter")
+            card = judge.start(g, flt)
+            verdicts = {f["id"]: {"verdict": "note", "reason": "Optional review note."}
+                        for f in card.get("candidates", []) if not f["material"]}
+            result = judge.submit(g, flt, card, {"summary": "Filtered review.", "verdicts": verdicts})
+        return result
 
     def through_design(self, g):
         c = self.A.start(g, self.n("design"))
@@ -66,7 +114,7 @@ class Journey(unittest.TestCase):
         self.through_design(g)
         c = self.A.start(g, self.n("test_design"))
         self.A.worktree(g).commit({"tests/test_cut.py": "def test_cut():\n    assert cut() == 1\n"}, "test: cut")
-        self.A.submit(g, self.n("test_design"), c, {"commands": ["python -m pytest tests"]})
+        self.A.submit(g, self.n("test_design"), c, {"commands": ["python -m pytest tests"], "cost": {}})
         self.review(self.B, g, "review_tests")
 
     def through_impl(self, g):
@@ -144,7 +192,7 @@ class LeaseTests(Journey):
         self.A.worktree(g).commit({"tests/t.py": "x = 1\n"}, "test: t")
         goal_tip = self.w.remote_git("rev-parse", f"refs/heads/zzzops/goal/g{g}")
         self.w.ok("b", "start", str(g), self.n("test_design"), "--as", self.B.label, "--reclaim", "--force")
-        rc, err = self.A.submit(g, self.n("test_design"), c, {"commands": ["t"]}, ok=False)
+        rc, err = self.A.submit(g, self.n("test_design"), c, {"commands": ["t"], "cost": {}}, ok=False)
         self.assertEqual((3, "superseded"), (rc, err["error"]["code"]))
         self.assertIn("zzzops-salvage", err["error"]["hint"])
         self.assertEqual(goal_tip, self.w.remote_git("rev-parse", f"refs/heads/zzzops/goal/g{g}"))
@@ -234,12 +282,25 @@ class SubmitTests(Journey):
         self.A.submit(g, self.n("implement"), c, {"summary": "Built.", "responses": {fid: "fixed: handled"}})
 
     def test_dispute_reaches_reviewer_and_escalates(self):
+        # An unfiltered reviewer retries its rejected verdict even when the
+        # subject's output is unchanged. Filtered reviewers have different join
+        # semantics, covered by the current-graph material-reopen cases above.
+        self.w.bootstrap(workflow={"schema": 1, "graphs": {"default": {
+            "terminal": [self.n("review_impl")], "nodes": {
+                self.n("implement"): {"kind": "agent", "stage": "delivery", "prompt": "design.md",
+                                     "outputs": {"summary": "text", "doc": "artifact"}},
+                self.n("review_impl"): {"kind": "agent", "stage": "delivery", "prompt": "review.md",
+                                       "review": {"subject": self.n("implement")},
+                                       "inputs": {"doc": {"from": f"{self.n('implement')}.doc"}}}}}}})
         g = self.goal()
-        self.through_impl(g)
+        c = self.A.start(g, self.n("implement"))
+        self.A.submit(g, self.n("implement"), c, {"summary": "Built."}, artifact="# Code\n")
         self.review(self.B, g, "review_impl", "changes_requested", [{"text": "rename cut"}])
         c = self.A.start(g, self.n("implement"))
         fid = c["corrections"][0]["id"]
-        self.A.submit(g, self.n("implement"), c, {"summary": "Built.", "responses": {fid: "disputed: cut is the domain term"}})
+        self.A.submit(g, self.n("implement"), c,
+                      {"summary": "Built.", "responses": {fid: "disputed: cut is the domain term"}},
+                      artifact="# Code\n")
         out = self.w.ok("b", "next", "--goal", str(g))
         self.assertIn((self.n("review_impl"), "not_ok"), [(a["node"], a["reason"]) for a in out["actions"]])
         c = self.B.start(g, self.n("review_impl"))
@@ -271,7 +332,7 @@ class SubmitTests(Journey):
         fid = c["corrections"][0]["id"]
         head = self.A.worktree(g).git("rev-parse", "HEAD")
         self.assertNotIn("suggested_checkpoint", c)
-        self.A.submit(g, self.n("test_design"), c, {"commands": ["python -m pytest tests"],
+        self.A.submit(g, self.n("test_design"), c, {"commands": ["python -m pytest tests"], "cost": {},
                                                      "responses": {fid: "disputed: covered by test_cut"}})
         doc = self.show(g)
         after = doc["goal"]["records"][self.n("test_design")]["output"]["tests"]
@@ -297,7 +358,7 @@ class SubmitTests(Journey):
         c = self.A.start(g, self.n("test_design"))
         head = wtd.git("rev-parse", "HEAD")
         self.assertNotIn("suggested_checkpoint", c)
-        self.A.submit(g, self.n("test_design"), c, {"commands": ["python -m pytest tests"]})
+        self.A.submit(g, self.n("test_design"), c, {"commands": ["python -m pytest tests"], "cost": {}})
         rec = self.show(g)["goal"]["records"][self.n("test_design")]["output"]["tests"]
         self.assertEqual((head, moved), (rec["commit"], rec["base"]))
         from engine.identity import Identity
