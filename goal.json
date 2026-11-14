@@ -150,28 +150,28 @@
       "status": "done"
     },
     "design": {
-      "attempt": 7,
+      "attempt": 8,
       "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-14T17:04:33Z",
+      "finished_at": "2026-11-14T18:47:53Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
           "dep_designs": "v1:sha256:d0703625f9457fd9740830f12dd16828745df6edf4b11fa5787394a059e02855",
-          "spec": "v1:sha256:73bd62c790e63230e34d07e5650e64d5fbbf40846b9a3caff40d3f6e7f77130a"
+          "spec": "v1:sha256:ac36af7a5392b04435578723c09196211b5841cd0840836793092d73c249c10a"
         },
         "policy": {}
       },
-      "holder": "codex:wp1036/design-7",
-      "input_fp": "v1:sha256:e1f20077d67e04d0235d5ea001e866be20a80cfc386809a63d3a15008e53d031",
+      "holder": "codex:wp1036/design-8",
+      "input_fp": "v1:sha256:7a942c380589a98e4ed0b420cdcfcf1f37cc62269f6f98e1ae17dcd0cace0137",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "9c056c03d9f2e0238eadcef88eef497970e66e6a",
-          "commit": "e9879f02f796415e9497ad8431f6d2f6657466b4",
+          "blob": "7aa4db7dc9cac42eaaa2b947bb4097cf8152e896",
+          "commit": "6256e22ec52aecd7ca119503e7cda791c173df41",
           "path": ".zzzops/reviews/1036/design.md"
         },
-        "summary": "Refreshes the whitepaper design around deterministic progressive disclosure: state, frontier, next, task cards and recomputed context, with a practitioner front half and a technical audit back half. Preserves WD1–WD8, removes the superseded dogfood-report/evaluation gate, and binds core claims to checked dev source/build while labelling the unmerged release-summary extension separately. Plans synthetic correction/recovery examples, a pinned claim/source/test ledger, proportionate manual verification and candid disclosure of card/next size-bound discrepancies without engine changes."
+        "summary": "Replaces the audit-led whitepaper plan with an accessible conceptual paper that defines deterministic progressive disclosure generally in its first substantive sentence, then illustrates it through ZzzOps. Makes the mostly unopinionated engine and repository-owned customizable workflow, policy and prompts the main architectural philosophy, while moving existing technical evidence to a short appendix. Records all three latest owner instructions verbatim, preserves settled WD quotes with explicit supersession of technical-depth requirements, and keeps the manual checker and existing merge gates unchanged."
       },
       "reason": "stale",
       "status": "done"
