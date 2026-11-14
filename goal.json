@@ -9,6 +9,41 @@
   },
   "priority": "P1",
   "records": {
+    "adversary_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T20:51:07Z",
+      "fp_parts": {
+        "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
+        "inputs": {
+          "doc": "v1:blob:20590aebc3aa36067eb90c26660a95b5413cfc34",
+          "spec": "v1:sha256:11a93f93ff1a48e87b2d3421d95683c212cb50da9c2e1b77b874f3a46f6d360f"
+        },
+        "policy": {},
+        "subject": "v1:sha256:2645816db7d15d13cd72b73d54cb9fe7249dda33918792375f10fa246fe93dc2"
+      },
+      "holder": "codex:summary1045/adversary_design-1",
+      "input_fp": "v1:sha256:82bb964a33fcb8e1dfb037ea950daf826207791a5f0c2660be9ec60c4656d3d8",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "b2e530444d90646d052805e01c7b1ffb6c09cba7",
+          "commit": "9a4d5bc4bb4bc33cc12ecd020024be23ccc91635",
+          "path": ".zzzops/reviews/1045/adversary_design.md"
+        },
+        "summary": "Approved: exact-source adoption preserves truthful/unknown publication evidence, paused output, advisory-size priority and read-only behavior; fresh port validation remains required."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "20590aebc3aa36067eb90c26660a95b5413cfc34",
+          "commit": "fc3057a9a194e1779c1cdd239a7083b74aad68c4"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 1,
       "correction_runs": 0,
