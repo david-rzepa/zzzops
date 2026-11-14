@@ -158,6 +158,35 @@
       "reason": "new",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T21:02:38Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:92fb166bb2d877c78854032c50996843982ef4f5cff7b5a092fb2d8ca03148d7",
+          "doc": "v1:blob:20590aebc3aa36067eb90c26660a95b5413cfc34",
+          "tests": "v1:sha256:d5e0aaa5666396be76e0753dee303757ca3e26b8b216fd9924b09acec128e177"
+        },
+        "policy": {}
+      },
+      "holder": "codex:summary1045/implement-1",
+      "input_fp": "v1:sha256:63d9d6c00c1344343576ebcadb29162cf44fefcb30763890fa3f7b33d0016628",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "c455b09914b49fd65e169f91a4f79110e3e2540b",
+          "change": "afe0c076e33c6b736f43747c01170216dd1b94b5",
+          "commit": "fdeaf8e15dbbea5e88466a6e397cf2c33f682d5d",
+          "tree": "6765b23649a462213b0f5755aac59ea59a7632cb"
+        },
+        "summary": "Ports the reviewed 4ff release-summary implementation exactly: next.releases now derives Git-flow line progress and recorded production/back-merge evidence without changing execution behavior. The original frozen tests and all seven adopted source/support files match 4ff byte-for-byte; only minimal DESIGN/HISTORY bookkeeping was added. All 15 focused summary tests, 35 documentation checks, prompt budgets and whitespace checks pass locally, and the package build remains 0.0.0-dev a81bbe0dd4ce; required full validation and exact-head CI follow through the ordinary workflow."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 1,
       "correction_runs": 0,
