@@ -150,28 +150,28 @@
       "status": "done"
     },
     "design": {
-      "attempt": 8,
+      "attempt": 9,
       "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-14T18:47:53Z",
+      "finished_at": "2026-11-14T19:44:32Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
           "dep_designs": "v1:sha256:d0703625f9457fd9740830f12dd16828745df6edf4b11fa5787394a059e02855",
-          "spec": "v1:sha256:ac36af7a5392b04435578723c09196211b5841cd0840836793092d73c249c10a"
+          "spec": "v1:sha256:e86e62dabf813637e866b635680c1f962d5da0a87be9af2dbf8c873856ecb9f4"
         },
         "policy": {}
       },
-      "holder": "codex:wp1036/design-8",
-      "input_fp": "v1:sha256:7a942c380589a98e4ed0b420cdcfcf1f37cc62269f6f98e1ae17dcd0cace0137",
+      "holder": "codex:wp1036-r3/design-9",
+      "input_fp": "v1:sha256:59b9bcaf9aad4f0a0129f57688161832131c32f0996b78109514bc29e0f93434",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "7aa4db7dc9cac42eaaa2b947bb4097cf8152e896",
-          "commit": "6256e22ec52aecd7ca119503e7cda791c173df41",
+          "blob": "cf5f4303629f8dd290edc690a00d433058591e9f",
+          "commit": "9cbe96f76c13fa7b2b5685043ea368a200bcba55",
           "path": ".zzzops/reviews/1036/design.md"
         },
-        "summary": "Replaces the audit-led whitepaper plan with an accessible conceptual paper that defines deterministic progressive disclosure generally in its first substantive sentence, then illustrates it through ZzzOps. Makes the mostly unopinionated engine and repository-owned customizable workflow, policy and prompts the main architectural philosophy, while moving existing technical evidence to a short appendix. Records all three latest owner instructions verbatim, preserves settled WD quotes with explicit supersession of technical-depth requirements, and keeps the manual checker and existing merge gates unchanged."
+        "summary": "Simplifies the conceptual paper while making the frontier a set of eligible actions that supports independent parallel work and task-specific capability/model guidance. Separates implemented eligibility and routing guidance from coordinator/harness dispatch and proposed automated routing, and adds concrete Future Work applications across agentic software. Retires the obsolete manual evidence checker through test_design, removes bulky public evidence material, preserves prior owner choices and existing GitHub gates, and aligns paper, blog and README."
       },
       "reason": "stale",
       "status": "done"
