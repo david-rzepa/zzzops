@@ -48,35 +48,35 @@
       "status": "done"
     },
     "approve_design": {
-      "attempt": 5,
+      "attempt": 6,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-14T17:08:45Z",
+      "finished_at": "2026-11-14T18:52:36Z",
       "fp_parts": {
         "def": "v1:sha256:d04fc5094a85157b7e25b3020caaee316324161c59b30d25d4aabb2e5c24f0ed",
         "inputs": {
-          "doc": "v1:blob:9c056c03d9f2e0238eadcef88eef497970e66e6a",
-          "filter": "v1:sha256:91d1cf38903fcb293fd7392617f68a01be5306f7ac9fe5e1555c29722cdd83c1",
-          "summary": "v1:sha256:c013faaf98bb03a0c5db2b23952ff7fb9b168700a5279bf9df8f327aeeb5819a"
+          "doc": "v1:blob:7aa4db7dc9cac42eaaa2b947bb4097cf8152e896",
+          "filter": "v1:sha256:15e3eb945da35b9bf2a4871779cca1afc260bebbd0014308eb8b76a26c3d2b99",
+          "summary": "v1:sha256:492dc7dd32d2f96b247638d9e4465f584561f89f39f68cfe5f6021e551e9627d"
         },
         "policy": {},
-        "subject": "v1:sha256:160e82af71ae434dea78da8bb9c9284f8e1c7dfedf459d7063d4bfa0638c635f"
+        "subject": "v1:sha256:c50607aa459c786e1049eb50854d7323582ea1f47c037b4d0f1a181820b13aa6"
       },
       "holder": "human",
-      "input_fp": "v1:sha256:7d9718ebaf202068e00370c1525e1fd4eedc335618d7e307e02953cd06f40e75",
+      "input_fp": "v1:sha256:8331f7b3895a7ced8a34af733f027cbbb32eded66c78eb97b94a748090175c5d",
       "ok": true,
       "output": {
-        "decided_at": "2026-11-14T17:08:45Z",
+        "decided_at": "2026-11-14T18:52:36Z",
         "decided_by": "Codex (root agent), delegated by Dave",
         "decision": "approved",
         "quote": "Do not wait for my approval",
-        "summary": "Approve independently reviewed design attempt 7 for a source-grounded working whitepaper centered on deterministic progressive disclosure, preserving WD1–WD8 and applying the owner's November 14 clarification that dogfooding was a readiness check rather than a report/evaluation deliverable. No material findings or unresolved owner choices remain."
+        "summary": "Approve design 8 implementing the owner's three explicit revision requests: general definition-led DPD concept paper, accessible scientific argument focused on philosophy, and central mostly unopinionated engine/customizable opinionated workflow architecture. Existing technical evidence moves to an appendix. Independent reviews have no findings."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "9c056c03d9f2e0238eadcef88eef497970e66e6a",
-          "commit": "e9879f02f796415e9497ad8431f6d2f6657466b4"
+          "blob": "7aa4db7dc9cac42eaaa2b947bb4097cf8152e896",
+          "commit": "6256e22ec52aecd7ca119503e7cda791c173df41"
         }
       },
       "status": "done"
