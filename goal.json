@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-14T21:29:10Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [],
   "graph": "default",
   "id": 1045,
@@ -292,6 +297,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T21:29:10Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:25edab23325c5a7498ea946c01f158fcd09c622168f4fa16faaefbb2efffd12b"
+        },
+        "policy": {}
+      },
+      "holder": "codex:summary1045/merge-1",
+      "input_fp": "v1:sha256:982ed347f39cc5afb21264f92faeffd68435d5be47d3c1eafa9f16aa60a20448",
+      "ok": true,
+      "output": {
+        "merge_commit": "4bc7b4deba5f1a98595ab795cdb5c088c14b3c66",
+        "merged_at": "2026-11-14T21:26:49Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -689,6 +716,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Integrate the already implemented, reviewed, tested and installed release-summary improvement from commit 4ff4e3f188f613adbd22a0726c1bbde69eed9d1b (build 0.0.0-dev a81bbe0dd4ce) into dev through the ordinary goal workflow, so it is included in the intended owner release. The source base is c455b09914b49fd65e169f91a4f79110e3e2540b. Reuse the existing implementation and original 15 tests; do not start a new architectural exploration or redesign it. The owner expressly confirmed inclusion of the tested summaries. The old dogfood goal 1037 was closed publicly as superseded after feedback was gathered and acted on; it is not a dependency or an evidence/report gate.\n\nOutcome: existing next.releases gains read-only derived summaries of Git-flow release/hotfix lines, preserving existing fields and execution behavior. Show observed branch/head and production target, member counts/unfinished references, workflow progress, existing actions/blockers and recorded production/back-merge evidence. Closure/cancellation alone never proves publication; unavailable or malformed evidence stays unknown. Honor paused/offline behavior and keep advisory expansion from displacing actionable output; next --all retains full detail. Reuse node operation identities and locally hydrate closed line evidence without hydrating every closed member. Repository deployment is outside this view. No new scheduler, state, policy, approval or deployment gate.\n\nSource evidence: docs/superpowers/specs/2026-11-13-release-summary-design.md and docs/superpowers/plans/2026-11-13-release-summary.md at 4ff record the settled design, independent review fixes and all 1,136 frozen-source Python tests passing. Source files are the release_summary module and render/session/store changes, the existing .agents/test_engine_release_summary.py, and the SPEC amendment. Preserve exact existing product behavior. Apply any minimal normal in-repository DESIGN/HISTORY contract bookkeeping required for landing; no unrelated changes or dependency updates.\n\nAcceptance: original focused summary tests copied/reused through test_design, including real bare-Git/CLI journeys and read-only ref checks; implementation matches the tested4ff code except necessary integration/documentation bookkeeping; fastest local checks first, then unchanged required repository validation and exact-head CI; independent reviews/approvals completed with explicit owner authority; ready PR targets dev and merges only if normal GitHub rules permit. If blocked, report the exact actionable branch-rule blocker and ready PR rather than waiting/retrying or weakening rules. Existing standing approval delegation applies to routine approvals; do not invent owner answers.\n\nThis is release 1/P1 work; all remaining unrelated backlog goals are release 2. It is independent of whitepaper 1036 at source level; the release candidate must include both ready changes once merged to dev. Main release preparation uses existing repository semantic-release machinery and separate explicit owner release authority. Do not publish a release from this goal or fabricate the whitepaper release pin; that pin is updated through tracked work only after a real tag/version/commit is published.",
-  "state": "open",
+  "state": "closed",
   "title": "summarize Git-flow release progress in next"
 }
