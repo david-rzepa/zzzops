@@ -81,6 +81,33 @@
       },
       "status": "done"
     },
+    "base": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T21:40:47Z",
+      "fp_parts": {
+        "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
+        "inputs": {
+          "heads": "v1:sha256:180c957be464cefd1730c0c536212e66967fd0b7c367b576f968dc5755851064",
+          "merges": "v1:sha256:d5872d51a8c19677572480f2362e02477c81dfb9ecd5857d7628a644f41c21c3"
+        },
+        "policy": {}
+      },
+      "holder": "codex:paperpin1046/base-1",
+      "input_fp": "v1:sha256:4c416db92d718d28e1dc9a8a78dbe47a6a6e23469a57a5b7c141f3829716bdf5",
+      "ok": true,
+      "output": {
+        "base_commit": "4bc7b4deba5f1a98595ab795cdb5c088c14b3c66",
+        "branch": "zzzops/work/g1046",
+        "replay_map": {},
+        "replay_pos": {},
+        "stack": [],
+        "synced": null
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "design": {
       "attempt": 1,
       "correction_runs": 0,
