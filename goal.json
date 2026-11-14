@@ -477,15 +477,15 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T19:00:15Z",
+      "finished_at": "2026-11-14T19:56:35Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:f621a926acd49a6567d113299419712744c467ed30e61d80d643373880dedbd1",
-          "commands": "v1:sha256:59209d6540c69f6f10ab38ac61072fdddaaa6584f45a9b8a6dbda0ab529e814b"
+          "code": "v1:sha256:a7755b44958de1db6bde0fbee7c5f9a49294d9663157b035e6faaee9537d2434",
+          "commands": "v1:sha256:99cbc02e7c8d9c14ca6024edb8fd5db7ef20ff3bf0d4a0025b92906b4830d577"
         },
         "policy": {
           "verification": {
@@ -503,35 +503,27 @@
           ]
         }
       },
-      "holder": "codex:wp1036/run-tests-2",
-      "input_fp": "v1:sha256:5978feeffa7b71fb10bb231fd9664a11520b09745c913d1c278f88a67d3e1ac9",
+      "holder": "codex:wp1036-r3/run-tests-3",
+      "input_fp": "v1:sha256:d2ac9f89a48107f0a7bbf07d56a64c6aa2f5d486f41f2bb6acf867b0ead48d4f",
       "ok": true,
       "output": {
         "result": {
           "details": [
             {
-              "cmd": "python3 .agents/whitepaper_check.py",
+              "cmd": "git diff --check c455b09914b49fd65e169f91a4f79110e3e2540b -- README.md docs/WHITEPAPER.md docs/blog/release-1.md",
               "exit": 0,
-              "milliseconds": 356,
+              "milliseconds": 4,
               "seconds": 0,
               "source": "goal",
-              "tail": "primary: c455b09914b49fd65e169f91a4f79110e3e2540b; package build: 0.0.0-dev d0738ea601d8\nLedger: 11 claims; exact pinned references resolved\nSize discrepancies: {\"card-previous\": {\"bytes\": 8122, \"target\": 4096, \"previous_chars\": 4200, \"fixed_point\": true}, \"next-waiting\": {\"bytes\": 11270, \"target\": 8192, \"held_goals\": 1, \"dependents\": 150, \"waiting\": 150}}\nPlugin drift: none\n"
-            },
-            {
-              "cmd": "cd .agents && python3 -m unittest -v test_engine_card_budget.ShrinkBudgetTests test_engine_portfolio.RenderTests.test_determinism test_engine_portfolio.RenderTests.test_truncation_keeps_under_8k test_engine_portfolio.DependencyTests.test_held_dependency_is_a_wait_not_stuck test_engine_lifecycle.LeaseTests.test_submit_after_reclaim_is_fenced",
-              "exit": 0,
-              "milliseconds": 1597,
-              "seconds": 1,
-              "source": "goal",
-              "tail": "ws_a_card)\nG2, including a card of small instructions that today's shrink makes larger. ... ok\ntest_steps_run_in_order_argv_goes_first (test_engine_card_budget.ShrinkBudgetTests.test_steps_run_in_order_argv_goes_first)\nA card 100 bytes over the target loses only `argv`; prompt, instructions and summaries stay. ... ok\ntest_summaries_are_clipped_to_120_characters_and_keep_their_blob (test_engine_card_budget.ShrinkBudgetTests.test_summaries_are_clipped_to_120_characters_and_keep_their_blob) ... ok\ntest_determinism (test_engine_portfolio.RenderTests.test_determinism) ... ok\ntest_truncation_keeps_under_8k (test_engine_portfolio.RenderTests.test_truncation_keeps_under_8k) ... ok\ntest_held_dependency_is_a_wait_not_stuck (test_engine_portfolio.DependencyTests.test_held_dependency_is_a_wait_not_stuck) ... ok\ntest_submit_after_reclaim_is_fenced (test_engine_lifecycle.LeaseTests.test_submit_after_reclaim_is_fenced) ... ok\n\n----------------------------------------------------------------------\nRan 12 tests in 1.536s\n\nOK\n"
+              "tail": ""
             },
             {
               "cmd": "python3 .github/scripts/run_product_validation.py --platform linux --local",
               "exit": 0,
-              "milliseconds": 360044,
-              "seconds": 360,
+              "milliseconds": 192273,
+              "seconds": 192,
               "source": "verification",
-              "tail": "ntory_count\": 1121, \"inventory_sha256\": \"d3badaba6bb39ddf86eae553917db164f8b7dd99fce6153fde5c0c0dc4165f58\", \"workers\": 4, \"wall_seconds\": 359.9764571859996, \"aggregate_test_seconds\": 1401.6158195910484, \"slowest_tests\": [[\"test_engine_owner_questions.DurabilityTests.test_the_decision_survives_a_reopen_a_stale_rerun_and_a_second_round\", 18.437277020999318], [\"test_engine_journeys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 16.324419940001462], [\"test_engine_journeys.JourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 15.931016411999735], [\"test_engine_branching.SyncTests.test_dev_moving_under_an_open_sync_pr\", 15.734127092000563], [\"test_engine_lenses.FullLensJourneyTests.test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body\", 15.47594100400056]], \"executed_count\": 1121, \"completed_count\": 1121, \"worker_seconds\": [357.5446523899991, 343.2452972930005, 359.9023736220006, 341.75107474499964], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
+              "tail": "_ids\": [], \"error\": \"loader failed\"}\n.........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n..s\n......................................................\n........................................................\n{\"status\": \"success\", \"inventory_count\": 1121, \"inventory_sha256\": \"d3badaba6bb39ddf86eae553917db164f8b7dd99fce6153fde5c0c0dc4165f58\", \"workers\": 20, \"wall_seconds\": 192.17238087900114, \"aggregate_test_seconds\": 3621.936618195001, \"slowest_tests\": [[\"test_engine_owner_questions.DurabilityTests.test_the_decision_survives_a_reopen_a_stale_rerun_and_a_second_round\", 53.0133855389995], [\"test_engine_lenses.FullLensJourneyTests.test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body\", 46.38969664400065], [\"test_engine_branching.SyncTests.test_dev_moving_under_an_open_sync_pr\", 43.30029330200159], [\"test_engine_journeys.JourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 42.47504869699878], [\"test_engine_branching.FinishTests.test_finish_merges_into_production_back_into_dev_and_keeps_the_branch\", 42.263185058998715]], \"executed_count\": 1121, \"completed_count\": 1121, \"worker_seconds\": [184.14840452300086, 170.9897661690011, 189.14008181200006, 177.84672954800044, 175.78320345099928, 167.14954354699876, 166.72691793599915, 186.70776477500112, 189.6267862929999, 182.93812342800084, 182.1983064750002, 164.03289201799998, 189.2624101319998, 183.9579006310014, 188.93285299299896, 185.06752183400022, 192.0787046259993, 177.68116340000051, 184.37531137299993, 189.89006672399955], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
             }
           ],
           "passed": true,
@@ -549,7 +541,8 @@
               },
               "status": "unavailable",
               "verification": {
-                "reason": "changed_commands_or_allocation",
+                "caveat": "informational; machine load and concurrent goal-command workload may differ",
+                "delta_ms": 55742,
                 "source": {
                   "finished_at": "2026-11-04T02:48:57Z",
                   "goal": 1044,
@@ -559,27 +552,29 @@
                   "target": "dev",
                   "tree": "f0c94cd2b92a64a403d43db5fcf237fbac4dc320"
                 },
-                "status": "unavailable"
+                "status": "available",
+                "verification_ms": 136531,
+                "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1"
               }
             },
-            "cpu_budget": 4,
+            "cpu_budget": 20,
             "environment": {
               "cpus": 20,
               "platform": "linux",
               "python": "3.14"
             },
-            "goal_ms": 1953,
+            "goal_ms": 4,
             "parallel_commands": false,
-            "plan_sha256": "87f300b4c0c935478666ae586c3ff8bb5a7094971cc7afc177c3fa092e4f36ef",
-            "total_ms": 361997,
-            "verification_ms": 360044,
-            "verification_plan_sha256": "eb7f1bed3a30936abbcea84776e3120ca73719179dc7eefe343ec8ade61a01ab",
+            "plan_sha256": "f90ec936176733aeebfbb56604405a007f5c5fbd48171c6363e0c27736cbf5e1",
+            "total_ms": 192277,
+            "verification_ms": 192273,
+            "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1",
             "workers": {
-              "goal": 4,
-              "verification": 4
+              "goal": 20,
+              "verification": 20
             }
           },
-          "tree": "1e2aaa7768acebe9afcf49288c80cd1b402c409c"
+          "tree": "81ec923ee2451bfc3913fec5fcd2c64835aab0bb"
         }
       },
       "reason": "stale",
