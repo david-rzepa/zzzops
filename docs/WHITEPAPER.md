@@ -39,11 +39,21 @@ This division separates selection from judgment. A system can specify the essent
 
 The pattern also permits several handoffs at once. Where tasks have no unmet dependencies on one another, the same state can make each eligible with its own instructions. Determinism concerns how those handoffs are selected; it does not require a single sequence or one worker.
 
-Related approaches can supply parts of this arrangement. Issue trackers retain tasks and decisions, orchestration frameworks express dependencies, and retrieval systems select relevant material. Retrieval can itself be deterministic. An application can combine these methods with explicit disclosure rules and agent-led exploration.
+## Prior Work
+
+Progressive disclosure has an established history in human–computer interaction. The [Star interface article](https://guidebookgallery.org/articles/designingthestaruserinterface/) (1982) describes showing properties relevant to a selected object. [Nielsen's discussion](https://www.nngroup.com/articles/progressive-disclosure/) (2006) distinguishes revealing optional complexity from presenting successive subsets through a task. Both concern selecting what users see as interaction state changes. Agent instructions are another application of that selection problem.
+
+Staged context loading is also established in agent systems. [Agent Skills](https://www.anthropic.com/research/equipping-agents-for-the-real-world-with-agent-skills) automatically supplies skill metadata, after which the model chooses relevant skills and further resources. It is a hybrid of automatic and model-selected loading. [Claude Code's scoped-memory documentation](https://code.claude.com/docs/en/memory#how-claudemd-files-load) describes a closer overlap: software loads nested instructions when file access triggers the declared scope. The agent may choose the file operation, while the loader determines the accompanying instructions. These remain guidance rather than enforcement of the agent's behavior.
+
+The undated [dotagents project page](https://dotagents.io/), observed on 14 November 2026, uses the exact phrase “deterministic progressive disclosure” for harness-driven scoped instruction loading. This is overlapping terminology and a related proposal; the page does not establish a chronology of priority or independent validation.
+
+Established workflow coordination also overlaps this illustration. [Building effective agents](https://www.anthropic.com/research/building-effective-agents) describes predefined workflows, routing, parallelization and evaluator–optimizer patterns. Such systems already support tailored handoffs, although individual decisions can still use a model. This paper uses deterministic progressive disclosure to articulate who selects each handoff and to examine ZzzOps' frontier and task cards. It makes no claim to originate the term or the underlying mechanisms. This selective comparison is not a priority review.
 
 ## ZzzOps as an illustration
 
-ZzzOps applies the pattern to software work across sessions and participants. It separates a mostly unopinionated coordination engine from an opinionated, repository-owned process. The engine interprets a workflow, policy and prompts. ZzzOps ships one default process; repositories can customize it.
+ZzzOps is repository-based goal and release management for coding agents. It serves repository owners and developers who need to coordinate goals, workers, reviews, checks and human decisions across sessions. Goals and results are recorded durably in Git, so a later participant can resume from explicit state. Its release support coordinates branches and merges; application deployment is handled separately. Here, ZzzOps illustrates how those records can drive the instructions and context given to agents.
+
+Its architecture separates a mostly unopinionated coordination engine from an opinionated, repository-owned process. The engine interprets a workflow, policy and prompts. ZzzOps ships one default process; repositories can customize it.
 
 The workflow is a **directed acyclic graph**, or DAG: tasks connected by prerequisite links with no dependency loops. A task might produce a design, review it or request approval. The repository chooses the supported tasks, dependencies, instructions, reviews and approval arrangements. The engine retains common rules for valid state, eligibility, result freshness and coordinated writes.
 
@@ -80,7 +90,7 @@ Parallel eligibility also needs resource and coordination decisions. Independent
 
 ## Future Work
 
-Several applications could extend the pattern beyond the illustration presented here. These are proposed directions, rather than claims about implemented features.
+For this design and ZzzOps, useful next directions include applying or refining established techniques in the following settings. These are development possibilities, rather than claims of unprecedented methods or implemented features.
 
 **Parallel orchestration and model routing.** A coordinator could use eligible tasks, capability requirements and explicit resource rules to automate scheduling and task-model choices. ZzzOps already exposes multiple actions and model guidance; richer automated routing would build on that support.
 
