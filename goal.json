@@ -158,6 +158,41 @@
       "reason": "new",
       "status": "done"
     },
+    "filter_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T21:10:06Z",
+      "fp_parts": {
+        "candidates": [
+          [
+            "review_impl:1:1",
+            false
+          ]
+        ],
+        "def": "v1:sha256:5fab78ee7a74554d9897b964ee764247bd55068d6c3b2a64932fad9704979c4b",
+        "inputs": {
+          "code": "v1:sha256:5ca573a0c323710f39766fcff6556358b925639fc10856008dcf7f83e9de3c42",
+          "doc": "v1:blob:20590aebc3aa36067eb90c26660a95b5413cfc34",
+          "review": "v1:sha256:54f87fb983bd99702fd727577dde1be7095c2b9fd7a5f486e43885c1dc668dcb"
+        },
+        "policy": {}
+      },
+      "holder": "codex:summary1045/filter_impl-1",
+      "input_fp": "v1:sha256:f02d821c9d7cdf791bd7e740e3af6a45ee19b0878b35e5856855c72333164245",
+      "ok": true,
+      "output": {
+        "summary": "Implementation review: approved with no material findings. The single HISTORY-table presentation candidate is a note; no work reopens. There is 1 optional note.",
+        "verdicts": {
+          "review_impl:1:1": {
+            "reason": "Presentation-only blank line: amendment information remains complete, and no product behavior, authority or workflow gate is affected.",
+            "verdict": "note"
+          }
+        }
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "implement": {
       "attempt": 1,
       "correction_runs": 0,
