@@ -135,7 +135,13 @@ def random_step(s: Sim, rng: random.Random):
                 if rng.random() < 0.3:
                     anc = sorted(a for a in graph.ancestors(n) if a not in s.docs[g]["skip"] and a != n)
                     if anc:
-                        given.append({"target": rng.choice(anc), "text": "fix this"})
+                        finding = {"target": rng.choice(anc), "text": "fix this"}
+                        if graph.filter_of(n):
+                            finding.update(material=rng.choice([True, False]),
+                                           impact="The selected ancestor misses a required behavior.")
+                        if graph.lens_defs(n):
+                            finding["lens"] = rng.choice(graph.applied_lenses(n, doc["skip"]))
+                        given.append(finding)
                 opened = any(f.get("status") == "open" or "text" in f for f in given)
                 s.submit(g, n, findings=given, decision="changes_requested" if opened else "approved", responses=responses)
             else:

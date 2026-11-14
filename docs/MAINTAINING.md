@@ -20,6 +20,10 @@ The distributable Agent Plugin lives in `plugins/zzzops`; `.agents/plugins/marke
 
 Engine tests are `.agents/test_engine_*.py`; they run against a bare remote with two clones and a fake GitHub (`.agents/engine_fixtures.py`, `.agents/engine_fake_gh.py`).
 
+Maintain only the current defaults in `plugins/zzzops/zzzops/templates/default/`. G1047 retires the template archive, seed updater and obsolete full-workflow fixtures. Shared engine fixtures use the shipped default and fully renamed current graphs; preserve generic behavior coverage with those or small explicit scenarios rather than copying old workflows. Template changes need current-template validation, focused comparison/journey checks and installable-package inspection. No archive refresh or historical reconstruction is part of maintenance.
+
+Installed `.zzzops/` files remain repository-owned. The schema-1 `TEMPLATE.json` hashes are opaque last-reviewed equality receipts; adoption or decline is an explicit reviewed policy change using current local/shipped comparisons. Reading update notices never writes policy or provenance. See [MIGRATING](../plugins/zzzops/zzzops/references/MIGRATING.md#shipped-default-updates) and the bootstrap skill.
+
 ## Development and review
 
 Develop on branches created from `dev` and open PRs against `dev`. PR validation runs for every target branch so each stacked layer—or explicitly chained fallback PR—receives exact-head evidence before retargeting. The read-only **PR validation / dev-required-tests** job must pass before merge.

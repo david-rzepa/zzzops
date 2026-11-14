@@ -29,7 +29,9 @@ class ReviewFixTests(unittest.TestCase):
         s.goal(1)
         drive_to(s, 1, "review_impl")
         s.start(1, "review_impl")
-        s.submit(1, "review_impl", findings=[{"text": "bug"}])
+        s.submit(1, "review_impl", findings=[{"text": "bug", "lens": "correctness", "material": True,
+                                              "impact": "The implementation returns an incorrect result."}])
+        s.step(1, "filter_impl")
         for _ in range(3):
             s.start(1, "implement")
             s.tick(130 * 60)
@@ -50,7 +52,10 @@ class ReviewFixTests(unittest.TestCase):
         s.goal(1)
         drive_to(s, 1, "review_impl")
         s.start(1, "review_impl")
-        s.submit(1, "review_impl", findings=[{"target": "test_design", "text": "add an edge test"}])
+        s.submit(1, "review_impl", findings=[{"target": "test_design", "text": "add an edge test",
+                                              "lens": "tests", "material": True,
+                                              "impact": "The edge case can regress undetected."}])
+        s.step(1, "filter_impl")
         s.start(1, "test_design")
         s.submit(1, "test_design", responses={"review_impl:1:1": "fixed: added the edge test"})
         res = s.eval().goals[1]
@@ -66,7 +71,7 @@ class ReviewFixTests(unittest.TestCase):
         s.reopen(1, "implement", "one more change")
         s.start(1, "implement")
         s.submit(1, "implement", responses={"implement:reopen:1": "fixed: changed"})   # the goal's diff changes
-        for n in ("run_tests", "review_impl"):
+        for n in ("run_tests", "review_impl", "filter_impl"):
             s.step(1, n)
         class R(render.Reader):
             def has(self, oid):

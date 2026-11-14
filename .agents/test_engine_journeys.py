@@ -44,13 +44,26 @@ class Autopilot:
             for k, t in schema.items():
                 if k in ("findings", "responses"):
                     continue
-                if t.startswith("checkpoint"):
+                if k == "verdicts":
+                    out[k] = {c["id"]: {"verdict": "note", "reason": "fixture note"}
+                              for c in card.get("candidates", []) if not c["material"]}
+                elif t.startswith("checkpoint"):
                     if card["workspace"]:
                         wtd = fx.GitDir(card["workspace"], self.w.env)
                         kind = "test" if node in self.preserved else "feat"
                         wtd.commit({f"work/g{g}/{node}.txt": f"G{g} {node} {self.turn}\n"}, f"{kind}: {node}")
                 elif t == "strings":
                     out[k] = ["true"]
+                elif t == "object":
+                    out[k] = {}
+                elif t == "list":
+                    out[k] = []
+                elif t == "sha":
+                    out[k] = "a" * 40
+                elif t == "int":
+                    out[k] = 1
+                elif t == "bool":
+                    out[k] = True
                 elif t in ("text", "string"):
                     out[k] = f"{node} {k}"
         if card.get("corrections"):

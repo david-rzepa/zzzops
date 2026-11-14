@@ -9,19 +9,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_CODE = ROOT / "plugins" / "zzzops" / "zzzops"
-# The engine tests run on a frozen copy of the 12-node graph (G1000 §13), so they do not depend on the shipped graph;
-# SHIPPED is the shipped template, used only by the template and lens tests.
-TEMPLATES = ROOT / ".agents" / "fixtures" / "graph12"
 SHIPPED = PLUGIN_CODE / "templates" / "default"
-# G1020's 26-node template (one node per lens), frozen when G1022 made the shipped graph 15 nodes: the G1000/G1020
-# lens tests run on it.
-GRAPH26 = ROOT / ".agents" / "fixtures" / "graph26"
+# General engine scenarios exercise the current workflow; tests needing a
+# different topology declare a small scenario graph beside their assertions.
+TEMPLATES = SHIPPED
 if str(PLUGIN_CODE) not in sys.path:
     sys.path.insert(0, str(PLUGIN_CODE))
 
-DEFAULT_NODES = ["design", "review_design", "approve_design", "base", "test_design", "review_tests", "implement",
-                 "run_tests", "review_impl", "integrate", "approve_merge", "merge"]
-RENAME = {n: f"n{i + 1:02d}_{chr(ord('a') + i)}" for i, n in enumerate(DEFAULT_NODES)}
+_WORKFLOW = json.loads((TEMPLATES / "workflow.json").read_text(encoding="utf-8"))
+DEFAULT_NODES = list(_WORKFLOW["graphs"]["default"]["nodes"])
+_ALL_NODES = list(dict.fromkeys(n for g in _WORKFLOW["graphs"].values() for n in g["nodes"]))
+RENAME = {n: f"n{i + 1:02d}_{chr(ord('a') + i)}" for i, n in enumerate(_ALL_NODES)}
 
 
 def load_template(name: str) -> dict:
@@ -53,6 +51,8 @@ def renamed_workflow(wf: dict | None = None, mapping: dict | None = None) -> dic
                 spec["from"] = sel(spec["from"])
             if "review" in nd:
                 nd["review"]["subject"] = mapping.get(nd["review"]["subject"], nd["review"]["subject"])
+                if "filter" in nd["review"]:
+                    nd["review"]["filter"] = mapping.get(nd["review"]["filter"], nd["review"]["filter"])
             if "preserve" in nd:
                 nd["preserve"] = mapping.get(nd["preserve"], nd["preserve"])
             nodes[mapping.get(n, n)] = nd
