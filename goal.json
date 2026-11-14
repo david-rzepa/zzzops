@@ -226,6 +226,43 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T21:43:42Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:b3e703a51d1b35335d22c2574b30f3da045388d0",
+          "tests": "v1:sha256:d1b819ee6603e0d12a36b6ea6471b3a63dd503237ea65e8eb224c99b8633284b"
+        },
+        "policy": {},
+        "subject": "v1:sha256:0b195975a8f4636bce224a02f38380f81ff615a71d7606bbc0c44668e63ad245"
+      },
+      "holder": "codex:paperpin1046/review_tests-1",
+      "input_fp": "v1:sha256:74465cb0ec02c87dc6e8b4b26a8428fcaa10afd18c4f8a3e03e9128a29ca9eb2",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "453b77363dcbcfee4ceecaa02a6e56d5596292b9",
+          "commit": "0a56265c161531b762e77ed74144a67091d25fc8",
+          "path": ".zzzops/reviews/1046/review_tests.md"
+        },
+        "summary": "Approved: empty test checkpoint and measured whitespace preparation are proportionate; dynamic publication verification and the root receipt gate remain required before implement; no findings."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "4bc7b4deba5f1a98595ab795cdb5c088c14b3c66",
+          "change": "0000000000000000000000000000000000000000",
+          "commit": "85460f5a1cf340393d5430547407c856be42e30c",
+          "tree": "efa69a9ebc87b24e356de41c5b9280ea71c0e120"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
