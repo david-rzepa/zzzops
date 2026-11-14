@@ -228,32 +228,32 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T17:23:02Z",
+      "finished_at": "2026-11-14T18:59:42Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
           "base": "v1:sha256:92fb166bb2d877c78854032c50996843982ef4f5cff7b5a092fb2d8ca03148d7",
-          "doc": "v1:blob:9c056c03d9f2e0238eadcef88eef497970e66e6a",
+          "doc": "v1:blob:7aa4db7dc9cac42eaaa2b947bb4097cf8152e896",
           "tests": "v1:sha256:ae04172168512dde6665548d12246d56f3669033e4f86ce5e1ad8b0f7f884693"
         },
         "policy": {}
       },
-      "holder": "codex:wp1036/implement-1",
-      "input_fp": "v1:sha256:3464ed42ce47417fe7b76d25982a23e5a1cccebd52ebdb7250a3a0908d8caac7",
+      "holder": "codex:wp1036/implement-2",
+      "input_fp": "v1:sha256:b996b645532484b46ac7f581fecda38561f1dbc7f7a15428fd51220d9a0eac23",
       "ok": true,
       "output": {
         "code": {
           "base": "c455b09914b49fd65e169f91a4f79110e3e2540b",
-          "change": "9a8e10553ed58308f76555258f764ced7180c856",
-          "commit": "580987251909105fb202d84648828e8271abf08c",
-          "tree": "dfc6665a482a9efa4f813b0f71190b5173fa5f6d"
+          "change": "adbd79a2a6853e91c919371c875fc3423325e406",
+          "commit": "93889189b5b58cb99d73d9e700a8e2e11dfe5b7e",
+          "tree": "1e2aaa7768acebe9afcf49288c80cd1b402c409c"
         },
-        "summary": "Wrote a source-bound working paper explaining deterministic progressive disclosure, its identity and review boundaries, synthetic examples, and known size discrepancies. Added an owner-publication blog draft and neutral README link; the manual checker and focused local tests pass."
+        "summary": "Rewrote the whitepaper as a general, accessible concept paper defining deterministic progressive disclosure and illustrating it with ZzzOps’ reusable engine and customizable repository process. Aligned the owner-publication blog draft and README, and retained source binding, evidence and known size discrepancies in a concise appendix."
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "integrate": {
