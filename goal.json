@@ -289,6 +289,110 @@
       },
       "status": "done"
     },
+    "run_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T21:03:29Z",
+      "fp_parts": {
+        "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
+        "inputs": {
+          "code": "v1:sha256:dc2bdbb95018c10659c37490570517fe8b593cd6642d70ebf678d66ba4621175",
+          "commands": "v1:sha256:c61a9bfd8a4cba2a19e60663be63882934ae8ab0db1c9cbfc839375d26a6f28e"
+        },
+        "policy": {
+          "verification": {
+            "ci_timeout_minutes": 120,
+            "commands": [
+              "python3 .github/scripts/run_product_validation.py --platform linux --local"
+            ],
+            "required_ci": [
+              "dev-required-tests"
+            ],
+            "timeout_minutes": 60
+          },
+          "verification.commands": [
+            "python3 .github/scripts/run_product_validation.py --platform linux --local"
+          ]
+        }
+      },
+      "holder": "codex:summary1045/run_tests-1",
+      "input_fp": "v1:sha256:b85d9678dc31caaa2f18abbd19e0ced51831fd0ab363da8e32f9d12a198a8c9d",
+      "ok": true,
+      "output": {
+        "result": {
+          "details": [
+            {
+              "cmd": "python3 -m unittest discover -s .agents -p test_engine_release_summary.py -v --durations 0",
+              "exit": 0,
+              "milliseconds": 8643,
+              "seconds": 8,
+              "source": "goal",
+              "tail": "ix_and_release_have_separate_summaries)\n0.001s     test_portfolio_blocker_expands_to_unscoped_next (test_engine_release_summary.ReleaseSummaryTests.test_portfolio_blocker_expands_to_unscoped_next)\n0.001s     test_summary_references_do_not_duplicate_authoritative_decision_kinds (test_engine_release_summary.ReleaseSummaryTests.test_summary_references_do_not_duplicate_authoritative_decision_kinds)\n0.001s     test_missing_line_branch_is_explained_in_summary (test_engine_release_summary.ReleaseSummaryTests.test_missing_line_branch_is_explained_in_summary)\n0.001s     test_policy_pause_explains_why_next_actions_are_suppressed (test_engine_release_summary.ReleaseSummaryTests.test_policy_pause_explains_why_next_actions_are_suppressed)\n0.001s     test_closing_without_finish_evidence_does_not_claim_publication (test_engine_release_summary.ReleaseSummaryTests.test_closing_without_finish_evidence_does_not_claim_publication)\n\n----------------------------------------------------------------------\nRan 15 tests in 8.586s\n\nOK\n"
+            },
+            {
+              "cmd": "python3 .github/scripts/run_product_validation.py --platform linux --local",
+              "exit": 0,
+              "milliseconds": 159017,
+              "seconds": 159,
+              "source": "verification",
+              "tail": ".........\n.........................................................\nZzzOps legacy cleanup preview\nTarget: /tmp/tmpyusnkz8p\nFiles to remove: 0; ignore files to update: 1.\n- remove ZzzOps-owned marker block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n........................................................\n.........................................................\n........................................................\n.........................................................\n.........................................................\n....\n......................................................\n.........................................................\n{\"status\": \"success\", \"inventory_count\": 1136, \"inventory_sha256\": \"f8ced9ffb2cd6a4b86d664c11f61a2a56a7d44efaab11cf2f12599bd8277dfd4\", \"workers\": 20, \"wall_seconds\": 158.94650655100122, \"aggregate_test_seconds\": 2961.295411578045, \"slowest_tests\": [[\"test_engine_owner_questions.DurabilityTests.test_the_decision_survives_a_reopen_a_stale_rerun_and_a_second_round\", 39.53498482300347], [\"test_engine_branching.SyncTests.test_dev_moving_under_an_open_sync_pr\", 36.30066548299874], [\"test_engine_journeys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 35.099392307001835], [\"test_engine_journeys.JourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 34.60319239999808], [\"test_engine_branching.FinishTests.test_finish_merges_into_production_back_into_dev_and_keeps_the_branch\", 34.07458404800127]], \"executed_count\": 1136, \"completed_count\": 1136, \"worker_seconds\": [146.5398168160027, 147.9974600329988, 149.65492744899893, 144.47867782499816, 149.30578761900324, 145.79982545200255, 134.54669021500013, 158.7471798480001, 152.5235811099992, 150.9088647489989, 148.2400180250006, 133.7506484880032, 156.65917975699995, 144.32926153099834, 152.9131881100002, 148.83431746199858, 154.31409046300178, 145.19909887999893, 153.9442396049999, 147.92138203700233], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
+            }
+          ],
+          "passed": true,
+          "timing": {
+            "baseline": {
+              "reason": "changed_commands_or_allocation",
+              "source": {
+                "finished_at": "2026-11-04T02:48:57Z",
+                "goal": 1044,
+                "goal_commit": "4bda3dc6dd8a8d14a3107b956a7ce284a33c7be1",
+                "merge_commit": "c455b09914b49fd65e169f91a4f79110e3e2540b",
+                "node": "run_tests",
+                "target": "dev",
+                "tree": "f0c94cd2b92a64a403d43db5fcf237fbac4dc320"
+              },
+              "status": "unavailable",
+              "verification": {
+                "caveat": "informational; machine load and concurrent goal-command workload may differ",
+                "delta_ms": 22486,
+                "source": {
+                  "finished_at": "2026-11-04T02:48:57Z",
+                  "goal": 1044,
+                  "goal_commit": "4bda3dc6dd8a8d14a3107b956a7ce284a33c7be1",
+                  "merge_commit": "c455b09914b49fd65e169f91a4f79110e3e2540b",
+                  "node": "run_tests",
+                  "target": "dev",
+                  "tree": "f0c94cd2b92a64a403d43db5fcf237fbac4dc320"
+                },
+                "status": "available",
+                "verification_ms": 136531,
+                "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1"
+              }
+            },
+            "cpu_budget": 20,
+            "environment": {
+              "cpus": 20,
+              "platform": "linux",
+              "python": "3.14"
+            },
+            "goal_ms": 8643,
+            "parallel_commands": false,
+            "plan_sha256": "2d3ba439aa885fd4d0d2122c965fed2c4ef19481b27d5fdbbe684fe01d79c142",
+            "total_ms": 167660,
+            "verification_ms": 159017,
+            "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1",
+            "workers": {
+              "goal": 20,
+              "verification": 20
+            }
+          },
+          "tree": "6765b23649a462213b0f5755aac59ea59a7632cb"
+        }
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
