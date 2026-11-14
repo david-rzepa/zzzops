@@ -110,6 +110,10 @@ class Sim:
                 out[k] = self.sha()
             elif t == "strings":
                 out[k] = ["make test"]
+            elif k == "verdicts":
+                from engine.card import candidates
+                out[k] = {c["id"]: {"verdict": "note", "reason": "fixture note"}
+                          for c in candidates(self.eval().goals[g], n) if not c["material"]}
             elif t == "object":
                 out[k] = {"v": self.sha()[:8]}
             elif t == "list":

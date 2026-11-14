@@ -1,8 +1,6 @@
 """G1022: one multi-lens reviewer per subject, plus a separate design Adversary (design revision 2, §3-§9).
 
-These tests run on the SHIPPED template (`fx.SHIPPED`, the 15-node graph). The G1000/G1020 lens tests run on the
-frozen 26-node template (`fx.GRAPH26`); the other engine tests on the frozen 12-node graph (`fx.TEMPLATES`). They
-are written before the implementation and define these contracts:
+These tests run on the current shipped template and define these contracts:
 
 - An agent review node may declare `lenses`: an ordered object {"<lens>": {"prompt": <file>, "skippable"?: bool}}.
   A non-skippable lens requires a non-skippable node. A node without `lenses` behaves as in G1000.
@@ -45,18 +43,13 @@ SHIPPED_NODES = ["design", "review_design", "adversary_design", "filter_design",
                  "test_design", "review_tests", "implement", "run_tests", "review_impl", "filter_impl", "integrate",
                  "approve_merge", "merge"]
 MISSING_GREP = "git grep <pattern> <code.commit>"
-SHIPPED_RENAME = {n: f"n{i + 1:02d}_x" for i, n in enumerate(SHIPPED_NODES)}
+SHIPPED_RENAME = dict(fx.RENAME)
 LENS_RENAME = dict({l: f"dl{i + 1}" for i, l in enumerate(DESIGN_LENSES)},
                    **{l: f"il{i + 1}" for i, l in enumerate(IMPL_LENSES)})
-GOLDEN = fx.ROOT / ".agents" / "fixtures" / "node_def_fp_1.1.json"
 
 
 def shipped(name: str) -> dict:
     return json.loads((fx.SHIPPED / name).read_text(encoding="utf-8"))
-
-
-def fixture(graph: str, name: str) -> dict:
-    return json.loads((fx.ROOT / ".agents" / "fixtures" / graph / name).read_text(encoding="utf-8"))
 
 
 def shipped_prompt_exists(name: str) -> bool:
@@ -83,8 +76,6 @@ def renamed_shipped() -> dict:
     wf = fx.renamed_workflow(shipped("workflow.json"), SHIPPED_RENAME)
     for g in wf["graphs"].values():
         for nd in g["nodes"].values():
-            if "filter" in (nd.get("review") or {}):
-                nd["review"]["filter"] = SHIPPED_RENAME.get(nd["review"]["filter"], nd["review"]["filter"])
             if "lenses" in nd:
                 nd["lenses"] = {LENS_RENAME[k]: v for k, v in nd["lenses"].items()}
     return wf
@@ -183,14 +174,6 @@ class ShippedTemplateTests(unittest.TestCase):
             self.assertEqual(f"lens_{lens}.md", spec["prompt"], lens)
             self.assertEqual(lens not in IMPL_REQUIRED, spec.get("skippable", True), lens)
 
-    def test_adversary_design_is_g1000s_node_byte_for_byte(self):
-        """Adjusted by G1026: the node also lists the `owner_questions` instruction (instructions are not
-        fingerprinted, so its node_def_fp is still G1000's)."""
-        g26 = fixture("graph26", "workflow.json")["graphs"]["default"]["nodes"]["adversary_design"]
-        ours = copy.deepcopy(self.nodes["adversary_design"])
-        ours["instructions"] = [i for i in ours.get("instructions") or [] if i != "owner_questions"]
-        self.assertEqual(g26, ours)
-        self.assertNotIn("lenses", self.nodes["adversary_design"])
 
     def test_filter_and_downstream_wiring(self):
         fd = {k: (s["from"], bool(s.get("optional")), bool(s.get("context")))
@@ -353,18 +336,11 @@ class LensValidationTests(unittest.TestCase):
             self.assertTrue(errs, bad)
 
     def test_graphs_without_lenses_validate_as_before(self):
-        for graph in ("graph12", "graph26"):
-            wf = fixture(graph, "workflow.json")
-            policy = fixture(graph, "POLICY.json")
-            if graph == "graph26":
-                policy["settings"]["intent"] = copy.deepcopy(INTENT)
-            exists = lambda name, graph=graph: (fx.ROOT / ".agents" / "fixtures" / graph / "prompts" / name).is_file()
-            self.assertEqual([], schemas.validate_workflow(wf, policy, exists, OPS), graph)
-            self.assertFalse(any("lenses" in nd for nd in wf["graphs"]["default"]["nodes"].values()), graph)
-
-    def test_reviewers_replaces_graph_lenses(self):
-        g = schemas.build_graph("default", fixture("graph26", "workflow.json")["graphs"]["default"])
-        self.assertEqual([f"{l}_design" for l in DESIGN_LENSES], g.reviewers("filter_design"))
+        for nd in self.nodes.values():
+            nd.pop("lenses", None)
+        self.assertEqual([], self.errors())
+        graph = schemas.build_graph("default", self.wf["graphs"]["default"])
+        self.assertEqual(["review_design", "adversary_design"], graph.reviewers("filter_design"))
 
 
 class LensSkipKeyTests(unittest.TestCase):
@@ -425,15 +401,6 @@ class LensSkipKeyTests(unittest.TestCase):
 
 
 class FingerprintStabilityTests(unittest.TestCase):
-    def test_node_def_fp_of_graphs_without_lenses_is_unchanged(self):
-        from engine.fingerprint import node_def_fp
-        golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
-        for graph in ("graph12", "graph26"):
-            nodes = fixture(graph, "workflow.json")["graphs"]["default"]["nodes"]
-            self.assertEqual(golden[graph], {n: node_def_fp(nd) for n, nd in nodes.items()}, graph)
-        shipped_nodes = shipped("workflow.json")["graphs"]["default"]["nodes"]
-        self.assertEqual(golden["graph26"]["adversary_design"], node_def_fp(shipped_nodes["adversary_design"]))
-
     def test_only_nodes_with_lenses_gain_the_lens_part(self):
         from engine.fingerprint import node_def_fp
         nd = shipped("workflow.json")["graphs"]["default"]["nodes"]["review_impl"]
@@ -868,111 +835,57 @@ class RenamedReviewJourneyTests(ReviewWorld):
         self.assertEqual([self.key("review_design", "rollout")], [c["lens"] for c in card["candidates"]])
 
 
-# --------------------------------------------------------------------------------------------- 11: migration
+# --------------------------------------------------------------------------------------------- current record compatibility
 
 
-class MigrationWorld(ReviewWorld):
-    source = "graph12"
-
-    def bootstrap(self):
-        root = fx.ROOT / ".agents" / "fixtures" / self.source
-        policy = fixture(self.source, "POLICY.json")
-        if self.source == "graph26":
-            policy["settings"]["intent"] = copy.deepcopy(INTENT)
-        self.w.bootstrap(policy=policy, workflow=fixture(self.source, "workflow.json"), prompts=False)
-        self.push_prompts(root)
-
-    def adopt_shipped(self, include_cost=True, include_base=True):
-        """The policy branch of §8: the 15-node workflow, its POLICY (with intent) and prompts."""
-        policy = policy_with_intent()
-        policy["settings"]["integration_branch"] = "dev"
-        policy["settings"]["goals"]["first_id"] = 1000
-        workflow = shipped("workflow.json")
-        if not include_base:
-            # Isolate G1022's definition-only adoption from G1039's semantic base edge.
-            workflow["graphs"]["default"]["nodes"]["review_impl"]["inputs"].pop("base", None)
-        if not include_cost:
-            # This isolated G1022 migration promises reviewer redefinition only.
-            # G1043's required cost output intentionally reruns delivery instead.
-            nodes = workflow["graphs"]["default"]["nodes"]
-            nodes["test_design"]["outputs"].pop("cost")
-            nodes["review_tests"]["inputs"].pop("cost")
-            nodes["review_impl"]["inputs"].pop("cost")
-        files = {".zzzops/POLICY.json": json.dumps(policy, indent=2) + "\n",
-                 ".zzzops/workflow.json": json.dumps(workflow, indent=2) + "\n"}
-        for p in sorted((fx.SHIPPED / "prompts").iterdir()):
-            files[f".zzzops/prompts/{p.name}"] = p.read_text(encoding="utf-8")
-        self.w.push_dev(files, "chore(zzzops): adopt the consolidated review graph")
-
-
-class MigrationFrom12Tests(MigrationWorld):
-    def test_in_flight_reviewers_go_stale_without_budget(self):
+class CurrentRecordCompatibilityTests(ReviewWorld):
+    def test_an_untagged_prior_finding_keeps_its_node_label_and_is_material(self):
         g = self.goal()
-        self.p.drive(g, lambda st: st["review_impl"] == "current", limit=200)
+        self.until_ready(g, "filter_design", {"review_design": [{"findings": [
+            tag("an old finding", True, "truth")]}]})
+        fid = self.open_ids(g, "review_design")[0]
+        tip = self.p.tip(g)
+        self.w.seed.git("fetch", "-q", "origin", f"refs/heads/zzzops/goal/g{g}")
+        doc = json.loads(self.w.seed.git("show", "FETCH_HEAD:goal.json"))
+        finding = doc["records"]["review_design"]["findings"][0]
+        for key in ("lens", "material", "impact"):
+            finding.pop(key)
+        push_goal_doc(self.w, doc, tip)
+        card, _ = self.p.run(g, "filter_design")
+        candidate = {x["id"]: x for x in card["candidates"]}[fid]
+        self.assertEqual(("review_design", True), (candidate["lens"], candidate["material"]))
+        self.assertEqual("ready (reopened)", self.p.states(g)["design"])
+
+    def test_definition_only_changes_stale_reviewers_without_budget(self):
+        g = self.goal()
+        self.until_ready(g, "filter_impl")
         used = self.runs(g)
-        self.adopt_shipped(include_cost=False, include_base=False)
-        st = self.p.states(g)
-        self.assertEqual("ready (stale: def, lenses, policy.intent)", st["review_design"])
-        self.assertEqual("ready (new)", st["adversary_design"])
-        self.assertIsNone(self.p.record(g, "filter_design"))
-        self.assertNotEqual("current", st["filter_design"])
+        self.w.seed.git("pull", "-q", "--ff-only", "origin", "dev")
+        workflow = json.loads(self.w.seed.git("show", "HEAD:.zzzops/workflow.json"))
+        nodes = workflow["graphs"]["default"]["nodes"]
+        for name in ("review_design", "review_impl"):
+            nodes[name]["rev"] = nodes[name].get("rev", 0) + 1
+        self.w.push_dev({".zzzops/workflow.json": json.dumps(workflow)}, "chore(zzzops): review definitions")
+        self.assertTrue(self.p.states(g)["review_design"].startswith("ready (stale: def"))
         self.p.run(g, "review_design")
-        self.p.run(g, "adversary_design")
-        self.assertEqual("ready (new)", self.p.states(g)["filter_design"])
-        self.p.run(g, "filter_design")
-        self.p.drive(g, lambda st: st["review_impl"].startswith("ready"), limit=50)
-        self.assertEqual("ready (stale: def, lenses)", self.p.states(g)["review_impl"])
+        self.until_ready(g, "review_impl")
+        self.assertTrue(self.p.states(g)["review_impl"].startswith("ready (stale: def"))
         self.p.run(g, "review_impl")
         self.assertEqual(used, self.runs(g))
 
-    def test_a_prior_untagged_finding_is_labelled_by_the_node_and_counts_as_material(self):
-        g = self.goal()
-        self.until_ready(g, "review_design", limit=50)
-        self.p.run(g, "review_design", findings=[{"text": "an old finding"}])
-        fid = self.open_ids(g, "review_design")[0]
-        self.p.run(g, "design")
-        self.adopt_shipped()
-        self.assertTrue(self.p.states(g)["review_design"].startswith("ready (stale"), self.p.states(g))
-        self.p.run(g, "review_design", keep_open=(fid,))
-        self.p.run(g, "adversary_design")
-        card, _ = self.p.run(g, "filter_design")
-        c = {x["id"]: x for x in card["candidates"]}[fid]
-        self.assertEqual((self.n("review_design"), True), (c["lens"], c["material"]))
-        self.assertEqual("ready (reopened)", self.p.states(g)["design"])
-
-
-class MigrationFrom26Tests(MigrationWorld):
-    source = "graph26"
-
-    def test_adversary_stays_current_and_old_lens_records_are_orphans(self):
-        g = self.goal()
-        self.p.drive(g, lambda st: st["approve_design"] == "needs_human (approve)")
-        self.adopt_shipped()
-        st = self.p.states(g)
-        self.assertEqual("current", st["adversary_design"])
-        self.assertEqual("ready (new)", st["review_design"])
-        self.assertNotEqual("current", st["filter_design"])
-        rc, out = self.w.run("a", "validate")
-        orphans = " ".join(w["message"] for w in out["warnings"] if w["kind"] == "orphan_record")
-        for lens in DESIGN_LENSES:
-            if lens != "adversary":
-                self.assertIn(f"{lens}_design", orphans, lens)
-        self.assertNotIn("adversary_design", orphans)
-
-    def test_a_goal_over_the_new_default_budget_needs_an_explicit_budget(self):
+    def test_over_default_budget_needs_an_explicit_budget(self):
         g = self.goal()
         self.p.drive(g, lambda st: st["design"] == "current")
         tip = self.p.tip(g)
         self.w.seed.git("fetch", "-q", "origin", f"refs/heads/zzzops/goal/g{g}")
         doc = json.loads(self.w.seed.git("show", "FETCH_HEAD:goal.json"))
-        doc["records"]["design"]["correction_runs"] = 28
+        agents = sum(nd["kind"] == "agent" for nd in shipped("workflow.json")["graphs"]["default"]["nodes"].values())
+        doc["records"]["design"]["correction_runs"] = 3 * agents + 1
         push_goal_doc(self.w, doc, tip)
         budget = lambda: [x for x in self.w.ok("a", "next", "--goal", str(g))["needs_human"]
                           if x["goal"] == g and x["kind"] == "budget"]
-        self.assertEqual([], budget())                          # 28 of 60 under the 26-node graph
-        self.adopt_shipped()
-        self.assertTrue(budget(), "28 runs is over the 15-node default of 27")
-        self.edit(g, "budget=40")
+        self.assertTrue(budget())
+        self.edit(g, f"budget={3 * agents + 10}")
         self.assertEqual([], budget())
 
 

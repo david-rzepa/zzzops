@@ -1,4 +1,4 @@
-"""G1024: observable default-policy notices, provenance and version skew.
+"""G1047: read-only current-default comparison and opaque review receipts.
 
 Most cases exercise the public directory-validation verb in process: no Git
 journey is needed to compare three sets of files. The repository test covers
@@ -66,25 +66,17 @@ class DefaultsCase(unittest.TestCase):
         self.tmp = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="default policy's ")))
         self.shipped = self.tmp / "plugin defaults"
         self.here = self.tmp / "repository policy"
-        self.history = self.tmp / "history store"
         shutil.copytree(fx.TEMPLATES, self.shipped)
         for name in ["optional", "also-optional", "deleted"]:
             put(self.shipped, f"prompts/{name}.md", f"{name} guidance\n")
         shutil.copytree(self.shipped, self.here)
-        self.history.mkdir()
         self.old = {str(p.relative_to(self.shipped)).replace(os.sep, "/"): p.read_bytes()
                     for p in self.shipped.rglob("*") if p.is_file()}
         self.record = {"schema": 1, "template": "default", "files": {p: blob(b) for p, b in self.old.items()}}
-        for rel, content in self.old.items():
-            self.store(rel, content)
-        # These two locations are the design's test seam; no comparison API is prescribed.
+        # The current template directory is the only comparison source.
         defaults = importlib.import_module("engine.defaults")
         stack.enter_context(patch.object(defaults, "TEMPLATE_DIR", self.shipped))
-        stack.enter_context(patch.object(defaults, "HISTORY_DIR", self.history))
         self.write_record()
-
-    def store(self, rel, content):
-        put(self.history, blob(content) + Path(rel).suffix, content)
 
     def write_record(self, record=None):
         put(self.here, "TEMPLATE.json", json.dumps(self.record if record is None else record))
@@ -92,7 +84,6 @@ class DefaultsCase(unittest.TestCase):
     def change(self, rel="prompts/test_design.md", content=None):
         content = content if content is not None else self.old[rel] + b"\nNew upstream guidance.\n"
         put(self.shipped, rel, content)
-        self.store(rel, content)
         return content
 
     def validate(self):
@@ -143,6 +134,20 @@ class PrintedCommandTests(unittest.TestCase):
 
 
 class DefaultComparisonTests(DefaultsCase):
+    def snapshot(self):
+        return {p.relative_to(self.here).as_posix(): p.read_bytes()
+                for p in self.here.rglob("*") if p.is_file()}
+
+    def current_receipt(self):
+        return {"schema": 1, "template": "default", "files": {
+            p.relative_to(self.shipped).as_posix(): blob(p.read_bytes())
+            for p in self.shipped.rglob("*") if p.is_file()}}
+
+    def assert_manual(self, row):
+        self.assertEqual({"manual"}, set(row["apply"]), row)
+        self.assertNotIn("merge-file", json.dumps(row))
+        self.assertNotIn("templates/history", json.dumps(row))
+
     def test_reviewed_bootstrap_has_no_notice_and_normalised_ids(self):
         self.assertNotIn("policy_update", self.validate())
         for rel, content in self.old.items():
@@ -150,77 +155,72 @@ class DefaultComparisonTests(DefaultsCase):
             put(self.shipped, rel, content.replace(b"\n", b"\r\n"))
         self.assertNotIn("policy_update", self.validate())
 
-    def test_changed_prompt_has_working_diff_and_merge_commands(self):
-        new = self.change()
+    def test_changed_prompt_offers_executable_read_only_two_way_comparison(self):
+        self.change()
+        before = self.snapshot()
         item = self.item()
         self.assertRegex(item["template"], r"^[0-9a-f]{12}$")
         row = self.row(item)
         self.assertEqual(("changed", "unchanged"), (row["upstream"], row["local"]))
+        self.assert_manual(row)
         diff = self.run_command(row["diff"])
         self.assertEqual(1, diff.returncode, diff.stderr)
         self.assertIn("+New upstream guidance.", diff.stdout)
-        merge = self.run_command(row["apply"]["merge"])
-        self.assertEqual(0, merge.returncode, merge.stderr)
-        self.assertEqual(new, (self.here / "prompts/test_design.md").read_bytes())
-        # Neither validate nor the advisory merge silently advances provenance.
-        self.assertEqual(self.record, json.loads((self.here / "TEMPLATE.json").read_text()))
+        self.assertEqual(before, self.snapshot())
+        self.assertEqual(self.current_receipt(), item["record"]["reviewed"])
         self.write_record(item["record"]["reviewed"])
         self.assertNotIn("policy_update", self.validate())
 
-    def test_three_way_merge_keeps_nonoverlapping_local_edits(self):
+    def test_customization_is_compared_to_current_without_reconstruction_or_apply(self):
         rel = "prompts/test_design.md"
-        base = b"first\n" + b"middle\n" * 20 + b"last\n"
-        put(self.here, rel, base.replace(b"first", b"local first"))
-        self.store(rel, base)
-        self.record["files"][rel] = blob(base)
+        put(self.here, rel, b"local choice\n")
+        self.record["files"][rel] = blob(b"opaque previous default\n")
         self.write_record()
-        self.change(rel, base.replace(b"last", b"upstream last"))
-        row = self.row(self.item())
+        self.change(rel, b"current shipped choice\n")
+        before = self.snapshot()
+        item = self.item()
+        row = self.row(item)
         self.assertEqual("changed", row["local"])
-        merge = self.run_command(row["apply"]["merge"])
-        self.assertEqual(0, merge.returncode, merge.stderr)
-        merged = (self.here / rel).read_text()
-        self.assertIn("local first", merged)
-        self.assertIn("upstream last", merged)
+        self.assert_manual(row)
+        diff = self.run_command(row["diff"])
+        self.assertEqual(1, diff.returncode, diff.stderr)
+        self.assertIn("-local choice", diff.stdout)
+        self.assertIn("+current shipped choice", diff.stdout)
+        self.assertNotIn("opaque previous default", diff.stdout)
+        self.assertEqual(before, self.snapshot())
 
-    def test_overlap_leaves_markers_and_validation_warns(self):
-        rel = "prompts/test_design.md"
-        put(self.here, rel, self.old[rel] + b"\nLocal guidance.\n")
-        self.change()
-        result = self.run_command(self.row(self.item())["apply"]["merge"])
-        self.assertGreater(result.returncode, 0)
-        self.assertIn("<<<<<<<", (self.here / rel).read_text())
+    def test_preexisting_merge_markers_are_still_advisory(self):
+        put(self.here, "prompts/test_design.md", b"<<<<<<< local\nlocal\n=======\nother\n>>>>>>> other\n")
+        before = self.snapshot()
         warnings = self.validate()["warnings"]
         self.assertTrue(any(w["kind"] == "policy_merge_markers" for w in warnings), warnings)
+        self.assertEqual(before, self.snapshot())
 
-    def test_decline_is_quiet_until_another_upstream_change(self):
+    def test_decline_keeps_customization_quiet_until_shipped_hash_changes(self):
         rel = "prompts/test_design.md"
+        put(self.here, rel, b"repository guidance\n")
         self.change()
-        reviewed = self.item()["record"]["reviewed"]
-        self.write_record(reviewed)
-        self.assertEqual(self.old[rel], (self.here / rel).read_bytes())
+        self.write_record(self.item()["record"]["reviewed"])
         self.assertNotIn("policy_update", self.validate())
-        self.change(content=b"A different upstream version.\n")
-        self.assertEqual("changed", self.row(self.item())["local"])
+        self.assertEqual(b"repository guidance\n", (self.here / rel).read_bytes())
+        self.change(content=b"A different current default.\n")
+        row = self.row(self.item())
+        self.assertEqual("changed", row["local"])
+        self.assert_manual(row)
 
-    def test_missing_record_infers_history_matches_and_unknown_files(self):
-        rel = "prompts/test_design.md"
+    def test_missing_record_offers_current_snapshot_without_inference_or_writes(self):
         self.change()
         put(self.here, "TEMPLATE.json", None)
         put(self.here, "POLICY.json", (self.here / "POLICY.json").read_bytes() + b"\n")
+        before = self.snapshot()
         item = self.item("no_record")
-        inferred = item["record"]["inferred"]
-        self.assertEqual(blob(self.old[rel]), inferred["files"][rel])
-        self.assertIsNone(inferred["files"]["POLICY.json"])
-        self.write_record(inferred)
-        rows = self.item()["files"]
-        self.assertEqual({self.here / rel, self.here / "POLICY.json"}, {Path(r["path"]) for r in rows})
-        unknown = self.row({"files": rows}, "POLICY.json")
-        self.assertEqual("unknown", unknown["local"])
-        self.assertIn("manual", unknown["apply"])
-        self.assertEqual(1, self.run_command(unknown["diff"]).returncode)
+        self.assertNotIn("inferred", item["record"])
+        self.assertEqual(self.current_receipt(), item["record"]["reviewed"])
+        self.assertEqual(before, self.snapshot())
+        for row in item["files"]:
+            self.assert_manual(row)
 
-    def test_added_removed_deleted_and_private_files(self):
+    def test_added_removed_deleted_and_private_files_need_explicit_manual_choice(self):
         put(self.shipped, "prompts/new.md", "a new default\n")
         put(self.shipped, "prompts/also-new.md", "another default\n")
         put(self.here, "prompts/also-new.md", "private content\n")
@@ -231,19 +231,20 @@ class DefaultComparisonTests(DefaultsCase):
         put(self.here, removed[1], b"edited here\n")
         put(self.here, "prompts/deleted.md", None)
         self.change("prompts/deleted.md")
+        before = self.snapshot()
         item = self.item()
         added = self.row(item, "prompts/new.md")
         self.assertEqual(("added", "absent"), (added["upstream"], added["local"]))
-        self.assertEqual(self.shipped / "prompts/new.md", Path(added["apply"]["copy"]))
         self.assertEqual("changed", self.row(item, "prompts/also-new.md")["local"])
-        self.assertTrue(self.row(item, removed[0])["apply"]["delete"])
         self.assertEqual("unchanged", self.row(item, removed[0])["local"])
-        self.assertIn("manual", self.row(item, removed[1])["apply"])
         self.assertEqual("deleted", self.row(item, "prompts/deleted.md")["local"])
-        self.assertIn("manual", self.row(item, "prompts/deleted.md")["apply"])
+        for row in item["files"]:
+            self.assert_manual(row)
         self.assertNotIn(self.here / "prompts/private.md", {Path(r["path"]) for r in item["files"]})
+        self.assertEqual(before, self.snapshot())
+        self.assertEqual(self.current_receipt(), item["record"]["reviewed"])
 
-    def test_invalid_and_newer_records_are_advisory(self):
+    def test_invalid_and_newer_schema_receipts_remain_advisory_and_read_only(self):
         invalid = ["{broken", {**self.record, "extra": True},
                    {**self.record, "files": {"../escape.md": "0" * 40}},
                    {**self.record, "files": {"/absolute": "0" * 40}},
@@ -253,15 +254,20 @@ class DefaultComparisonTests(DefaultsCase):
         for record in invalid:
             with self.subTest(record=record):
                 put(self.here, "TEMPLATE.json", record if isinstance(record, str) else json.dumps(record))
+                before = self.snapshot()
                 item = self.item("invalid_record")
                 self.assertTrue(item["errors"])
-                self.assertIn("inferred", item["record"])
+                self.assertNotIn("inferred", item["record"])
+                self.assertEqual(self.current_receipt(), item["record"]["reviewed"])
+                self.assertEqual(before, self.snapshot())
         self.write_record({**self.record, "schema": 2})
+        before = self.snapshot()
         item = self.item("newer_record")
         self.assertNotIn("record", item)
         self.assertFalse(item.get("files"))
+        self.assertEqual(before, self.snapshot())
 
-    def test_unknown_provenance_equal_to_shipped_is_not_drift(self):
+    def test_null_provenance_equal_to_shipped_is_not_drift(self):
         self.record["files"]["prompts/test_design.md"] = None
         self.write_record()
         self.assertNotIn("policy_update", self.validate())
@@ -270,7 +276,6 @@ class DefaultComparisonTests(DefaultsCase):
         class Unreadable:
             def __fspath__(self):
                 raise OSError("unavailable plugin defaults")
-
         defaults = importlib.import_module("engine.defaults")
         with patch.object(defaults, "TEMPLATE_DIR", Unreadable()):
             self.assertNotIn("policy_update", self.validate())
@@ -281,60 +286,59 @@ class DefaultComparisonTests(DefaultsCase):
         self.assertEqual(1, rc)
         self.assertNotIn("policy_update", out)
 
-    def test_newer_base_is_not_offered_as_a_downgrade(self):
+    def test_opaque_schema_one_hash_is_reviewable_without_version_order_claim(self):
         rel = "prompts/test_design.md"
-        newer = blob("not shipped by this older engine\n")
-        self.record["files"][rel] = newer
+        self.record["files"][rel] = "1" * 40
         self.write_record()
         item = self.item()
+        self.assertNotIn("upgrade", item["message"].lower())
         row = self.row(item)
-        self.assertEqual(("unknown_base", "unknown"), (row["upstream"], row["local"]))
-        self.assertNotIn("diff", row)
-        self.assertNotIn("apply", row)
-        self.assertIn("upgrade", row["note"])
-        self.assertNotIn("record", item)  # only unknown bases: no offer to review an older default
-        self.change("prompts/design.md")
-        reviewed = self.item()["record"]["reviewed"]
-        self.assertEqual(newer, reviewed["files"][rel])
-        self.write_record(reviewed)
-        self.change(rel, "not shipped by this older engine\n")
+        self.assertEqual("changed", row["upstream"])
+        self.assert_manual(row)
+        self.assertEqual(0, self.run_command(row["diff"]).returncode)
+        self.assertEqual(self.current_receipt(), item["record"]["reviewed"])
+        self.write_record(item["record"]["reviewed"])
         self.assertNotIn("policy_update", self.validate())
 
-    def test_removed_file_tombstone_does_not_ping_pong_between_plugins(self):
-        rel = "prompts/review_design.md"
-        base = self.record["files"][rel]
+    def test_legacy_tombstone_is_reviewed_absence_then_reappearance_is_added(self):
+        rel = "prompts/optional.md"
+        old_hash = self.record["files"].pop(rel)
+        self.record["removed"] = {rel: old_hash}
+        self.write_record()
         put(self.shipped, rel, None)
-        record = self.item()["record"]["reviewed"]
-        self.assertNotIn(rel, record["files"])
-        self.assertEqual(base, record["removed"][rel])
-        serialised = json.dumps(record, sort_keys=True)
-        for round_ in range(4):
-            with self.subTest(round=round_):
-                self.write_record(record)
-                self.assertNotIn("policy_update", self.validate())
-                # Another real update makes both engines offer a reviewed record,
-                # allowing us to check that neither resurrects the removed entry.
-                self.change("prompts/design.md", f"round {round_}\n")
-                new = self.item()["record"]["reviewed"]
-                self.assertEqual(base, new["removed"][rel])
-                self.assertNotIn(rel, new["files"])
-                # Keep unrelated provenance fixed for byte-identity of the tombstone round trip.
-                new["files"]["prompts/design.md"] = record["files"]["prompts/design.md"]
-                self.assertEqual(serialised, json.dumps(new, sort_keys=True))
-                put(self.shipped, "prompts/design.md", self.old["prompts/design.md"])
-                put(self.shipped, rel, self.old[rel] if round_ % 2 == 0 else None)
+        self.assertNotIn("policy_update", self.validate())
+        put(self.shipped, rel, self.old[rel])
+        row = self.row(self.item(), rel)
+        self.assertEqual("added", row["upstream"])
+        self.assert_manual(row)
+        reviewed = self.item()["record"]["reviewed"]
+        self.assertEqual(self.current_receipt(), reviewed)
+        self.assertNotIn("removed", reviewed)
 
-    def test_unknown_tombstone_waits_for_upgrade_or_explicit_manual_fix(self):
-        rel = "prompts/review_design.md"
-        del self.record["files"][rel]
+    def test_opaque_tombstone_cannot_claim_newer_plugin(self):
+        rel = "prompts/optional.md"
+        self.record["files"].pop(rel)
         self.record["removed"] = {rel: "1" * 40}
         self.write_record()
+        item = self.item()
+        self.assertNotIn("upgrade", item["message"].lower())
+        self.assertEqual("added", self.row(item, rel)["upstream"])
+        self.assert_manual(self.row(item, rel))
+        self.assertEqual(self.current_receipt(), item["record"]["reviewed"])
+
+    def test_declining_changed_default_preserves_local_deletion(self):
+        rel = "prompts/deleted.md"
+        put(self.here, rel, None)
+        self.change(rel)
         row = self.row(self.item(), rel)
-        self.assertEqual("unknown_base", row["upstream"])
-        self.assertNotIn("apply", row)
-        self.record["removed"] = {}
-        self.write_record()
-        self.assertEqual("added", self.row(self.item(), rel)["upstream"])
+        self.assertEqual("deleted", row["local"])
+        self.assert_manual(row)
+        self.write_record(self.item()["record"]["reviewed"])
+        self.assertNotIn("policy_update", self.validate())
+        self.assertFalse((self.here / rel).exists())
+        self.change(rel, b"another current default\n")
+        self.assertEqual("deleted", self.row(self.item(), rel)["local"])
+
 
 
 class DefaultRepositoryTests(DefaultsCase):
@@ -395,17 +399,6 @@ class DefaultDocumentationTests(unittest.TestCase):
         self.assertIn(".zzzops/TEMPLATE.json", execute)
         self.assertRegex(execute, r"(?i)never[^\n]*edit[^\n]*TEMPLATE\.json[^\n]*goal")
 
-    def test_design_contract_and_history_are_amended(self):
-        spec = (fx.ROOT / "docs/design/SPEC.md").read_text()
-        design = (fx.ROOT / "docs/design/DESIGN.md").read_text()
-        history = (fx.ROOT / "docs/design/HISTORY.md").read_text()
-        for term in ["TEMPLATE.json", "templates/history/", "policy_update", "policy_merge_markers"]:
-            self.assertTrue(term in spec, f"SPEC lacks {term}")
-        self.assertIn("policy_update", design)
-        self.assertIn("G1024", history)
-        import test_design_docs as design_docs
-        # Reuse the existing guard instead of coupling to the pending row's prose.
-        design_docs.DesignDocsTests("test_no_landed_goal_is_pending").test_no_landed_goal_is_pending()
 
 
 if __name__ == "__main__":

@@ -183,7 +183,7 @@ class CostPolicyTemplateTests(unittest.TestCase):
         golden = json.loads((fx.ROOT / ".agents/fixtures/g1043_property_ast.json").read_text())
         observed = property_semantic_hashes((fx.ROOT / ".agents/test_engine_property.py").read_text())
         self.assertEqual(golden["semantics"], observed,
-                         "removing stale isolation must preserve property seeds/steps/assertions")
+                         "current-graph fixture migration must preserve audited property seeds/steps/assertions")
 
     def test_property_semantic_guard_rejects_weakened_seeds_steps_and_assertions(self):
         golden = json.loads((fx.ROOT / ".agents/fixtures/g1043_property_ast.json").read_text())["semantics"]
