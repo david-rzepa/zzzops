@@ -84,7 +84,7 @@ These labels do not form a simple linear state machine. The engine checks skip f
 
 A producer normally supplies a consumer only when it is current and ok. Declared dependency inputs can allow discovery from a reviewed dependency before that dependency has merged, while delivery waits for integration. An open or held dependency that can still produce the value is a **named wait**, not a dead end; a cancelled, invalid or otherwise incapable dependency may instead contribute to a stuck decision. A held goal is evaluated but offers no actions or human items. Release gates, priority, capacity and ordering further constrain what `next` offers; human items can be gathered for a decision together. Exact behavior depends on repository policy and declared capabilities. [C2, C9]
 
-The shipped default graph at this snapshot has 15 nodes and multi-lens review; it is a default a repository may adopt, not a law that every repository has that graph. The historical fixtures used by some tests have different graphs. Installing an engine does not silently replace repository workflow or policy. [C7, C9]
+The shipped default graph at this snapshot has 15 nodes and multi-lens review; it is a default a repository may adopt, not a law that every repository has that graph. Its discovery phase contains `design`, `review_design`, `adversary_design`, `filter_design`, and `approve_design`. Delivery contains `base`, `test_design`, `review_tests`, `implement`, `run_tests`, `review_impl`, `filter_impl`, `integrate`, `approve_merge`, and `merge`. The design reviewers feed a filter; the implementation reviewer feeds another. These names make the default inspectable, but dependencies in the graph, not the order of this list alone, determine readiness. [C10] The historical fixtures used by some tests have different graphs. Installing an engine does not silently replace repository workflow or policy. [C7, C9]
 
 ### Reading the frontier as an audit record
 
@@ -94,13 +94,18 @@ A `ready (stale)` record reports the changed fingerprint parts, such as a select
 
 ## The task card
 
-A start operation claims a particular eligible node and returns a card. In simplified form:
+A start operation claims a particular eligible node and returns a card. The engine resolves each declared selector, placing semantic inputs in `inputs` and edges marked `context` in `context`. It loads only instruction names declared on the node from repository policy, and presents declared policy values for agent nodes. For example, the default `implement` node selects `code_quality`, `dependencies`, `security` and `git` instructions. Its design, test change and base are semantic inputs; test commands and test-review summary are context inputs. The card may also give workspace commands separately in `commands_to_run`. [C4, C10]
+
+In simplified form (ellipsis indicates abbreviated values and optional fields):
 
 ```text
 node: implement                    # selected work
 prompt: {summary: ..., read: ...}  # declared instructions and immutable blob
 inputs: {design: {blob: ..., read: ...}, ...}
-context: {changed: ..., previous: ..., corrections: ...}
+context: {tests_review: ...}        # selected context inputs
+changed: ...                       # present when applicable
+previous: ...                      # present when applicable
+corrections: [...]                 # live findings for this node
 workspace: <goal workspace>
 commands: {submit: <exact command>, renew: <exact command>}
 ```
@@ -127,25 +132,64 @@ An artifact is identified by its blob, while a whole checkpoint uses its normali
 
 This separation makes incremental work possible and makes omissions important. A context edge can stop a node from becoming ready, but changing that edge alone does not invalidate a completed record. A fingerprint match means that the *declared identity* is unchanged; it does not prove the reasoning, output, test coverage or undeclared dependencies correct. Audit the selected fields and edges, especially when an input matters semantically but was declared only as context. [C3]
 
+### Predicting a rerun from actual selectors
+
+The default graph gives a concrete way to test the identity boundary. Here are selected declarations from the pinned workflow, with unrelated fields omitted:
+
+```json
+"implement": {
+  "inputs": {
+    "doc": {"from": "design.doc"},
+    "tests": {"from": "test_design.tests.change"},
+    "base": {"from": "base.base_commit"},
+    "commands": {"from": "test_design.commands", "context": true},
+    "tests_review": {"from": "review_tests.summary", "context": true}
+  },
+  "instructions": ["code_quality", "dependencies", "security", "git"]
+}
+```
+
+The default `review_design` node declares `policy: ["intent"]`; `run_tests` declares `code` from `implement.code.tree` and policy values `verification.commands` and `verification`. These are examples of different consumers, not interchangeable selectors. Assume each consumer has a current, ok record and all prerequisites remain current. The following symbolic values stand for distinct valid identities, not literal computed hashes. [C3, C10]
+
+| Change in a new snapshot | Predicted effect on the named consumer |
+|---|---|
+| `design.doc` is an artifact with blob `B1`, then blob `B2` | `implement` becomes `ready (stale)` because its selected artifact identity changed. A different path or commit with the same selected blob does not by itself change that artifact identity. |
+| `test_design.tests.change` changes from `D1` to `D2` | `implement` becomes stale on `inputs.tests`. Selecting `.change` compares that selected value. |
+| The test checkpoint gets a new commit or tree but its selected `.change` remains `D1` | That selector alone does not stale `implement`; another selected input or gate may still do so. |
+| `test_design.commands` changes from `["check A"]` to `["check B"]` | The `implement` context changes but does not alone stale its record. A fresh card can show the new value; the separate `run_tests` node uses commands as a semantic input and can become stale. |
+| `implement.code.tree` changes from `T1` to `T2` while the change remains `D1` | `run_tests` becomes stale on its selected tree. A change-bound consumer need not become stale from that tree change alone. |
+| Declared `intent` policy changes for `review_design` | That review's policy fingerprint changes. A policy value not declared by a node does not enter that node's policy fingerprint merely because it exists. |
+| Only the text of a selected instruction or prompt changes | The normal node fingerprint does not change solely for that edit. Bump `rev` when the desired migration is a rerun. |
+
+A context edge still gates readiness: if a required context producer is not current, a new run cannot simply ignore it. The predictions assume no such block, no changed subject or other input, and a still-valid record. They illustrate why the selected type matters: a whole checkpoint's normalized change identity is not the same selection as `.tree`; an artifact's blob identity is not its path. They also expose an audit question: if updated commands should make implementation rerun, should they have been declared semantic rather than context? The engine can faithfully apply a choice that deserves revision. [C3]
+
 ### Review is another disclosure step
 
 A finding identifies a target and the fingerprint of the output it addresses. The frontier first computes live findings, then node states. A stale agent or human review can carry an open finding while the target output remains the same; stale operation findings follow a different rule. With the applicable capability, a blocked target can retain its prior output for finding liveness while ordinary consumers still wait for its retry. This avoids losing a relevant correction merely because its target is temporarily blocked; it does not make the blocked output current to consumers. [C7]
 
 Multi-lens reviews can run independently and feed a filter join. The filter's candidates include open finding IDs and material labels. A fresh filter may turn a non-material finding into a note; a material finding cannot be demoted this way. Notes do not reopen work. Kept findings become corrections for the target; a submit must address required findings, and disputes can return to review and then escalate to a human. Review independence is checked by holder-label comparison, not verified identity or independent infrastructure. Shared labels, credentials and common assumptions weaken the practical independence of review. [C6, C7]
 
-Owner-question interviewing is a prompt and policy procedure, supported by durable blocked answers. It is not an oracle for deciding which questions a person would have wanted asked. Stage-specific round budgets, where the capability is enabled, count newly raised material-finding rounds, with specified exemptions including a base-only change with no checkpoint output and certain definition, candidate, lens and policy changes. They are distinct from lease crash loops, repeated blockers and dispute escalation; none is simply a universal count of retries. [C7]
+Owner-question interviewing is a prompt and policy procedure, supported by durable blocked answers. [C11] It is not an oracle for deciding which questions a person would have wanted asked. Stage-specific round budgets, where the capability is enabled, count newly raised material-finding rounds, with specified exemptions including a base-only change with no checkpoint output and certain definition, candidate, lens and policy changes. They are distinct from lease crash loops, repeated blockers and dispute escalation; none is simply a universal count of retries. [C7]
+
+### What a reviewer can inspect
+
+A review should distinguish a question about the output from a question about the workflow that produced it. A design may be clear but its review edge may omit a significant prerequisite. Conversely, a node may correctly identify all declared inputs while the artifact itself is wrong. The first finding calls for changing the workflow or definition; the second calls for changing the artifact. In both cases, the target and target fingerprint matter: a finding on an old output should not silently apply to an unrelated replacement. The review record is evidence of a review action, not proof that the reviewer found every flaw. [C3, C7]
+
+The filter is also part of the accountable path. Its candidate identity changes when an open finding is added, closed or relabelled material, even if the reviewers' summaries are unchanged. That makes the join stale and gives it another decision to make. A non-material note can remain visible without reopening the subject; a material claim remains a correction. The worker's response is part of the correction process, but a bare response is not proof of a good fix. The next review has to inspect the new output and decide on the substance. The engine can require a response and route a dispute; the reviewer and human still evaluate its merits. [C7]
+
+The round budget is similarly a guard on a particular pattern, not a general measure of work done. A newly raised material-finding round can consume the relevant stage's budget. Repeated lease failures, repeated agent blockers and repeated operation findings have separate caps; a time wait or a dependency conflict has different handling. The base-only exemption requires the specified absence of checkpoint output, so an operator should inspect the actual record rather than classify every upstream movement as exempt. Definition, candidate, lens and policy changes have their own specified exemptions. A budget item asks for a human decision; it does not establish that a disputed result is correct. [C7]
 
 ## A synthetic walkthrough
 
-The following is a composite of checked behaviors, not a recorded run. Assume two generic goals A and B, with B depending on A, and a workflow declaring B's discovery input from A's reviewed design and B's delivery input from A's integration. The exact node names in a repository can differ.
+The following is a composite of checked behaviors, not a recorded run. Assume two generic goals A and B, with B depending on A, and a workflow declaring B's discovery input from A's design and B's delivery input from A's integration. The exact node names in a repository can differ. The first three rows describe A's initial review correction; only after that review and approval does the dependency-readiness example begin. B can consume A's current design under the stated selector; any additional review gate in B's actual graph also has to resolve.
 
 | Moment | Relevant state and reason | What the next worker receives |
 |---|---|---|
-| Initially | A design is `ready (new)`; B discovery is `blocked` on A's missing reviewed design. | A's card selects its goal, design prompt and instructions. |
-| A design and review accepted, A not integrated | A's reviewed design is current and ok; B discovery can be `ready (new)`; B delivery remains blocked on a named dependency wait. | B's discovery card receives the declared reviewed design; a long input may be a summary with a blob read pointer. |
-| A review raises a material finding and the filter joins | A's design becomes `ready (reopened)` while the finding remains live against its target fingerprint; downstream consumption waits for current output. | A's design retry card includes the correction and relevant prior context. |
-| A submits a changed design and responses | The old finding no longer targets the new output; the review becomes `ready (stale)` on its changed subject. | The reviewer receives the new subject and review context; the filter must join the new candidates. |
-| Fresh review and filter accept | The review and filter become current and ok; the human approval node is `needs_human (approve)` when its prerequisites resolve. | The approval item presents the decision context; after approval, declared downstream work can proceed. |
+| Initially | A design is `ready (new)`; B discovery is `blocked` on A's missing design. | A's card selects its goal, design prompt and instructions. |
+| A submits a design; its independent review and filter run | A material finding is kept by the fresh filter. A design becomes `ready (reopened)` against the unchanged target output. | A's design retry card includes the correction and relevant prior context. |
+| A submits a changed design and required responses | The old finding no longer targets the new output; review becomes `ready (stale)` on its changed subject. | The reviewer receives the new subject and review context; the filter must join the new candidates. |
+| Fresh review and filter accept | The review and filter become current and ok; A's approval node is `needs_human (approve)` when its prerequisites resolve. | The approval item presents the decision context. |
+| A's design is current and approved, A not integrated | B discovery can be `ready (new)` when its declared inputs resolve; B delivery remains blocked on the named integration dependency wait. | B's discovery card receives the declared design; a long input may have a blob read pointer. |
 
 The dependency example is supported by [C2]; card shrinking and pointers by [C4]; the review join, reopening and re-review by [C7]. Each row assumes no unrelated missing input, hold, release gate or lease. In particular, “ready” here is not a promise that portfolio capacity will dispatch it immediately. An owner can inspect the graph and actual card to test those assumptions.
 
@@ -182,9 +226,11 @@ The links below point to the exact source snapshot and named tests. Scope distin
 | C4 engine | Card selection and shrink target; `previous` can exceed it. | [SPEC §4.20](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#420-task-card-construction); [ShrinkBudgetTests.test_a_card_over_budget_because_of_previous_is_a_fixed_point](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_card_budget.py); `card-previous` reproduction. |
 | C5 engine | `next` truncation is not a universal bound. | [SPEC §3.15](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#315-next-output-at-most-8192-bytes-unless---all); [RenderTests.test_truncation_keeps_under_8k](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_portfolio.py); `next-waiting` reproduction. |
 | C6 engine | Reclaim fences an old submit; labels and fences do not isolate actors. | [SPEC §4.12](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#412-leases-claim-renew-reclaim-abandon-orphans-capacity); [LeaseTests.test_submit_after_reclaim_is_fenced](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_lifecycle.py); [LeaseTests.test_independence_and_held_goal](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_lifecycle.py) |
-| C7 default | Multi-lens join and corrections; material-round rules and held output are capability-dependent. | [SPEC §4.9](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#49-frontier-two-passes-ok-semantics); [ReviewJourneyTests.test_design_reviewers_run_in_parallel_and_reopen_the_design_once](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_review_lenses.py); [RoundBudgetTests.test_base_only_exemption_requires_no_checkpoint_output](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_round_budget.py); [HeldOutputTests.test_carrier_and_filter_are_fresh_but_consumers_still_wait](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_blocked_findings.py) |
+| C7 engine | Multi-lens join and corrections; material-round rules and held output are capability-dependent. | [SPEC §4.9](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#49-frontier-two-passes-ok-semantics); [ReviewJourneyTests.test_design_reviewers_run_in_parallel_and_reopen_the_design_once](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_review_lenses.py); [RoundBudgetTests.test_base_only_exemption_requires_no_checkpoint_output](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_round_budget.py); [HeldOutputTests.test_carrier_and_filter_are_fresh_but_consumers_still_wait](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_blocked_findings.py) |
 | C8 engine | Scoped carry can preserve change-bound work while tree checks rerun; unsafe resolutions refuse carry. | [SPEC §4.21](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#421-carry-forward-across-a-clean-sync); [CleanSyncIdentityTests.test_context_sync_carry_loop_preserves_reviews_and_reruns_tree_checks](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_clean_sync.py); [CleanSyncIdentityTests.test_interleaved_and_dropped_resolutions_fail_closed](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_clean_sync.py) |
-| C9 procedure | Delivery, optional lines and adoption have explicit gates; production merge does not prove deployment. | [SPEC §5](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#5-operations); [TargetTests.test_release_goal_bases_integrates_and_merges_on_the_release_branch](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_branching.py); [DefaultComparisonTests.test_changed_prompt_has_working_diff_and_merge_commands](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_defaults.py) |
+| C9 engine | Delivery operations and optional lines have explicit gates; production merge does not prove deployment. | [SPEC §5](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#5-operations); [TargetTests.test_release_goal_bases_integrates_and_merges_on_the_release_branch](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_branching.py); [DefaultComparisonTests.test_changed_prompt_has_working_diff_and_merge_commands](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_defaults.py) |
+| C10 default | The shipped 15-node graph and its selectors, instructions and policy choices; repositories may adopt different definitions. | [Default workflow](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/plugins/zzzops/zzzops/templates/default/workflow.json); [ShippedTemplateTests.test_the_15_node_graph](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_review_lenses.py); [ShippedTemplateTests.test_review_fan_in](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_review_lenses.py) |
+| C11 procedure | Owner questions are a prompt procedure backed by recorded answers; judgment remains human. | [OwnerJourneyTests.test_the_acceptance_journey](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_owner_questions.py); [OwnerQuestionsTemplateTests.test_design_prompt_step_4_blocks_with_every_owner_question](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_owner_questions.py) |
 
 ## Keeping this paper current
 
@@ -242,6 +288,14 @@ Choose a fresh source snapshot and inspect engine, template and capability chang
       {
         "path": ".agents/test_engine_frontier.py",
         "symbol": "FrontierTests.test_context_edge_change_stales_nothing"
+      },
+      {
+        "path": ".agents/test_engine_frontier.py",
+        "symbol": "FingerprintTests.test_checkpoint_and_artifact_identities"
+      },
+      {
+        "path": ".agents/test_engine_frontier.py",
+        "symbol": "FingerprintTests.test_def_fp_ignores_context_edges_and_prose"
       }
     ],
     "limit": "Declared identity is not correctness."
@@ -309,7 +363,7 @@ Choose a fresh source snapshot and inspect engine, template and capability chang
   {
     "id": "C7",
     "family": "review",
-    "scope": "default",
+    "scope": "engine",
     "source": [
       {
         "path": "docs/design/SPEC.md",
@@ -320,6 +374,18 @@ Choose a fresh source snapshot and inspect engine, template and capability chang
       {
         "path": ".agents/test_engine_review_lenses.py",
         "symbol": "ReviewJourneyTests.test_design_reviewers_run_in_parallel_and_reopen_the_design_once"
+      },
+      {
+        "path": ".agents/test_engine_round_budget.py",
+        "symbol": "RoundBudgetTests.test_material_round_matrix"
+      },
+      {
+        "path": ".agents/test_engine_blocked_findings.py",
+        "symbol": "HeldOutputTests.test_carrier_and_filter_are_fresh_but_consumers_still_wait"
+      },
+      {
+        "path": ".agents/test_engine_owner_questions.py",
+        "symbol": "OwnerFilterTests.test_a_material_owner_question_cannot_be_demoted_by_the_filter"
       }
     ],
     "limit": "Review and capability configuration differ by repository."
@@ -345,7 +411,7 @@ Choose a fresh source snapshot and inspect engine, template and capability chang
   {
     "id": "C9",
     "family": "delivery",
-    "scope": "procedure",
+    "scope": "engine",
     "source": [
       {
         "path": "docs/design/SPEC.md",
@@ -359,6 +425,50 @@ Choose a fresh source snapshot and inspect engine, template and capability chang
       }
     ],
     "limit": "Git merge does not establish deployment."
+  },
+  {
+    "id": "C10",
+    "family": "frontier",
+    "scope": "default",
+    "source": [
+      {
+        "path": "plugins/zzzops/zzzops/engine/card.py",
+        "symbol": "build"
+      }
+    ],
+    "evidence": [
+      {
+        "path": ".agents/test_engine_review_lenses.py",
+        "symbol": "ShippedTemplateTests.test_the_15_node_graph"
+      },
+      {
+        "path": ".agents/test_engine_review_lenses.py",
+        "symbol": "ShippedTemplateTests.test_review_fan_in"
+      }
+    ],
+    "limit": "Repository workflows may differ."
+  },
+  {
+    "id": "C11",
+    "family": "review",
+    "scope": "procedure",
+    "source": [
+      {
+        "path": "docs/design/SPEC.md",
+        "section": "4.15"
+      }
+    ],
+    "evidence": [
+      {
+        "path": ".agents/test_engine_owner_questions.py",
+        "symbol": "OwnerJourneyTests.test_the_acceptance_journey"
+      },
+      {
+        "path": ".agents/test_engine_owner_questions.py",
+        "symbol": "OwnerQuestionsTemplateTests.test_design_prompt_step_4_blocks_with_every_owner_question"
+      }
+    ],
+    "limit": "Prompts cannot determine every owner preference."
   }
 ]
 -->
