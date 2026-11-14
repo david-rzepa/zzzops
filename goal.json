@@ -257,15 +257,28 @@
       "status": "done"
     },
     "integrate": {
-      "attempt": 3,
+      "attempt": 4,
+      "blocked": {
+        "category": "external",
+        "op_state": {
+          "head": "7bee8d6d68317e89ac4fb48e2d644e87fe5723cc",
+          "pending_since": 1794683438,
+          "polls": 1,
+          "rerun_head": null
+        },
+        "reason": "required checks pending: dev-required-tests (mergeable: MERGEABLE/BLOCKED)",
+        "repeats": 1,
+        "retry_after": "2026-11-14T19:15:38Z",
+        "waiting_for": "time"
+      },
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T17:42:08Z",
+      "finished_at": "2026-11-14T19:10:38Z",
       "fp_parts": {
         "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
         "inputs": {
           "base": "v1:sha256:92fb166bb2d877c78854032c50996843982ef4f5cff7b5a092fb2d8ca03148d7",
-          "code": "v1:sha256:cbee99e94528f11a15c8031834bf77ea66d0c7e99e4dc2330c28a53449f71c25"
+          "code": "v1:sha256:f621a926acd49a6567d113299419712744c467ed30e61d80d643373880dedbd1"
         },
         "policy": {
           "verification.required_ci": [
@@ -273,30 +286,12 @@
           ]
         }
       },
-      "holder": "codex:wp1036/integrate-3",
-      "input_fp": "v1:sha256:7789154b5970f0b09931238345ccf52cc9a8affc08cf52fd5366e49ecb1dc90a",
-      "ok": true,
-      "output": {
-        "ci": {
-          "failed": [],
-          "passed": [
-            "dev-required-tests"
-          ],
-          "required": [
-            "dev-required-tests"
-          ],
-          "stacked": false
-        },
-        "pr": {
-          "base": "dev",
-          "head": "901e0b8f28470e74903646a40ad481a082cd0c98",
-          "number": 773,
-          "tree": "dfc6665a482a9efa4f813b0f71190b5173fa5f6d",
-          "url": "https://github.com/david-rzepa/zzzops/pull/773"
-        }
-      },
-      "reason": "retry",
-      "status": "done"
+      "holder": "codex:wp1036/integrate-4",
+      "input_fp": "v1:sha256:b36c78bfaec166091a77b7f8a460bc918b83c41353912a5b6d2f40757a4f4bc7",
+      "ok": false,
+      "output": null,
+      "reason": "stale",
+      "status": "blocked"
     },
     "merge": {
       "attempt": 1,
