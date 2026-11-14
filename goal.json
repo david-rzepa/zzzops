@@ -78,6 +78,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T23:21:25Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:23bb4f18c9022ee889844e3205a212b33ddd92095b019c8a39091a279ec03a99"
+        },
+        "policy": {},
+        "subject": "v1:sha256:98ce3f909d8d4a6b31b33a0bcb02316a6d2f1ddfec0322e850ed9675227b0edb"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:3a44fc10eb7c3fb002b58e522430df7aa9bd505addeab1d43ad1f93c9b575eb1",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-14T23:21:25Z",
+        "decided_by": "Codex (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Do not wait for my approval",
+        "summary": "Approve the independently reviewed G1047 cleanup at a3163c252a4f: opaque schema1 receipts/manual two-way defaults, template-history/seed removal and obsolete fixture retirement with current+renamed generic coverage retained. Focused18 and all1121 configured local tests pass, frozen66paths/currenttemplates/policy unchanged, final98file OpenAI/Claude package checks pass. PR777 targetsdev at8f5e96826d8d; current exact-head CI and GitHub rules remain gates, and root owns final verified adminmerge authority."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "4bc7b4deba5f1a98595ab795cdb5c088c14b3c66",
+          "change": "42a28be1d7f329657ac36d1adee25666a29684d3",
+          "commit": "a3163c252a4f316630b75029d8c77f369f2dcc5a",
+          "tree": "866c6da30229481039892be52761401adaf0cdee"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 1,
       "correction_runs": 0,
