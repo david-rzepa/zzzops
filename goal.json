@@ -223,6 +223,56 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 1,
+      "findings": [
+        {
+          "id": "review_tests:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:6d53f94923863a44647ba1768ed18f57456191fe59afac414cc6c340e230c1a0",
+          "text": "Replace the outgoing full-suite command with a measured portable focused defaults command, such as python3 -m unittest discover -s .agents -p test_engine_defaults.py -v. Keep checkpoint 69515cd35e533ac104d12c4e4ad971f84fcc3aef and all frozen tests unchanged. checks.run already executes the configured full repository suite separately; retain the existing full-run report as pre-implementation evidence rather than using its absolute --report path in future goal commands. Impact: The current plan runs the 1121-case suite twice, depends on /home/dave cache layout on every execution host, and overwrites test_design/combined-final-report.json (the saved RED receipt) when the future command runs.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-14T22:54:22Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:9e9475ecec33c072c79dc2ac8927dafe2e6f88b4",
+          "tests": "v1:sha256:5d93afe45d49f987aedbe9194f7d0182c521e187bd575e0ce4f538dcf07cc787"
+        },
+        "policy": {},
+        "subject": "v1:sha256:6d53f94923863a44647ba1768ed18f57456191fe59afac414cc6c340e230c1a0"
+      },
+      "holder": "codex:cleanup1047/review_tests-1",
+      "input_fp": "v1:sha256:4e5df08d0c6808ef21eeb1f488e855cb4ecb8c0adfa344fc86436e5b09ed3d5f",
+      "ok": false,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "aca77451cf3e7cb6855470c705af78ac9220c023",
+          "commit": "f405cbc229e3db97e1b40374c85352d380ecbd12",
+          "path": ".zzzops/reviews/1047/review_tests.md"
+        },
+        "summary": "Changes requested only for the goal command: replace duplicated host-bound full validation/report capture with a portable focused defaults command; frozen migration tests and final red/green accounting are otherwise sound."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "4bc7b4deba5f1a98595ab795cdb5c088c14b3c66",
+          "change": "3a6b0f52a0901b8f931fcbe00d2d25d9b0d3a3a4",
+          "commit": "69515cd35e533ac104d12c4e4ad971f84fcc3aef",
+          "tree": "0b58a83e144ec575fa32b246d993d9d670bcb2ba"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
