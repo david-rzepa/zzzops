@@ -13,36 +13,36 @@
   "priority": "P1",
   "records": {
     "adversary_design": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-03T18:15:26Z",
+      "finished_at": "2026-11-14T17:07:06Z",
       "fp_parts": {
         "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
         "inputs": {
-          "doc": "v1:blob:2a239e92a02beb5c9dc03824485c183501bfc80a",
-          "spec": "v1:sha256:7cacab7d2739a88c2f7c7d9773f294a4064599407fcc553561919fe77916b36c"
+          "doc": "v1:blob:9c056c03d9f2e0238eadcef88eef497970e66e6a",
+          "spec": "v1:sha256:73bd62c790e63230e34d07e5650e64d5fbbf40846b9a3caff40d3f6e7f77130a"
         },
         "policy": {},
-        "subject": "v1:sha256:8ef6ef323058a87be7ae99dd1bfab0679fa0f55602ac5e56161e52a4a17cad21"
+        "subject": "v1:sha256:160e82af71ae434dea78da8bb9c9284f8e1c7dfedf459d7063d4bfa0638c635f"
       },
-      "holder": "codex:takeover/1036-adversary-cli-only",
-      "input_fp": "v1:sha256:570862efc25709081a07b47891e84982b7b8569f04a81c4792cdda628ec10e6d",
+      "holder": "codex:wp1036/adversary-design-7",
+      "input_fp": "v1:sha256:b72ea1ca986a2bf14c0d1e61e667c99e4ad13191ee40148b7fc793cd458116fc",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "cf3ade716f552063c6ed72a9276699230f85d33c",
-          "commit": "8f2ea3caf2889b932cfc8363906649ce670b10ac",
+          "blob": "54c20a3c93e705b2750658686da1971d31c3efe9",
+          "commit": "9fcbf3eff3cb9e249e39fcd86759c10ba3f71e19",
           "path": ".zzzops/reviews/1036/adversary_design.md"
         },
-        "summary": "Approved: CLI-only permission is separated from execution evidence and equivalence claims, while the actual G1037 merged-report writing gate and deployment/privacy boundaries remain intact."
+        "summary": "Approved: the refreshed design states the implementation's adversarial, provenance and privacy boundaries without unsupported guarantees."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "2a239e92a02beb5c9dc03824485c183501bfc80a",
-          "commit": "1c9d0a6a24ea5d4bf649f5fe264213983d898977"
+          "blob": "9c056c03d9f2e0238eadcef88eef497970e66e6a",
+          "commit": "e9879f02f796415e9497ad8431f6d2f6657466b4"
         }
       },
       "status": "done"
