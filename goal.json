@@ -262,6 +262,52 @@
       },
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T17:34:27Z",
+      "fp_parts": {
+        "def": "v1:sha256:ba0e80cd449a16330f3e62cea7fab93aad71b666081fd28f1c0386cf4f3d2d24",
+        "inputs": {
+          "base": "v1:sha256:92fb166bb2d877c78854032c50996843982ef4f5cff7b5a092fb2d8ca03148d7",
+          "code": "v1:sha256:b8684f51fa996995b772c1cce252b7dadd7cbddfcd8f6f5be520c28de727c18c",
+          "doc": "v1:blob:9c056c03d9f2e0238eadcef88eef497970e66e6a",
+          "tests": "v1:sha256:ae04172168512dde6665548d12246d56f3669033e4f86ce5e1ad8b0f7f884693"
+        },
+        "lenses": [
+          "compliance",
+          "correctness",
+          "missing",
+          "tests",
+          "craft"
+        ],
+        "policy": {},
+        "subject": "v1:sha256:11c680b75c7e5ba492bfc2921bed727b52de5ace87fce883cee50ddbdb5ac4e6"
+      },
+      "holder": "codex:wp1036/review-impl-1",
+      "input_fp": "v1:sha256:26510dfa900d545cd85a845dde89b8f377118e88f82e1446f695785c2d124ccf",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "1b36fd3159cc980028097d0fbe20f572b04e31f9",
+          "commit": "2f8bce140428cd58e54b7fee945ef2652bce7523",
+          "path": ".zzzops/reviews/1036/review_impl.md"
+        },
+        "summary": "Approved: the paper implements the disclosure-focused design, and pinned source/test assertions support its qualified behavior claims; no material findings."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "c455b09914b49fd65e169f91a4f79110e3e2540b",
+          "change": "9a8e10553ed58308f76555258f764ced7180c856",
+          "commit": "580987251909105fb202d84648828e8271abf08c",
+          "tree": "dfc6665a482a9efa4f813b0f71190b5173fa5f6d"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 1,
       "correction_runs": 0,
