@@ -74,6 +74,32 @@
       "reason": "new",
       "status": "done"
     },
+    "filter_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T21:40:11Z",
+      "fp_parts": {
+        "candidates": [],
+        "def": "v1:sha256:c83a5e0ec02bc9504ff118f774138ad5517f6b3a5885d1c28444982e78d23a9f",
+        "inputs": {
+          "adversary": "v1:sha256:ff7eff4c3970afd5b73497914e63d3e8d29bd33d9a857efaf07af63560b7c2d1",
+          "doc": "v1:blob:b3e703a51d1b35335d22c2574b30f3da045388d0",
+          "review": "v1:sha256:7df12db4294c5c50847370d7f0d815d9ec56f93bbfc0349f8d15df5f0a8f993e",
+          "spec": "v1:sha256:6163c1c9c5147e66ad416e6fc3067011d5affc2a15828d5d429be6f9115bbe14"
+        },
+        "policy": {}
+      },
+      "holder": "codex:paperpin1046/filter_design-1",
+      "input_fp": "v1:sha256:040c43c751cfc7e0856e042954bf693217ccfe2b669a85d9f59a7bc7771154ba",
+      "ok": true,
+      "output": {
+        "summary": "Design review: approved. Adversarial review: approved. No material findings or candidate notes reopen work; there are 0 notes. The real root publication-receipt gate remains required before claiming implement.",
+        "verdicts": {}
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 1,
       "correction_runs": 0,
