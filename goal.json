@@ -8,7 +8,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T20:48:53Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "spec": "v1:sha256:11a93f93ff1a48e87b2d3421d95683c212cb50da9c2e1b77b874f3a46f6d360f"
+        },
+        "policy": {}
+      },
+      "holder": "codex:summary1045/design-1",
+      "input_fp": "v1:sha256:01ea6b18d6cb4faed4721b9ddd53520b9fcbd0547d9d93fbd0b8bf02e5c49204",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "20590aebc3aa36067eb90c26660a95b5413cfc34",
+          "commit": "fc3057a9a194e1779c1cdd239a7083b74aad68c4",
+          "path": ".zzzops/reviews/1045/design.md"
+        },
+        "summary": "Adopts the already reviewed and tested 4ff release-summary implementation without redesign, preserving its exact read-only output, evidence and paused/offline behavior. Ports the original 15 tests first, then the source implementation/SPEC/support documents with minimal DESIGN/HISTORY bookkeeping, followed by fresh local validation, independent gates and a normal dev PR."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
