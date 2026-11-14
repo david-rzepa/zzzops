@@ -44,6 +44,40 @@
       },
       "status": "done"
     },
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T20:53:08Z",
+      "fp_parts": {
+        "def": "v1:sha256:d04fc5094a85157b7e25b3020caaee316324161c59b30d25d4aabb2e5c24f0ed",
+        "inputs": {
+          "doc": "v1:blob:20590aebc3aa36067eb90c26660a95b5413cfc34",
+          "filter": "v1:sha256:1bc72077bae5120f43239d498d55d5123c5d297edff337a8e750a520d7a2483b",
+          "summary": "v1:sha256:a1cd4396aa04bf6c5986f7a2dd97d2804c4c6267780ca363e0ef7b36db4df631"
+        },
+        "policy": {},
+        "subject": "v1:sha256:2645816db7d15d13cd72b73d54cb9fe7249dda33918792375f10fa246fe93dc2"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:8dd6e9aff837a1ec07f4b926806c2e5949a2438fa6b01fdcf0cad9be89ab62bb",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-14T20:53:08Z",
+        "decided_by": "Codex (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Do not wait for my approval",
+        "summary": "Approve the short adoption design for the already authorized 4ff release summaries: original 15 tests first, unchanged implementation behavior, minimal contract bookkeeping and fresh configured validation. Both independent design reviews approved with no findings."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "20590aebc3aa36067eb90c26660a95b5413cfc34",
+          "commit": "fc3057a9a194e1779c1cdd239a7083b74aad68c4"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 1,
       "correction_runs": 0,
