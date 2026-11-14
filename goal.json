@@ -299,9 +299,16 @@
       "status": "done"
     },
     "merge": {
+      "answer": {
+        "decided_at": "2026-11-14T21:28:39Z",
+        "decided_by": "david-rzepa",
+        "quote": "Merged PR #773 on GitHub at 2026-11-14T21:26:43Z",
+        "text": "PR #773 was merged into dev at the approved exact head; observe the completed GitHub merge and record b2a5b9f53828529b9b1c3723d30bf78edbb5a3dc."
+      },
       "attempt": 3,
       "blocked": {
         "category": "external",
+        "instructions": "The human answered: PR #773 was merged into dev at the approved exact head; observe the completed GitHub merge and record b2a5b9f53828529b9b1c3723d30bf78edbb5a3dc.",
         "op_state": {
           "pending_since": 1794678146,
           "polls": 2
@@ -309,7 +316,7 @@
         "question": "G1036 merge: GitHub blocks the merge (required reviews, checks, signatures or queue); satisfy it on GitHub or merge there, for 181 minutes. Fix it, or answer 'wait' to keep waiting.",
         "reason": "GitHub blocks the merge (required reviews, checks, signatures or queue); satisfy it on GitHub or merge there for 181 minutes",
         "repeats": 1,
-        "waiting_for": "human"
+        "waiting_for": "agent"
       },
       "correction_runs": 0,
       "findings": [],
