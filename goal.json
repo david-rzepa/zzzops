@@ -13,36 +13,36 @@
   "priority": "P1",
   "records": {
     "adversary_design": {
-      "attempt": 4,
+      "attempt": 5,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T18:50:11Z",
+      "finished_at": "2026-11-14T19:46:56Z",
       "fp_parts": {
         "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
         "inputs": {
-          "doc": "v1:blob:7aa4db7dc9cac42eaaa2b947bb4097cf8152e896",
-          "spec": "v1:sha256:ac36af7a5392b04435578723c09196211b5841cd0840836793092d73c249c10a"
+          "doc": "v1:blob:cf5f4303629f8dd290edc690a00d433058591e9f",
+          "spec": "v1:sha256:e86e62dabf813637e866b635680c1f962d5da0a87be9af2dbf8c873856ecb9f4"
         },
         "policy": {},
-        "subject": "v1:sha256:c50607aa459c786e1049eb50854d7323582ea1f47c037b4d0f1a181820b13aa6"
+        "subject": "v1:sha256:844056719c08f645494764d8e1b3762aae2ac7ddb9b4e3646515ccccee7b1033"
       },
-      "holder": "codex:wp1036/adversary-design-8",
-      "input_fp": "v1:sha256:6c37925d10688337ce75895d688f19270100f5a58e8b59e7cf898ffa22d3ba55",
+      "holder": "codex:wp1036-r3/adversary_design-9",
+      "input_fp": "v1:sha256:66b2317c0a221f230fd7aa9a635eee8a4e1370f2c928e1bfaa1b024a9fee9733",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "c17fefe360b1d7ce728ea31b107ba49f864eeec5",
-          "commit": "89780d6983af531533384c293e6176a8a05316e3",
+          "blob": "4c963b895c12f61306e2d6c0eab6623d92d4e9d4",
+          "commit": "ff7837c4195f7a46139eda4e9c9f358b719472de",
           "path": ".zzzops/reviews/1036/adversary_design.md"
         },
-        "summary": "Approved: the concept-paper design bounds determinism, customization and novelty claims while keeping implementation assurance detail in supporting material."
+        "summary": "Approved: the simplified design bounds parallel eligibility and model guidance, retires only the goal-specific checker through test_design, and preserves engine invariants, repository verification and GitHub approval gates."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "7aa4db7dc9cac42eaaa2b947bb4097cf8152e896",
-          "commit": "6256e22ec52aecd7ca119503e7cda791c173df41"
+          "blob": "cf5f4303629f8dd290edc690a00d433058591e9f",
+          "commit": "9cbe96f76c13fa7b2b5685043ea368a200bcba55"
         }
       },
       "status": "done"
