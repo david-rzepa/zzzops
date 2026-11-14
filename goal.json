@@ -252,6 +252,68 @@
       },
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [
+        {
+          "id": "review_impl:1:1",
+          "impact": "The G1045 entry currently renders as a standalone pipe paragraph rather than an amendment-table row; the information is complete and product behavior is unaffected.",
+          "lens": "craft",
+          "material": false,
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "implement",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:ebe0cbc87c988dcbe8f8f76179d59e03be96eb6a6a6d498d4f242cc965f62dc3",
+          "text": "Optionally remove the blank line between the G1044 and G1045 entries in docs/design/HISTORY.md so the new amendment remains part of the existing Markdown table.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-14T21:08:54Z",
+      "fp_parts": {
+        "def": "v1:sha256:ba0e80cd449a16330f3e62cea7fab93aad71b666081fd28f1c0386cf4f3d2d24",
+        "inputs": {
+          "base": "v1:sha256:92fb166bb2d877c78854032c50996843982ef4f5cff7b5a092fb2d8ca03148d7",
+          "code": "v1:sha256:5ca573a0c323710f39766fcff6556358b925639fc10856008dcf7f83e9de3c42",
+          "doc": "v1:blob:20590aebc3aa36067eb90c26660a95b5413cfc34",
+          "tests": "v1:sha256:d5e0aaa5666396be76e0753dee303757ca3e26b8b216fd9924b09acec128e177"
+        },
+        "lenses": [
+          "compliance",
+          "correctness",
+          "missing",
+          "tests",
+          "craft"
+        ],
+        "policy": {},
+        "subject": "v1:sha256:ebe0cbc87c988dcbe8f8f76179d59e03be96eb6a6a6d498d4f242cc965f62dc3"
+      },
+      "holder": "codex:summary1045/review_impl-1",
+      "input_fp": "v1:sha256:a6f1702a1eaa2e6bdcd125c77f0650bccad0991367fe055e284213c546a5feb5",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "8f25b487e18f225b78d9c8322063559dd91af4db",
+          "commit": "0db222822e2d595787b90e988cfc09836a977265",
+          "path": ".zzzops/reviews/1045/review_impl.md"
+        },
+        "summary": "Approved with one optional HISTORY-table presentation note: exact-source adoption and required local checks pass on the bound tree; no material findings."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "c455b09914b49fd65e169f91a4f79110e3e2540b",
+          "change": "afe0c076e33c6b736f43747c01170216dd1b94b5",
+          "commit": "fdeaf8e15dbbea5e88466a6e397cf2c33f682d5d",
+          "tree": "6765b23649a462213b0f5755aac59ea59a7632cb"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 1,
       "correction_runs": 0,
