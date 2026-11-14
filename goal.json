@@ -109,26 +109,26 @@
       "status": "done"
     },
     "filter_design": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-03T18:16:44Z",
+      "finished_at": "2026-11-14T17:08:27Z",
       "fp_parts": {
         "candidates": [],
         "def": "v1:sha256:c83a5e0ec02bc9504ff118f774138ad5517f6b3a5885d1c28444982e78d23a9f",
         "inputs": {
-          "adversary": "v1:sha256:656c1938bf721e569ad302db11534112026ab42150f001d50cf541b613228194",
-          "doc": "v1:blob:2a239e92a02beb5c9dc03824485c183501bfc80a",
-          "review": "v1:sha256:6677070134ed91bc7dd288dc3868c85b4800dbbae2571342065b3880fee3007d",
-          "spec": "v1:sha256:7cacab7d2739a88c2f7c7d9773f294a4064599407fcc553561919fe77916b36c"
+          "adversary": "v1:sha256:d148a1f243a5a40ed17a49788c92be665cce9bb33ee70c02e70bc28f6b7d6a9a",
+          "doc": "v1:blob:9c056c03d9f2e0238eadcef88eef497970e66e6a",
+          "review": "v1:sha256:da5f5a5aa9fe43a6ff7755b3454f69a3043109d2d0db8f1578f18aa44c07a5fd",
+          "spec": "v1:sha256:73bd62c790e63230e34d07e5650e64d5fbbf40846b9a3caff40d3f6e7f77130a"
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1036-filter-cli-only",
-      "input_fp": "v1:sha256:16e06bb92601db6b4b973c933ed1f58dcd8595922f1b71eeaf6543de20340db8",
+      "holder": "codex:wp1036/filter-design-7",
+      "input_fp": "v1:sha256:252b50706e701158327673aeb56a20fe661204e18eb73ed8e6743f79730c80d0",
       "ok": true,
       "output": {
-        "summary": "Both consolidated and Adversary reviews approve revision6; no candidates or notes remain. Recorded OD9 authorizes Codex-only CLI dogfood while evaluation requires actual actor/holder/build/action evidence, honest Claude non-execution and measured cohorts without untested equivalence claims. WD1–WD8, privacy, candidate-bound external deployment procedure and the actual G1037 merged-report prerequisite before writing remain intact. Nothing reopens the work; verdicts empty.",
+        "summary": "Both the scope review and adversarial review approved the refreshed design with no material findings. There are zero candidate notes and nothing to reopen the design. The design centers deterministic progressive disclosure and excludes the superseded dogfood report and evaluation deliverables.",
         "verdicts": {}
       },
       "reason": "stale",
