@@ -1,25 +1,22 @@
-# G1036 adversarial re-review — CLI-only refresh
+# G1036 adversary design review
 
-Approved, with no findings.
+Approved with no findings. The refreshed design makes the paper's mechanism inspectable without promising security, execution correctness, performance, or deployment guarantees the checked implementation cannot supply.
 
-Reviewed the full assigned card and exact interdiff from `4046215ab26f8f387784b92a1a033c5d85f40af8` to `2a239e92a02beb5c9dc03824485c183501bfc80a`. The complete preceding design, unchanged specification and instruction blobs were read in my preceding review; the diff and current affected sections establish the updated subject. No other reviews of this subject were read. read_dev remains `edb9b2c9aa317220a8e1340f27c40b6a4b6a1b5a`.
+## Subject and review basis
 
-## Scope authority and evidence integrity
+Reviewed design blob `9c056c03d9f2e0238eadcef88eef497970e66e6a`, including the change from `2a239e92a02beb5c9dc03824485c183501bfc80a`, against the card's specification blob `964280acf2f19348a0592bfa018cabd1796b52cc` and immutable integration source `c455b09914b49fd65e169f91a4f79110e3e2540b`. No other review of this subject was read. This is a design review; it does not claim the planned paper, checker, or trace has already been implemented or verified.
 
-The dependency OD9 quote matches the authoritative implementation answer at G1037 goal commit `289372c9433e`, which I independently checked during the immediately preceding G1037 review. It confirms the freeze and permits Codex-only CLI execution. This updates acceptance scope without purporting to measure a second harness.
+## Adversarial checks
 
-The cheapest gaming route would be to treat that permission, an installed package, a matching build or a synthetic holder label as evidence that Claude participated or that harnesses performed equivalently. The revision explicitly closes that route in limitations, report inputs, W20 and reconciliation: actual actors/holders/builds/actions require evidence; labels alone are insufficient. Claude remains not executed unless independently evidenced. Missing actor-level measurements stay not measured, and an unexecuted actor cannot become a zero-cost comparison. Ratios use actual measured cohorts and explicit exclusions, while historical experiments retain separate attribution and samples.
+- **Careless or hostile worker overreads a card.** The design explicitly calls selective initial disclosure an information-selection mechanism, not access control, and acknowledges workers can inspect other material. It therefore does not imply that a small card protects private repository content or constrains tool authority.
+- **A worker games independence or routing labels.** The design labels review independence as holder-label comparison and routing tiers as advice, rather than authenticated actor/model evidence. This matches `verbs.py::start`, which compares the supplied holder label with the subject record, and the lease trailer representation in `leases.py`. A worker sharing credentials or choosing a different label is outside that guarantee.
+- **A stale worker continues changing files or performs external actions.** The design limits fencing to superseded engine writes and says it neither kills processes nor isolates the filesystem. `verbs.py::submit` checks the lease attempt; `LeaseTests::test_submit_after_reclaim_is_fenced` covers that narrower rejection. The design also separates external side effects and administrative Git changes from engine checks.
+- **A valid record is mistaken for correct work.** The design distinguishes semantic identity, artifact identity, code-tree identity, and correctness. It explicitly covers omitted context edges, prompts/instructions, provenance, deliberately bumped revisions, and incomplete declared edges. These boundaries match the allowlist and context exclusion in `fingerprint.py::node_def_fp/fp_parts`; no authenticated execution claim is derived from Git history.
+- **A forged or misleading evaluation claim enters the paper.** The design removes the dogfood report/evaluation prerequisite and planned performance claims; synthetic examples are labelled synthetic. The primary dev core and unmerged installed extension have separate source/build/status bindings. Recorded production merges are explicitly narrower than deployment or publication to users. The blog is a draft for owner publication and cannot assert an official release or completed run.
+- **A reviewer suppresses a material defect.** The design says the filter cannot demote a material finding and scopes owner interviewing to prompt/policy procedure. This matches the default filter prompt and `records.py::process_findings`; the design does not inflate a configurable review protocol into independent identity or safety enforcement.
+- **Size targets are used as resource guarantees.** The design expressly records both the oversized previous-card and untrimmed waiting-list cases as current discrepancies. `card.py` excludes `previous` from ordinary blob shrinking; `render.py::render_next` includes waiting entries while its trimming focuses on other collections. Neither exception is hidden behind clean tests or reframed as evidence of performance. Engine changes and new infrastructure are correctly outside this documentation goal.
+- **Private operational evidence leaks into public prose.** The scope excludes private project identifiers and transcripts and uses generic synthetic goals. Execution evidence stays in the goal artifact/PR. Byline and agent drafting/review disclosure are preserved. No proposed external publication action or empirical source requires additional private material.
 
-## Preserved boundaries
+## Verdict
 
-The actual writing gate remains explicit in the opening ordering statement, W17 and the new reconciliation: G1037 must merge and its anonymised report must exist before test_design, implement or whitepaper/blog writing starts. A stack-ready base, approved design or CLI-only permission cannot substitute. This design makes no run claim and does not begin writing.
-
-The candidate-bound external staging/production evidence contract, separate actual owner approvals, freshness checks, stops/restaging and final-content comparison are unchanged. Engine checks and root procedures remain distinct. The public paper relies only on anonymised report outcomes; detailed app identities and approval/artifact evidence remain private. No external blog publication, deployment or app-write authority is added. WD1–WD8, final source binding, card-size exception, budget exemption and observed/test-only/not-observed distinctions remain intact.
-
-## Checks and limits
-
-Read-only re-review, targeted current-section checks and integration-SPEC reference inspection. There is no source implementation change requiring a probe or suite. The plan is approved prospectively; real evidence and final checked source must still be reviewed when the paper is written. No app actions, paper text, product/policy edits, deployments or usage resets occurred.
-
-## Dogfood notes
-
-None for this re-review.
+No material defect or unresolved owner choice found. The design addresses the cheapest plausible ways a reader could overtrust deterministic selection, durable records, review labels, leases, source pins, size targets, or release evidence. Exact trace states, claim-to-test wording, link validity, and print readability remain implementation verification obligations already required by the design.
