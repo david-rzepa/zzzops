@@ -44,6 +44,40 @@
       },
       "status": "done"
     },
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T22:19:57Z",
+      "fp_parts": {
+        "def": "v1:sha256:d04fc5094a85157b7e25b3020caaee316324161c59b30d25d4aabb2e5c24f0ed",
+        "inputs": {
+          "doc": "v1:blob:9e9475ecec33c072c79dc2ac8927dafe2e6f88b4",
+          "filter": "v1:sha256:5cbe4a47e899a6853ab03e4d1e6962a91fc1dc9e4f1f98ae2ba1b23ebc5fd206",
+          "summary": "v1:sha256:da49ca45c4ef8d2384d257c3e79d5519bca10df22bf13ab9aeed29b26646918f"
+        },
+        "policy": {},
+        "subject": "v1:sha256:64d16a266ec25eb5629492e8cb523f165e87adbbd2881727b2c75fd2605f247f"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:ee02d1de65b1682ec917db623f8b707e91cd2826138d4fe62cf6e081de7e11a1",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-14T22:19:57Z",
+        "decided_by": "Codex (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Do not wait for my approval",
+        "summary": "Approve both explicitly authorized cleanups: replace archive-backed defaults with opaque schema1 review receipts and safe manual local/current comparison, and retire graph12/graph26 while preserving unique generic behavior on current15 or small scenarios. Independent reviews/filter found no material issues; test_design owns coherent tests/helpers before freeze, implementation owns defaults/archive/guidance/docs/package cleanup, with focused/full/package/CI gates retained."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "9e9475ecec33c072c79dc2ac8927dafe2e6f88b4",
+          "commit": "40915ac94ae1c2ca1112aea9292cb864ecfcabd4"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 1,
       "correction_runs": 0,
