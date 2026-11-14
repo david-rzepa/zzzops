@@ -78,6 +78,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T21:12:53Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:5ca573a0c323710f39766fcff6556358b925639fc10856008dcf7f83e9de3c42"
+        },
+        "policy": {},
+        "subject": "v1:sha256:ebe0cbc87c988dcbe8f8f76179d59e03be96eb6a6a6d498d4f242cc965f62dc3"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:8028b18b63f33be8555f51d4b9330d247d257bc15ee30d146af8cb47bf42b72a",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-14T21:12:53Z",
+        "decided_by": "Codex (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Do not wait for my approval",
+        "summary": "Approve the independently reviewed exact-source release-summary adoption at fdeaf8e15dbb: original 15 focused tests and all 1,136 required local tests pass. PR #775 targets dev at 8945546f2cb9; exact-head CI is pending and normal GitHub latest-push approval/rules remain required. The optional HISTORY formatting note does not reopen work."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "c455b09914b49fd65e169f91a4f79110e3e2540b",
+          "change": "afe0c076e33c6b736f43747c01170216dd1b94b5",
+          "commit": "fdeaf8e15dbbea5e88466a6e397cf2c33f682d5d",
+          "tree": "6765b23649a462213b0f5755aac59ea59a7632cb"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 1,
       "correction_runs": 0,
