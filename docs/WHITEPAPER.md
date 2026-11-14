@@ -1,8 +1,94 @@
-# Deterministic progressive disclosure in ZzzOps
+# Deterministic progressive disclosure for agentic software
 
 **David Rzepa**
 
-Working paper, 14 November 2026. Drafted and reviewed with AI agents.
+14 November 2026 · Working paper · Drafted and reviewed with AI agents
+
+## Abstract
+
+Deterministic progressive disclosure is an architectural pattern in which deterministic software selects the information and instructions an agent receives according to explicit inputs and rules, rather than leaving disclosure decisions to the agent's own reasoning. It addresses a recurring design problem in agentic software: an agent needs enough context to perform its present task, while the system must decide which task and context to provide as work changes. The pattern separates those coordination decisions from the agent's judgment about how to do the work. ZzzOps illustrates the pattern by using a general coordination engine to interpret a repository-owned workflow, policy and prompts. The engine gives agents instructions for progressing through that defined workflow; the workflow itself can be customized. This paper presents a design argument and an illustration, not an experimental evaluation.
+
+## Motivation
+
+An agent rarely starts with exactly the information it needs. It may need a user's request, an earlier analysis, the result of a tool, a policy, or a review of its previous work. Someone or something must decide which of these to provide, when to provide it, and what the agent should do next. That decision is part of the software's design even when it is left implicit.
+
+One approach asks the agent to discover both its task and the context needed to perform it. This can be useful when the route through a problem is unknown. For work that follows a known process, however, the same approach also asks the agent to reconstruct procedural choices that the system's designer or owner could state directly. If a session ends, its successor may have to infer those choices again. A long transcript can preserve words without making the current task, its prerequisites and the relevant decisions easy to identify.
+
+Deterministic progressive disclosure proposes a different division of labor. Software applies explicit rules to explicit inputs and constructs a handoff for the current task. The agent uses judgment within that handoff: it can analyze an artifact, write a design, find an error or propose a correction. The system can then use the resulting state to select another handoff. The design aims to make coordination legible and repeatable, while preserving room for judgment where the work requires it.
+
+The proposal is broader than a workflow engine. Its inputs might be a user choice, the return value of a tool, a stage in an application, or a record of prior work. The output might be a prompt, a set of documents, a tool configuration or a combination of instructions and data. The defining feature is that software, following explicit rules, selects the disclosure; it is not necessary for the whole application to use Git or a task graph.
+
+## The pattern
+
+A disclosure rule maps an explicit input to information and instructions for an agent. If the same rule receives the same complete input, it selects the same disclosure. When the input changes, the rule may select a different disclosure. “Complete” matters: a rule that depends on time, configuration or a tool result has those values among its inputs, even if a reader initially sees only a user's request.
+
+```mermaid
+flowchart LR
+  I[Explicit inputs] --> R[Disclosure rules]
+  R --> H[Instructions and context]
+  H --> A[Agent work]
+  A --> O[Result]
+  O --> I
+```
+
+In prose, explicit inputs enter disclosure rules, which select a handoff. The agent works with that handoff and produces a result; that result can become an input to a later selection. The loop describes coordination. It does not require the agent's reasoning or the producers of the inputs to be deterministic.
+
+For example, imagine a research assistant application that asks a user whether they want a short explanation or a detailed comparison. A rule sends the same source material to either route, but supplies instructions for a concise explanation in the first case and a comparison template in the second. If the user changes the selection, the application sends the corresponding instructions. The agent still decides how to interpret the sources and write the response. The software has made one disclosure decision explicit without prescribing the entire answer.
+
+The pattern is progressive because disclosure can change as work proceeds. A result can select a follow-up task, a review can call for a correction, and a human choice can unlock another step. The system need not place every possible instruction and document in the first prompt. It can instead explain each next task in the context of the state that made it relevant. This is an architectural choice, not a promise that smaller handoffs are always better: a task may require broad context, and a rule must be designed to include it.
+
+The pattern also makes a useful distinction between *selection* and *judgment*. The rule selects what the agent initially receives. It does not establish that the information is true or that the agent will reason well from it. Nor must it prevent further exploration. An application may give the agent tools or pointers to additional material, while still deciding the initial task and its essential inputs through explicit rules. The boundary between what is selected in advance and what an agent may explore is itself a design decision.
+
+Durable state can extend this arrangement across interruptions. If a system records the request, result and outstanding decision in a form it can read later, it can construct the next handoff without depending on a single continuous conversation. Human authority can be expressed in the same way: a rule can present a decision to a person and use the recorded answer in subsequent work. Critique and correction fit the pattern too. A review finding can become an explicit input to a revised task rather than a comment the next agent must happen to recover from a transcript.
+
+These ideas relate to other ways of coordinating agents. Issue trackers store tasks and decisions; orchestration frameworks express sequences and dependencies; retrieval systems select information for a query. Retrieval can itself be deterministic. The distinction here is the explicit use of inputs and rules to select the agent's handoff, rather than a claim that other approaches are random or cannot support durable work. A system may combine deterministic disclosure with retrieval or agent-led exploration.
+
+## ZzzOps as an illustration
+
+ZzzOps applies the pattern to software work that can span multiple sessions and participants. Its central architectural choice is to separate a mostly unopinionated coordination engine from an opinionated, repository-owned process. The engine interprets a workflow, policy and prompts. ZzzOps ships one opinionated default, while a repository can customize its process within the engine's constraints.
+
+A workflow is represented as a **directed acyclic graph**, or DAG: a set of tasks connected by prerequisite links, arranged so that no chain of dependencies loops back on itself. A task might produce a design, review it or request approval. A link states that some work or information must be available before another task can proceed. The graph makes those relationships explicit; it does not require every repository to choose the same tasks or review sequence.
+
+```mermaid
+flowchart TB
+  D[Shipped default configuration] --> W[Repository workflow, policy and prompts]
+  W --> E[Coordination engine]
+  E --> H[Selected task and context]
+```
+
+In prose, the engine applies its coordination rules to a repository's workflow, policy and prompts to select a task and its context. The shipped default is one starting configuration for that repository-owned layer. Changing the configuration does not replace the engine's coordination invariants.
+
+The engine is not assumption-free. It enforces rules about valid workflow state, which tasks are eligible, when recorded results are current, and how concurrent writes are coordinated. Those invariants give the process a common execution model. The repository layer supplies process choices: tasks and their dependencies, selected instructions and inputs, review arrangements, and approval choices supported by the engine. A team can therefore adopt the shipped default or adapt those choices to its work, while remaining responsible for the process it declares.
+
+This separation is important to deterministic progressive disclosure. Deterministic selection does not imply one rigid process for every team. Two repositories can declare different workflows and receive different handoffs; within each, the engine applies explicit rules to the declared state. The reusable part is the way coordination is computed and recorded. The opinionated part is the process the computation interprets. This division aims to let teams inspect and change process choices without building a new coordination engine for each one.
+
+Consider a synthetic design task. The repository's workflow calls for a design, an independent review and a decision before later delivery work. The goal and the workflow are durable state. The engine computes a **frontier**: a view of what can proceed and what must wait given the current state. Initially, a design task can be ready while review waits for its input. The system presents the next eligible task and, when a worker claims it, gives the worker a task card containing the selected prompt, instructions, inputs and pointers for that task.
+
+The worker submits a design. The state has changed, so the engine recomputes the frontier. The review can now receive the design and its review instructions. Suppose the reviewer identifies a missing constraint. The finding is recorded against the output it concerns, and the configured review process determines whether it requires correction. A subsequent frontier can reopen the design task with that finding included in its card. The design worker responds and submits a revised artifact; the review then considers the changed subject. When the required work is current, the workflow can present the configured approval to a person.
+
+This sequence is an illustration, not a claim about a particular completed project. Its purpose is to show how the task card connects the general pattern to a defined process: state selects a frontier; the frontier supports a next action; the card gives clear instructions and context; a result or review changes the state; and the selection is computed again. The agent contributes design and review judgment. The engine supplies the declared progression and the handoffs between those judgments.
+
+The handoff is selective, not a security boundary. A card can contain a short view and a pointer to fuller material, and a worker with access may inspect more. Some information gates whether work is ready without being part of the identity used to decide whether an old result is still current. These distinctions allow different kinds of coordination, but they also make the workflow author's declarations consequential. The appendix points to the specification for the precise behavior.
+
+## Discussion
+
+The general pattern trades implicit flexibility for explicit design work. A rule can omit a source that matters, select an unsuitable instruction, or encode a poor interpretation of the user's goal. Repeating that selection consistently does not make it good. Inputs can be incomplete or wrong; an agent can misunderstand them; a review can miss a flaw. The anticipated gains in clarity, continuity or efficient use of attention are design aims, not results established by this paper.
+
+Agent-led disclosure remains useful when a problem is open-ended and the needed sources or sequence are not known in advance. A simple handoff may be sufficient for a short task with one participant. These approaches can coexist with deterministic selection: a system can give an agent a defined exploratory task, allow it to find material, and use its recorded result as an explicit input to a later rule. The appropriate boundary depends on what the application can specify and what it wants the agent to discover.
+
+ZzzOps adds implementation-specific limits. Its coordination rules and repository declarations do not guarantee correct reasoning, independent human or agent judgment, secure process isolation, or the success of external actions. A result may appear current under the declared inputs even when a relevant input was omitted. Rejecting an outdated submission does not stop the process that produced it. Git records provide useful history, but they do not by themselves authenticate every action or prove deployment to users. A repository that customizes its workflow must maintain and review those choices, and different configurations can make comparisons between projects harder.
+
+These limits also identify what to inspect. Are the task and essential context selected from the right inputs? Does a change that matters cause the appropriate work to be reconsidered? Is a human decision presented where authority belongs? Can a reviewer understand what is being reviewed and what follows a finding? The value of explicit rules is that these questions can be asked about a concrete design, even though answering them still requires judgment.
+
+## Conclusion
+
+Deterministic progressive disclosure places the selection of an agent's instructions and context in explicit software rules, while leaving the agent to exercise judgment within the resulting task. As inputs and results change, the system can disclose the next relevant handoff. The pattern applies to many forms of agentic software and does not require a fixed workflow or a particular storage system.
+
+ZzzOps illustrates one application: a mostly unopinionated engine interprets a customizable, opinionated repository process and gives workers instructions for moving through it. Separating coordination invariants from process choices makes deterministic disclosure compatible with different ways of working. The design's usefulness depends on the quality of those choices and on the people and agents who carry them out.
+
+## Appendix: source and evidence
+
+The illustration describes the checked development core, not an official release. The exact algorithms and schemas are in [SPEC](design/SPEC.md); [DESIGN](design/DESIGN.md) records rationale. The sources and tests below are pinned to the stated commit. Named tests support particular cases, not every possible input.
 
 Source commit: c455b09914b49fd65e169f91a4f79110e3e2540b
 
@@ -12,230 +98,19 @@ Checked date: 2026-11-14
 
 Integration status: checked dev core
 
-This paper describes a development snapshot, not an announcement of an official release. It is a working document for finding flaws as the design changes. [SPEC](design/SPEC.md) is the normative schema and algorithm reference; [DESIGN](design/DESIGN.md) records decisions and rationale. The [source ledger](#claim-and-evidence-ledger) binds material claims to immutable source and named tests. A test reference establishes only what that test actually checks.
+The manual checker also reproduces two discrepancies in the specification's size wording. A card with `big_previous(4200)` remains 8,122 canonical bytes despite a 4,096-byte target; a `next` view with one held goal and 150 dependents is 11,270 canonical bytes despite the 8,192-byte wording. These are implementation boundaries, not performance measurements. The checker validates referenced paths, symbols and builds; it cannot judge whether a source supports every sentence.
 
-## Contents
-
-- [A workflow that discloses its next context](#a-workflow-that-discloses-its-next-context)
-- [State, frontier and selection](#state-frontier-and-selection)
-- [The task card](#the-task-card)
-- [Identity, results and correction](#identity-results-and-correction)
-- [A synthetic walkthrough](#a-synthetic-walkthrough)
-- [Sync, delivery and recovery](#sync-delivery-and-recovery)
-- [Authority and limits](#authority-and-limits)
-- [Claim and evidence ledger](#claim-and-evidence-ledger)
-- [Keeping this paper current](#keeping-this-paper-current)
-
-## A workflow that discloses its next context
-
-**Deterministic progressive disclosure** is the selection of work and its initial context from declared, durable workflow state. A computation identifies what is eligible now. A task card then gives a worker the particular prompt, inputs, instructions and pointers declared for that node. A result or review changes the state; the frontier is recomputed and a later worker sees context appropriate to that new state. The disclosure is progressive because different stages receive different material as their prerequisites become available. It is deterministic in the narrower sense that the frontier returns the same result for identical *complete* inputs, including time.
-
-```mermaid
-flowchart LR
-  S[Durable state] --> F[Frontier]
-  F --> N[Next]
-  N --> C[Task card]
-  C --> R[Result or review]
-  R --> S
-```
-
-In prose: durable state is evaluated into a frontier; `next` presents actionable work; starting an agent produces a task card; its result or review is recorded; the next evaluation uses the resulting state. Nothing in this loop makes the worker's reasoning deterministic. The purpose is to make the handoff and its assumptions inspectable, including when work stops and resumes across sessions.
-
-Consider a design that has been reviewed. A reviewer finds a missing constraint. The filter treats it as material, and the design node is reopened with the finding as a correction. The design worker receives the current input and correction, responds, and submits a new artifact. The changed subject causes review to run again. An approval follows only after its declared prerequisites are current. This is a change in the context of the next action, not a request that a single agent remember an entire conversation. The ledger identifies tests for these separate steps; the illustration is not evidence of a production run.
-
-This mechanism aims to make long-running work easier to resume and audit, and to use limited attention on the current decision. It does not establish measured reliability, cost savings or correctness. It can be excessive for a small, immediately reviewable edit. It is insufficient where external actions require stronger isolation, authenticated identities, deployment controls or domain-specific review. A wrong workflow declaration can consistently select the wrong context.
-
-Issue-tracker agents can retain durable tasks but differ in how explicitly they select each node's inputs. Orchestration frameworks can express graphs and dependencies; this design ties a particular frontier, record identity and review process to repository-owned state. A single session can handle work without durable handoffs but depends more on the session's continuity. Retrieval can also be deterministic: the distinction here is declared workflow selection versus relevance-based or agent-chosen context selection, not a claim that retrieval must be random.
-
-## State, frontier and selection
-
-### Durable state and the snapshot
-
-A repository's goal documents and records, artifact commits, lease refs, policy and workflow definitions give the engine durable material to inspect. A session fetches a snapshot before computing its view. Writes use expected refs and atomic compare-and-swap pushes; contention requires a fresh view and retry rather than assuming an old ref still holds. A creation request key permits a retry to recover the same goal after certain ambiguous remote responses. This is bounded recovery, not a general guarantee that arbitrary external effects happened exactly once. Git history supplies useful provenance, but is neither authenticated execution evidence nor tamper-proof against administrators. [C1]
-
-The pure frontier receives preloaded goal, graph, dependency views, leases, settings and `now`; it does not fetch or read the clock itself. Topological and sorted iteration make the result repeatable for identical complete arguments. `next` applies portfolio ordering and rendering to that result. Git refs alone do not determine identical `next` output or cards: lease time, local rendering context, reader material, holder and attempt, paths and command prefix also matter. External tools, CI observations, generated prose and human choices remain outside the determinism claim. [C2]
-
-```mermaid
-flowchart LR
-  B[blocked] --> R[ready]
-  R --> L[running]
-  L --> C[current]
-  L --> E[reclaimable]
-  E --> L
-  C --> R
-  R --> H[needs human]
-  R --> W[waiting]
-```
-
-The diagram is an overview, not a complete transition graph. Missing inputs can block a node; resolved inputs can make it ready; a lease makes it running; a successful current result can later become stale or reopen. Expiry can make a lease reclaimable. Waits and human decisions have their own conditions; skips and the exact precedence are described below.
-
-| State | Typical trigger or meaning |
-|---|---|
-| `skipped` | The goal explicitly skips the node. |
-| `blocked` | Required input or subject is unavailable, or a non-ok record has live findings. |
-| `waiting` | A time, dependency-conflict or release gate wait applies. |
-| `running` | A live lease exists, even if inputs no longer resolve. |
-| `reclaimable` | A lease expired below the crash-loop cap and inputs resolve. |
-| `ready` | New, stale, reopened, retrying or non-ok work should run. |
-| `needs_human` | Approval, a human blocker, dispute or cap needs a decision. |
-| `current` | A done, ok record matches its input fingerprint and has no reopening finding. |
-
-These labels do not form a simple linear state machine. The engine checks skip first and a live lease before missing inputs. After missing inputs and release gates it considers expiry, new or stale records, blocked-record waits, live corrections, non-ok results and approvals. An expired lease with missing inputs is blocked rather than offered for reclaim. A live lease carries a fingerprint derived from recorded inputs when possible, even if current inputs cannot resolve. [C2]
-
-A producer normally supplies a consumer only when it is current and ok. Declared dependency inputs can allow discovery from a reviewed dependency before that dependency has merged, while delivery waits for integration. An open or held dependency that can still produce the value is a **named wait**, not a dead end; a cancelled, invalid or otherwise incapable dependency may instead contribute to a stuck decision. A held goal is evaluated but offers no actions or human items. Release gates, priority, capacity and ordering further constrain what `next` offers; human items can be gathered for a decision together. Exact behavior depends on repository policy and declared capabilities. [C2, C9]
-
-The shipped default graph at this snapshot has 15 nodes and multi-lens review; it is a default a repository may adopt, not a law that every repository has that graph. Its discovery phase contains `design`, `review_design`, `adversary_design`, `filter_design`, and `approve_design`. Delivery contains `base`, `test_design`, `review_tests`, `implement`, `run_tests`, `review_impl`, `filter_impl`, `integrate`, `approve_merge`, and `merge`. The design reviewers feed a filter; the implementation reviewer feeds another. These names make the default inspectable, but dependencies in the graph, not the order of this list alone, determine readiness. [C10] The historical fixtures used by some tests have different graphs. Installing an engine does not silently replace repository workflow or policy. [C7, C9]
-
-### Reading the frontier as an audit record
-
-The important question at each stage is not merely “what runs?” but “what declaration made that action eligible?” For a blocked node, inspect the named missing producer and whether the dependency can still supply the selected value. Optional or pending selectors have different meanings: an optional missing value can resolve to null in defined cases, while a pending dependency may deliberately expose “not yet” as a value. A named wait should end when its producer becomes available; an impossible dependency needs a decision instead. A hold suppresses dispatch without erasing the state that explains the goal. [C2]
-
-A `ready (stale)` record reports the changed fingerprint parts, such as a selected input, declared policy value, subject, candidates or lenses. A `ready (reopened)` record instead has live corrections. A human approval is not a generic replacement for these distinctions: it is a node with its own subject and prerequisites. Recomputing after every recorded result makes a correction, a changed dependency and a human answer visible through the same declared structure, while retaining their different reasons. Operators should check the actual returned reason before inferring why work was selected. [C2, C3, C7]
-
-## The task card
-
-A start operation claims a particular eligible node and returns a card. The engine resolves each declared selector, placing semantic inputs in `inputs` and edges marked `context` in `context`. It loads only instruction names declared on the node from repository policy, and presents declared policy values for agent nodes. For example, the default `implement` node selects `code_quality`, `dependencies`, `security` and `git` instructions. Its design, test change and base are semantic inputs; test commands and test-review summary are context inputs. The card may also give workspace commands separately in `commands_to_run`. [C4, C10]
-
-In simplified form (ellipsis indicates abbreviated values and optional fields):
-
-```text
-node: implement                    # selected work
-prompt: {summary: ..., read: ...}  # declared instructions and immutable blob
-inputs: {design: {blob: ..., read: ...}, ...}
-context: {tests_review: ...}        # selected context inputs
-changed: ...                       # present when applicable
-previous: ...                      # present when applicable
-corrections: [...]                 # live findings for this node
-workspace: <goal workspace>
-commands: {submit: <exact command>, renew: <exact command>}
-```
-
-Actual fields depend on the node. The card selects instruction names and declared policy values, distinguishes semantic inputs from context edges, and can show changed, previous and correction views. Large content can be summarized while preserving an immutable read pointer; the worker can follow it for the full content. The command includes the lease attempt and actor needed for submission. The card is an initial disclosure, not an access-control boundary: a worker with repository access can inspect other material, and the card's displayed prompt does not itself become a fingerprint input. [C4]
-
-Size is an explicit audit boundary. The card shrinker targets 4,096 canonical bytes, but a large `previous` value can remain after all shrink steps: `big_previous(4200)` yields 8,122 bytes at this binding. SPEC §3.14's heading describes a hard maximum more strongly than this behavior supports. Likewise `next` trims actions, human items and some advisory details, but one held goal plus 150 dependents yields 11,270 canonical bytes with 150 waiting entries and no actions or human items remaining. SPEC §3.15's 8,192-byte wording is not universally enforced. These are reproducible discrepancies, not claims about cost or performance; neither engine nor SPEC is changed here. [C4, C5]
-
-## Identity, results and correction
-
-```mermaid
-flowchart LR
-  A[Artifact blob] --> I[Declared identity]
-  D[Checkpoint change] --> I
-  P[Policy and definition] --> I
-  X[Context edge] --> G[Readiness gate]
-  I --> F[Fingerprint]
-  T[Code tree] --> K[Tree checks]
-```
-
-In prose: artifact blobs, normalized checkpoint changes, selected definitions and declared policy values contribute to identity where specified. Context edges gate readiness without contributing to the usual input fingerprint. Tree-bound checks use the actual code tree; they can need another run even when a change-bound judgment carries. Selection of a subfield changes what is compared. [C3, C8]
-
-An artifact is identified by its blob, while a whole checkpoint uses its normalized change identity. A checkpoint's selected tree or change subfield is instead compared as the selected value. The node definition fingerprint uses a semantic allowlist, and declared policy values enter separately. Review subjects use normalized output with responses dropped for that subject comparison; a finding's target fingerprint has its own full-output fence. Provenance such as holder, attempt, times and prompt blob does not normally enter identity. Prompt and instruction changes therefore do not automatically rerun a record merely because the card displays them. When a changed prompt or other omitted definition should force a rerun, the configured migration is to bump that node's `rev`. [C3]
-
-This separation makes incremental work possible and makes omissions important. A context edge can stop a node from becoming ready, but changing that edge alone does not invalidate a completed record. A fingerprint match means that the *declared identity* is unchanged; it does not prove the reasoning, output, test coverage or undeclared dependencies correct. Audit the selected fields and edges, especially when an input matters semantically but was declared only as context. [C3]
-
-### Predicting a rerun from actual selectors
-
-The default graph gives a concrete way to test the identity boundary. Here are selected declarations from the pinned workflow, with unrelated fields omitted:
-
-```json
-"implement": {
-  "inputs": {
-    "doc": {"from": "design.doc"},
-    "tests": {"from": "test_design.tests.change"},
-    "base": {"from": "base.base_commit"},
-    "commands": {"from": "test_design.commands", "context": true},
-    "tests_review": {"from": "review_tests.summary", "context": true}
-  },
-  "instructions": ["code_quality", "dependencies", "security", "git"]
-}
-```
-
-The default `review_design` node declares `policy: ["intent"]`; `run_tests` declares `code` from `implement.code.tree` and policy values `verification.commands` and `verification`. These are examples of different consumers, not interchangeable selectors. Assume each consumer has a current, ok record and all prerequisites remain current. The following symbolic values stand for distinct valid identities, not literal computed hashes. [C3, C10]
-
-| Change in a new snapshot | Predicted effect on the named consumer |
-|---|---|
-| `design.doc` is an artifact with blob `B1`, then blob `B2` | `implement` becomes `ready (stale)` because its selected artifact identity changed. A different path or commit with the same selected blob does not by itself change that artifact identity. |
-| `test_design.tests.change` changes from `D1` to `D2` | `implement` becomes stale on `inputs.tests`. Selecting `.change` compares that selected value. |
-| The test checkpoint gets a new commit or tree but its selected `.change` remains `D1` | That selector alone does not stale `implement`; another selected input or gate may still do so. |
-| `test_design.commands` changes from `["check A"]` to `["check B"]` | The `implement` context changes but does not alone stale its record. A fresh card can show the new value; the separate `run_tests` node uses commands as a semantic input and can become stale. |
-| `implement.code.tree` changes from `T1` to `T2` while the change remains `D1` | `run_tests` becomes stale on its selected tree. A change-bound consumer need not become stale from that tree change alone. |
-| Declared `intent` policy changes for `review_design` | That review's policy fingerprint changes. A policy value not declared by a node does not enter that node's policy fingerprint merely because it exists. |
-| Only the text of a selected instruction or prompt changes | The normal node fingerprint does not change solely for that edit. Bump `rev` when the desired migration is a rerun. |
-
-A context edge still gates readiness: if a required context producer is not current, a new run cannot simply ignore it. The predictions assume no such block, no changed subject or other input, and a still-valid record. They illustrate why the selected type matters: a whole checkpoint's normalized change identity is not the same selection as `.tree`; an artifact's blob identity is not its path. They also expose an audit question: if updated commands should make implementation rerun, should they have been declared semantic rather than context? The engine can faithfully apply a choice that deserves revision. [C3]
-
-### Review is another disclosure step
-
-A finding identifies a target and the fingerprint of the output it addresses. The frontier first computes live findings, then node states. A stale agent or human review can carry an open finding while the target output remains the same; stale operation findings follow a different rule. With the applicable capability, a blocked target can retain its prior output for finding liveness while ordinary consumers still wait for its retry. This avoids losing a relevant correction merely because its target is temporarily blocked; it does not make the blocked output current to consumers. [C7]
-
-Multi-lens reviews can run independently and feed a filter join. The filter's candidates include open finding IDs and material labels. A fresh filter may turn a non-material finding into a note; a material finding cannot be demoted this way. Notes do not reopen work. Kept findings become corrections for the target; a submit must address required findings, and disputes can return to review and then escalate to a human. Review independence is checked by holder-label comparison, not verified identity or independent infrastructure. Shared labels, credentials and common assumptions weaken the practical independence of review. [C6, C7]
-
-Owner-question interviewing is a prompt and policy procedure, supported by durable blocked answers. [C11] It is not an oracle for deciding which questions a person would have wanted asked. Stage-specific round budgets, where the capability is enabled, count newly raised material-finding rounds, with specified exemptions including a base-only change with no checkpoint output and certain definition, candidate, lens and policy changes. They are distinct from lease crash loops, repeated blockers and dispute escalation; none is simply a universal count of retries. [C7]
-
-### What a reviewer can inspect
-
-A review should distinguish a question about the output from a question about the workflow that produced it. A design may be clear but its review edge may omit a significant prerequisite. Conversely, a node may correctly identify all declared inputs while the artifact itself is wrong. The first finding calls for changing the workflow or definition; the second calls for changing the artifact. In both cases, the target and target fingerprint matter: a finding on an old output should not silently apply to an unrelated replacement. The review record is evidence of a review action, not proof that the reviewer found every flaw. [C3, C7]
-
-The filter is also part of the accountable path. Its candidate identity changes when an open finding is added, closed or relabelled material, even if the reviewers' summaries are unchanged. That makes the join stale and gives it another decision to make. A non-material note can remain visible without reopening the subject; a material claim remains a correction. The worker's response is part of the correction process, but a bare response is not proof of a good fix. The next review has to inspect the new output and decide on the substance. The engine can require a response and route a dispute; the reviewer and human still evaluate its merits. [C7]
-
-The round budget is similarly a guard on a particular pattern, not a general measure of work done. A newly raised material-finding round can consume the relevant stage's budget. Repeated lease failures, repeated agent blockers and repeated operation findings have separate caps; a time wait or a dependency conflict has different handling. The base-only exemption requires the specified absence of checkpoint output, so an operator should inspect the actual record rather than classify every upstream movement as exempt. Definition, candidate, lens and policy changes have their own specified exemptions. A budget item asks for a human decision; it does not establish that a disputed result is correct. [C7]
-
-## A synthetic walkthrough
-
-The following is a composite of checked behaviors, not a recorded run. Assume two generic goals A and B, with B depending on A, and a workflow declaring B's discovery input from A's design and B's delivery input from A's integration. The exact node names in a repository can differ. The first three rows describe A's initial review correction; only after that review and approval does the dependency-readiness example begin. B can consume A's current design under the stated selector; any additional review gate in B's actual graph also has to resolve.
-
-| Moment | Relevant state and reason | What the next worker receives |
+| Area | Source and example evidence | Boundary |
 |---|---|---|
-| Initially | A design is `ready (new)`; B discovery is `blocked` on A's missing design. | A's card selects its goal, design prompt and instructions. |
-| A submits a design; its independent review and filter run | A material finding is kept by the fresh filter. A design becomes `ready (reopened)` against the unchanged target output. | A's design retry card includes the correction and relevant prior context. |
-| A submits a changed design and required responses | The old finding no longer targets the new output; review becomes `ready (stale)` on its changed subject. | The reviewer receives the new subject and review context; the filter must join the new candidates. |
-| Fresh review and filter accept | The review and filter become current and ok; A's approval node is `needs_human (approve)` when its prerequisites resolve. | The approval item presents the decision context. |
-| A's design is current and approved, A not integrated | B discovery can be `ready (new)` when its declared inputs resolve; B delivery remains blocked on the named integration dependency wait. | B's discovery card receives the declared design; a long input may have a blob read pointer. |
+| Snapshot and recovery | [SPEC §4.4](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#44-per-goal-compare-and-swap-write); [IdempotentNewTests.test_push_that_landed_but_reported_remote_failure_is_recovered](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_store.py) | Recovery concerns matching creation requests. |
+| Frontier and dependencies | [SPEC §4.9](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#49-frontier-two-passes-ok-semantics); [DependencyTests.test_held_dependency_is_a_wait_not_stuck](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_portfolio.py) | Complete frontier inputs include time. |
+| Identity and context | [SPEC §4.8](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#48-fingerprints); [FrontierTests.test_context_edge_change_stales_nothing](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_frontier.py) | Identity is not correctness. |
+| Cards and `next` | [SPEC §4.20](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#420-task-card-construction); [ShrinkBudgetTests.test_a_card_over_budget_because_of_previous_is_a_fixed_point](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_card_budget.py); [RenderTests.test_truncation_keeps_under_8k](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_portfolio.py) | The two size reproductions above show exceptions. |
+| Leases and review | [LeaseTests.test_submit_after_reclaim_is_fenced](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_lifecycle.py); [ReviewJourneyTests.test_design_reviewers_run_in_parallel_and_reopen_the_design_once](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_review_lenses.py) | Fencing does not stop processes; review does not prove correctness. |
+| Configurable process | [DESIGN §2.2](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/DESIGN.md#22-graph-engine-b); [RenamedReviewJourneyTests.test_renamed_graph_journey](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_review_lenses.py); [ShippedTemplateTests.test_the_15_node_graph](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_review_lenses.py) | Repositories may choose different supported definitions. |
+| Sync and delivery | [CleanSyncIdentityTests.test_context_sync_carry_loop_preserves_reviews_and_reruns_tree_checks](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_clean_sync.py); [TargetTests.test_release_goal_bases_integrates_and_merges_on_the_release_branch](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_branching.py) | Carry has conditions; a Git merge does not prove deployment. |
 
-The dependency example is supported by [C2]; card shrinking and pointers by [C4]; the review join, reopening and re-review by [C7]. Each row assumes no unrelated missing input, hold, release gate or lease. In particular, “ready” here is not a promise that portfolio capacity will dispatch it immediately. An owner can inspect the graph and actual card to test those assumptions.
-
-## Sync, delivery and recovery
-
-Suppose the A design worker is interrupted while its lease is live. Its node is `running`; after expiry, with inputs still resolved and below the crash-loop cap, it is `reclaimable`. A new attempt claims it. A late submission from the superseded attempt is fenced by the engine. That fence prevents the stale engine write; it does not terminate the old process or isolate its filesystem. Worktree conflicts and external effects still require care. An offline or unknown lease view cannot establish a safe claim; read-only inspection can still be useful, and recovery needs a fresh authoritative view. [C6]
-
-Now suppose an upstream sync changes the base of a workspace checkpoint. Carry is decided per eligible node and checkpoint, not by a blanket assertion that a merge was safe. In merge mode the engine checks relocation, scoped deltas and edited conflict resolutions against its conservative whole-file union conditions. A qualifying change-bound record can carry with its prior change identity while the actual tree is recomputed. A changed tree reruns tree-bound checks; the configured implementation-review base edge also causes sync-focused review. If a scoped delta changes or a resolution fails the predicate, that node is not carried; conflict or correction work remains. Frozen test paths constrain subsequent implementation, and the actual sync tree is used for checks. Legacy rebase carry has a separate replay-map rule. [C8]
-
-A concrete paired case is a context-only upstream edit: a qualifying checkpoint and its change-bound reviews carry, but a changed tree makes checks run again. An interleaved or dropped conflict resolution fails the conservative predicate and cannot use that carry. These are checked cases, not evidence that every merge or manual resolution is safe. If inputs change during a run, re-evaluation and submission fences matter as much as the original card. [C6, C8]
-
-Delivery can stack a dependent PR on an integrated dependency while preserving dependency-order merge. Git operations use expected-head checks and existing approval and check gates. Optional Git-flow release and hotfix lines select targets, sync or back-merge, and impose their configured gates. A recorded production merge is evidence of that Git operation; application deployment, artifact promotion and publication to users are separate procedures. A passing check does not itself authorize a merge. [C9]
-
-## Authority and limits
-
-| Authority | What it can establish | What it cannot establish |
-|---|---|---|
-| Engine checks | Declared fingerprints, leases, gates, expected refs and supported transitions at this binding. | Correct reasoning, complete declarations, process termination or external side-effect isolation. |
-| Shipped defaults | A starting graph, prompts and capability requirements. | That an existing repository has adopted them; local policy remains authoritative. |
-| Root and human procedures | Dispatch, owner answers, review and approvals under the chosen workflow. | Authenticated independence merely from different holder labels, or automatic correctness. |
-| External systems | Observed GitHub and CI results when queried. | A deployment or user-visible publication merely from a Git merge record. |
-
-Routing tiers advise dispatch and do not prove which model actually executed. Capability floors can refuse unsupported work; bootstrap and default-policy notices help adoption and review rather than silently rewriting policy. Availability, credentials, administrative Git changes and external services remain operational dependencies. An incomplete edge declaration or incorrect policy can yield a consistent but inappropriate next action. These limits are reasons to inspect the workflow and results, not claims that the mechanism supplies autonomous safety. [C6, C9]
-
-## Claim and evidence ledger
-
-The links below point to the exact source snapshot and named tests. Scope distinguishes engine behavior, shipped defaults and procedures. Tests demonstrate specific cases, not all possible inputs. Reproductions are run by the manual checker.
-
-| ID and scope | Claim and limit | Source and named evidence |
-|---|---|---|
-| C1 engine | Snapshot and expected-ref writes; request-key recovery is bounded. | [SPEC §4.2–4.4](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#42-fetch-and-snapshot); [IdempotentNewTests.test_push_that_landed_but_reported_remote_failure_is_recovered](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_store.py) |
-| C2 engine | Pure frontier, dependencies and named waits; complete inputs include time. | [SPEC §4.9](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#49-frontier-two-passes-ok-semantics); [DependencyTests.test_held_dependency_is_a_wait_not_stuck](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_portfolio.py); [FrontierTests.test_live_lease_renders_running_and_expired_is_reclaimable](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_frontier.py) |
-| C3 engine | Selected identity and omitted context; equality is not correctness. | [SPEC §4.8](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#48-fingerprints); [FrontierTests.test_context_edge_change_stales_nothing](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_frontier.py); [IdentityTests.test_change_survives_clean_rebase_and_changes_after_conflict](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_identity.py) |
-| C4 engine | Card selection and shrink target; `previous` can exceed it. | [SPEC §4.20](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#420-task-card-construction); [ShrinkBudgetTests.test_a_card_over_budget_because_of_previous_is_a_fixed_point](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_card_budget.py); `card-previous` reproduction. |
-| C5 engine | `next` truncation is not a universal bound. | [SPEC §3.15](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#315-next-output-at-most-8192-bytes-unless---all); [RenderTests.test_truncation_keeps_under_8k](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_portfolio.py); `next-waiting` reproduction. |
-| C6 engine | Reclaim fences an old submit; labels and fences do not isolate actors. | [SPEC §4.12](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#412-leases-claim-renew-reclaim-abandon-orphans-capacity); [LeaseTests.test_submit_after_reclaim_is_fenced](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_lifecycle.py); [LeaseTests.test_independence_and_held_goal](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_lifecycle.py) |
-| C7 engine | Multi-lens join and corrections; material-round rules and held output are capability-dependent. | [SPEC §4.9](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#49-frontier-two-passes-ok-semantics); [ReviewJourneyTests.test_design_reviewers_run_in_parallel_and_reopen_the_design_once](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_review_lenses.py); [RoundBudgetTests.test_base_only_exemption_requires_no_checkpoint_output](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_round_budget.py); [HeldOutputTests.test_carrier_and_filter_are_fresh_but_consumers_still_wait](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_blocked_findings.py) |
-| C8 engine | Scoped carry can preserve change-bound work while tree checks rerun; unsafe resolutions refuse carry. | [SPEC §4.21](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#421-carry-forward-across-a-clean-sync); [CleanSyncIdentityTests.test_context_sync_carry_loop_preserves_reviews_and_reruns_tree_checks](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_clean_sync.py); [CleanSyncIdentityTests.test_interleaved_and_dropped_resolutions_fail_closed](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_clean_sync.py) |
-| C9 engine | Delivery operations and optional lines have explicit gates; production merge does not prove deployment. | [SPEC §5](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/docs/design/SPEC.md#5-operations); [TargetTests.test_release_goal_bases_integrates_and_merges_on_the_release_branch](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_branching.py); [DefaultComparisonTests.test_changed_prompt_has_working_diff_and_merge_commands](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_defaults.py) |
-| C10 default | The shipped 15-node graph and its selectors, instructions and policy choices; repositories may adopt different definitions. | [Default workflow](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/plugins/zzzops/zzzops/templates/default/workflow.json); [ShippedTemplateTests.test_the_15_node_graph](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_review_lenses.py); [ShippedTemplateTests.test_review_fan_in](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_review_lenses.py) |
-| C11 procedure | Owner questions are a prompt procedure backed by recorded answers; judgment remains human. | [OwnerJourneyTests.test_the_acceptance_journey](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_owner_questions.py); [OwnerQuestionsTemplateTests.test_design_prompt_step_4_blocks_with_every_owner_question](https://github.com/david-rzepa/zzzops/blob/c455b09914b49fd65e169f91a4f79110e3e2540b/.agents/test_engine_owner_questions.py) |
-
-## Keeping this paper current
-
-Choose a fresh source snapshot and inspect engine, template and capability changes. Update affected claims, ledger rows, synthetic examples and discrepancy status; compute the matching package build. Run `python3 .agents/whitepaper_check.py` and the relevant named behavior tests, inspect the result and refresh the blog where its claims changed. The manual checker validates references and builds and reproduces the two boundaries; it cannot decide whether a test semantically supports a sentence. Preserve older pins when explaining historical behavior. The repository's release and approval checks remain separate from this documentation audit.
-
+For upkeep, choose a fresh source snapshot, inspect engine, template and capability changes, update affected statements and evidence, compute its package build, then run `python3 .agents/whitepaper_check.py` and relevant behavior tests. Update the blog if its claims change. Preserve older pins when describing historical behavior; ordinary release and approval checks remain separate.
 <!-- whitepaper-ledger
 [
   {
