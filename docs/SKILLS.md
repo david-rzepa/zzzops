@@ -5,7 +5,7 @@ ZzzOps ships four skills. Each drives the `zzzops` CLI ([reference](../plugins/z
 | Skill | Use it to |
 |---|---|
 | `$bootstrap-zzzops-repository` | Initialize a repository: policy, workflow, prompts, harness and GitHub settings ([Initialization](INITIALIZATION.md)). |
-| `$add-zzzops-goal` | Capture a goal's spec with you and start its design at once. |
+| `$add-zzzops-goal` | Capture a spec and start a design worker; unresolved owner choices come back before the design proceeds. |
 | `$migrate-zzzops-repository` | Move a repository that still has pre-reset ZzzOps state (an old policy, old goal issues or install files) to the new engine: inventory, triage, one go-ahead, then close or migrate each issue. `next` and `validate` point to it with their `legacy` item. |
 | `$execute-zzzops` | Work through all ready phases: dispatch workers, run the Git and GitHub operations, and present your decisions in batches. In unattended runs it sleeps until the next time something can change (`wake_at`). |
 

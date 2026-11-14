@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import os
 import re
-import sys
 
 from engine.canon import iso
 from engine.errors import EngineError, Refused
@@ -41,7 +39,7 @@ def fail(key, text):
 def conflict(out_pr, n, I, detail):
     return Done({"pr": out_pr, "ci": None}, ok=False,
                 findings=[{"key": "conflict", "input": "base",
-                           "text": f"PR #{n} conflicts with {I} ({detail}); rebase the work branch"}])
+                           "text": f"PR #{n} conflicts with {I} ({detail}); sync the work branch"}])
 
 
 def local_conflict(git, tip, H):
@@ -74,7 +72,8 @@ def _run(ctx):
     git, snap, gh = ctx.git, ctx.snap, ctx.gh
     ident = Identity(git)
     g, p = ctx.goal, ctx.worktree
-    I = snap.I
+    TG = ctx.target or {"branch": snap.I, "tip": snap.integration}
+    I, I_tip = TG["branch"], TG["tip"]                 # the goal's target branch (G1025), the integration branch by default
     W, B, T = snap.work.get(g), ctx.inputs["base"], ctx.inputs["code"]
     stack = ctx.inputs.get("stack") or []
     if not stack:
@@ -104,45 +103,27 @@ def _run(ctx):
     pol = git.out("diff", "--name-only", B, W, "--", ".zzzops/POLICY.json", ".zzzops/workflow.json", ".zzzops/prompts")
     if pol:
         return fail("policy-paths", "goal diffs must not touch policy files; change policy through a zzzops/policy/* branch")
-    commits = git.out("rev-list", "--reverse", "--topo-order", f"{B}..{W}").split()
-    if all(ident.is_review(c) for c in commits):
+    if ident.code_tree(B) == T:
         return Blocked({"category": "decision", "waiting_for": "human", "reason": "no code commits",
-                        "question": f"G{g} has no code commits to integrate. Close it as superseded (nothing to deliver)?",
+                        "question": f"G{g} has no code commits to integrate. Close it as superseded?",
                         "options": ["close as superseded", f"reopen {ctx.producers['code']}"],
                         "commands": {"close as superseded": ["edit", str(g), "--file", "<F>", "--base", "<C>"],
                                      f"reopen {ctx.producers['code']}": ["reopen", str(g), ctx.producers["code"], "--note", "<why>"]}})
-    # 2. deterministic rebuild: drop review commits
-    todo = "".join(f"{'drop' if ident.is_review(c) else 'pick'} {c} {ident.subject(c)}\n" for c in commits)
-    gitdir = git.out("rev-parse", "--absolute-git-dir", cwd=p)
-    todo_path = os.path.join(gitdir, "zzzops-todo")
-    with open(todo_path, "w", encoding="utf-8") as fh:
-        fh.write(todo)
-    git.run("switch", "-q", "-c", tmp, W, cwd=p)
-    name, email = committer(git)
-    editor = f'"{sys.executable}" -c "import shutil,sys; shutil.copyfile(sys.argv[1], sys.argv[2])" "{todo_path}"'
-    r = git.run("-c", "commit.gpgSign=false", "rebase", "-q", "-i", "--no-autosquash", "--no-update-refs",
-                "--committer-date-is-author-date", B, cwd=p, check=False,
-                env={"GIT_SEQUENCE_EDITOR": editor, "GIT_COMMITTER_NAME": name, "GIT_COMMITTER_EMAIL": email})
-    if r.returncode != 0:
-        git.run("rebase", "--abort", cwd=p, check=False)
-        git.run("switch", "-q", br, cwd=p, check=False)
-        git.run("branch", "-q", "-D", tmp, check=False)
-        raise EngineError(f"the review-free rebuild failed: {r.stderr.strip()[:300]}")
-    H = git.out("rev-parse", "HEAD", cwd=p)
-    git.run("switch", "-q", br, cwd=p)
-    git.run("branch", "-q", "-D", tmp)
+    from engine.ops.squash import rebuild
+    H = rebuild(ctx, ident, B, W, T)
     if ident.code_tree(H) != T:
         raise EngineError("the rebuilt PR head has a different code tree")
     if git.out("diff", "--name-only", B, H, "--", REVIEW_PATH):
         raise EngineError("the rebuilt PR head contains review files")
     # 3. push the PR head; expected value = this invocation's fetched tip
-    res, _ = push_atomic(git, snap.R, [(f"refs/heads/zzzops/pr/g{g}", snap.pr.get(g), H)])
-    if res != "ok":
-        raise Refused("contention", "the PR branch moved; run integrate again")
+    if H != snap.pr.get(g):
+        res, _ = push_atomic(git, snap.R, [(f"refs/heads/zzzops/pr/g{g}", snap.pr.get(g), H)])
+        if res != "ok":
+            raise Refused("contention", "the PR branch moved; run integrate again")
     snap.pr[g] = H
     # 4. the PR
     prs = gh.json("pr", "list", "--head", f"zzzops/pr/g{g}", "--state", "all", "--json",
-                  "number,state,url,headRefOid,baseRefName,body") or []
+                  "number,state,url,headRefOid,baseRefName,body,title") or []
     pr = prs[0] if prs else None
 
     def pr_out(base):
@@ -163,13 +144,15 @@ def _run(ctx):
                                         f"({T[:7]}). Open a follow-up goal for the difference, then cancel G{g}."})
         return Done({"pr": pr_out(I), "ci": {"stacked": False, "required": [], "passed": [], "failed": []}}, ok=True)
     body = pr_body(ctx, g, stack, target, I)
-    title = f"{ctx.doc['title']} (G{g})"
+    title = ident.subject(H)
     if pr is None:
         url = gh.run("pr", "create", "--head", f"zzzops/pr/g{g}", "--base", target, "--title", title, "--body-file", "-",
                      input=body).strip().splitlines()[-1]
         n = int(url.rstrip("/").rsplit("/", 1)[-1])
         pr = {"number": n, "url": url, "state": "OPEN", "baseRefName": target}
     else:
+        if pr.get("title") != title:
+            gh.run("pr", "edit", str(pr["number"]), "--title", title)
         if pr["baseRefName"] != target:
             gh.run("pr", "edit", str(pr["number"]), "--base", target)
         if pr.get("body") != body:
@@ -187,9 +170,9 @@ def _run(ctx):
             checks[item.get("name") or item.get("context")] = classify(item)
         return Done({"pr": out_pr, "ci": {"stacked": True, "checks": checks}}, ok=True, summary=f"PR #{pr['number']} stacked")
     # 5b. PRs into I: a conflict first (locally, then GitHub's verdict), then required checks
-    files = local_conflict(git, snap.integration, H)
+    files = local_conflict(git, I_tip, H)
     if files is not None:
-        return conflict(out_pr, pr["number"], I, f"merging into {I} ({snap.integration[:7]}) conflicts in "
+        return conflict(out_pr, pr["number"], I, f"merging into {I} ({I_tip[:7]}) conflicts in "
                                                   + (", ".join(files) or "unknown files"))
     if v["headRefOid"] != H:
         return ctx.wait("GitHub has not seen the PR head yet", 60)
@@ -284,7 +267,9 @@ def reviews_section(ctx) -> str:
                 lines.append(one_line(ctx.inputs[k]))
         for k, p in ins:
             if graph.is_review(p) and ctx.inputs.get(k) is not None:
-                lines.append(f"- **{p}**: {one_line(ctx.inputs[k])}")
+                applied = graph.applied_lenses(p, doc.get("skip") or {})
+                lenses = f" ({', '.join(applied)})" if graph.lens_defs(p) else ""
+                lines.append(f"- **{p}**{lenses}: {one_line(ctx.inputs[k])}")
     records = doc.get("records") or {}
     for n, reason in sorted((doc.get("skip") or {}).items()):
         lines.append(f"- **{n}**: skipped: {one_line(reason)}")
@@ -294,10 +279,31 @@ def reviews_section(ctx) -> str:
     return "\n".join(lines)
 
 
+def decisions_section(ctx) -> str | None:
+    """`## Human decisions` (G1026): every answered blocked question on a node that is not a descendant of this op,
+    read from goal history; None when there is none."""
+    from engine import render
+    graph, git, snap = ctx.graph, ctx.git, ctx.snap
+    tip = (getattr(snap, "goals", None) or {}).get(ctx.goal)
+    if graph is None or git is None or not tip:
+        return None
+    hd = render.human_decisions(git, tip, ctx.goal, graph, render.not_descendants(graph, ctx.node))
+    if hd is None:
+        return "## Human decisions\n\nUnavailable: goal history could not be read."
+    if not hd:
+        return None
+    lines = ["## Human decisions"]
+    for e in hd:
+        lines.append(f"- **{e['node']}** ({e['kind']}; {e['decided_by']}, {str(e['decided_at'] or '')[:10]}): "
+                     f"{one_line(e['question'])} → \"{one_line(e['quote'])}\"")
+    return "\n".join(lines)
+
+
 def pr_body(ctx, g, stack, target, I) -> str:
     summary = ctx.inputs.get("summary") or ""
-    body = (f"{summary}\n\n{reviews_section(ctx)}\n\n"
-            f"ZzzOps goal G{g}. Built from zzzops/work/g{g} without docs(review) commits.")
+    decisions = decisions_section(ctx)
+    body = (f"{summary}\n\n{reviews_section(ctx)}\n\n" + (f"{decisions}\n\n" if decisions else "") +
+            f"ZzzOps goal G{g}. Squashed from zzzops/work/g{g} into tests and implementation.")
     if target != I:
         body += "\n\n" + " ".join(f"Stacked on #{e['pr']} (G{e['goal']}), not merged yet." for e in stack)
     return body
@@ -307,7 +313,7 @@ def stack_pr(ctx, g, n, stack, B, I):
     git, gh = ctx.git, ctx.gh
     first_parent = git.out("rev-list", "--parents", "-n", "1", B).split()[1:2]
     with_I = bool(first_parent) and first_parent[0] not in {e["head"] for e in stack}
-    title = f"Stack for #{n}: combines " + ", ".join(f"#{e['pr']}" for e in stack) + (f" and {I}" if with_I else "") \
+    title = f"chore(stack): combine #{n}: " + ", ".join(f"#{e['pr']}" for e in stack) + (f" and {I}" if with_I else "") \
         + " (do not merge)"
     body = (f"ZzzOps stack base for G{g} (PR #{n}). Combines:\n" + "".join(f"- #{e['pr']} (G{e['goal']})\n" for e in stack)
             + "\nZzzOps never merges this PR; it is closed when the stack set has fewer than two members.")

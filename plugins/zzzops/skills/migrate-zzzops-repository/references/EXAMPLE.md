@@ -56,6 +56,7 @@ The new goals, by old issue number:
 
 ## Owner decisions
 
+- **Releases:** from the release-plan issue #695. The next release's goals became release 1, and the backlog became release 2 (G1004–G1013).
 - **#380 and #384:** entropy review becomes a review lens in the default graph, as part of #499's lens set. It must cover drift from the goal's and the project's original intent, not only code entropy. It is in the next release.
 - **#488:** close it, because the routing experiment failed.
 - **#502:** keep it as a P3 backlog goal outside the release: research into a fast classifier, for example to choose which review lenses apply at capture.

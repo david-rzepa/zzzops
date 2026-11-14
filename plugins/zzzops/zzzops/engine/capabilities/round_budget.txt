@@ -1,0 +1,1 @@
+Round budget (G1039): correction_runs counts agent rounds that raise new material findings, and the budget is a per-stage limit on them. An engine without it counts every correction run against one total limit.

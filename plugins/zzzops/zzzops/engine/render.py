@@ -5,12 +5,17 @@ its arguments."""
 
 from __future__ import annotations
 
+import base64
 import json
+import os
 import shlex
+import shutil
+import sys
 from dataclasses import dataclass, field
 
 from engine.canon import canonical, iso, parse_iso
-from engine.frontier import PRI, GoalResult, Portfolio, order_key
+from engine.frontier import PRI, GoalResult, Portfolio, order_key, budget_for
+from engine.schemas import lens_label
 
 NEXT_LIMIT = 8192
 LABEL = "<LABEL>"
@@ -35,6 +40,10 @@ class Reader:
     def has(self, oid: str) -> bool:
         return False
 
+    def human_decisions(self, g: int, graph, nodes) -> list | None:
+        """The goal's answered blocked questions on `nodes` (see `human_decisions`); None when history is unreadable."""
+        return []
+
 
 @dataclass
 class Ctx:
@@ -45,11 +54,46 @@ class Ctx:
     reader: Reader = field(default_factory=Reader)
     goal_commits: dict = field(default_factory=dict)     # id -> goal tip commit (for edit --base)
     goal_dates: dict = field(default_factory=dict)       # id -> goal tip committer date (seconds)
+    repo: str | None = None                              # worker-facing commands carry --repo <primary> (G1028)
+    targets: dict = field(default_factory=dict)          # G1025: branch -> tip of the production and line branches
 
 
 def command(ctx: Ctx, argv: list) -> dict:
-    return {"argv": list(argv), "command": ctx.prefix + " " + " ".join(shlex.quote(a) if a not in (LABEL, FILE) else a
-                                                                      for a in argv)}
+    """A printed command (SPEC §1.6). With `ctx.repo` (worker-facing output) it ends `--repo <dir>`, so it runs from
+    any directory."""
+    repo = getattr(ctx, "repo", None)
+    argv = list(argv) + (["--repo", repo] if repo else [])
+    return {"argv": argv, "command": ctx.prefix + " " + " ".join(shlex.quote(a) if a not in (LABEL, FILE) else a
+                                                                 for a in argv)}
+
+
+def scoped_git_command(args, scope=None, exclude=None, quoted_root=False):
+    """A scoped Git command runnable in POSIX shells and PowerShell without expanding filenames."""
+    from engine.identity import view_paths
+    argv = ["git", *args, "--", *view_paths(scope, exclude)]
+    if any(any(c in arg for c in "'‘’‚‛“”") for arg in argv):
+        # Adjacent POSIX quote fragments are not one native argument in PowerShell.
+        # Keep exceptional filenames entirely inside data, never shell source.
+        python = None
+        for name in ("python3", "python"):
+            path = shutil.which(name)
+            try:
+                if path and os.path.samefile(path, sys.executable):
+                    python = name
+                    break
+            except OSError:
+                continue
+        if python is None and shutil.which("py"):
+            python = "py -3"
+        if python is None:
+            from engine.errors import Refused
+            raise Refused("environment", "Scoped diff filenames need the current Python on PATH as python3/python, "
+                          "or the supported py -3 launcher; no portable interpreter command is available.")
+        payload = base64.b64encode(json.dumps(argv).encode("ascii")).decode("ascii")
+        script = ('import base64,json,subprocess,sys;'
+                  'sys.exit(subprocess.call(json.loads(base64.b64decode(sys.argv[1])),shell=False))')
+        return python + " -c '" + script + "' " + payload
+    return " ".join("':/'" if quoted_root and a == ":/" else shlex.quote(a) for a in argv)
 
 
 def first_line(text: str, limit: int) -> str:
@@ -61,6 +105,52 @@ def first_line(text: str, limit: int) -> str:
 
 def clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+# --------------------------------------------------------------------------------------------- human decisions
+
+
+DECISION_CLIP = 300
+
+
+def human_decisions(git, tip: str, g: int, graph, nodes) -> list | None:
+    """Every answered blocked question of goal g on `nodes`, in commit order (G1026, SPEC §3.9): read from the goal's
+    `zzzops: answer G<g> <node>` commits, keeping those whose goal.json has the node's record blocked with an answer
+    (which drops approval and dispute answers). Entries: {node, kind, question, text, quote, decided_by, decided_at,
+    commit}. None when the history cannot be read."""
+    from engine.gitrun import GitError
+    prefix = f"zzzops: answer G{g} "
+    try:
+        log = git.run("log", "--reverse", "--first-parent", "--format=%H%x1f%s", f"--grep=^{prefix}", tip).stdout
+    except (GitError, OSError):
+        return None
+    wanted = set(nodes)
+    out = []
+    for line in log.splitlines():
+        c, _, subject = line.partition("\x1f")
+        if not subject.startswith(prefix):
+            continue
+        node = subject[len(prefix):].strip()
+        if node not in wanted or node not in graph.nodes:
+            continue
+        data = git.cat(f"{c}:goal.json")
+        try:
+            r = (json.loads(data.decode("utf-8")).get("records") or {}).get(node) if data is not None else None
+        except ValueError:
+            r = None
+        if not isinstance(r, dict) or r.get("status") != "blocked" or not isinstance(r.get("answer"), dict):
+            continue
+        a = r["answer"]
+        out.append({"node": node, "kind": graph.nodes[node].get("kind"),
+                    "question": (r.get("blocked") or {}).get("question"), "text": a.get("text"),
+                    "quote": a.get("quote"), "decided_by": a.get("decided_by"), "decided_at": a.get("decided_at"),
+                    "commit": c})
+    return out
+
+
+def not_descendants(graph, n: str) -> list:
+    """Every node of the graph that is not a descendant of n (n included), in topological order."""
+    return [m for m in graph.topo if n not in graph.ancestors(m)]
 
 
 # --------------------------------------------------------------------------------------------- live leases
@@ -103,7 +193,7 @@ def cancel_option(ctx: Ctx, g: int) -> dict:
 
 def run_capability(state: dict) -> str | None:
     """The one capability rule, shared by `next` actions and task cards: a retry needs `reasoning`; a run whose
-    record is stale only on `inputs.base` and that has no live corrections is a rebase (`routine`); otherwise None
+    record is stale only on `inputs.base` and that has no live corrections is a base sync (`routine`); otherwise None
     (the caller falls back to the node's own tier). `record_stale` (set at claim time) is the staleness since the
     accepted record; a frontier state carries no `record_stale`, and its `stale_because` is exactly that."""
     if state.get("reason") == "retry":
@@ -138,6 +228,8 @@ def action(ctx: Ctx, p: Portfolio, res: GoalResult, n: str) -> dict:
         a["requires_force"] = True
         a["note"] = "possible clock problem; ask the human before --force"
     a["command"] = command(ctx, argv)
+    if res.target is not None:
+        a["target"] = res.target["branch"]
     return a
 
 
@@ -163,9 +255,69 @@ def prompt_question(ctx: Ctx, res: GoalResult, n: str) -> str:
     return line or f"G{res.goal} {n}?"
 
 
+def checks_summary(result: dict) -> str:
+    """Measured checks context, with independently qualified comparison scopes (G1043)."""
+    def milliseconds(value, signed=False):
+        if type(value) is not int or (not signed and value < 0):
+            return None
+        return f"{value / 1000:+.3f} s" if signed else f"{value / 1000:.3f} s"
+
+    timing = result.get("timing")
+    if not isinstance(timing, dict):
+        durations = []
+        details = result.get("details")
+        for detail in details if isinstance(details, list) else []:
+            if not isinstance(detail, dict):
+                continue
+            duration = milliseconds(detail.get("milliseconds"))
+            if duration is None and type(detail.get("seconds")) is int and detail["seconds"] >= 0:
+                duration = f"{detail['seconds']} s"
+            if duration is not None:
+                durations.append(duration)
+        recorded = ", ".join(durations[:6]) or "unavailable"
+        return f"Legacy local checks: recorded command times {recorded}; total and baseline unavailable (legacy_timing)."
+
+    def provenance(scope):
+        source = scope.get("source", scope)
+        if not isinstance(source, dict) or source.get("goal") is None:
+            return ""
+        goal = clip(str(source["goal"]), 20)
+        node = clip(str(source.get("node", "?")), 24)
+        target = clip(str(source.get("target", "?")), 48)
+        merge = clip(str(source.get("merge_commit", "?")), 12)
+        return f" vs recorded merged G{goal}/{node} {target}@{merge}"
+
+    def comparison(label, scope):
+        if not isinstance(scope, dict):
+            scope = {"status": "unavailable", "reason": "legacy_timing"}
+        delta = milliseconds(scope.get("delta_ms"), signed=True)
+        if scope.get("status") == "available" and delta is not None:
+            return f"{label} delta {delta}" + provenance(scope)
+        reason = scope.get("reason") or ("invalid_evidence" if scope.get("status") == "available" else "legacy_timing")
+        qualifier = clip(str(reason), 64)
+        if scope.get("limit"):
+            qualifier += f" ({clip(str(scope['limit']), 24)})"
+        return f"{label} comparison unavailable: {qualifier}" + provenance(scope)
+
+    total = milliseconds(timing.get("total_ms"))
+    verification = milliseconds(timing.get("verification_ms"))
+    if total is None:
+        reason = clip(str(timing.get("reason") or "invalid_evidence"), 64)
+        return f"Local checks timing unavailable: {reason}; repository verification and baseline unavailable."
+    baseline = timing.get("baseline")
+    parts = [f"Local checks {total}", f"repository verification {verification or 'unavailable'}",
+             comparison("Total", baseline),
+             comparison("Repository verification", baseline.get("verification") if isinstance(baseline, dict) else None)]
+    # Keep the qualifications ahead of verbose command logs and preserve the
+    # caveat even if unusual source names need clipping. Full evidence is separate.
+    caveat = "; informational: machine load and concurrent goal-command workload may differ."
+    return clip("; ".join(parts), 600 - len(caveat)) + caveat
+
+
 def approve_context(ctx: Ctx, res: GoalResult, n: str, vals: dict) -> list:
     out = []
     nd = res.graph.nodes[n]
+    from engine.records import checkpoint_scope
     for name in sorted(nd.get("inputs") or {}):
         sel = res.graph.selectors[n][name]
         if name not in vals:
@@ -173,28 +325,44 @@ def approve_context(ctx: Ctx, res: GoalResult, n: str, vals: dict) -> list:
         v = vals[name]
         t = res.graph.output_types.get(sel.node, {}).get(sel.output) if sel.kind == "node" else None
         entry = {"label": sel.text}
+        record = ((res.doc.get("records") or {}).get(sel.node) or {}) if sel.kind == "node" else {}
+        scope = checkpoint_scope(res.graph, sel.node, record) if sel.kind == "node" else None
+        preserved = res.graph.nodes.get(sel.node, {}).get("preserve") if sel.kind == "node" else None
+        exclude = (((res.doc.get("records") or {}).get(preserved) or {}).get("frozen") or []) if preserved else []
         if t == "checkpoint" and isinstance(v, dict) and not sel.path:
-            entry.update(checkpoint_view(ctx, v))
+            entry.update(checkpoint_view(ctx, v, scope, exclude))
         elif t == "checkpoint" and sel.path and sel.path[0] in ("change", "tree"):
             cp = res.cur.get(sel.node, {}).get(sel.output)
-            entry.update(checkpoint_view(ctx, cp) if cp else {"summary": value_view(v)})
+            entry.update(checkpoint_view(ctx, cp, scope, exclude) if cp else {"summary": value_view(v)})
         elif t == "artifact" and isinstance(v, dict) and not sel.path:
             entry.update({"path": v.get("path"), "blob": v.get("blob"), "read": f"git cat-file -p {v.get('blob')}"})
             url = ctx.reader.artifact_url(v.get("commit"), v.get("path")) if v.get("commit") else None
             if url:
                 entry["url"] = url
+        elif (t == "object" and isinstance(v, dict) and not sel.path and sel.kind == "node"
+              and (nd.get("inputs") or {}).get(name, {}).get("context") is True
+              and res.graph.nodes.get(sel.node, {}).get("kind") == "op"
+              and res.graph.nodes.get(sel.node, {}).get("op") == "checks.run"):
+            text = json.dumps(v, sort_keys=True, ensure_ascii=False)
+            if len(text) > 400:
+                entry.update(ctx.reader.blob_view(text))
+            else:
+                entry["value"] = v
+            entry["summary"] = checks_summary(v)
         else:
             entry["summary"] = value_view(v)
         out.append(entry)
     return out
 
 
-def checkpoint_view(ctx: Ctx, cp: dict) -> dict:
-    diff = f"git diff {cp['base']} {cp['commit']} -- ':/' ':(top,exclude).zzzops/reviews'"
+def checkpoint_view(ctx: Ctx, cp: dict, scope=None, exclude=None) -> dict:
+    diff = scoped_git_command(["diff", cp["base"], cp["base"] if scope == [] else cp["commit"]], scope, exclude)
     view = {"commit": cp["commit"], "base": cp["base"], "diff": diff}
-    stat = ctx.reader.diffstat(cp["base"], cp["commit"])
+    stat = ctx.reader.diffstat(cp["base"], cp["commit"]) if scope is None and not exclude else None
     if stat:
         view["diffstat"] = stat
+    if len(scope or []) + len(exclude or []) > 12:
+        view["diff"] = ctx.reader.blob_view(diff)
     return view
 
 
@@ -209,8 +377,12 @@ def facts(res: GoalResult) -> str:
     waived = [f["id"] for r in records.values() for f in r.get("findings") or [] if f["status"] == "waived"]
     disputed = [f["id"] for r in records.values() for f in r.get("findings") or []
                 if f["status"] == "open" and (f.get("response") or "").startswith("disputed: ")]
+    follows = sorted({(f["id"], f["follows"]) for r in records.values() for f in r.get("findings") or []
+                      if f.get("follows")})
     parts.append("waived: " + (", ".join(sorted(waived)) or "none"))
     parts.append("disputed: " + (", ".join(sorted(disputed)) or "none"))
+    if follows:
+        parts.append("follows: " + ", ".join(f"{a} ← {b}" for a, b in follows))
     ci = "not run yet"
     for n in res.graph.topo:
         if res.graph.nodes[n].get("op") == "git.integrate" and n in records and records[n]["status"] == "done":
@@ -266,11 +438,20 @@ def approve_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:
     notes = notes_by_lens(res, n)
     if notes:
         item["notes"] = notes
+    lenses = lenses_applied(res, n)
+    if lenses:
+        item["lenses"] = lenses
     skipped = skips(res)
     if skipped:
         item["skipped"] = skipped
     item.update(pr_and_stack(res))
     item["facts"] = facts(res)
+    hd = ctx.reader.human_decisions(g, res.graph, not_descendants(res.graph, n))
+    if hd is None:
+        item["human_decisions"] = "unavailable"
+    elif hd:
+        item["human_decisions"] = [dict(e, text=clip(e["text"], DECISION_CLIP)) if isinstance(e.get("text"), str)
+                                   else e for e in hd]
     r = (res.doc.get("records") or {}).get(n)
     if r and r["status"] == "done":
         prev = {"decided_at": (r["output"] or {}).get("decided_at"), "quote": (r["output"] or {}).get("quote")}
@@ -294,14 +475,21 @@ def approve_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:
 def notes_by_lens(res: GoalResult, n: str) -> dict:
     """The filter-judged notes of the lenses behind the filters that node n reads, grouped by lens."""
     filters = {p for p in res.graph.producers(n) if res.graph.is_filter(p)}
-    lenses = {x for f in filters for x in res.graph.lenses(f)}
+    lenses = {x for f in filters for x in res.graph.reviewers(f)}
     out = {}
     for t in res.graph.topo:
         for c, f, reason in sorted(res.notes.get(t, []), key=lambda x: x[1]["id"]):
             if c in lenses:
-                out.setdefault(c, []).append({"id": f["id"], "target": t, "text": clip(f["text"], 300),
+                out.setdefault(lens_label(c, f), []).append({"id": f["id"], "target": t, "text": clip(f["text"], 300),
                                               "impact": clip(f.get("impact") or "", 200), "reason": reason})
     return out
+
+
+def lenses_applied(res: GoalResult, n: str) -> dict:
+    """For each multi-lens reviewer that node n reads: the lenses it applies and those the goal skipped (G1022)."""
+    skip = res.doc.get("skip") or {}
+    return {p: {"apply": res.graph.applied_lenses(p, skip), "skipped": res.graph.skipped_lenses(p, skip)}
+            for p in res.graph.producers(n) if res.graph.lens_defs(p)}
 
 
 def skips(res: GoalResult) -> list:
@@ -357,8 +545,9 @@ def dispute_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:
     carrier, f = s["escalated"][0]
     records = res.doc.get("records") or {}
     cr = records[carrier]
+    response = f.get("response") or (((records.get(n) or {}).get("output") or {}).get("responses") or {}).get(f["id"], "")
     q = (f"`{carrier}` and `{n}` disagree on {f['id']}: '{clip(f['text'], 300)}'. `{n}` answered: "
-         f"'{clip(f.get('response') or '', 300)}'. Uphold the finding (the target must fix it) or waive it?")
+         f"'{clip(response, 300)}'. Uphold the finding (the target must fix it) or waive it?")
     item = {"goal": g, "node": carrier, "stage": res.graph.nodes[carrier]["stage"], "kind": "dispute", "question": q,
             "since": cr["finished_at"]}
     if not full:
@@ -405,8 +594,8 @@ def crash_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:
     if not full:
         return item
     one_more = {"label": "one more try", "command": command(ctx, retry)}
-    if res.graph.nodes[n]["kind"] == "agent" and res.budget.get("over"):
-        raise_opt = budget_raise(ctx, res)
+    if res.graph.nodes[n]["kind"] == "agent" and budget_for(res, n).get("over"):
+        raise_opt = budget_raise(ctx, res, n)
         one_more = {"label": "one more try (raise the budget first)", "command": raise_opt["command"],
                     "file": raise_opt["file"], "then": command(ctx, retry)}
     opts = [one_more]
@@ -417,20 +606,27 @@ def crash_item(ctx: Ctx, res: GoalResult, n: str, full: bool) -> dict:
     return item
 
 
-def budget_raise(ctx: Ctx, res: GoalResult) -> dict:
-    b = res.budget
-    return edit_option(ctx, res.goal, "raise the budget", {"budget": b["used"] + 3 * b["agents"]})
+def budget_raise(ctx: Ctx, res: GoalResult, node: str | None = None) -> dict:
+    if node is None:
+        node = next(n for n in res.graph.topo if res.graph.nodes[n]["kind"] == "agent")
+    b = budget_for(res, node)
+    extra = 10 if "stages" in res.budget else 3 * b["agents"]
+    return edit_option(ctx, res.goal, "raise the budget", {"budget": b["used"] + extra})
 
 
 def budget_item(ctx: Ctx, res: GoalResult, node: str, full: bool) -> dict:
-    b = res.budget
+    b = budget_for(res, node)
     g = res.goal
     per = ", ".join(f"{k} {v}" for k, v in b["per_node"].items()) or "none"
     q = f"G{g} has used {b['used']} correction runs (limit {b['limit']}): {per}. Continue, hold, or cancel?"
+    if "stages" in res.budget:
+        stage = res.graph.nodes[node]["stage"]
+        q = (f"G{g} has had {b['used']} rounds with new material findings in {stage} "
+             f"(limit {b['limit']}): {per}. Continue, hold, or cancel?")
     item = {"goal": g, "node": node, "stage": res.graph.nodes[node]["stage"], "kind": "budget", "question": q,
             "since": iso(ctx.goal_dates[g]) if g in ctx.goal_dates else None}
     if full:
-        item["options"] = [budget_raise(ctx, res), edit_option(ctx, g, "hold the goal", {"state": "held"}),
+        item["options"] = [budget_raise(ctx, res, node), edit_option(ctx, g, "hold the goal", {"state": "held"}),
                            cancel_option(ctx, g)]
     return item
 
@@ -511,10 +707,14 @@ def human_items(ctx: Ctx, res: GoalResult, full: bool) -> list:
     if res.stuck:
         it = stuck_item(ctx, res, full)
         out.append((order_key(settings, res.doc, res.graph, it["node"]), it if full else compact(ctx, it)))
-    if res.budget.get("over"):
-        node = next((n for n in res.graph.topo if res.graph.nodes[n]["kind"] == "agent"
-                     and res.st[n]["name"] in ("ready", "reclaimable")),
-                    next(n for n in res.graph.topo if res.graph.nodes[n]["kind"] == "agent"))
+    stages = ([stage for stage, b in res.budget["stages"].items() if b["over"]]
+              if "stages" in res.budget else ([None] if res.budget.get("over") else []))
+    for stage in stages:
+        agents = [n for n in res.graph.topo if res.graph.nodes[n]["kind"] == "agent"
+                  and (stage is None or res.graph.nodes[n]["stage"] == stage)]
+        if not agents:
+            continue
+        node = next((n for n in agents if res.st[n]["name"] in ("ready", "reclaimable")), agents[0])
         it = budget_item(ctx, res, node, full)
         out.append((order_key(settings, res.doc, res.graph, node), it if full else compact(ctx, it)))
     if res.close:
@@ -534,12 +734,14 @@ def compact(ctx: Ctx, item: dict) -> dict:
 def goal_actions(ctx: Ctx, p: Portfolio, res: GoalResult) -> tuple:
     """(actions as (key, action), waiting entries) for one goal."""
     acts, waiting = [], []
+    if any(res.goal in gs for _, gs in p.duplicates):
+        return acts, waiting                                  # a duplicate line: no owner until a human picks one
     for n in res.graph.topo:
         s = res.st[n]
         nd = res.graph.nodes[n]
         if s["name"] not in ("ready", "reclaimable") or nd["kind"] == "human":
             continue
-        if nd["kind"] == "agent" and res.budget.get("over"):
+        if nd["kind"] == "agent" and budget_for(res, n).get("over"):
             continue
         if res.busy and nd.get("workspace") and n != res.busy:
             waiting.append({"goal": res.goal, "node": n, "until": f"{res.busy} finishes", "reason": f"workspace busy: {res.busy}"})
@@ -584,7 +786,7 @@ def goal_running(res: GoalResult) -> list:
 
 
 def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = False, blockers: list | None = None,
-                warnings: list | None = None, paused: bool = False, legacy: dict | None = None) -> dict:
+                warnings: list | None = None, paused: bool = False, legacy: dict | None = None, policy_update: dict | None = None) -> dict:
     """`blockers`: [{"kind", "message"}]; a message may contain "{n}" (the number of paused actions).
     `paused`: a blocker pauses every action. `legacy`: the pre-reset state item (G1015), shown only when active."""
     blockers = [dict(b) for b in (blockers or [])]
@@ -612,6 +814,8 @@ def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = 
                 wake.append(parse_iso(s["retry_after"]))
             if s["name"] == "running":
                 wake.append(s["lease"].expires_at)
+    if p.branching and scope is None:
+        items += line_items(ctx, p, full)
     acts.sort(key=lambda x: x[0])
     items.sort(key=lambda x: x[0])
     actions = [a for _, a in acts]
@@ -629,11 +833,22 @@ def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = 
            "warnings": warnings}
     if legacy:
         out["legacy"] = legacy
+    if policy_update:
+        out["policy_update"] = dict(policy_update)
+        if "files" in policy_update:
+            out["policy_update"]["files"] = list(policy_update["files"])
+    if p.branching:
+        out["releases"] = releases_view(ctx, p)
     if scope:
         out["also_pending"] = {"human": out_items, "actions": 0 if paused else out_acts}
     if all_:
         out["goals"] = [goal_summary(res, ctx) for g, res in sorted(p.goals.items())]
         return out
+    # Shrink optional advisory detail before hiding work or human decisions.
+    if policy_update:
+        notice = out["policy_update"]
+        while len(canonical(out)) > NEXT_LIMIT and notice.get("files"):
+            notice["files"].pop()
     dropped = {"actions": 0, "needs_human": 0}
     while len(canonical(out)) > NEXT_LIMIT and (out["actions"] or out["needs_human"]):
         key = "actions" if len(out["actions"]) >= len(out["needs_human"]) else "needs_human"
@@ -641,6 +856,48 @@ def render_next(ctx: Ctx, p: Portfolio, scope: list | None = None, all_: bool = 
         dropped[key] += 1
         out["truncated"] = dict(dropped, hint="next --all")
     return out
+
+
+def line_items(ctx: Ctx, p: Portfolio, full: bool) -> list:
+    """G1025 portfolio items: release_cut, hotfix_start, duplicate_line and a missing line branch."""
+    out = []
+    s = ctx.settings
+    b = s.get("branching") or {}
+    I = s["integration_branch"]
+    template = {"decision": "approved", "quote": "<the human's words, verbatim>", "decided_by": "<name>"}
+    key = (0, 0, 0, 0, 0)
+    if p.cut:
+        N = p.cut["release"]
+        branch = b["release_prefix"] + str(N)
+        tip = ctx.coordinator.get("commit")
+        out.append((key, {"kind": "release_cut", "release": N, "branch": branch, "from": I, "tip": tip,
+                          "goals": list(p.cut["goals"]),
+                          "question": f"Release {N} is complete on {I}. Cut {branch} from {I} at {(tip or '')[:7]}?",
+                          "answer_template": dict(template),
+                          "command": command(ctx, ["release", "cut", str(N), "--answer", FILE])["command"]}))
+    for x in p.hotfix_starts:
+        branch = b["hotfix_prefix"] + x
+        tip = ctx.targets.get(b.get("production"))
+        out.append((key, {"kind": "hotfix_start", "hotfix": x, "branch": branch, "from": b.get("production"), "tip": tip,
+                          "question": f"Start hotfix {x}: create {branch} from {b.get('production')}?",
+                          "answer_template": dict(template),
+                          "command": command(ctx, ["hotfix", "start", x, "--answer", FILE])["command"]}))
+    for branch, gs in p.duplicates:
+        out.append((key, {"kind": "duplicate_line", "branch": branch, "goals": gs,
+                          "question": f"{', '.join(f'G{g}' for g in gs)} all own {branch}; cancel all but one.",
+                          "options": [cancel_option(ctx, g) for g in gs]}))
+    for x in p.lines:
+        if x.open and x.branch in ctx.targets and ctx.targets.get(x.branch) is None:
+            out.append((key, {"kind": "line_branch_missing", "goal": x.goal, "branch": x.branch,
+                              "question": f"{x.branch} is gone from the remote; restore it or cancel G{x.goal}.",
+                              "options": [cancel_option(ctx, x.goal)]}))
+    return out
+
+
+def releases_view(ctx: Ctx, p: Portfolio) -> dict:
+    return {"configured": ctx.settings["releases"]["current"], "effective": p.effective,
+            "lines": {x.name: {"kind": x.kind, "branch": x.branch, "goal": x.goal, "state": x.state} for x in p.lines},
+            "waiting": list(p.release_waiting)}
 
 
 def goal_summary(res: GoalResult, ctx: Ctx) -> dict:

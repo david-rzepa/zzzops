@@ -1,4 +1,4 @@
-"""G1020: polish the shipped lens prompts (design revision 2, tests 1-6).
+"""G1020: polish the lens prompts (design revision 2, tests 1-6), on the frozen 26-node template (`fx.GRAPH26`).
 
 Written before the implementation. Contracts:
 
@@ -29,7 +29,7 @@ TRUTH_ON_CODE = "On code: judge the diff against the approved design, and ask wh
 
 
 def prompt_text(name: str) -> str:
-    return (fx.SHIPPED / "prompts" / name).read_text(encoding="utf-8")
+    return (fx.GRAPH26 / "prompts" / name).read_text(encoding="utf-8")
 
 
 # --------------------------------------------------------------------------------------------- static template

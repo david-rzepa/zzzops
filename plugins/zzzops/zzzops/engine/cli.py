@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from engine import ENGINE_VERSION, schemas
+from engine import CAPABILITIES, build_id, schemas
 from engine.canon import iso
 from engine.errors import EngineError, Refused
 from engine.ops import OPS
@@ -26,6 +26,8 @@ verbs:
   reopen G X --note T
   edit G... (--file F... | --set PATH=JSON...) [--base C]...
   validate [G...] | --policy [--dir D]
+  release cut N --answer F            cut release/N from the integration tip (settings.branching)
+  hotfix start X --answer F           start hotfix/X from the production branch (settings.branching)
 
 global flags: --remote R, --integration B
   --policy-ref REF   read-only preview (next, show, validate): read the policy from REF, a zzzops/policy/*
@@ -79,7 +81,7 @@ class Args:
         return self.opts.get(name, default)
 
 
-GLOBAL = {"remote": "value", "integration": "value", "policy-ref": "value"}
+GLOBAL = {"remote": "value", "integration": "value", "policy-ref": "value", "repo": "value"}
 PREVIEW_VERBS = "next, show and validate"
 
 
@@ -98,7 +100,8 @@ def session(args, environment=True, preview=False):
     from engine.session import Session
     if args.get("policy-ref") and not preview:
         raise Refused("usage", f"--policy-ref is a read-only preview: it works with {PREVIEW_VERBS}")
-    s = Session(remote=args.get("remote"), integration=args.get("integration"), policy_ref=args.get("policy-ref"))
+    s = Session(cwd=args.get("repo"), remote=args.get("remote"), integration=args.get("integration"),
+                policy_ref=args.get("policy-ref"), repo_flag=bool(args.get("repo")))
     if environment:
         s.check_environment()
     return s
@@ -123,7 +126,8 @@ def cmd_next(argv):
     s = session(a, preview=True)
     s.open(goals=[goal_id(g) for g in a.get("goal", [])], readonly=True)
     scope = [goal_id(g) for g in a.get("goal", [])] or None
-    out = s.render_next(scope=scope, all_=bool(a.get("all")), legacy="check")
+    from engine import defaults
+    out = s.render_next(scope=scope, all_=bool(a.get("all")), legacy="check", policy_update=defaults.status(s))
     s.mirror()
     emit(out)
     return 0
@@ -168,7 +172,8 @@ def cmd_show(argv):
             out["rewritten"] = {"accepted": s.snap.goals[g], "remote": s.snap.rewritten[g]}
         emit(out)
         return 0
-    lines = [f"G{g} {doc['title']} — {doc['state']}, goal commit {s.snap.goals[g]}"]
+    target = f", target {res.target['branch']}" if res and res.target and res.target.get("branch") else ""
+    lines = [f"G{g} {doc['title']} — {doc['state']}{target}, goal commit {s.snap.goals[g]}"]
     records = doc.get("records") or {}
     for n, sstr in states.items():
         r = records.get(n) or {}
@@ -194,7 +199,7 @@ def cmd_validate(argv):
     s = session(a, environment=False, preview=True)
     from engine.gitrun import check_environment
     env = check_environment(s.git)
-    from engine.gh import gh_problems
+    from engine.gh import gh_problems, head_branch_auto_delete
     st = s.open(readonly=True, all_goals=True)
     gh_env = gh_problems(s)
     env += gh_env
@@ -214,7 +219,7 @@ def cmd_validate(argv):
             goals[str(g)] = []
     policy = []
     for b in st.blockers:
-        if b["kind"] in ("legacy_policy", "policy_invalid", "not_bootstrapped", "engine_too_old", "engine_too_new", "wrong_integration_branch"):
+        if b["kind"] in ("legacy_policy", "policy_invalid", "not_bootstrapped", "engine_too_old", "wrong_integration_branch"):
             policy += b.get("errors") or [b["message"]]
     p = s.portfolio()
     warnings = s.warnings(p)
@@ -223,10 +228,20 @@ def cmd_validate(argv):
         warnings.append({"kind": "info_attributes", "message": f"{attrs} exists: it can change diffs, and cannot be disabled"})
     if s.git.config("remote." + (s.R or "origin") + ".partialclonefilter") or s.git.config("extensions.partialClone"):
         warnings.append({"kind": "partial_clone", "message": "partial clone: missing goal documents cost one round trip each"})
+    if not gh_env and st.settings is not None and "branching" in st.settings and head_branch_auto_delete(s) is True:
+        warnings.append({"kind": "auto_delete_head_branches", "message":
+                         "settings.branching is set and GitHub's 'Automatically delete head branches' is on; "
+                         "merging a finish PR would delete the kept release/ or hotfix/ branch, and it can close "
+                         "or move stacked and release PRs before the engine retargets them. Turn it off (see SETUP.md)."})
     ok = not env and not policy and not any(goals.values())
+    warnings += schemas.engine_warnings(st.policy_raw.get("settings") if isinstance(st.policy_raw, dict) else None)
     out = {"ok": ok, "coordinator": st.coordinator, "goals": goals, "policy": policy, "environment": env,
-           "warnings": warnings}
-    from engine import legacy
+           "warnings": warnings, "engine": engine_info()}
+    from engine import defaults, legacy
+    out["warnings"] += defaults.warnings(session=s)
+    update = defaults.status(s, full=True)
+    if update:
+        out["policy_update"] = update
     item = legacy.status(s, "force", gh_ok=not gh_env, full=True)
     if item:
         out["legacy"] = item
@@ -237,6 +252,10 @@ def cmd_validate(argv):
             pass
     emit(out)
     return 0 if ok else 1
+
+
+def engine_info() -> dict:
+    return {"build": build_id(), "capabilities": sorted(CAPABILITIES)}
 
 
 def package_check() -> str | None:
@@ -250,7 +269,7 @@ def package_check() -> str | None:
 
 
 def validate_policy_dir(a) -> int:
-    d = Path(a.get("dir") or os.path.join(os.getcwd(), ".zzzops"))
+    d = Path(a.get("dir") or os.path.join(a.get("repo") or os.getcwd(), ".zzzops"))
     errors = []
 
     def load(name):
@@ -272,8 +291,15 @@ def validate_policy_dir(a) -> int:
         errors += list(schemas.validate_workflow(workflow, policy if policy is not None and not errors else None,
                                                  lambda f: (d / "prompts" / f).is_file(), OPS))
     out = {"ok": not errors, "coordinator": {}, "goals": {}, "policy": errors, "environment": [],
-           "warnings": schemas.intent_warnings((policy or {}).get("settings")) if not errors else []}
+           "warnings": (schemas.intent_warnings((policy or {}).get("settings"))
+                        + schemas.engine_warnings((policy or {}).get("settings"))) if not errors else [],
+           "engine": engine_info()}
+    from engine import defaults
+    out["warnings"] += defaults.warnings(directory=d)
     if not errors:
+        update = defaults.status_dir(d)
+        if update:
+            out["policy_update"] = update
         try:
             out.update(policy_impact(a, policy, workflow))
         except (Refused, Exception):
@@ -292,7 +318,7 @@ def policy_impact(a, policy, workflow) -> dict:
         return {}
     before = s.portfolio()
     graphs = {n: schemas.build_graph(n, g) for n, g in workflow["graphs"].items()}
-    after = portfolio(st.docs, graphs, st.leases, policy["settings"], s.now, st.invalid, st.newer)
+    after = portfolio(st.docs, graphs, st.leases, policy["settings"], s.now, st.invalid, st.newer, **s.pf_kwargs())
     nodes, staled, reasked, unknown = {}, {}, 0, []
     for g, res in sorted(before.goals.items()):
         res2 = after.goals.get(g)
@@ -348,11 +374,14 @@ def cmd_new(argv):
         settings = st.settings
         known = set(s.snap.known) | set(s.snap.goals) | set(s.snap.deleted) | set(s.snap.rewritten)
         gid = max(known | {settings["goals"]["first_id"] - 1}) + 1
+        effective = s.portfolio().effective or settings["releases"]["current"]
         doc = {"schema": 1, "id": gid, "title": spec["title"], "graph": spec.get("graph", "default"),
                "state": spec.get("state", "open"), "closed": None, "spec": spec["spec"],
-               "priority": spec.get("priority", "P2"), "release": spec.get("release", settings["releases"]["current"]),
+               "priority": spec.get("priority", "P2"), "release": spec.get("release", effective),
                "depends_on": spec.get("depends_on", []), "skip": spec.get("skip", {}),
                "links": spec.get("links", {"issue": None}), "budget": None, "records": {}}
+        if "flow" in spec:
+            doc["schema"], doc["flow"] = 2, spec["flow"]
         all_docs = dict(st.docs)
         all_docs[gid] = doc
         for d in doc["depends_on"] if isinstance(doc["depends_on"], list) else []:
@@ -361,9 +390,12 @@ def cmd_new(argv):
                 if isinstance(dd, dict):
                     all_docs[d] = dd
         errs, _ = schemas.validate_goal(doc, None, all_docs, st.workflow)
+        errs = list(errs) + s.line_errors(gid, doc, all_docs)
         if errs:
             raise Refused("validation", "; ".join(errs[:5]), details={"errors": list(errs)})
-        c = store.goal_commit(s.git, doc, None, store.goal_message("new", gid, "created", doc["state"], request_key=key))
+        line_warnings = s.line_warnings(doc)
+        c = store.goal_commit(s.git, doc, None, store.with_trailers(
+            store.goal_message("new", gid, "created", doc["state"], request_key=key), doc, settings))
         ref = f"refs/heads/zzzops/goal/g{gid}"
         r, stderr = store.push_atomic(s.git, s.R, [(ref, None, c)], report_up_to_date=True)
         if r == "up_to_date":
@@ -378,7 +410,10 @@ def cmd_new(argv):
             s.snap.advance([(ref, None, c)])
             st.docs[gid] = doc
             s._portfolio = None
-            emit(new_output(s, doc, c, key, recovered=False))
+            out = new_output(s, doc, c, key, recovered=False)
+            if line_warnings:
+                out["warnings"] = line_warnings
+            emit(out)
             return 0
         try:
             s.refetch()
@@ -567,6 +602,29 @@ def cmd_edit(argv):
     return 0
 
 
+# --------------------------------------------------------------------------------------------- release lines (G1025)
+
+
+@verb("release")
+def cmd_release(argv):
+    from engine import lineverbs
+    a = Args(argv, dict(GLOBAL, answer="value"))
+    if len(a.pos) != 2 or a.pos[0] != "cut" or not a.get("answer"):
+        raise Refused("usage", "release cut N --answer F")
+    emit(lineverbs.run(session(a), "release", a.pos[1], load_json_file(a.get("answer"), "answer")))
+    return 0
+
+
+@verb("hotfix")
+def cmd_hotfix(argv):
+    from engine import lineverbs
+    a = Args(argv, dict(GLOBAL, answer="value"))
+    if len(a.pos) != 2 or a.pos[0] != "start" or not a.get("answer"):
+        raise Refused("usage", "hotfix start X --answer F")
+    emit(lineverbs.run(session(a), "hotfix", a.pos[1], load_json_file(a.get("answer"), "answer")))
+    return 0
+
+
 # --------------------------------------------------------------------------------------------- main
 
 
@@ -576,7 +634,7 @@ def main(argv=None) -> int:
         sys.stdout.write(USAGE)
         return 0
     if argv[0] == "--version":
-        sys.stdout.write(ENGINE_VERSION + "\n")
+        sys.stdout.write(build_id() + "\n")
         return 0
     name = argv[0]
     # global flags before the verb

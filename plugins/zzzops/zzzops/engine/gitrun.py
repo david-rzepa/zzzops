@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import re
 import subprocess
 import time
@@ -52,24 +53,42 @@ class Git:
 
     # ------------------------------------------------------------------ discovery
     @classmethod
-    def discover(cls, cwd: str | Path, now: int) -> "Git":
+    def discover(cls, cwd: str | Path, now: int, flag: bool = False) -> "Git":
+        """`flag`: cwd came from --repo (SPEC §1.5, G1028), which the error then names."""
         env = base_env()
         p = subprocess.run(["git", "-C", str(cwd), "rev-parse", "--git-common-dir"], capture_output=True, text=True, env=env)
         if p.returncode != 0:
-            raise Refused("environment", "not inside a Git repository",
-                          details={"cwd": str(cwd), "git": p.stderr.strip()[:500]})
+            if flag:
+                raise Refused("environment", f"--repo {cwd} is not inside a Git repository",
+                              details={"repo": str(cwd), "git": p.stderr.strip()[:500]},
+                              hint="Pass --repo a directory inside the repository (or one of its worktrees).")
+            raise Refused("environment", f"not inside a Git repository: {cwd}",
+                          details={"cwd": str(cwd), "git": p.stderr.strip()[:500]},
+                          hint="Run zzzops from the repository, or pass --repo <a directory inside it>. Task-card "
+                               "commands already carry --repo.")
         common = Path(p.stdout.strip())
         if not common.is_absolute():
             common = (Path(cwd) / common).resolve()
-        w = subprocess.run(["git", "-C", str(cwd), "worktree", "list", "--porcelain"], capture_output=True, text=True, env=env)
-        primary = None
-        for line in w.stdout.splitlines():
-            if line.startswith("worktree "):
-                primary = line[len("worktree "):]
-                break
-        if primary is None:
-            raise Refused("environment", "cannot find the primary worktree")
-        return cls(primary, common, now)
+        paths, _, stderr = cls.worktree_paths(cwd, env)
+        if not paths:
+            raise Refused("environment", "cannot find the primary worktree", details={"git": stderr.strip()[:500]})
+        return cls(paths[0], common, now)
+
+    @staticmethod
+    def worktree_paths(cwd: str | Path, env: dict | None = None, tries: int = 6) -> tuple:
+        """`(paths, rc, stderr)` from `git worktree list --porcelain`; paths is None when every try failed. Git
+        exits non-zero (sometimes printing nothing) while another process adds or removes a linked worktree
+        (G1041), so output is trusted only on exit 0, and failures are retried with jittered backoff (about
+        1.3 s in total at worst). rc and stderr are the last try's."""
+        env = base_env() if env is None else env
+        cmd = ["git", "-C", str(cwd), "worktree", "list", "--porcelain"]
+        for attempt in range(tries):
+            p = subprocess.run(cmd, capture_output=True, text=True, env=env)
+            if p.returncode == 0:
+                return [l[len("worktree "):] for l in p.stdout.splitlines() if l.startswith("worktree ")], 0, p.stderr
+            if attempt + 1 < tries:
+                time.sleep(0.02 * 2 ** attempt * random.uniform(0.5, 1.5))
+        return None, p.returncode, p.stderr or ""
 
     # ------------------------------------------------------------------ running
     def run(self, *args, input=None, check=True, identity=False, hooks=False, commit=False, cwd=None, env=None,
@@ -143,11 +162,11 @@ class Git:
     def hash_object(self, data: bytes) -> str:
         return self.run("hash-object", "-w", "--stdin", input=data, text=False).stdout.decode().strip()
 
-    def commit_tree(self, tree: str, parents=(), message: str = "") -> str:
+    def commit_tree(self, tree: str, parents=(), message: str = "", env=None) -> str:
         args = ["commit-tree", tree]
         for p in parents:
             args += ["-p", p]
-        return self.out(*args, "-F", "-", input=message, commit=True)
+        return self.out(*args, "-F", "-", input=message, commit=True, env=env)
 
     def cat(self, spec: str) -> bytes | None:
         """One object through a persistent `cat-file --batch` (SPEC §4.1)."""

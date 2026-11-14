@@ -46,7 +46,8 @@ COLD_WORKFLOW_PROMPTS = {
 
 WORKFLOW_SIGNALS = {
     "bootstrap": ("validate --policy", "zzzops/policy/bootstrap", "Automatically delete head branches", "zzzops.committer"),
-    "capture": ("new --file", "Never offer to skip the merge approval", "approve_design", "Dispatch it to a worker"),
+    "capture": ("new --file", "Never offer to skip the merge approval", "approve_design", "Dispatch it to a worker",
+                "settings.intent", "Amend the intent", "Project intent:"),
     "execution": ("wake_at", "next --goal", "independence", "maximum timeout", "responses", "Never busy-poll"),
 }
 

@@ -14,12 +14,13 @@ from engine import schemas
 from engine.canon import EMPTY_TREE, iso, parse_iso
 from engine.errors import Refused
 from engine.fingerprint import out_fp, stale_keys
-from engine.frontier import live_input_changes, recorded_out, resolve
-from engine.identity import Identity
+from engine.frontier import budget_for, live_input_changes, recorded_out, resolve
+from engine.identity import Identity, conventional
 from engine.leases import lease_ref, message as lease_message
-from engine.render import command, lease_commands, live_lease_entry, restart_command, state_string
+from engine.render import clip, command, lease_commands, live_lease_entry, restart_command, state_string
 from engine.store import goal_message, parse_commit, push_atomic
 from engine import worktree as wt
+from engine.ops import LINE_OPS
 
 LABEL_ENV = (("CODEX_THREAD_ID", "codex"), ("CLAUDE_CODE_SESSION_ID", "claude"))
 
@@ -53,24 +54,6 @@ def pushed_summary(updates) -> dict:
         short = ref[len("refs/heads/"):] if ref.startswith("refs/heads/") else ref
         out[short] = "deleted" if not new else ("created" if not old else f"{old[:12]}..{new[:12]}")
     return out
-
-
-class GitAncestry(rec.GitView):
-    def __init__(self, git, ident):
-        self.git, self.ident = git, ident
-
-    def is_ancestor(self, a, b):
-        return self.git.is_ancestor(a, b)
-
-    def committed_since(self, work, head):
-        if work == head:
-            return False
-        if not self.git.is_ancestor(work, head):
-            return True
-        for c in self.git.out("rev-list", f"{work}..{head}").split():
-            if not self.ident.is_review(c):
-                return True
-        return False
 
 
 # --------------------------------------------------------------------------------------------- shared lookups
@@ -168,9 +151,14 @@ def start(s, g: int, X: str, label: str, reclaim=False, force=False) -> dict:
     if reclaim and p.mass_expiry and not force:
         raise Refused("mass_expiry", "most leases expired at once (a machine that slept?); reclaim needs --force",
                       hint="ask the human before --force")
-    if nd["kind"] == "agent" and res.budget.get("over"):
-        raise Refused("budget_exceeded", f"G{g} has used {res.budget['used']} correction runs (limit {res.budget['limit']})",
-                      hint="answer the budget item first")
+    budget = budget_for(res, X)
+    if nd["kind"] == "agent" and budget.get("over"):
+        if "stages" in res.budget:
+            message = (f"G{g} has had {budget['used']} rounds with new material findings in {nd['stage']} "
+                       f"(limit {budget['limit']})")
+        else:
+            message = f"G{g} has used {budget['used']} correction runs (limit {budget['limit']})"
+        raise Refused("budget_exceeded", message, hint="answer the budget item first")
     subj = res.graph.subject(X) or res.graph.filter_subject(X)       # a filter's subject comes from its lenses
     if subj and nd["kind"] == "agent":
         sr = (res.doc.get("records") or {}).get(subj)
@@ -192,13 +180,7 @@ def start(s, g: int, X: str, label: str, reclaim=False, force=False) -> dict:
         return start_op(s, res, X, label, state, reclaim, force)
     lease, workspace = claim(s, res, X, label, state, reclaim, force)
     from engine import card
-    suggested = None
-    try:
-        if workspace and lease["kind_state"].get("parts"):
-            suggested = suggestion_for_card(s, res, X, lease, workspace)
-    except Refused:
-        suggested = None
-    return card.build(s, res, X, lease["kind_state"], lease, suggested)
+    return card.build(s, res, X, lease["kind_state"], lease)
 
 
 def dependency_ids(s, g):
@@ -260,7 +242,7 @@ def claim(s, res, X, label, state, reclaim, force, extra_updates=()):
                 tip = wt.local_tip(s.git, g)
                 if tip and tip != s.snap.work.get(g):
                     updates.append((f"refs/heads/zzzops/work/g{g}", s.snap.work.get(g), tip))
-        else:
+        elif nd.get("op") not in LINE_OPS:            # a line goal has no work branch: its ops make a detached worktree
             wt.ensure_worktree(s.git, s.snap, g, self_sync=True)
         workspace = wt.worktree_path(s.git, g)
     work = s.snap.work.get(g)
@@ -306,22 +288,6 @@ def staleness(s, st0, state, r, parts) -> dict:
         since = [x for x in since if x is not None]
         out["changed_from"] = {"parts": old, "since": min(since) if since else None}
     return out
-
-
-def suggestion_for_card(s, res, X, lease, workspace):
-    graph = res.graph
-    cps = graph.checkpoint_outputs(X)
-    if not cps:
-        return None
-    k = cps[0]
-    r0 = (res.doc.get("records") or {}).get(X)
-    vals, _ = resolve(graph, res.doc, X, lambda p: recorded_out(res.doc, p), s.portfolio().views)
-    head = wt.local_tip(s.git, res.goal)
-    if not head:
-        return None
-    sug = rec.suggested_checkpoint(graph, res.doc, X, k, r0, None, lease["parts"], vals.get("base"), head,
-                                   GitAncestry(s.git, Identity(s.git)))
-    return {k: sug} if sug else None
 
 
 # --------------------------------------------------------------------------------------------- submit (§4.14)
@@ -446,8 +412,30 @@ def blocked_record(s, res, doc, X, L, r0, b, ident, work):
     for k in ("instructions", "question", "options", "recommendation"):
         if k in b:
             blocked[k] = b[k]
+    last = (r0["output"] if r0 and r0["status"] == "done" else (r0 or {}).get("last_output"))
+    extra = {"last_output": last} if nd["kind"] == "agent" and "blocked_findings" in schemas.required_caps(s.settings) else {}
     return rec.record("blocked", False, L.attempt, L.holder, L.reason, r0, L.input_fp, L.fp_parts, None, [], s.now,
-                      prompt=L.prompt, blocked=blocked)
+                      prompt=L.prompt, graph=res.graph, node=X, settings=s.settings, blocked=blocked, **extra)
+
+
+def response_why(graph, doc, X, fid):
+    """Explain an obsolete response from the latest loaded records (G1040)."""
+    records = doc.get("records") or {}
+    f = next((f for r in records.values() for f in r.get("findings") or [] if f["id"] == fid), None)
+    if f is None:
+        return "superseded"
+    if f["status"] in ("resolved", "waived"):
+        return f["status"]
+    if f["target"] != X:
+        return "other_target"
+    r = records.get(X)
+    if r and r["status"] == "blocked":
+        if "last_output" not in r:
+            return "target_blocked"
+        r = dict(r, status="done", output=r["last_output"])
+    if not r or f["target_fp"] is None or f["target_fp"] != out_fp(graph, X, r):
+        return "target_changed"
+    return "not_live"
 
 
 def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
@@ -460,9 +448,16 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
         code = "too_large" if any("too_large" in e for e in errs) else "validation"
         raise Refused(code, "; ".join(errs[:5]), details={"errors": list(errs)},
                       hint="put long text in the artifact" if code == "too_large" else None)
+    if any(isinstance(f, dict) and "follows" in f for f in out.get("findings") or []) \
+            and not schemas.follows_required(s.settings):
+        raise Refused("validation", "follows needs the policy to keep older engines away from it: "
+                                    "settings.engine.requires must include capability `finding_follows`",
+                      hint="Resolve the prior finding and raise a plain new finding, or ask the owner to push a policy "
+                           "branch adding `finding_follows` to settings.engine.requires.")
     corr = corrections_of(res, X)
     carriers = {f["id"]: c for c, f in res.live.get(X, [])}
-    rec.check_responses(out.get("responses", {}), corr, carriers, s.ctx().reader.blob_view)
+    rec.check_responses(out.get("responses", {}), corr, carriers, s.ctx().reader.blob_view,
+                        lambda fid: response_why(res.graph, doc, X, fid))
     if not out.get("responses"):
         out.pop("responses", None)
     vals_rec, _ = resolve(graph, doc, X, lambda p: recorded_out(doc, p), s.portfolio().views)
@@ -473,12 +468,32 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
         if wt.sync(s.git, ident, s.snap, g, "clean", X, L.attempt) == "ahead":
             new_tip = wt.local_tip(s.git, g)
         head = wt.local_tip(s.git, g)
-        ident.check_i1_i2(s.snap.work.get(g) or s.snap.integration, head)
+        origin = s.snap.work.get(g) or s.snap.integration
+        for c in s.git.out("rev-list", "--reverse", f"{origin}..{head}").split():
+            if len(s.git.out("rev-list", "--parents", "-n", "1", c).split()) > 2:
+                raise Refused("validation", f"merge commit {c[:12]}: only base makes merge commits in a work branch")
+            subject = ident.subject(c)
+            parsed = conventional(subject)
+            if parsed is None:
+                raise Refused("commit_subject", f"commit {c[:12]} has a non-conventional subject: {subject}",
+                              details={"commit": c, "subject": subject},
+                              hint="Reword your unpushed commits with git commit --amend or git rebase -i, then submit again.")
+            if any(n2.get("preserve") == X for n2 in graph.nodes.values()) and parsed[0] != "test":
+                raise Refused("test_commit_type", f"{X} commits must use type test; commit {c[:12]} is {parsed[0]}: {subject}",
+                              details={"commit": c, "subject": subject, "type": parsed[0]})
+            if nd.get("preserve"):
+                accepted = (doc.get("records") or {}).get(nd["preserve"]) or {}
+                bad = sorted(set(accepted.get("frozen") or []) & set(ident.changed_paths(c)))
+                if bad:
+                    raise Refused("test_freeze", f"commit {c[:12]} changed accepted test paths: " + ", ".join(bad),
+                                  details={"paths": [{"path": p} for p in bad],
+                                           "route": f"Restore these paths and resubmit. If a frozen test is wrong, keep it unchanged "
+                                                    f"and add findings: [{{\"target\": \"{nd['preserve']}\", \"text\": \"…\"}}] to your output."})
+        ident.check_i1_i2(origin, head)
         for k in graph.checkpoint_outputs(X):
             cp_key = k
             given = (out.get(k) or {}).get("commit")
-            c = given or rec.suggested_checkpoint(graph, doc, X, k, r0, L.work, L.fp_parts, vals_rec.get("base"), head,
-                                                  GitAncestry(s.git, ident)) or head
+            c = given or head
             full = s.git.rev_parse(c)
             if not full:
                 raise Refused("validation", f"checkpoint commit {c!r} does not exist")
@@ -486,11 +501,13 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
             if not (c == head or s.git.is_ancestor(c, head)):
                 raise Refused("validation", f"checkpoint {c[:12]} is not in the work branch (HEAD {head[:12]})")
             base = vals_rec["base"]
-            out[k] = {"commit": c, "base": base, "tree": ident.code_tree(c), "change": ident.change(base, c)}
+            out[k] = {"commit": c, "base": base, "tree": ident.code_tree(c)}
+            if any(n2.get("preserve") == X for n2 in graph.nodes.values()):
+                frozen = frozen_paths(s, r0, L, out[k], ident)
+            scope = rec.checkpoint_scope(graph, X, {"frozen": frozen} if frozen is not None else (r0 or {}))
+            out[k]["change"] = ident.change(base, c, paths=scope)
         if nd.get("preserve") and cp_key:
             preserve_check(s, res, doc, X, out[cp_key], ident)
-    if cp_key and any(n2.get("preserve") == X for n2 in graph.nodes.values()):
-        frozen = frozen_paths(s, r0, L, out[cp_key], ident)
     arts = graph.artifact_outputs(X)
     if arts:
         if artifact is None:
@@ -510,7 +527,7 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
     if frozen is not None:
         extra["frozen"] = frozen
     return rec.record("done", ok, L.attempt, L.holder, L.reason, r0, L.input_fp, L.fp_parts, out, findings, s.now,
-                      prompt=L.prompt, **extra)
+                      prompt=L.prompt, graph=graph, node=X, settings=s.settings, **extra)
 
 
 def check_verdicts(verdicts, candidates: list):
@@ -631,7 +648,7 @@ def renew_inputs_changed(s, g: int, X: str, L) -> dict:
     a = res.st.get(X) if res else None
     if not a or a["name"] != "running" or a["fp"] == L.input_fp:
         return {}
-    abandon_cmd, restart_cmd = lease_commands(s.ctx(), g, X, L.attempt)
+    abandon_cmd, restart_cmd = lease_commands(s.ctx(worker=True), g, X, L.attempt)
     return {"inputs_changed": True,
             "stale_because": stale_keys(L.fp_parts, a["parts"]) if a["parts"] else ["unresolved"],
             "abandon": abandon_cmd, "restart": restart_cmd,
@@ -659,7 +676,7 @@ def abandon(s, g: int, X: str, N: int | None, force=False, note=None) -> dict:
         tree = s.git.out("rev-parse", f"{tip}^{{tree}}")
         doc = s.state.docs[g]
         msg = (f"zzzops: abandon G{g} {X} attempt {L.attempt} --force\n\n{note or 'forced'}\n\n"
-               f"Outcome: abandoned\nState: {doc['state']}\nEngine: {__import__('engine').ENGINE_VERSION}\n")
+               f"Outcome: abandoned\nState: {doc['state']}\nEngine: {__import__('engine').build_id()}\n")
         ups.append((f"refs/heads/zzzops/goal/g{g}", tip, s.git.commit_tree(tree, [tip], msg)))
     r, _ = push_atomic(s.git, s.R, ups)
     if r == "remote":
@@ -667,7 +684,7 @@ def abandon(s, g: int, X: str, N: int | None, force=False, note=None) -> dict:
     if r == "rejected":
         raise Refused("contention", "the lease or goal moved; retry")
     out = {"ok": True, "coordinator": s.state.coordinator, "expired": f"zzzops/lease/g{g}/{X}",
-           "restart": restart_command(s.ctx(), g, X),
+           "restart": restart_command(s.ctx(worker=True), g, X),
            "hint": "The node is now reclaimable: a plain start is refused; run restart."}
     if note:
         out["note"] = note
@@ -739,7 +756,8 @@ def answer(s, g: int, X: str, fp: str, path: str) -> dict:
             if auto:
                 out["responses"] = auto
             records[X] = rec.record("done", a["decision"] == "approved", attempt, "human", ready["reason"], r0, fp,
-                                    ready["parts"], out, findings, s.now, reviewed=rec.reviewed(graph, doc, X))
+                                    ready["parts"], out, findings, s.now, graph=graph, node=X, settings=s.settings,
+                                    reviewed=rec.reviewed(graph, doc, X))
             info["outcome"] = "ok" if a["decision"] == "approved" else f"changes_requested → {graph.subject(X)}"
             return {g: doc}
         r = records.get(X)
@@ -817,7 +835,7 @@ def reopen(s, g: int, X: str, note: str) -> dict:
             "preview": impact(before, s.portfolio(), [g]), "pushed": pushed_summary(updates)}
 
 
-PATH_SEG = re.compile(r"^([A-Za-z0-9_]+)(?:\[([^\]]+)\])?$")
+PATH_SEG = re.compile(r"^([A-Za-z0-9_:]+)(?:\[([^\]]+)\])?$")
 
 
 def apply_sets(doc: dict, sets: list) -> dict:
@@ -847,6 +865,8 @@ def apply_sets(doc: dict, sets: list) -> dict:
                 if not isinstance(arr, list):
                     raise Refused("usage", f"{name} is not an array in {path!r}")
                 el = next((x for x in arr if isinstance(x, dict) and x.get("id") == sel), None)
+                if el is None and sel.isdigit() and int(sel) < len(arr) and isinstance(arr[int(sel)], dict):
+                    el = arr[int(sel)]                         # no element has that id: a position (G1028 waive lines)
                 if el is None:
                     raise Refused("not_found", f"no element with id {sel!r} in {name}")
                 if last:
@@ -901,6 +921,7 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
             if old is None and not doc_files:
                 raise Refused("validation", f"G{g} is unreadable: replace it with a whole-document --file")
             d = copy.deepcopy(doc_files[g]) if doc_files else apply_sets(copy.deepcopy(old), set_entries)
+            schemas.normalize_flow(d)                         # G1025 §2: schema 2 only with `flow`
             d = fill_close_fields(sess, old or {}, d)
             d = fill_current_records(sess, d)
             skip_refusal(sess, g, old or {}, d)
@@ -917,7 +938,7 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
     ctx = s.ctx()
     live = [live_lease_entry(ctx, g, n, L, sb)
             for g, n, L, sb in live_input_changes(before, after, s.now, impact_scope(before, after, gids))]
-    extra = {"live_leases_on_changed_nodes": live}
+    extra = {"live_leases_on_changed_nodes": live, "carried_findings": carried_findings(after, impact_scope(before, after, gids))}
     if live:
         extra["warning"] = f"{len(live)} running phase(s) have inputs this edit changes; see live_leases_on_changed_nodes"
     stale = sum(1 for g, nodes in prev.items() for n, ch in nodes.items()
@@ -935,7 +956,7 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
     for g, d in new_docs.items():
         errs, _ = schemas.validate_goal(d, s.state.docs.get(g), after_docs, s.state.workflow,
                                         lambda doc, g=g: s.terminals_current(g, doc, after_docs))
-        errs = list(errs) + dependent_release_errors(g, d, after_docs)
+        errs = list(errs) + dependent_release_errors(g, d, after_docs) + s.line_errors(g, d, after_docs)
         if errs:
             raise Refused("too_large" if any("too_large" in e for e in errs) else "validation",
                           f"G{g}: " + "; ".join(errs[:5]), details={"errors": list(errs)})
@@ -945,12 +966,35 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
         return goal_message("edit", gg, ", ".join(paths[:6]) or "no change", new["state"])
 
     kind, updates, closed = s.write_goals("edit", gids, op, retry=False, message=message)
+    if extra["carried_findings"]:
+        w = (f"{len(extra['carried_findings'])} open finding(s) stay live on their targets after this edit; "
+             "see carried_findings")
+        extra["warning"] = (extra["warning"] + "; " + w) if extra.get("warning") else w
     out = {"ok": True, "coordinator": s.state.coordinator, "applied": True,
            "goal_commits": {str(g): s.snap.goals[g] for g in gids}, "preview": prev, "stale_agent_phases": stale,
            **extra, "pushed": pushed_summary(updates)}
     if follow:
         out["follow_up"] = follow
     return out
+
+
+def carried_findings(after, scope) -> list:
+    """SPEC §3.16 (G1028): every finding live after the edit only because it is carried (its carrier is stale), with
+    the `--set` lines that waive it."""
+    out = []
+    for g in sorted(scope):
+        res = after.goals.get(g)
+        if res is None:
+            continue
+        for t in res.graph.topo:
+            for c, f in res.live.get(t, []):
+                if c not in res.stale or c == t:
+                    continue
+                i = next(k for k, x in enumerate(res.doc["records"][c]["findings"]) if x is f)
+                out.append({"goal": g, "id": f["id"], "from": c, "target": t, "text": clip(f["text"], 120),
+                            "waive": f"--set 'records.{c}.findings[{i}].status=\"waived\"' "
+                                     f"--set 'records.{c}.findings[{i}].note=\"<who waived it, and why>\"'"})
+    return sorted(out, key=lambda x: (x["goal"], x["id"]))
 
 
 def skip_refusal(s, g: int, old: dict, new: dict):
@@ -1036,7 +1080,7 @@ def fill_current_records(s, d: dict) -> dict:
             tmp = copy.deepcopy(d)
             tmp["records"].pop(n, None)
             docs[d["id"]] = tmp
-            p = pf(docs, s.state.graphs, {}, s.settings, s.now, s.state.invalid, s.state.newer)
+            p = pf(docs, s.state.graphs, {}, s.settings, s.now, s.state.invalid, s.state.newer, **s.pf_kwargs(docs))
             st = p.goals[d["id"]].st[n] if d["id"] in p.goals else None
             if not st or "fp" not in st or st.get("parts") is None and st["name"] != "needs_human":
                 raise Refused("validation", f"records.{n}: its inputs do not resolve, so it cannot be marked current")

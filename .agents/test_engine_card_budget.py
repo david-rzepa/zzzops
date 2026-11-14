@@ -473,7 +473,8 @@ class CardViewTests(lc.Journey):
         self.assertIsInstance(v, dict, v)
         self.assertEqual({"commit", "base", "change", "diff"}, set(v))
         self.assertEqual((rec["commit"], rec["base"], rec["change"]), (v["commit"], v["base"], v["change"]))
-        self.assertEqual(f"git diff {rec['base']} {rec['commit']} -- {EXCL}", v["diff"])
+        self.assertEqual(f"git diff {rec['base']} {rec['commit']} -- "
+                         "':(top,literal)work/x.txt' ':(top,exclude).zzzops/reviews'", v["diff"])
         self.assertEqual(["work/x.txt"], changed_files(self.w, "b", v["diff"]))
         self.assertEqual("commit", obj_type(self.w, v["commit"]))
         self.assertEqual("commit", obj_type(self.w, v["base"]))
@@ -484,9 +485,14 @@ class CardViewTests(lc.Journey):
         card = self.B.start(g, self.n("review_impl"))
         code = self.record(g, "implement")["output"]["code"]
         tests = self.record(g, "test_design")["output"]["tests"]
-        self.assertEqual(view_of(code), card["inputs"]["code"])
-        self.assertEqual(view_of(tests), card["inputs"]["tests"])
-        self.assertIn("src/cut.py", changed_files(self.w, "b", card["inputs"]["code"]["diff"]))
+        code_view, tests_view = view_of(code), view_of(tests)
+        code_view["diff"] += " ':(exclude,top,literal)tests/test_cut.py'"
+        tests_view["diff"] = (f"git diff {tests['base']} {tests['commit']} -- "
+                              "':(top,literal)tests/test_cut.py' ':(top,exclude).zzzops/reviews'")
+        self.assertEqual(code_view, card["inputs"]["code"])
+        self.assertEqual(tests_view, card["inputs"]["tests"])
+        self.assertEqual(["src/cut.py"], changed_files(self.w, "b", card["inputs"]["code"]["diff"]))
+        self.assertEqual(["tests/test_cut.py"], changed_files(self.w, "b", card["inputs"]["tests"]["diff"]))
 
     def test_fingerprints_stay_on_the_selected_sub_field(self):
         g = self.goal()

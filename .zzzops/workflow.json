@@ -21,7 +21,7 @@
               "from": "deps.design.doc"
             },
             "dep_reviews": {
-              "from": "deps.review_design.summary",
+              "from": "deps.filter_design.summary",
               "context": true,
               "optional": true
             }
@@ -33,17 +33,72 @@
           "instructions": [
             "workflow",
             "rigor",
-            "communication"
+            "communication",
+            "owner_questions"
           ]
         },
         "review_design": {
-          "description": "Independent review of the design.",
+          "description": "Design review through seven lenses (intent, simplicity, truth, adversary, concurrency, rollout, experience), one pass per lens.",
           "kind": "agent",
           "capability": "reasoning",
-          "prompt": "review_design.md",
+          "prompt": "review.md",
+          "stage": "discovery",
+          "skippable": false,
+          "review": {
+            "subject": "design",
+            "filter": "filter_design"
+          },
+          "inputs": {
+            "spec": {
+              "from": "goal.spec"
+            },
+            "doc": {
+              "from": "design.doc"
+            }
+          },
+          "policy": [
+            "intent"
+          ],
+          "instructions": [
+            "review",
+            "communication",
+            "owner_questions"
+          ],
+          "lenses": {
+            "intent": {
+              "prompt": "lens_intent.md",
+              "skippable": false
+            },
+            "simplicity": {
+              "prompt": "lens_simplicity.md",
+              "skippable": false
+            },
+            "truth": {
+              "prompt": "lens_truth.md"
+            },
+            "adversary": {
+              "prompt": "lens_adversary.md"
+            },
+            "concurrency": {
+              "prompt": "lens_concurrency.md"
+            },
+            "rollout": {
+              "prompt": "lens_rollout.md"
+            },
+            "experience": {
+              "prompt": "lens_experience.md"
+            }
+          }
+        },
+        "adversary_design": {
+          "description": "Adversary lens on the design: how could it harm someone, or be broken or gamed?",
+          "kind": "agent",
+          "capability": "reasoning",
+          "prompt": "lens_adversary.md",
           "stage": "discovery",
           "review": {
-            "subject": "design"
+            "subject": "design",
+            "filter": "filter_design"
           },
           "inputs": {
             "spec": {
@@ -54,7 +109,38 @@
             }
           },
           "instructions": [
-            "rigor",
+            "review",
+            "communication",
+            "owner_questions"
+          ]
+        },
+        "filter_design": {
+          "description": "Independent filter of the design reviewers' findings: judges every note keep or note, and joins the reviewers into one reopen per round.",
+          "kind": "agent",
+          "capability": "bounded",
+          "prompt": "filter.md",
+          "stage": "discovery",
+          "skippable": false,
+          "inputs": {
+            "spec": {
+              "from": "goal.spec"
+            },
+            "doc": {
+              "from": "design.doc"
+            },
+            "review": {
+              "from": "review_design.summary"
+            },
+            "adversary": {
+              "from": "adversary_design.summary",
+              "optional": true
+            }
+          },
+          "outputs": {
+            "summary": "text",
+            "verdicts": "object"
+          },
+          "instructions": [
             "communication"
           ]
         },
@@ -73,9 +159,17 @@
             "doc": {
               "from": "design.doc"
             },
-            "design_review": {
+            "filter": {
+              "from": "filter_design.summary"
+            },
+            "review": {
               "from": "review_design.summary",
               "context": true
+            },
+            "adversary": {
+              "from": "adversary_design.summary",
+              "context": true,
+              "optional": true
             }
           }
         },
@@ -100,8 +194,8 @@
               "optional": true,
               "pending": true
             },
-            "design_review": {
-              "from": "review_design.summary",
+            "filter": {
+              "from": "filter_design.summary",
               "context": true
             },
             "approval": {
@@ -135,7 +229,8 @@
           },
           "outputs": {
             "tests": "checkpoint",
-            "commands": "strings"
+            "commands": "strings",
+            "cost": "object"
           },
           "instructions": [
             "verification"
@@ -156,6 +251,10 @@
             },
             "tests": {
               "from": "test_design.tests.change"
+            },
+            "cost": {
+              "from": "test_design.cost",
+              "context": true
             }
           },
           "instructions": [
@@ -215,20 +314,23 @@
             }
           },
           "policy": [
-            "verification.commands"
+            "verification.commands",
+            "verification"
           ],
           "outputs": {
             "result": "object"
           }
         },
         "review_impl": {
-          "description": "Independent review of the implementation.",
+          "description": "Implementation review through five lenses (compliance, correctness, missing, tests, craft), one pass per lens.",
           "kind": "agent",
           "capability": "reasoning",
-          "prompt": "review_impl.md",
+          "prompt": "review.md",
           "stage": "delivery",
+          "skippable": false,
           "review": {
-            "subject": "implement"
+            "subject": "implement",
+            "filter": "filter_impl"
           },
           "inputs": {
             "doc": {
@@ -243,12 +345,67 @@
             "checks": {
               "from": "run_tests.result",
               "context": true
+            },
+            "cost": {
+              "from": "test_design.cost",
+              "context": true
+            },
+            "base": {
+              "from": "base.base_commit"
             }
           },
           "instructions": [
-            "code_quality",
+            "review",
+            "communication",
             "security",
-            "verification"
+            "code_quality",
+            "owner_questions"
+          ],
+          "lenses": {
+            "compliance": {
+              "prompt": "lens_compliance.md",
+              "skippable": false
+            },
+            "correctness": {
+              "prompt": "lens_correctness.md"
+            },
+            "missing": {
+              "prompt": "lens_missing.md",
+              "skippable": false
+            },
+            "tests": {
+              "prompt": "lens_tests.md"
+            },
+            "craft": {
+              "prompt": "lens_craft.md",
+              "skippable": false
+            }
+          }
+        },
+        "filter_impl": {
+          "description": "Independent filter of the implementation reviewer's findings: judges every note keep or note.",
+          "kind": "agent",
+          "capability": "bounded",
+          "prompt": "filter.md",
+          "stage": "delivery",
+          "skippable": false,
+          "inputs": {
+            "doc": {
+              "from": "design.doc"
+            },
+            "code": {
+              "from": "implement.code.change"
+            },
+            "review": {
+              "from": "review_impl.summary"
+            }
+          },
+          "outputs": {
+            "summary": "text",
+            "verdicts": "object"
+          },
+          "instructions": [
+            "communication"
           ]
         },
         "integrate": {
@@ -266,6 +423,10 @@
             },
             "stack": {
               "from": "base.stack",
+              "context": true
+            },
+            "filter": {
+              "from": "filter_impl.summary",
               "context": true
             },
             "review": {
@@ -294,6 +455,7 @@
           "kind": "human",
           "prompt": "approve_merge.md",
           "stage": "delivery",
+          "skippable": false,
           "review": {
             "subject": "implement"
           },
@@ -313,8 +475,16 @@
               "from": "review_tests.summary",
               "context": true
             },
-            "impl_review": {
+            "filter": {
+              "from": "filter_impl.summary",
+              "context": true
+            },
+            "review": {
               "from": "review_impl.summary",
+              "context": true
+            },
+            "checks": {
+              "from": "run_tests.result",
               "context": true
             }
           }
@@ -350,6 +520,71 @@
           "outputs": {
             "merge_commit": "sha",
             "merged_at": "string"
+          }
+        }
+      }
+    },
+    "release": {
+      "terminal": [
+        "finish"
+      ],
+      "nodes": {
+        "approve_start": {
+          "description": "The human approves cutting the line branch (recorded by `release cut` or `hotfix start`).",
+          "kind": "human",
+          "prompt": "approve_start.md",
+          "stage": "discovery"
+        },
+        "sync": {
+          "description": "Merge the release branch into the integration branch whenever it has commits the integration branch lacks (a hotfix line only records its tip).",
+          "kind": "op",
+          "op": "git.line_sync",
+          "stage": "delivery",
+          "workspace": true,
+          "schedule": "upstream",
+          "inputs": {
+            "approval": {
+              "from": "approve_start.summary"
+            }
+          },
+          "outputs": {
+            "merged": "sha",
+            "merge_commit": "sha"
+          }
+        },
+        "approve_finish": {
+          "description": "The human approves finishing the line at the synced tip.",
+          "kind": "human",
+          "prompt": "approve_finish.md",
+          "stage": "delivery",
+          "line_complete": true,
+          "review": {
+            "subject": "sync"
+          },
+          "inputs": {
+            "sync": {
+              "from": "sync.merged"
+            }
+          }
+        },
+        "finish": {
+          "description": "Merge the line into the production branch and back into the integration branch (and an open release branch, for a hotfix); the line branch is kept.",
+          "kind": "op",
+          "op": "git.line_finish",
+          "stage": "delivery",
+          "workspace": true,
+          "line_complete": true,
+          "inputs": {
+            "approval": {
+              "from": "approve_finish.summary"
+            },
+            "sync": {
+              "from": "sync.merged"
+            }
+          },
+          "outputs": {
+            "production_merge": "sha",
+            "back_merges": "object"
           }
         }
       }

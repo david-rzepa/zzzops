@@ -18,7 +18,7 @@ KEYED_TYPES = {"object", "checkpoint", "artifact"}
 CHECKPOINT_KEYS = {"commit", "base", "tree", "change"}
 ARTIFACT_KEYS = {"path", "blob", "commit"}
 GOAL_FIELDS = {"title", "spec", "priority", "release", "links"}
-START_REASONS = {"new", "stale", "reopened", "retry", "not_ok"}
+START_REASONS = {"new", "stale", "reopened", "retry", "not_ok", "upstream"}   # upstream: G1025 schedules
 RESERVED_OUTPUT = "responses"
 REVIEW_PATH = ".zzzops/reviews"
 DOC_LIMIT = 65536
@@ -32,8 +32,12 @@ NODE_FIELDS = {
     "workspace": {"agent", "op"}, "inputs": {"agent", "human", "op"}, "outputs": {"agent", "op"},
     "review": {"agent", "human"}, "policy": {"agent", "human", "op"}, "instructions": {"agent", "human"},
     "preserve": {"agent"}, "release_gate": {"agent", "human", "op"}, "rev": {"agent", "human", "op"},
-    "timeout": {"agent", "op"}, "skippable": {"agent", "human", "op"},
+    "timeout": {"agent", "op"}, "skippable": {"agent", "human", "op"}, "lenses": {"agent"},
+    # G1025 release lines: `schedule: "upstream"` re-runs an op whenever its line moved; `line_complete` waits for the
+    # line's open members
+    "schedule": {"op"}, "line_complete": {"human", "op"},
 }
+LENS_FIELDS = {"prompt", "skippable"}
 INPUT_FIELDS = {"from", "optional", "context", "pending"}
 
 
@@ -148,8 +152,8 @@ class Graph:
         r = self.nodes[n].get("review")
         return r.get("filter") if isinstance(r, dict) else None
 
-    def lenses(self, f: str) -> list:
-        """The lenses whose findings filter `f` judges, in declaration order (empty when f is no filter)."""
+    def reviewers(self, f: str) -> list:
+        """The reviewer nodes whose findings filter `f` judges, in declaration order (empty when f is no filter)."""
         m = self.__dict__.get("_lens_map")
         if m is None:
             m = {}
@@ -162,15 +166,27 @@ class Graph:
         return list(m.get(f, []))
 
     def is_filter(self, f: str) -> bool:
-        return bool(self.lenses(f))
+        return bool(self.reviewers(f))
 
     def filter_subject(self, f: str) -> str | None:
-        """A filter's subject, derived from its lenses (validation makes them share one)."""
-        ls = self.lenses(f)
+        """A filter's subject, derived from its reviewers (validation makes them share one)."""
+        ls = self.reviewers(f)
         return self.subject(ls[0]) if ls else None
 
     def skippable(self, n: str) -> bool:
         return self.nodes[n].get("skippable", True) is not False
+
+    def lens_defs(self, n: str) -> dict:
+        """A multi-lens reviewer's declared lenses, in order ({} for any other node)."""
+        v = self.nodes[n].get("lenses") if isinstance(self.nodes.get(n), dict) else None
+        return v if isinstance(v, dict) else {}
+
+    def applied_lenses(self, n: str, skip) -> list:
+        """The lenses n applies for a goal: its declared lenses less the goal's `<n>:<lens>` skips."""
+        return [x for x in self.lens_defs(n) if lens_key(n, x) not in (skip or {})]
+
+    def skipped_lenses(self, n: str, skip) -> dict:
+        return {x: skip[lens_key(n, x)] for x in self.lens_defs(n) if lens_key(n, x) in (skip or {})}
 
     def checkpoint_outputs(self, n: str) -> list:
         return [k for k, t in self.output_types.get(n, {}).items() if t == "checkpoint"]
@@ -206,7 +222,7 @@ class Graph:
 
 
 def implicit_outputs(node: dict) -> dict:
-    if not node.get("review"):
+    if not node.get("review") and node.get("kind") != "human":
         return {}
     out = {"decision": "string", "summary": "text"}
     if node.get("kind") == "agent":
@@ -220,6 +236,16 @@ def node_output_types(node: dict) -> dict:
     out = dict(node.get("outputs") or {}) if isinstance(node.get("outputs"), dict) else {}
     out.update(implicit_outputs(node))
     return out
+
+
+def lens_key(node: str, lens: str) -> str:
+    """The goal skip key that removes one lens of a multi-lens reviewer."""
+    return f"{node}:{lens}"
+
+
+def lens_label(node: str, f: dict) -> str:
+    """A finding's display label: `<node>:<lens>` when tagged, else the node id."""
+    return lens_key(node, f["lens"]) if isinstance(f.get("lens"), str) else node
 
 
 def build_graph(name: str, gdef: dict, order: bool = True) -> Graph:
@@ -270,6 +296,13 @@ def validate_workflow(wf, policy: dict | None = None, prompt_exists=None, ops: d
         return e
     for gname, gdef in graphs.items():
         _validate_graph(e, gname, gdef, policy, prompt_exists, ops)
+    settings = (policy or {}).get("settings") if isinstance(policy, dict) else None
+    if isinstance(settings, dict) and settings.get("branching") is not None:
+        rel = graphs.get(RELEASE_GRAPH)
+        line_ops = {nd.get("op") for nd in ((rel or {}).get("nodes") or {}).values() if isinstance(nd, dict)}
+        if not isinstance(rel, dict) or not {"git.line_sync", "git.line_finish"} <= line_ops:
+            e.add(f"workflow.graphs.{RELEASE_GRAPH}", "settings.branching needs a release graph with the ops "
+                                                     "git.line_sync and git.line_finish (copy it from the template)")
     return e
 
 
@@ -350,7 +383,7 @@ def _validate_graph(e: Errors, gname, gdef, policy, prompt_exists, ops):
     # filters (G1000): an agent node outputting `verdicts`, reading every lens's summary; lenses share one subject
     for f in sorted({g.filter_of(n) for n in nodes if g.filter_of(n)}):
         fw = f"{where}.nodes.{f}"
-        lenses = g.lenses(f)
+        lenses = g.reviewers(f)
         fd = nodes[f]
         if fd.get("kind") != "agent" or fd.get("review") or (fd.get("outputs") or {}).get("verdicts") != "object":
             e.add(fw, "a filter is an agent node, not a review, with the output `verdicts: object`")
@@ -414,7 +447,16 @@ def _validate_node(e: Errors, where, n, nd, nodes, settings, instructions, promp
             else:
                 for msg in spec.validate(nd):
                     e.add(f"{where}", f"op {nd['op']}: {msg}")
-    for b in ("root", "workspace", "release_gate", "skippable"):
+    verification = settings.get("verification") if isinstance(settings, dict) else None
+    if (kind == "op" and nd.get("op") == "checks.run" and isinstance(verification, dict)
+            and "parallel_commands" in verification):
+        declared = nd.get("policy")
+        if not _strings(declared) or not {"verification.commands", "verification"} <= set(declared):
+            e.add(f"{where}.policy", "checks.run with verification.parallel_commands must declare both "
+                                    "verification.commands and verification")
+    if "schedule" in nd and nd["schedule"] != "upstream":
+        e.add(f"{where}.schedule", "must be \"upstream\"")
+    for b in ("root", "workspace", "release_gate", "skippable", "line_complete"):
         if b in nd and not isinstance(nd[b], bool):
             e.add(f"{where}.{b}", "must be a boolean")
     if "capability" in nd:
@@ -430,8 +472,8 @@ def _validate_node(e: Errors, where, n, nd, nodes, settings, instructions, promp
         lo, hi = (10, 1440) if kind == "agent" else (2, 240)
         if not _is_int(nd["timeout"]) or not lo <= nd["timeout"] <= hi:
             e.add(f"{where}.timeout", f"must be an integer {lo}-{hi} (minutes)")
-    if kind == "human" and not nd.get("review"):
-        e.add(f"{where}.review", "required on human nodes")
+    if kind == "human" and not nd.get("review") and nd.get("inputs"):
+        e.add(f"{where}.review", "required on human nodes that have inputs")
     review = nd.get("review")
     if review is not None:
         if (not isinstance(review, dict) or "subject" not in review or not set(review) <= {"subject", "filter"}
@@ -447,6 +489,8 @@ def _validate_node(e: Errors, where, n, nd, nodes, settings, instructions, promp
             e.add(f"{where}.review", f"unknown subject {review['subject']!r}")
         if "outputs" in nd:
             e.add(f"{where}.outputs", "review nodes have implicit outputs only")
+    if "lenses" in nd:
+        _validate_lenses(e, where, nd, prompt_exists)
     outputs = nd.get("outputs", {})
     if not isinstance(outputs, dict):
         e.add(f"{where}.outputs", "must be an object")
@@ -510,6 +554,37 @@ def _validate_node(e: Errors, where, n, nd, nodes, settings, instructions, promp
                 e.add(f"{iw}.from", f"artifact keys are {sorted(ARTIFACT_KEYS)}")
 
 
+def _validate_lenses(e: Errors, where, nd, prompt_exists):
+    """`lenses` (G1022): an ordered, non-empty object {lens: {"prompt": file, "skippable"?: bool}} on a review."""
+    lw = f"{where}.lenses"
+    lenses = nd["lenses"]
+    if not nd.get("review"):
+        e.add(lw, "lenses are allowed only on agent review nodes")
+    if not isinstance(lenses, dict) or not lenses:
+        e.add(lw, "must be a non-empty object {\"<lens>\": {\"prompt\": \"<file>\", \"skippable\"?: bool}}")
+        return
+    mandatory = []
+    for k, spec in lenses.items():
+        w = f"{lw}.{k}"
+        if not NODE_ID.match(k):
+            e.add(w, "lens names match ^[a-z][a-z0-9_]*$")
+        if not isinstance(spec, dict):
+            e.add(w, "must be an object {\"prompt\": \"<file>\", \"skippable\"?: bool}")
+            continue
+        e.unknown(w, spec, LENS_FIELDS)
+        if not _is_str(spec.get("prompt")) or not spec.get("prompt"):
+            e.add(f"{w}.prompt", "required: the lens's prompt file")
+        elif prompt_exists is not None and not prompt_exists(spec["prompt"]):
+            e.add(f"{w}.prompt", f"prompt file .zzzops/prompts/{spec['prompt']} does not exist")
+        if "skippable" in spec and not isinstance(spec["skippable"], bool):
+            e.add(f"{w}.skippable", "must be a boolean")
+        elif spec.get("skippable", True) is False:
+            mandatory.append(k)
+    if mandatory and nd.get("skippable", True) is not False:
+        e.add(f"{where}.skippable", "a node holding a non-skippable lens (" + ", ".join(mandatory)
+              + ") must be skippable: false, or a node skip would remove the lens")
+
+
 def _has_dotted(obj, dotted: str) -> bool:
     for part in dotted.split("."):
         if not isinstance(obj, dict) or part not in obj:
@@ -523,6 +598,16 @@ def is_material(f: dict) -> bool:
     return f.get("material", True) is not False
 
 
+OWNER_QUESTION = "owner question:"
+
+
+def is_owner_question(f: dict) -> bool:
+    """A finding that asks the owner a choice (G1026): its text, leading whitespace stripped, starts with exactly
+    `owner question:` (case-sensitive; the prefix is reserved)."""
+    text = f.get("text") if isinstance(f, dict) else None
+    return isinstance(text, str) and text.lstrip().startswith(OWNER_QUESTION)
+
+
 def get_dotted(obj, dotted: str):
     for part in dotted.split("."):
         obj = obj[part]
@@ -532,10 +617,10 @@ def get_dotted(obj, dotted: str):
 # ----------------------------------------------------------------------------------------------- policy (§3.2)
 
 SETTINGS_SHAPE = {
-    "engine": {"min": "version"},
+    "engine": {"min": ("optional", "version"), "requires": ("optional", "names")},
     "integration_branch": "branch",
     "verification": {"commands": "strings", "required_ci": "strings", "timeout_minutes": (1, 240),
-                     "ci_timeout_minutes": (10, 1440)},
+                     "ci_timeout_minutes": (10, 1440), "parallel_commands": ("optional", "bool")},
     "releases": {"current": (1, None)},
     "leases": {"ttl_minutes": (10, 1440)},
     "parallelism": {"max_workers": (1, 50)},
@@ -549,21 +634,115 @@ INTENT_KEYS = ("purpose", "serves", "not", "principles")
 PLACEHOLDER = "TODO:"
 
 
-# Optional settings keys: absent from the shipped template and undeclared, so changing one stales nothing. Any new
-# optional key must raise ENGINE_VERSION, so that `engine.min` can keep older engines away from it.
-OPTIONAL_SETTINGS = {"legacy": {"ignore": "bool"}}
+# Optional settings keys: absent from the shipped template and undeclared, so changing one stales nothing. A new
+# optional key ships with a new capability (SPEC §4.5, "What ships with a new capability"), which a repository adds to
+# `settings.engine.requires` before using the key.
+OPTIONAL_SETTINGS = {"legacy": {"ignore": "bool"},
+                     # G1025: git-flow release lines; requires capability `release_lines` in settings.engine.requires
+                     "branching": {"production": "branch", "release_prefix": "prefix", "hotfix_prefix": "prefix"}}
+RELEASE_GRAPH = "release"
+REF_BAD = re.compile(r"(\.\.|//|@\{|[\x00-\x20~^:?*\[\\\x7f])")
+
+
+def ref_ok(name) -> bool:
+    """A usable branch name (the parts of `git check-ref-format` that matter here)."""
+    return (isinstance(name, str) and bool(name) and not REF_BAD.search(name) and not name.startswith(("/", ".", "-"))
+            and not name.endswith(("/", ".", ".lock")) and "/." not in name)
+
+
+def _check_branching(e: Errors, settings: dict):
+    b = settings.get("branching")
+    if not isinstance(b, dict) or e:
+        return
+    where = "settings.branching"
+    I, prod = settings.get("integration_branch"), b.get("production")
+    rp, hp = b.get("release_prefix"), b.get("hotfix_prefix")
+    if not ref_ok(prod):
+        e.add(f"{where}.production", "must be a valid branch name")
+    if prod == I:
+        e.add(f"{where}.production", "must differ from integration_branch")
+    for k, v in (("release_prefix", rp), ("hotfix_prefix", hp)):
+        if v.startswith("zzzops/"):
+            e.add(f"{where}.{k}", "must not be under zzzops/")
+    if rp.startswith(hp) or hp.startswith(rp):
+        e.add(where, "release_prefix and hotfix_prefix must not overlap")
+    for name in (I, prod):
+        if isinstance(name, str) and name.startswith(rp) and name[len(rp):].isdigit():
+            e.add(where, f"release_prefix + a number would be `{name}`")
+        if isinstance(name, str) and name.startswith(hp):
+            e.add(where, f"`{name}` is under hotfix_prefix")
+    if "release_lines" not in required_caps(settings):
+        e.add(where, "requires capability `release_lines`: add it to settings.engine.requires")
+
+
+# `settings.engine.min` (deprecated, G1027): each numbered engine and the capabilities it had.
+LEGACY_VERSIONS = {"1.0.0": (), "1.1.0": ("lens_findings",), "1.2.0": ("lens_findings", "finding_follows"),
+                   "1.3.0": ("lens_findings", "finding_follows", "lenses")}
+
+
+def legacy_caps(mn) -> tuple:
+    """The capabilities a deprecated `engine.min` requires: those of the highest listed version not above it. A
+    version above the map requires `engine_min_<min>`, which no engine has."""
+    if not isinstance(mn, str):
+        return ()
+    try:
+        want = version_tuple(mn)
+    except ValueError:
+        return ()
+    best = None
+    for v in LEGACY_VERSIONS:
+        if version_tuple(v) <= want and (best is None or version_tuple(v) > version_tuple(best)):
+            best = v
+    if want > max(version_tuple(v) for v in LEGACY_VERSIONS):
+        return (f"engine_min_{mn}",)
+    return tuple(LEGACY_VERSIONS[best]) if best else ()
+
+
+def last_numbered_engine() -> str:
+    return max(LEGACY_VERSIONS, key=version_tuple)
+
+
+def required_caps(settings: dict | None) -> set:
+    """The capabilities the policy requires (SPEC §4.5): `settings.engine.requires` plus those of a deprecated
+    `engine.min` (through LEGACY_VERSIONS)."""
+    eng = (settings or {}).get("engine") if isinstance(settings, dict) else None
+    eng = eng if isinstance(eng, dict) else {}
+    req = eng.get("requires")
+    req = [x for x in req if isinstance(x, str)] if isinstance(req, list) else []
+    return set(req) | set(legacy_caps(eng.get("min")))
+
+
+def follows_required(settings: dict | None) -> bool:
+    """Whether the policy keeps every writing engine able to read the finding key `follows` (SPEC §4.5, G1028): its
+    required capabilities include `finding_follows`."""
+    return "finding_follows" in required_caps(settings)
 
 
 def policy_floor(raw) -> tuple:
-    """Tolerant pre-read (SPEC §4.5): (schema_version, engine.min) or (None, None) when unreadable."""
+    """Tolerant pre-read (SPEC §4.5): (schema_version, engine.min, engine.requires); None for each part unreadable."""
     if not isinstance(raw, dict):
-        return None, None
+        return None, None, None
     sv = raw.get("schema_version")
     try:
-        mn = raw["settings"]["engine"]["min"]
+        eng = raw["settings"]["engine"]
     except (KeyError, TypeError):
-        mn = None
-    return (sv if _is_int(sv) else None), (mn if isinstance(mn, str) else None)
+        eng = None
+    eng = eng if isinstance(eng, dict) else {}
+    mn, req = eng.get("min"), eng.get("requires")
+    return ((sv if _is_int(sv) else None), (mn if isinstance(mn, str) else None),
+            (list(req) if isinstance(req, list) and all(isinstance(x, str) for x in req) else None))
+
+
+def engine_warnings(settings) -> list:
+    """Warning engine_min_deprecated (validate only)."""
+    eng = (settings or {}).get("engine") if isinstance(settings, dict) else None
+    if not isinstance(eng, dict) or "min" not in eng:
+        return []
+    caps = [c for c in legacy_caps(eng["min"]) if not c.startswith("engine_min_")]
+    names = ", ".join(f"`{c}`" for c in caps) or "none"
+    return [{"kind": "engine_min_deprecated",
+             "message": f"settings.engine.min is deprecated: replace it with settings.engine.requires ({names}) "
+                        "through a policy branch"}]
 
 
 def validate_policy(p) -> list:
@@ -586,6 +765,10 @@ def validate_policy(p) -> list:
         for k, shape in OPTIONAL_SETTINGS.items():
             if k in settings:
                 _check_shape(e, f"settings.{k}", settings[k], shape)
+        _check_branching(e, settings)
+        verification = settings.get("verification")
+        if isinstance(verification, dict) and "parallel_commands" in verification and "test_cost" not in required_caps(settings):
+            e.add("settings.verification.parallel_commands", "requires capability `test_cost`: add it to settings.engine.requires")
     else:
         _check_shape(e, "settings", settings, SETTINGS_SHAPE)
     ins = p.get("instructions")
@@ -661,12 +844,19 @@ def _check_shape(e: Errors, where, value, shape):
             version_tuple(value) if isinstance(value, str) else (_ for _ in ()).throw(ValueError())
         except ValueError:
             e.add(where, "must be a MAJOR.MINOR.PATCH version string")
+    elif shape == "names":
+        if not (isinstance(value, list) and all(isinstance(x, str) and NODE_ID.match(x) for x in value)
+                and len(set(value)) == len(value)):
+            e.add(where, "must be an array of unique names matching ^[a-z][a-z0-9_]*$")
     elif shape == "bool":
         if not isinstance(value, bool):
             e.add(where, "must be a boolean")
     elif shape == "branch":
         if not _one_line(value) or not value:
             e.add(where, "must be a branch name")
+    elif shape == "prefix":
+        if not isinstance(value, str) or not value.endswith("/") or not ref_ok(value[:-1]):
+            e.add(where, "must be a branch prefix ending in `/`")
     elif shape == "strings":
         if not _strings(value):
             e.add(where, "must be an array of strings")
@@ -684,6 +874,25 @@ def _check_shape(e: Errors, where, value, shape):
 
 # ----------------------------------------------------------------------------------------------- goal (§3.3)
 
+def _check_lens_skip(e: Errors, warnings: list, doc: dict, old, nodes: dict, key: str, reading: bool):
+    """A `<node>:<lens>` skip key (G1022): an unknown lens only warns (the lens still runs); a new key naming a
+    non-skippable lens is refused on a write, and warns when read or already held."""
+    node, lens = key.split(":", 1)
+    nd = nodes.get(node)
+    lenses = nd.get("lenses") if isinstance(nd, dict) and isinstance(nd.get("lenses"), dict) else {}
+    if lens not in lenses:
+        warnings.append({"kind": "orphan_record",
+                         "message": f"G{doc['id']}: skip of unknown lens {lens!r} of {node!r} is ignored (the lens still runs)"})
+        return
+    spec = lenses[lens]
+    if isinstance(spec, dict) and spec.get("skippable", True) is False:
+        msg = f"{key} is not skippable (lenses.{lens}.skippable: false in workflow.json)"
+        if reading or key in ((old or {}).get("skip") or {}):
+            warnings.append({"kind": "skip_not_skippable", "message": f"G{doc['id']}: {msg}; the skip held before the policy made it mandatory"})
+        else:
+            e.add(f"goal.skip.{key}", msg)
+
+
 GOAL_KEYS = {"schema", "id", "title", "graph", "state", "closed", "spec", "priority", "release", "depends_on",
              "skip", "links", "budget", "records"}
 
@@ -700,7 +909,7 @@ def validate_goal(doc, old=None, all_docs: dict | None = None, workflow: dict | 
     if not isinstance(doc, dict):
         e.add("goal", "must be an object")
         return e, warnings
-    e.unknown("goal", doc, GOAL_KEYS)
+    e.unknown("goal", doc, GOAL_KEYS | {"flow"})
     for k in GOAL_KEYS:
         if k not in doc:
             e.add("goal", f"missing key {k!r}")
@@ -708,6 +917,13 @@ def validate_goal(doc, old=None, all_docs: dict | None = None, workflow: dict | 
         return e, warnings
     if doc["schema"] not in GOAL_SCHEMAS or not _is_int(doc["schema"]):
         e.add("goal.schema", f"unknown goal schema {doc['schema']!r}")
+    if "flow" in doc:
+        if doc["schema"] != 2:
+            e.add("goal.flow", "needs goal schema 2")
+        for msg in flow_errors(doc["flow"]):
+            e.add("goal.flow", msg)
+        if isinstance(doc["flow"], dict) and "line" in doc["flow"] and doc.get("graph") != RELEASE_GRAPH:
+            e.add("goal.flow", f"a line goal uses the {RELEASE_GRAPH!r} graph")
     if not _is_int(doc["id"]) or doc["id"] < 1:
         e.add("goal.id", "must be an integer >= 1")
     if not _one_line(doc["title"]) or not 1 <= len(doc["title"]) <= 200:
@@ -725,7 +941,7 @@ def validate_goal(doc, old=None, all_docs: dict | None = None, workflow: dict | 
     elif doc["id"] in deps:
         e.add("goal.depends_on", "a goal cannot depend on itself")
     if not isinstance(doc["skip"], dict) or not all(isinstance(v, str) and v.strip() for v in doc["skip"].values()):
-        e.add("goal.skip", "must map node ids to non-empty reasons")
+        e.add("goal.skip", "must map node ids (or <node>:<lens>) to non-empty reasons")
     links = doc["links"]
     if not isinstance(links, dict) or set(links) != {"issue"} or not (links["issue"] is None or _is_int(links["issue"])):
         e.add("goal.links", "must be {\"issue\": null | int}")
@@ -765,14 +981,18 @@ def validate_goal(doc, old=None, all_docs: dict | None = None, workflow: dict | 
         else:
             nodes = gdef["nodes"]
             for n in list(doc["skip"]) if isinstance(doc["skip"], dict) else []:
-                if n not in nodes:
+                if ":" in n:
+                    _check_lens_skip(e, warnings, doc, old, nodes, n, reading)
+                elif n not in nodes:
                     warnings.append({"kind": "orphan_record", "message": f"G{doc['id']}: skip of removed node {n!r} is ignored"})
                 elif n in gdef["terminal"]:
                     e.add(f"goal.skip.{n}", "a terminal node cannot be skipped")
                 elif (nodes[n].get("skippable", True) is False and not reading
                       and n not in ((old or {}).get("skip") or {})):
                     e.add(f"goal.skip.{n}", f"{n} is not skippable (skippable: false in workflow.json)")
-            for n in records:
+            for n, r in records.items():
+                if n in nodes and isinstance(r, dict) and "last_output" in r and nodes[n]["kind"] != "agent":
+                    e.add(f"goal.records.{n}.last_output", "only agent records keep a blocked output")
                 if n not in nodes:
                     warnings.append({"kind": "orphan_record", "message": f"G{doc['id']}: record of removed node {n!r} is ignored"})
     # rule 4: dependencies exist, acyclic, release order
@@ -804,6 +1024,41 @@ def validate_goal(doc, old=None, all_docs: dict | None = None, workflow: dict | 
             and not e and not closed_done_ok(doc)):
         e.add("goal.closed.reason", "done requires every terminal node to be current; use superseded or cancelled")
     return e, warnings
+
+
+FLOW_LINE_KEYS = {"line", "name", "branch", "from", "cut"}
+
+
+def normalize_flow(doc: dict) -> dict:
+    """G1025 §2: schema 2 is written only for a document with `flow`. A null `flow` is a cleared one, and a document
+    without `flow` goes back to schema 1 (`flow` is schema 2's only addition). Other schemas are left alone."""
+    if isinstance(doc, dict):
+        if "flow" in doc and doc["flow"] is None:
+            del doc["flow"]
+        if "flow" in doc:
+            doc["schema"] = 2
+        elif doc.get("schema") == 2:
+            doc["schema"] = 1
+    return doc
+
+
+def flow_errors(flow) -> list:
+    """G1025 `flow`: {"hotfix": "<name>"} on a hotfix member, or the line form on a line goal."""
+    if not isinstance(flow, dict):
+        return ["must be an object"]
+    if set(flow) == {"hotfix"}:
+        return [] if ref_ok(flow["hotfix"]) and "/" not in flow["hotfix"] else ["hotfix must be a branch-name part"]
+    if set(flow) != FLOW_LINE_KEYS:
+        return ['must be {"hotfix": "<name>"} or {"line", "name", "branch", "from", "cut"}']
+    out = []
+    if flow["line"] not in ("release", "hotfix"):
+        out.append("line must be release or hotfix")
+    for k in ("name", "branch", "from"):
+        if not ref_ok(flow[k]):
+            out.append(f"{k} must be a branch name")
+    if not (isinstance(flow["cut"], str) and SHA.match(flow["cut"])):
+        out.append("cut must be a full 40-hex sha")
+    return out
 
 
 def find_cycle(docs: dict, start: int):
@@ -850,7 +1105,7 @@ def largest_paths(doc, k=5):
 # ----------------------------------------------------------------------------------------------- record (§3.4–§3.7)
 
 RECORD_KEYS = {"status", "ok", "attempt", "holder", "reason", "correction_runs", "input_fp", "fp_parts", "output",
-               "findings", "blocked", "answer", "reviewed", "frozen", "carried_by", "prompt", "finished_at"}
+               "findings", "blocked", "answer", "reviewed", "frozen", "carried_by", "prompt", "finished_at", "last_output"}
 
 
 def validate_record(r) -> list:
@@ -880,8 +1135,8 @@ def validate_record(r) -> list:
         e.add("record.input_fp", "must be a string")
     fp = r["fp_parts"]
     if (not isinstance(fp, dict) or not {"def", "inputs", "policy"} <= set(fp)
-            or not set(fp) <= {"def", "inputs", "policy", "subject", "candidates"}):
-        e.add("record.fp_parts", "must hold def, inputs, policy and optionally subject and candidates")
+            or not set(fp) <= {"def", "inputs", "policy", "subject", "candidates", "lenses", "target"}):
+        e.add("record.fp_parts", "must hold def, inputs, policy and optionally subject, candidates, lenses and target")
     if r["status"] == "blocked":
         if r["ok"] is not False:
             e.add("record.ok", "a blocked record is never ok")
@@ -897,6 +1152,8 @@ def validate_record(r) -> list:
             e.add("record.output", "must be an object")
         if "blocked" in r:
             e.add("record.blocked", "present only when status is blocked")
+    if "last_output" in r and (r["status"] != "blocked" or not isinstance(r["last_output"], dict)):
+        e.add("record.last_output", "an object on blocked agent records only")
     if not isinstance(r["findings"], list):
         e.add("record.findings", "must be an array")
     else:
@@ -919,7 +1176,7 @@ def validate_record(r) -> list:
 
 
 FINDING_KEYS = {"id", "target", "target_fp", "target_attempt", "text", "status", "response", "rounds", "upheld",
-                "note", "repeats", "carrier_fp", "impact", "material"}
+                "note", "repeats", "carrier_fp", "impact", "material", "follows", "lens"}
 
 
 def validate_finding(f) -> list:
@@ -962,6 +1219,10 @@ def validate_finding(f) -> list:
         e.add("finding.impact", "must be text")
     if "material" in f and not isinstance(f["material"], bool):
         e.add("finding.material", "must be a boolean")
+    if "follows" in f and not (isinstance(f["follows"], str) and FINDING_ID.match(f["follows"])):
+        e.add("finding.follows", "must be a finding id")
+    if "lens" in f and not isinstance(f["lens"], str):
+        e.add("finding.lens", "must be a lens name")
     return e
 
 
@@ -1010,7 +1271,9 @@ def _check_responses(e: Errors, responses):
             e.add(f"responses.{k}", "must start with 'fixed: ' or 'disputed: ' followed by text")
 
 
-def _check_new_findings(e: Errors, findings, review: bool, lens: bool = False):
+def _check_new_findings(e: Errors, findings, review: bool, lens: bool = False, lens_names=None):
+    """`lens`: the node is a filtered review (impact, material); `lens_names`: its declared lenses (G1022), when
+    it has any: every new finding then names one in `lens` (a skipped lens is accepted: nothing is refused for it)."""
     if not isinstance(findings, list):
         e.add("findings", "must be an array")
         return
@@ -1026,7 +1289,12 @@ def _check_new_findings(e: Errors, findings, review: bool, lens: bool = False):
             if f.get("status") not in ("open", "resolved"):
                 e.add(f"{w}.status", "must be open or resolved")
         else:
-            e.unknown(w, f, {"target", "text", "impact", "material"} if lens else {"target", "text"})
+            e.unknown(w, f, ({"target", "text", "impact", "material", "follows"} | ({"lens"} if lens_names else set()))
+                      if lens else ({"target", "text", "follows", "lens"} if lens_names else {"target", "text", "follows"}))
+            if "follows" in f and not (isinstance(f["follows"], str) and FINDING_ID.match(f["follows"])):
+                e.add(f"{w}.follows", "must be the id of a prior finding")
+            if lens_names and f.get("lens") not in lens_names:
+                e.add(f"{w}.lens", "required on a multi-lens review: one of " + ", ".join(lens_names))
             if lens:
                 if not isinstance(f.get("impact"), str) or not f["impact"].strip():
                     e.add(f"{w}.impact", "required on a lens finding: what goes wrong if it is ignored")
@@ -1057,7 +1325,8 @@ def validate_submit_output(graph: Graph, node: str, out) -> list:
             e.add("output.decision", "must be approved or changes_requested")
         if not isinstance(out.get("summary"), str) or not out["summary"].strip():
             e.add("output.summary", "required")
-        _check_new_findings(e, out.get("findings", []), review=True, lens=bool(graph.filter_of(node)))
+        _check_new_findings(e, out.get("findings", []), review=True, lens=bool(graph.filter_of(node)),
+                            lens_names=list(graph.lens_defs(node)))
     else:
         types = graph.output_types[node]
         allowed = set(types) | {"findings", "responses"}
@@ -1192,7 +1461,9 @@ def validate_new_file(n) -> list:
         e.add("new", "must be an object")
         return e
     e.unknown("new", n, {"title", "spec", "priority", "release", "depends_on", "skip", "links", "graph", "state",
-                         "request_key"})
+                         "request_key", "flow"})
+    if "flow" in n and (not isinstance(n["flow"], dict) or set(n["flow"]) != {"hotfix"} or flow_errors(n["flow"])):
+        e.add("new.flow", 'must be {"hotfix": "<name>"} with a branch-name part')
     if not _one_line(n.get("title")) or not 1 <= len(n.get("title") or "") <= 200:
         e.add("new.title", "required: 1-200 characters, one line")
     if not isinstance(n.get("spec"), str) or not n["spec"].strip():

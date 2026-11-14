@@ -57,12 +57,15 @@ REQUIRED_OBLIGATIONS = {
 REQUIRED_NATIVE_IDS = {
     "test_legacy_cleanup.LegacyCleanupTests.test_default_cli_is_dry_run_and_interrupted_cleanup_converges",
     "test_marketplace_bundle.MarketplaceBundleTests.test_fixed_version_build_is_deterministic_and_complete",
+    "test_marketplace_bundle.MarketplaceBundleTests.test_generated_claude_marketplace_passes_the_full_package_check",
+    "test_marketplace_bundle.MarketplaceBundleTests.test_package_check_assertion_fails_on_a_wrong_channel_build_with_a_claude_hint",
     "test_agent_plugin.AgentPluginTests.test_marketplace_points_to_the_self_contained_package",
     "test_engine_docs.CliWithoutRepositoryTests.test_help_and_policy_validation_need_no_repository",
     "test_engine_identity.IdentityTests.test_crlf_checkout_gives_the_same_identities",
     "test_engine_identity.IdentityTests.test_identity_under_hostile_global_configuration",
     "test_engine_identity.IdentityTests.test_text_input_reaches_git_unchanged",
     "test_engine_identity.IdentityTests.test_i1_i2_and_artifact_commits",
+    "test_engine_scoped_shell_commands.ScopedShellTests.test_native_apostrophe_path_in_host_shell",
     "test_engine_lifecycle.SubmitTests.test_new_creates_no_branch_and_first_artifact_does",
 }
 
@@ -548,6 +551,14 @@ class NativeWorkerContractTests(unittest.TestCase):
 class LinuxShardContractTests(unittest.TestCase):
     def setUp(self):
         self.runner = load_runner()
+        # Isolation is a synthetic scheduling fixture. The real property has no
+        # elapsed-time contract and G1043 removes its obsolete scheduling entry.
+        if self._testMethodName in {
+            "test_worker_partitions_balance_without_auxiliary_reserve_and_guard_exclusive_ids",
+            "test_two_workers_overlap_and_exclusive_test_runs_only_after_both_finish",
+            "test_crashed_worker_retains_successful_sibling_evidence",
+        }:
+            self.runner.LINUX_EXCLUSIVE_TESTS = ("test_synthetic.Exclusive.test_serial",)
 
     def test_balanced_partition_is_deterministic_complete_disjoint_and_includes_new_tests(self):
         inventory = [f"test_module.Case.test_{index:02}" for index in range(24)]

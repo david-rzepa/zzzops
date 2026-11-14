@@ -132,16 +132,21 @@ class RestackTests(BaseJourney):
         st = self.states(g)
         self.assertEqual("current", st["test_design"])
         self.assertTrue(st["implement"].startswith("ready (stale"), st["implement"])
-        # the no-commit re-run of implement follows replay_pos to the hand-rebased commit
+        # A no-commit implement rerun uses HEAD, including any trailing review commit.
         c = self.A.start(g, "implement")
+        head = wtd.git("rev-parse", "HEAD")
         self.A.submit(g, "implement", c, {"summary": "Built."})
         rec = self.record(g, "implement")["output"]["code"]
-        self.assertEqual("feat: G%d" % g, wtd.git("log", "-1", "--format=%s", rec["commit"]))
+        self.assertEqual(head, rec["commit"])
+        from engine.identity import Identity
+        ident = Identity(fx.engine_git(wtd))
+        self.assertEqual(ident.code_tree(head), rec["tree"])
+        self.assertEqual(ident.change(rec["base"], head), rec["change"])
         self.assertEqual("def app():\n    return 23", wtd.git("show", f"{rec['commit']}:src/app.py"))
         self.assertTrue(self.op(g, "run_tests")["ran"]["ok"])
         self.assertTrue(self.states(g)["review_impl"].startswith("ready (stale"))      # the diff changed
 
-    def test_conflict_in_the_tests_commit_suggests_the_hand_rebased_checkpoint(self):
+    def test_conflict_in_the_tests_commit_defaults_to_head_with_scoped_change(self):
         g = self.goal()
         wtd = self.deliver(g, tests={"tests/shared.txt": "goal tests\n"})
         self.w.push_dev({"tests/shared.txt": "dev tests\n"})
@@ -152,10 +157,16 @@ class RestackTests(BaseJourney):
         self.assertEqual([], out.get("carried") or [])
         c = self.A.start(g, "test_design")
         self.A.submit(g, "test_design", c, {"commands": ["true"]})
-        tests = self.record(g, "test_design")["output"]["tests"]["commit"]
-        self.assertEqual("test: G%d" % g, wtd.git("log", "-1", "--format=%s", tests))   # not HEAD with implement's code
+        record = self.record(g, "test_design")
+        cp = record["output"]["tests"]
+        tests = cp["commit"]
+        self.assertEqual(wtd.git("rev-parse", "HEAD"), tests)
         self.assertEqual("dev tests\ngoal tests", wtd.git("show", f"{tests}:tests/shared.txt"))
-        self.assertNotIn(f"src/m{g}.py", wtd.git("ls-tree", "-r", "--name-only", tests))
+        self.assertIn(f"src/m{g}.py", wtd.git("ls-tree", "-r", "--name-only", tests))
+        from engine.identity import Identity
+        ident = Identity(fx.engine_git(self.w.clones["a"], self.w.now))
+        self.assertEqual(ident.change(cp["base"], tests, paths=record["frozen"]), cp["change"])
+        self.assertNotEqual(ident.change(cp["base"], tests), cp["change"])
 
     def test_review_commit_during_a_hand_resolved_conflict_is_reapplied(self):
         g = self.goal()

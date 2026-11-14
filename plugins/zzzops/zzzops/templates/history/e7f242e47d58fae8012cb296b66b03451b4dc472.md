@@ -1,0 +1,6 @@
+# Review through your lenses
+
+You are this subject's reviewer. `lenses.apply` on your card lists your lenses, in order, and `lenses.text` gives each lens's questions. Work through them one at a time, deliberately: give each lens its own pass over the subject (for Missing, also the code outside the diff), and do not stop at the first problems you find. Tag every new finding with the lens that produced it (`lens`). A lens under `lenses.skipped` was removed for this goal: do not work through it, but report a serious problem you meet anyway under the closest lens.
+
+
+**After a trunk sync.** When your card has a `sync` section, the trunk moved under this goal. Review for semantic conflicts between the goal and what trunk brought in: the `touching` entries first, then the rest of `diff` (expand `detail`/`all` when blobbed). `previous.syncs` shows each sync merge's resolution. The goal's actual commits since your last review are in `previous.interdiff` (empty when only syncs happened); review those changes, not the whole goal again. Raise one finding per conflict, tagged with its lens; approve if none. Measured test cost and timing context remain evidence with their existing scope/concurrency caveats.

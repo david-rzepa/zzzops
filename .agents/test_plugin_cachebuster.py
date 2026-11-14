@@ -95,7 +95,10 @@ class PluginCachebusterTests(unittest.TestCase):
         skill = self.plugin / "skills/execute-zzzops/SKILL.md"
         original = skill.read_text()
         skill.write_text(original.replace("v0.0.0-dev", "v9.9.9", 1))
-        self.assertIn("skill discovery metadata", self.status()["detail"])
+        failed = self.status()
+        self.assertIn("skill discovery metadata", failed["detail"])
+        self.assertIn("Codex marketplace", failed["detail"])          # G1033: a cachebustered copy is a Codex install
+        self.assertEqual("codex", failed.get("harness"))
         skill.write_text(original)
         required = self.plugin / "zzzops/engine/frontier.py"
         required.unlink()

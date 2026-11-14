@@ -42,6 +42,42 @@ def json_output(command: list[str], *, env: dict[str, str] | None = None) -> Any
         raise AcceptanceError(f"command returned invalid JSON: {command[0]} {command[1]}") from exc
 
 
+def require_no_package_check(report: Any) -> None:
+    """Fail if a full `validate` report carries a plugin package self-check entry.
+
+    The environment list also holds git and gh checks; CI runs without a GitHub token, so those are expected
+    and ignored. Only the package check's entries (and the G1033 mismatch text) fail acceptance.
+    """
+    environment = report.get("environment") if isinstance(report, dict) else None
+    if not isinstance(environment, list) or any(not isinstance(entry, str) for entry in environment):
+        raise AcceptanceError("full validate did not return an environment list")
+    problems = [entry for entry in environment
+                if entry.startswith("plugin package") or "skill discovery metadata" in entry]
+    if problems:
+        raise AcceptanceError(f"full validate reports a plugin package problem: {problems[0][:300]}")
+
+
+def prepare_validate_project(project: Path, origin: Path, *, env: dict[str, str]) -> None:
+    """Give `project` one pushed commit and an integration branch so the full `validate` runs every check."""
+    identity = ["-c", "user.name=ZzzOps acceptance", "-c", "user.email=acceptance@example.invalid"]
+    run(["git", "-C", str(project), *identity, "commit", "-q", "--allow-empty", "-m", "initial"], env=env)
+    run(["git", "init", "-q", "--bare", str(origin)], env=env)
+    run(["git", "-C", str(project), "remote", "add", "origin", str(origin)], env=env)
+    run(["git", "-C", str(project), "push", "-q", "origin", "HEAD:refs/heads/main"], env=env)
+    run(["git", "-C", str(project), "config", "zzzops.integrationBranch", "main"], env=env)
+
+
+def full_validate(runtime: Path, project: Path, *, env: dict[str, str]) -> Any:
+    """Run the packaged CLI's full `validate` in `project`; it exits non-zero there (no policy), so read its JSON."""
+    result = subprocess.run([sys.executable, str(runtime), "validate"], cwd=project, env=env,
+                            text=True, capture_output=True, check=False)
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        detail = (result.stderr.strip() or result.stdout.strip() or "no command output").splitlines()[0]
+        raise AcceptanceError(f"full validate returned invalid JSON: {detail[:300]}") from exc
+
+
 def validate_versionless(path: Path, *, env: dict[str, str]) -> None:
     """Keep strict validation except for Claude's warning about its documented SHA mode."""
     command = ["claude", "plugin", "validate", str(path), "--strict"]
@@ -166,9 +202,10 @@ def main(argv: list[str] | None = None) -> int:
             project = workspace / "project"
             config.mkdir()
             project.mkdir()
-            run(["git", "init", str(project)])
+            run(["git", "init", "-q", "-b", "main", str(project)])
             env = os.environ.copy()
             env["CLAUDE_CONFIG_DIR"] = str(config)
+            prepare_validate_project(project, workspace / "origin.git", env=env)
             observed_version = run(["claude", "--version"], env=env).strip()
             if not observed_version.startswith(args.claude_version + " "):
                 raise AcceptanceError(f"Claude CLI version drift: expected {args.claude_version}, observed {observed_version}")
@@ -180,6 +217,7 @@ def main(argv: list[str] | None = None) -> int:
             generated_plugin = generated / "zzzops"
             if generated.resolve() != generated_marketplace.resolve() or not generated_plugin.is_dir():
                 raise AcceptanceError("Claude generator did not produce the expected repository marketplace")
+            require_no_package_check(full_validate(generated_plugin / "zzzops" / "zzzops.py", project, env=env))
             write_repository_marketplace(root, marketplace)
             plugin = marketplace / "zzzops"
             first_revision = commit_marketplace(marketplace, "first", initialize=True)
@@ -227,6 +265,7 @@ def main(argv: list[str] | None = None) -> int:
                                    str(install / "zzzops" / "templates" / "default")])
             if not isinstance(checked, dict) or checked.get("ok") is not True:
                 raise AcceptanceError("packaged ZzzOps runtime rejects its own shipped templates")
+            require_no_package_check(full_validate(runtime, project, env=env))
     except (AcceptanceError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         print(f"Claude plugin acceptance failed: {exc}", file=sys.stderr)
         return 2

@@ -6,10 +6,14 @@ import copy
 import hashlib
 import json
 
+from engine.identity import Identity
+from engine.records import checkpoint_scope
+
 from engine.canon import canonical, iso
-from engine.schemas import SHA, get_dotted, is_material
+from engine import schemas
+from engine.schemas import SHA, get_dotted, is_material, lens_label
 from engine.frontier import recorded_out, resolve
-from engine.render import clip, command, first_line, run_capability
+from engine.render import clip, command, first_line, run_capability, scoped_git_command
 from engine.schemas import SHA
 
 CARD_LIMIT = 4096
@@ -52,12 +56,15 @@ def view(reader, v):
     return _blob(reader, v)
 
 
-def checkpoint_view(cp, sub=None):
+def checkpoint_view(cp, sub=None, scope=None, exclude=None, reader=None):
     """The card view of a checkpoint; `tree` only for a whole checkpoint or a `.tree` selector."""
     out = {"commit": cp["commit"], "base": cp["base"], "change": cp["change"],
-           "diff": f"git diff {cp['base']} {cp['commit']} -- ':/' ':(top,exclude).zzzops/reviews'"}
+           "diff": scoped_git_command(["diff", cp["base"], cp["base"] if scope == [] else cp["commit"]],
+                                      scope, exclude, quoted_root=True)}
     if sub in (None, "tree"):
         out["tree"] = cp["tree"]
+    if len(scope or []) + len(exclude or []) > 12:
+        out["diff"] = _blob(reader, out["diff"])
     return out
 
 
@@ -71,16 +78,21 @@ def value_of(session, res, n, name, v):
     sub = sel.path[0] if ot == "checkpoint" and tuple(sel.path) in (("change",), ("tree",)) else None
     reader = session.ctx().reader
 
+    producer_record = (res.doc.get("records") or {}).get(sel.node) or {}
+    scope = checkpoint_scope(res.graph, sel.node, producer_record) if sel.kind == "node" else None
+    preserved = res.graph.nodes.get(sel.node, {}).get("preserve") if sel.kind == "node" else None
+    excluded = ((res.doc.get("records") or {}).get(preserved) or {}).get("frozen") if preserved else None
+
     def one(x, producer_out=None, goal=res.goal):
         if x is None:
             return None
         if sub:
             full = producer_out.get(sel.output) if isinstance(producer_out, dict) else None
             if isinstance(full, dict) and full.get(sub) == x and all(k in full for k in ("commit", "base", "change")):
-                return checkpoint_view(full, sub)
+                return checkpoint_view(full, sub, scope, excluded, reader)
             return view(reader, x)
         if t == "checkpoint" and isinstance(x, dict):
-            return checkpoint_view(x)
+            return checkpoint_view(x, scope=scope, exclude=excluded, reader=reader)
         if t == "artifact" and isinstance(x, dict):
             out = {"path": x["path"], "blob": x["blob"], "read": f"git cat-file -p {x['blob']}"}
             summary = (producer_out or {}).get("summary")
@@ -105,10 +117,10 @@ def value_of(session, res, n, name, v):
     return one(v, producer_out)
 
 
-def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = None) -> dict:
+def build(session, res, n: str, s: dict, lease: dict) -> dict:
     g, graph, doc = res.goal, res.graph, res.doc
     nd = graph.nodes[n]
-    ctx = session.ctx()
+    ctx = session.ctx(worker=True)
     reader = ctx.reader
     settings = session.settings
     vals, _ = resolve(graph, doc, n, lambda p: res.cur[p] if p in res.cur else recorded_out(doc, p),
@@ -143,7 +155,13 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
     ins = (session.state.policy or {}).get("instructions") or {}
     card["instructions"] = {k: ({"text": ins[k]} if len(ins[k].encode("utf-8")) <= INLINE else reader.blob_view(ins[k]))
                             for k in nd.get("instructions", []) if k in ins}
+    if graph.lens_defs(n):
+        card["lenses"] = lens_section(reader, graph, n, doc.get("skip") or {})
     card["inputs"], card["context"] = inputs, context
+    from engine import sync_review
+    sync = sync_review.build(session.git, graph, doc, n, s.get("stale_because") or [], vals, reader)
+    if sync is not None:
+        card["sync"] = sync
     if nd["kind"] == "agent" and nd.get("policy"):
         card["policy"] = {k: view(reader, get_dotted(settings, k)) for k in nd["policy"]}
     if nd.get("workspace"):
@@ -155,8 +173,7 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
                 cmds += vals[name]
         if cmds:
             card["commands_to_run"] = {"from": "commands", "list": cmds, "note": "Run these in the workspace before you submit."}
-    card["corrections"] = [{"id": f["id"], "from": _carrier(res, f), "text": f["text"], "rounds": f["rounds"],
-                            "upheld": f["upheld"]} for f in s.get("corrections") or []]
+    card["corrections"] = [correction(res, f) for f in s.get("corrections") or []]
     notes = notes_for(res, n)
     if notes:
         card["notes"] = notes
@@ -165,19 +182,25 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
     prev = previous(session, res, n, dict(s, stale_because=s.get("record_stale")))   # previous.output: record staleness
     if prev:
         card["previous"] = prev
-    if suggested:
-        card["suggested_checkpoint"] = suggested
     r = (doc.get("records") or {}).get(n)
-    if s.get("reason") == "retry" and r:
-        if r.get("answer"):
-            card["answer"] = {k: r["answer"][k] for k in ("text", "quote", "decided_by") if k in r["answer"]}
-        if (r.get("blocked") or {}).get("instructions"):
-            card["blocked_instructions"] = r["blocked"]["instructions"]
+    if r and r.get("status") == "blocked" and r.get("answer"):     # also on a stale card (G1026)
+        card["answer"] = {k: r["answer"][k] for k in ("text", "quote", "decided_by") if k in r["answer"]}
+    if s.get("reason") == "retry" and r and (r.get("blocked") or {}).get("instructions"):
+        card["blocked_instructions"] = r["blocked"]["instructions"]
+    hd = reader.human_decisions(g, graph, decision_nodes(graph, n))
+    if hd is None:
+        card["human_decisions"] = "unavailable"
+    elif hd:
+        card["human_decisions"] = hd
     I = session.snap.integration
+    if res.target is not None and res.target.get("branch"):          # G1025: the goal's target tip, not dev
+        I = session.target_tip(res.target["branch"]) or I
+        card["target"] = {"branch": res.target["branch"], "kind": res.target["kind"], "commit": I}
     card["read_dev"] = {"commit": I, "show": f"git show {I}:<path>", "grep": f"git grep <pattern> {I}",
                         "mirror": session.mirror_path()}
     card["workspace"] = lease.get("workspace")
-    card["output_schema"] = output_schema(graph, n, s)
+    card["output_schema"] = output_schema(graph, n, dict(s, corrections=card["corrections"]),
+                                          follows=schemas.follows_required(settings))
     arts = graph.artifact_outputs(n)
     if arts:
         card["artifact"] = {"output": arts[0], "path": f".zzzops/reviews/{g}/{n}.md"}
@@ -187,14 +210,54 @@ def build(session, res, n: str, s: dict, lease: dict, suggested: dict | None = N
                           + (["--artifact", "<A>"] if arts else [])),
         "blocked": command(ctx, ["submit", str(g), n, "--attempt", N, "--as", holder, "--blocked", "<F>"]),
         "renew": dict(command(ctx, ["renew", str(g), n, "--attempt", N]),
-                      when=f"every {every} minutes (timeout {timeout}); after any pause, renew first"),
+                      when=f"every {every} minutes (timeout {timeout}); renew first after a pause"),
         "abandon": command(ctx, ["abandon", str(g), n, "--attempt", N])}
     return shrink(card, reader)
 
 
+def decision_nodes(graph, n) -> list:
+    """The nodes whose human decisions a card shows: its own, or, on a review or filter card, its subject's and the
+    subject's ancestors' (G1026)."""
+    subj = graph.subject(n) or graph.filter_subject(n)
+    return [n] if not subj else [subj] + sorted(graph.ancestors(subj))
+
+
+def correction(res, f) -> dict:
+    """One card correction: `stale_review` when its carrier is stale (a carried finding), `follows`/`follows_text`
+    when it narrows an earlier finding (G1028)."""
+    c = _carrier(res, f)
+    out = {"id": f["id"], "from": c, "text": f["text"], "rounds": f["rounds"], "upheld": f["upheld"]}
+    if c in res.stale:
+        out["stale_review"] = True
+    if f.get("follows"):
+        out["follows"] = f["follows"]
+        old = finding_by_id(res.doc, f["follows"])
+        if old is not None:
+            out["follows_text"] = clip(old["text"], 120)
+    return out
+
+
+def finding_by_id(doc, fid):
+    for r in (doc.get("records") or {}).values():
+        for x in r.get("findings") or []:
+            if x["id"] == fid:
+                return x
+    return None
+
+
+def lens_section(reader, graph, n, skip) -> dict:
+    """A multi-lens reviewer's checklist (G1022): the lenses it applies, in order; those the goal skipped, with
+    reasons; and the applied lenses' prompt texts, concatenated (a blob view when long)."""
+    apply = graph.applied_lenses(n, skip)
+    defs = graph.lens_defs(n)
+    text = "\n\n".join((reader.prompt(defs[x]["prompt"]) or "").strip() for x in apply) + "\n"
+    return {"apply": apply, "skipped": graph.skipped_lenses(n, skip),
+            "text": {"text": text} if len(text.encode("utf-8")) <= INLINE else reader.blob_view(text)}
+
+
 def notes_for(res, n) -> list:
     """The filter-judged notes on target n: optional to act on, never corrections."""
-    return [{"id": f["id"], "lens": c, "text": f["text"], "impact": f.get("impact"), "reason": reason}
+    return [{"id": f["id"], "lens": lens_label(c, f), "text": f["text"], "impact": f.get("impact"), "reason": reason}
             for c, f, reason in sorted(res.notes.get(n, []), key=lambda x: x[1]["id"])]
 
 
@@ -204,12 +267,12 @@ def candidates(res, flt) -> list:
     out = []
     skip = res.doc.get("skip") or {}
     records = res.doc.get("records") or {}
-    for lens in res.graph.lenses(flt):
+    for lens in res.graph.reviewers(flt):
         if lens in skip:
             continue
         for f in (records.get(lens) or {}).get("findings") or []:
             if f["status"] == "open":
-                out.append({"id": f["id"], "lens": lens, "target": f["target"], "text": f["text"],
+                out.append({"id": f["id"], "lens": lens_label(lens, f), "target": f["target"], "text": f["text"],
                             "impact": f.get("impact"), "material": is_material(f),
                             "response": response_of(res.doc, f["target"], f["id"]) or f.get("response")})
     return sorted(out, key=lambda c: c["id"])
@@ -262,26 +325,40 @@ def finding_effect(graph, n) -> str:
     """What a finding from this phase does (one place for G1000's filtered-review branch)."""
     if graph.is_review(n):
         return "Each open finding reopens its target: it re-runs and must answer it in responses."
-    return "a finding reopens that ancestor; this phase re-runs if that ancestor's output changes."
+    return "it reopens that ancestor; this phase re-runs if that ancestor's output changes."
 
 
-def output_schema(graph, n, s) -> dict:
+def new_finding_hint(graph, n, follows: bool = False) -> str:
+    """The shape of a new review finding; a multi-lens reviewer's names every declared lens (G1022); `follows`
+    is offered only when the policy requires it (G1028)."""
+    lenses = " | ".join(f'"{x}"' for x in graph.lens_defs(n))
+    tail = ", \"follows\"?: <id>" if follows else ""
+    return (f'{{"target"?: <node>, "lens": {lenses}, "text": …{tail}}}' if lenses
+            else f'{{"target"?: <node>, "text": …{tail}}}')
+
+
+def output_schema(graph, n, s, follows: bool = False) -> dict:
+    """`follows`: the policy requires the finding key `follows` (only then is it offered, G1028)."""
     out = {}
     if graph.is_review(n):
         out["decision"] = ("approved | changes_requested (changes_requested only with a material finding open; "
                            "approve with notes)" if graph.filter_of(n)
                            else "approved | changes_requested (approved only with no finding open)")
         out["summary"] = "text: your verdict"
-        out["findings"] = ("[{\"id\": <prior id>, \"status\": \"open\"|\"resolved\"} for every prior open finding, "
-                           "{\"target\"?: <node>, \"text\": …} for new ones]. " + finding_effect(graph, n))
+        if follows:
+            out["findings"] = ("[{\"id\": <id>, \"status\": \"open\"|\"resolved\"} for every finding in previous.findings, "
+                               f"{new_finding_hint(graph, n, True)} for new ones]. Ids in "
+                               "previous.resolved need no status. When a prior finding is partly fixed, resolve it and "
+                               "raise what remains with \"follows\": <its id>. " + finding_effect(graph, n))
+        else:
+            out["findings"] = ("[{\"id\": <id>, \"status\": \"open\"|\"resolved\"} for every finding in previous.findings, "
+                               f"{new_finding_hint(graph, n)} for new ones]. Ids in previous.resolved need no "
+                               "status. " + finding_effect(graph, n))
     else:
         for k, t in graph.output_types[n].items():
             if t == "checkpoint":
-                out[k] = ("checkpoint (optional): omit the key to default to the suggested checkpoint if any, else your "
-                          "work branch's HEAD (a phase that adds no commit keeps its previous checkpoint). To override, "
-                          "give {\"commit\": \"<full 40-hex sha>\"}; ref names such as HEAD and short shas are refused. "
-                          "If a restack rewrote the previous checkpoint, submit refuses with checkpoint_required and asks "
-                          "for one.")
+                out[k] = ("checkpoint (optional): omit the key to default to the work branch's HEAD. "
+                          "Override with {\"commit\": \"<full 40-hex sha>\"}; no refs or short shas.")
             elif t == "artifact":
                 out[k] = "artifact: write it to a local file and pass that file with --artifact; artifact.path is where submit stores it."
             else:
@@ -289,6 +366,10 @@ def output_schema(graph, n, s) -> dict:
         out["findings"] = "optional: [{\"target\": <ancestor node>, \"text\": …}]; " + finding_effect(graph, n)
     if s.get("corrections"):
         out["responses"] = "required for: " + ", ".join(f["id"] for f in s["corrections"])
+        if any(f.get("stale_review") for f in s["corrections"]):
+            out["responses"] += (". A stale_review finding came from a review whose inputs have since changed: answer "
+                                 "it fixed: if your output handles it, or disputed: with the reason if the change made "
+                                 "it moot.")
     return out
 
 
@@ -301,9 +382,15 @@ def previous(session, res, n, s) -> dict | None:
         subj = res.graph.subject(n)
         sr = (res.doc.get("records") or {}).get(subj) or {}
         from engine.records import response_of
-        prev["findings"] = [{"id": f["id"], "target": f["target"], "text": f["text"], "status": f["status"],
-                             "response": response_of(res.doc, f["target"], f["id"]) or f.get("response")}
-                            for f in r.get("findings") or [] if f["target"] != n]
+        mine = [f for f in r.get("findings") or [] if f["target"] != n]
+        prev["findings"] = [dict({"id": f["id"], "target": f["target"], "text": f["text"], "status": f["status"],
+                                  "response": response_of(res.doc, f["target"], f["id"]) or f.get("response")},
+                                 **({"follows": f["follows"]} if f.get("follows") else {}))
+                            for f in mine if f["status"] == "open"]
+        closed = [{"id": f["id"], "status": f["status"], "text": clip(f["text"], 120)}
+                  for f in mine if f["status"] != "open"]
+        if closed:
+            prev["resolved"] = closed
         for k, old in (r.get("reviewed") or {}).items():
             cur = (sr.get("output") or {}).get(k)
             if "blob" in old:                                   # an artifact: what changed since the last review
@@ -320,10 +407,23 @@ def previous(session, res, n, s) -> dict | None:
                 else:
                     prev["note"] = "previous version not available; review in full"
                 continue
-            if not isinstance(cur, dict) or cur.get("change") == old.get("change"):
+            if not isinstance(cur, dict) or (cur.get("change") == old.get("change") and cur.get("base") == old.get("base")):
                 continue
             if session.git.exists(old["commit"]):
-                prev["interdiff"] = (f"git range-diff {old['base']}..{old['commit']} {cur['base']}..{cur['commit']}")
+                scope = checkpoint_scope(res.graph, subj, sr)
+                producer = res.graph.nodes[subj].get("preserve")
+                excluded = (((res.doc.get("records") or {}).get(producer) or {}).get("frozen") or []) if producer else []
+                if old["base"] == cur["base"]:
+                    prev["interdiff"] = scoped_git_command(["diff", old["commit"], cur["commit"]], scope, excluded)
+                else:
+                    syncs = Identity(session.git).sync_merges(old["commit"], cur["commit"])
+                    if syncs:
+                        prev["interdiff"] = scoped_git_command(
+                            ["log", "-p", "--first-parent", "--no-merges", f"{old['commit']}..{cur['commit']}"], scope, excluded)
+                        prev["syncs"] = [f"git show --remerge-diff {c}" for c in syncs]
+                    else:
+                        prev["interdiff"] = scoped_git_command(
+                            ["range-diff", f"{old['base']}..{old['commit']}", f"{cur['base']}..{cur['commit']}"], scope, excluded)
             else:
                 prev["note"] = "previous version not available; review in full"
     if s.get("stale_because") == ["def"]:
@@ -379,19 +479,46 @@ def _steps(card: dict) -> list:
     for i, c in enumerate(card.get("corrections") or []):
         if isinstance(c.get("text"), str) and len(c["text"]) > 200 and "full" not in c:
             blobs.append((len(c["text"]), ("corrections", i)))
+    if isinstance(card.get("human_decisions"), list):
+        blobs.append((len(canonical(card["human_decisions"])), ("human_decisions",)))
     for sect in ("candidates", "notes"):
         for i, c in enumerate(card.get(sect) or []):
             size = len(c.get("text") or "") + len(c.get("impact") or "")
             if size > 200 and "full" not in c:
                 blobs.append((size, (sect, i)))
+    sync = card.get("sync") or {}
+    if isinstance(sync.get("touching"), list):
+        blobs.append((len(canonical(sync["touching"])), ("sync", "touching")))
     blobs.sort(key=lambda b: -b[0])
-    return steps + [("blob",) + path for _, path in blobs]
+    steps += [("blob",) + path for _, path in blobs]
+    detail = {k: v for k, v in sync.items() if k not in ("from", "to", "diff", "log", "detail")}
+    if isinstance(sync.get("touching"), dict) and "blob" in sync["touching"] and len(canonical(detail)) > 200:
+        steps.append(("fold", "sync"))
+    if any(len(v["summary"]) > 80 for v in _summaries(card)):
+        steps.append(("clip", "summaries", 80))
+    # Small instructions can cost less as full read pointers without a preview.
+    steps += [("reference", *path) for _, path in blobs if path[0] == "instructions"]
+    return steps
 
 
 def _apply(card: dict, step: tuple, reader) -> dict:
     card = copy.deepcopy(card)
     kind = step[0]
-    if kind == "drop":
+    if kind == "reference":
+        if reader is None:
+            return card
+        value = _blob(reader, card["instructions"][step[2]]["text"], SUMMARY)
+        if not (isinstance(value.get("blob"), str) and SHA.fullmatch(value["blob"])
+                and isinstance(value.get("read"), str) and value["read"]):
+            return card
+        value.pop("summary", None)
+        card["instructions"][step[2]] = value
+    elif kind == "fold":
+        sync = card["sync"]
+        detail = {k: v for k, v in sync.items() if k not in ("from", "to", "diff", "log", "detail")}
+        card["sync"] = {k: sync[k] for k in ("from", "to", "diff", "log")}
+        card["sync"]["detail"] = _blob(reader, detail, SUMMARY)
+    elif kind == "drop":
         for v in card["commands"].values():
             if isinstance(v, dict):
                 v.pop("argv", None)
@@ -399,9 +526,11 @@ def _apply(card: dict, step: tuple, reader) -> dict:
         card["context"]["commands"] = "see commands_to_run"
     elif kind == "clip":
         for v in _summaries(card):
-            v["summary"] = clip(v["summary"], SUMMARY)
+            v["summary"] = clip(v["summary"], step[2] if len(step) > 2 else SUMMARY)
     elif step[1] == "prompt":
         card["prompt"] = _blob(reader, card["prompt"]["text"], SUMMARY)
+    elif step[1] == "human_decisions":
+        card["human_decisions"] = _blob(reader, card["human_decisions"], SUMMARY)
     elif step[1] == "instructions":
         card["instructions"][step[2]] = _blob(reader, card["instructions"][step[2]]["text"], SUMMARY)
     elif step[1] == "corrections":
@@ -423,18 +552,21 @@ def _apply(card: dict, step: tuple, reader) -> dict:
 def shrink_candidates(card: dict, reader=None) -> list:
     """The shrink steps that would make this card smaller, in the order `shrink` tries them."""
     n = len(canonical(card))
-    return [st for st in _steps(card) if len(canonical(_apply(card, st, None))) < n]
+    return [st for st in _steps(card)
+            if len(canonical(_apply(card, st, reader if st[0] == "reference" else None))) < n]
 
 
 def shrink(card: dict, reader) -> dict:
     """While the card is over 4,096 bytes, apply the first step that makes it smaller: drop `argv`, point
     `context.commands` at `commands_to_run`, clip blob summaries to 120 characters, then blob the largest
-    inline text. Checkpoint views are never blobbed, and a card never leaves larger than it entered."""
+    inline text, then clip remaining blob previews to 80 characters and try preview-free instruction references.
+    Checkpoint views are never blobbed,
+    and a card never leaves larger than it entered."""
     for _ in range(100):
         n = len(canonical(card))
         if n <= CARD_LIMIT:
             return card
-        for st in shrink_candidates(card):
+        for st in shrink_candidates(card, reader):
             out = _apply(card, st, reader)
             if len(canonical(out)) < n:
                 card = out

@@ -224,7 +224,7 @@ class IdentityTests(unittest.TestCase):
             self.assertEqual(ident.code_tree(good), ident.code_tree(tip))
 
 
-PINNED_CHANGE = "b2e0783e28b8e959af35f77486d0c2e9b215a133"   # regenerate with _pin() only with an engine.min bump
+PINNED_CHANGE = "b2e0783e28b8e959af35f77486d0c2e9b215a133"   # regenerate with _pin() only together with a new capability (SPEC §4.5)
 
 
 def _pin():

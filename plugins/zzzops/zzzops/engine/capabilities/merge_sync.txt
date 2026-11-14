@@ -1,0 +1,1 @@
+Merge syncs in goal work branches, scoped preserved checkpoints and synced output (G1038). Require merge_sync before writing sync merges. Do not remove it while any open goal work branch contains sync merges; first merge or cancel those goals.

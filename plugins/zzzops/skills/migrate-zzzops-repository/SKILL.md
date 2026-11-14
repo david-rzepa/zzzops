@@ -17,7 +17,7 @@ Use this when `next` or `validate` shows a `legacy` item, or a `legacy_policy` b
      -f query='query($q:String!,$endCursor:String){search(type:ISSUE,query:$q,first:100,after:$endCursor){pageInfo{hasNextPage endCursor} nodes{... on Issue{number title}}}}' \
      --jq '.data.search.nodes[] | [.number, .title] | @tsv'
    ```
-   Read each issue with `gh issue view <n> --json title,body,state,labels`. Read **bodies only**. Never read comments: they hold old-engine envelopes, as much as 73 MB on one issue.
+   Read each issue with `gh issue view <n> --json title,body,state,labels,milestone`. Read **bodies only**. Never read comments: they hold old-engine envelopes, as much as 73 MB on one issue.
 4. **Triage** each issue as exactly one class, using [the removal table](references/REMOVED.md):
    - **OBSOLETE**: about removed machinery. Cite the row's R id.
    - **DONE**: the new engine already delivers it. Say where (file or feature).
@@ -25,9 +25,15 @@ Use this when `next` or `validate` shows a `legacy` item, or a `legacy_policy` b
    - **MERGE**: same outcome as another issue. Name that issue; migrate the group as one goal.
    - **HUMAN**: a question only the owner can answer. Say what it is.
 
-   For a large backlog, work in batches of about 30, one batch per worker, each worker read-only. Then show the user one proposal: the counts per class, the MIGRATE list with new titles, and the HUMAN questions. Get one go-ahead before any public write.
+   **Release, priority and dependencies** for each MIGRATE goal and each MERGE group:
+   - **Release:** a whole number, 1 or more. Propose one from, in order: the issue's milestone or a release label; the old release-plan issue's body, if there was one; its dependencies (no earlier than any of them); its priority and the owner's direction. Map milestone names to numbers once, in one table the owner confirms (for example `v2.0` to 2). Propose releases at or after `settings.releases.current`. A goal planned for no upcoming release goes to the release after the last planned one; there is no "no release". A MERGE group takes its earliest member's release and the union of its members' dependencies.
+   - **Priority:** from the `zzzops:priority:P<n>` label, else P2.
+   - **Dependencies:** from the body ("depends on #n", "blocked by #n"). A dependency on a MIGRATE or MERGE issue becomes that goal; on a DONE or OBSOLETE issue it is dropped; on a HUMAN issue it waits for the answer; an existing goal is used as it is (read its release with `zzzops show <id> --json`).
+   - **Check release order now, over the whole set:** a goal may not depend on a goal of a later release, and dependencies may not form a cycle. `new` refuses both, so a conflict found at step 5 would leave the migration half applied. List each conflict with its fixes (move the dependent later, move the dependency earlier, or drop the dependency); the owner picks one.
+
+   For a large backlog, work in batches of about 30, one batch per worker, each worker read-only; each adds `release`, `release_why` and `depends_on_issues` to its output, and the root merges the batches and runs the order check. Then show the user one proposal: the counts per class, the MIGRATE list with new titles, **release, priority and dependencies** (grouped by release), the milestone mapping, the release-order conflicts, and the HUMAN questions. Tell the owner: a goal of a later release is still designed and built; it waits only to merge, until that release is current. The owner confirms each goal's release at the one go-ahead. Get it before any public write.
 5. **Apply** (after the go-ahead):
-   - MIGRATE: create the goal with `zzzops new --file <F>` and `links: {"issue": <n>}`. Then close the old issue as completed with the comment "Migrated to G<id> on the new engine; see it with `zzzops show <id>`". Close MERGE issues the same way, pointing at their target's new goal.
+   - MIGRATE: create goals in dependency order (each after the goals it depends on), so `depends_on` can name their new ids. Each `zzzops new --file <F>` passes `release`, `priority`, `depends_on` and `links: {"issue": <n>}` explicitly. If `new` refuses anyway, stop and show the user; the goals already created are correct, and the rest resume once the triage row is fixed. To change a release later, use `zzzops edit <id> --set release=<n>`. Then close the old issue as completed with the comment "Migrated to G<id> on the new engine; see it with `zzzops show <id>`". Close MERGE issues the same way, pointing at their target's new goal.
    - DONE: `gh issue close <n> --reason completed --comment "<where the outcome now lives>"`.
    - OBSOLETE: `gh issue close <n> --reason "not planned" --comment "<the removed feature, its R id, and what replaced it>"`.
    - Keep labels and comments: they are the archive.

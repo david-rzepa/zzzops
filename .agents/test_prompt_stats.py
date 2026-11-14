@@ -67,6 +67,10 @@ class PromptStatsTests(unittest.TestCase):
         failures, _ = prompt_stats.evaluate_workflows(ROOT)
         self.assertEqual([], failures)
 
+    def test_capture_signals_hold_the_intent_check(self) -> None:
+        for signal in ("settings.intent", "Amend the intent", "Project intent:"):
+            self.assertIn(signal, prompt_stats.WORKFLOW_SIGNALS["capture"])
+
 
 if __name__ == "__main__":
     unittest.main()
