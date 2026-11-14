@@ -394,16 +394,16 @@
       "status": "done"
     },
     "review_impl": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T17:34:27Z",
+      "finished_at": "2026-11-14T19:09:43Z",
       "fp_parts": {
         "def": "v1:sha256:ba0e80cd449a16330f3e62cea7fab93aad71b666081fd28f1c0386cf4f3d2d24",
         "inputs": {
           "base": "v1:sha256:92fb166bb2d877c78854032c50996843982ef4f5cff7b5a092fb2d8ca03148d7",
-          "code": "v1:sha256:b8684f51fa996995b772c1cce252b7dadd7cbddfcd8f6f5be520c28de727c18c",
-          "doc": "v1:blob:9c056c03d9f2e0238eadcef88eef497970e66e6a",
+          "code": "v1:sha256:0b1ed8587de31cce87f741426eef0f763cca5195ca0f60adab3b4467f52e8763",
+          "doc": "v1:blob:7aa4db7dc9cac42eaaa2b947bb4097cf8152e896",
           "tests": "v1:sha256:ae04172168512dde6665548d12246d56f3669033e4f86ce5e1ad8b0f7f884693"
         },
         "lenses": [
@@ -414,27 +414,27 @@
           "craft"
         ],
         "policy": {},
-        "subject": "v1:sha256:11c680b75c7e5ba492bfc2921bed727b52de5ace87fce883cee50ddbdb5ac4e6"
+        "subject": "v1:sha256:89093ccc4151a68db812db2955a10a7cf6d4f2ecc6e6f189f96dbab05c6b2797"
       },
-      "holder": "codex:wp1036/review-impl-1",
-      "input_fp": "v1:sha256:26510dfa900d545cd85a845dde89b8f377118e88f82e1446f695785c2d124ccf",
+      "holder": "codex:wp1036/review-impl-2",
+      "input_fp": "v1:sha256:af866be6562c25bfa5a2b4e4b8aeb89b890f8b553f46d95696afcf9b7b2ad074",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "1b36fd3159cc980028097d0fbe20f572b04e31f9",
-          "commit": "2f8bce140428cd58e54b7fee945ef2652bce7523",
+          "blob": "10ba50f3694e1d5c80dd3fa0139548b35dc87b8a",
+          "commit": "1ab96d8b66fc5cb7c85ba61aac8af178df0ec4d4",
           "path": ".zzzops/reviews/1036/review_impl.md"
         },
-        "summary": "Approved: the paper implements the disclosure-focused design, and pinned source/test assertions support its qualified behavior claims; no material findings."
+        "summary": "Approved: the rewrite defines the general disclosure pattern immediately, stands without its appendix, and faithfully explains the customizable process versus engine invariants; no material findings."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "code": {
           "base": "c455b09914b49fd65e169f91a4f79110e3e2540b",
-          "change": "9a8e10553ed58308f76555258f764ced7180c856",
-          "commit": "580987251909105fb202d84648828e8271abf08c",
-          "tree": "dfc6665a482a9efa4f813b0f71190b5173fa5f6d"
+          "change": "adbd79a2a6853e91c919371c875fc3423325e406",
+          "commit": "93889189b5b58cb99d73d9e700a8e2e11dfe5b7e",
+          "tree": "1e2aaa7768acebe9afcf49288c80cd1b402c409c"
         }
       },
       "status": "done"
