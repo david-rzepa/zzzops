@@ -82,28 +82,28 @@
       "status": "done"
     },
     "design": {
-      "attempt": 6,
+      "attempt": 7,
       "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-03T18:13:26Z",
+      "finished_at": "2026-11-14T17:04:33Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
-          "dep_designs": "v1:sha256:771c57a88657a79d0b270f0dcf929993ac65695bbf65015aa72ad8049cdb5564",
-          "spec": "v1:sha256:7cacab7d2739a88c2f7c7d9773f294a4064599407fcc553561919fe77916b36c"
+          "dep_designs": "v1:sha256:d0703625f9457fd9740830f12dd16828745df6edf4b11fa5787394a059e02855",
+          "spec": "v1:sha256:73bd62c790e63230e34d07e5650e64d5fbbf40846b9a3caff40d3f6e7f77130a"
         },
         "policy": {}
       },
-      "holder": "codex:takeover/1036-design-cli-only",
-      "input_fp": "v1:sha256:b259bf65998ed9331972f9ebe66ddafd136c0831e11e992bde02acacf3a32536",
+      "holder": "codex:wp1036/design-7",
+      "input_fp": "v1:sha256:e1f20077d67e04d0235d5ea001e866be20a80cfc386809a63d3a15008e53d031",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "2a239e92a02beb5c9dc03824485c183501bfc80a",
-          "commit": "1c9d0a6a24ea5d4bf649f5fe264213983d898977",
+          "blob": "9c056c03d9f2e0238eadcef88eef497970e66e6a",
+          "commit": "e9879f02f796415e9497ad8431f6d2f6657466b4",
           "path": ".zzzops/reviews/1036/design.md"
         },
-        "summary": "Design-only refresh incorporates G1037 attempt 7’s recorded OD9: Codex-only CLI dogfood is permitted, with actual actor/holder/build/action evidence and Claude labelled not executed unless independently evidenced. The evaluation, limitations and synthetic trace distinguish scope authority from measured participation or untested model/harness equivalence, and ratios use only real measured cohorts. WD1–WD8, privacy, candidate-bound separate deployment approvals and the actual G1037 merged-report gate before whitepaper writing remain unchanged; no paper or implementation is produced."
+        "summary": "Refreshes the whitepaper design around deterministic progressive disclosure: state, frontier, next, task cards and recomputed context, with a practitioner front half and a technical audit back half. Preserves WD1–WD8, removes the superseded dogfood-report/evaluation gate, and binds core claims to checked dev source/build while labelling the unmerged release-summary extension separately. Plans synthetic correction/recovery examples, a pinned claim/source/test ledger, proportionate manual verification and candid disclosure of card/next size-bound discrepancies without engine changes."
       },
       "reason": "stale",
       "status": "done"
