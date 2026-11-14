@@ -440,38 +440,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T17:16:32Z",
+      "finished_at": "2026-11-14T18:56:10Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
-          "doc": "v1:blob:9c056c03d9f2e0238eadcef88eef497970e66e6a",
+          "doc": "v1:blob:7aa4db7dc9cac42eaaa2b947bb4097cf8152e896",
           "tests": "v1:sha256:ae04172168512dde6665548d12246d56f3669033e4f86ce5e1ad8b0f7f884693"
         },
         "policy": {},
-        "subject": "v1:sha256:8afc2d41eaf8d60c1b7eaab06ef05aaeab6a6018843416d8a202a8dc80a74f56"
+        "subject": "v1:sha256:c037f153139e0e6d98acd639e11dbb0db3a9879f769512c611c356814919a426"
       },
-      "holder": "codex:wp1036/review-tests-1",
-      "input_fp": "v1:sha256:aba2b4e69b9528f97b50ad8642715940c4b4b000caf5dc6a02251408b5fc52a4",
+      "holder": "codex:wp1036/review-tests-2",
+      "input_fp": "v1:sha256:9154da37e7fe16930d6c995690b495f94958e92b7951a530c99ce041fdecc33d",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "f7a740064f781af324cf0fe8faced4267162592a",
-          "commit": "7e0cbdb56c0efe83297f054f623a6fafb8abce7e",
+          "blob": "b3eca436800588f38a47a4cfef241682c8e691a0",
+          "commit": "a0ff390bc8df6cad373be81937b720f770083c45",
           "path": ".zzzops/reviews/1036/review_tests.md"
         },
-        "summary": "Approved: the manual checker and existing-fixture reproductions match the proportionate design. Fresh local reference/build acceptance and rejection probes passed; absent-paper red is expected. No open findings."
+        "summary": "Approved: unchanged checker supports appendix bindings/ledger, and the renewed focused evidence plus explicit editorial criteria match design 8. Fresh frozen-paper checker passed; no new wording tests or infrastructure needed. No open findings."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "c455b09914b49fd65e169f91a4f79110e3e2540b",
           "change": "3ba81563a9a3e235a6ef54a5f74801efebdbf8e1",
-          "commit": "6417262fa2d0d06afb514ef0e493eca8e2faed51",
-          "tree": "aaed59fcd307ffc65c31ecac5c56c3181a4fe1ae"
+          "commit": "0b58deb22366e19152053ad6975e0e2136a91e77",
+          "tree": "dfc6665a482a9efa4f813b0f71190b5173fa5f6d"
         }
       },
       "status": "done"
