@@ -257,15 +257,28 @@
       "status": "done"
     },
     "integrate": {
-      "attempt": 5,
+      "attempt": 6,
+      "blocked": {
+        "category": "external",
+        "op_state": {
+          "head": "36f659e4e4930d6fb1998ca2043ecc85890f0fd9",
+          "pending_since": 1794686603,
+          "polls": 1,
+          "rerun_head": null
+        },
+        "reason": "required checks pending: dev-required-tests (mergeable: MERGEABLE/BLOCKED)",
+        "repeats": 1,
+        "retry_after": "2026-11-14T20:08:23Z",
+        "waiting_for": "time"
+      },
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T19:15:45Z",
+      "finished_at": "2026-11-14T20:03:23Z",
       "fp_parts": {
         "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
         "inputs": {
           "base": "v1:sha256:92fb166bb2d877c78854032c50996843982ef4f5cff7b5a092fb2d8ca03148d7",
-          "code": "v1:sha256:f621a926acd49a6567d113299419712744c467ed30e61d80d643373880dedbd1"
+          "code": "v1:sha256:a7755b44958de1db6bde0fbee7c5f9a49294d9663157b035e6faaee9537d2434"
         },
         "policy": {
           "verification.required_ci": [
@@ -273,30 +286,12 @@
           ]
         }
       },
-      "holder": "codex:wp1036/integrate-5",
-      "input_fp": "v1:sha256:b36c78bfaec166091a77b7f8a460bc918b83c41353912a5b6d2f40757a4f4bc7",
-      "ok": true,
-      "output": {
-        "ci": {
-          "failed": [],
-          "passed": [
-            "dev-required-tests"
-          ],
-          "required": [
-            "dev-required-tests"
-          ],
-          "stacked": false
-        },
-        "pr": {
-          "base": "dev",
-          "head": "7bee8d6d68317e89ac4fb48e2d644e87fe5723cc",
-          "number": 773,
-          "tree": "1e2aaa7768acebe9afcf49288c80cd1b402c409c",
-          "url": "https://github.com/david-rzepa/zzzops/pull/773"
-        }
-      },
-      "reason": "retry",
-      "status": "done"
+      "holder": "codex:wp1036-r3/integrate-6",
+      "input_fp": "v1:sha256:0848d0474791f5a709015a67bad98fd67662421a25b923a92e58296c43d15bfe",
+      "ok": false,
+      "output": null,
+      "reason": "stale",
+      "status": "blocked"
     },
     "merge": {
       "attempt": 2,
