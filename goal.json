@@ -48,35 +48,35 @@
       "status": "done"
     },
     "approve_design": {
-      "attempt": 6,
+      "attempt": 7,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-14T18:52:36Z",
+      "finished_at": "2026-11-14T19:49:06Z",
       "fp_parts": {
         "def": "v1:sha256:d04fc5094a85157b7e25b3020caaee316324161c59b30d25d4aabb2e5c24f0ed",
         "inputs": {
-          "doc": "v1:blob:7aa4db7dc9cac42eaaa2b947bb4097cf8152e896",
-          "filter": "v1:sha256:15e3eb945da35b9bf2a4871779cca1afc260bebbd0014308eb8b76a26c3d2b99",
-          "summary": "v1:sha256:492dc7dd32d2f96b247638d9e4465f584561f89f39f68cfe5f6021e551e9627d"
+          "doc": "v1:blob:cf5f4303629f8dd290edc690a00d433058591e9f",
+          "filter": "v1:sha256:89adb30842aa56aa8b9a0bb8e15d6d8ba196b6e10f045954a3f97ca7947917fd",
+          "summary": "v1:sha256:8b9737827edc59d175e9b9a637fa2da7b4ae43a665daae8c553ba7c631544abe"
         },
         "policy": {},
-        "subject": "v1:sha256:c50607aa459c786e1049eb50854d7323582ea1f47c037b4d0f1a181820b13aa6"
+        "subject": "v1:sha256:844056719c08f645494764d8e1b3762aae2ac7ddb9b4e3646515ccccee7b1033"
       },
       "holder": "human",
-      "input_fp": "v1:sha256:8331f7b3895a7ced8a34af733f027cbbb32eded66c78eb97b94a748090175c5d",
+      "input_fp": "v1:sha256:6736d4f41ddb21df5f826fdcd2eed2e713938ab0da98970e10835855ece03be1",
       "ok": true,
       "output": {
-        "decided_at": "2026-11-14T18:52:36Z",
+        "decided_at": "2026-11-14T19:49:06Z",
         "decided_by": "Codex (root agent), delegated by Dave",
         "decision": "approved",
         "quote": "Do not wait for my approval",
-        "summary": "Approve design 8 implementing the owner's three explicit revision requests: general definition-led DPD concept paper, accessible scientific argument focused on philosophy, and central mostly unopinionated engine/customizable opinionated workflow architecture. Existing technical evidence moves to an appendix. Independent reviews have no findings."
+        "summary": "Approve design9 implementing the latest explicit owner direction: multiple eligible actions and task-model guidance, concise proposed Future Work, and retirement of bulky public evidence/checker requirements. Independent reviews and filter have no findings. Existing engine invariants and GitHub gates remain."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "7aa4db7dc9cac42eaaa2b947bb4097cf8152e896",
-          "commit": "6256e22ec52aecd7ca119503e7cda791c173df41"
+          "blob": "cf5f4303629f8dd290edc690a00d433058591e9f",
+          "commit": "9cbe96f76c13fa7b2b5685043ea368a200bcba55"
         }
       },
       "status": "done"
