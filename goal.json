@@ -257,23 +257,10 @@
       "status": "done"
     },
     "integrate": {
-      "attempt": 4,
-      "blocked": {
-        "category": "external",
-        "op_state": {
-          "head": "7bee8d6d68317e89ac4fb48e2d644e87fe5723cc",
-          "pending_since": 1794683438,
-          "polls": 1,
-          "rerun_head": null
-        },
-        "reason": "required checks pending: dev-required-tests (mergeable: MERGEABLE/BLOCKED)",
-        "repeats": 1,
-        "retry_after": "2026-11-14T19:15:38Z",
-        "waiting_for": "time"
-      },
+      "attempt": 5,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T19:10:38Z",
+      "finished_at": "2026-11-14T19:15:45Z",
       "fp_parts": {
         "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
         "inputs": {
@@ -286,12 +273,30 @@
           ]
         }
       },
-      "holder": "codex:wp1036/integrate-4",
+      "holder": "codex:wp1036/integrate-5",
       "input_fp": "v1:sha256:b36c78bfaec166091a77b7f8a460bc918b83c41353912a5b6d2f40757a4f4bc7",
-      "ok": false,
-      "output": null,
-      "reason": "stale",
-      "status": "blocked"
+      "ok": true,
+      "output": {
+        "ci": {
+          "failed": [],
+          "passed": [
+            "dev-required-tests"
+          ],
+          "required": [
+            "dev-required-tests"
+          ],
+          "stacked": false
+        },
+        "pr": {
+          "base": "dev",
+          "head": "7bee8d6d68317e89ac4fb48e2d644e87fe5723cc",
+          "number": 773,
+          "tree": "1e2aaa7768acebe9afcf49288c80cd1b402c409c",
+          "url": "https://github.com/david-rzepa/zzzops/pull/773"
+        }
+      },
+      "reason": "retry",
+      "status": "done"
     },
     "merge": {
       "attempt": 1,
