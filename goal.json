@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-14T23:24:17Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [],
   "graph": "default",
   "id": 1047,
@@ -286,6 +291,28 @@
         }
       },
       "reason": "retry",
+      "status": "done"
+    },
+    "merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T23:24:17Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:74de64414d3bbb68fc9d270b34ae2f711de3ac98a5a8c5e66fd033667135c613"
+        },
+        "policy": {}
+      },
+      "holder": "codex:cleanup1047/merge-1",
+      "input_fp": "v1:sha256:ff53317dc808afb6f7feb5b0037f320cf9de34f78b28eee89b8cd1621ca1d22e",
+      "ok": true,
+      "output": {
+        "merge_commit": "acab4c38a984494e2478f427a163602b394ded6e",
+        "merged_at": "2026-11-14T23:23:33Z"
+      },
+      "reason": "new",
       "status": "done"
     },
     "review_design": {
@@ -678,6 +705,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Remove the shipped historical-default blob archive at plugins/zzzops/zzzops/templates/history and simplify its dependent machinery coherently. Owner authorization, verbatim: \"Yeah I think we can get rid of that tbh, barely anybody uses zzzops anyway\". This explicitly authorizes retiring the barely-used history-backed upgrade compatibility, not merely deleting files and leaving broken consumers. Scope now includes the template-history simplification and the separately authorized retirement of obsolete historical workflow test fixtures below. Unrelated active repository policy/workflow and old conversion/migration evidence remain out of scope.\n\nCurrent dev 4bc7b4deba5f1a98595ab795cdb5c088c14b3c66 has 71 archived blobs (192,594 bytes). engine/defaults.py uses history_ids, inferred records and known-base classification to generate old/new diffs and three-way merge-file commands. Bootstrap update instructions, references/MIGRATING.md, .agents/template_history.py, archive/seed tests and contract docs assume the archive. Packaging currently enumerates shipped files, so verify generated/installable artifacts after removal.\n\nChoose the smallest coherent simplification: remove the archive, updater/seed support and obsolete historical-base/inference/three-way upgrade behavior. Preserve current templates/default for bootstrap. Retain simple current-default hash provenance/last-reviewed-or-declined receipts if useful, avoiding a new store/schema unless necessary. Existing opaque schema1 TEMPLATE hashes must not all become misleading 'unknown newer engine, upgrade plugin' cases after history disappears. Keep a clear current-default versus local two-way comparison and explicit manual review. Preserve repository-owned customizations, locally added/deleted files and workflow/prompt coordination: no silent overwrite or deletion and no automatic fallback to shipped policy. Read-only next/validate/previews must not mutate local policy or TEMPLATE provenance. Adoption/decline remains an explicit reviewed policy procedure; this goal does not open a policy branch or rewrite installed policy.\n\nUpdate bootstrap/default-update guidance, relevant references and SPEC/DESIGN/HISTORY so no live instructions point to removed files or promise unsupported old-base reconstruction/three-way merges. Preserve historical amendment records as history, with clear supersession rather than unrelated cleanup. Inspect SPEC capability/version rules and update capability/contract documentation if actually required; never weaken/remove compatibility-floor requirements just to pass checks. User compatibility simplification is authorized, so no repeated owner question about retaining archive machinery.\n\nUse a short concrete design and required independent reviews. Replace or remove tests for unsupported archive/seed/three-way behavior; preserve meaningful customization-safety/advisory/read-only/current-comparison tests, including paths/quoting, missing/invalid records, current-hash review/decline and nonblocking notices. Fast local reproduction/focused real CLI/bare-Git checks first, then configured required local verification, package/generated-artifact checks and exact-head CI. No new infrastructure, generic redesign, unrelated migration removal or extra product behavior.\n\nUse managed goal worktree; primary old detached checkout/untracked AGENTS stays untouched. Existing explicit 'Use admin merge' authorization applies only after exact current head and required checks are verified. Complete a concrete dev PR and normal goal integration/receipt; preserve all validation. Release/main/paperpin are paused: main b029 has an externally inconsistent GitHub merge receipt and no publication. Do not claim a release or fabricate a release pin. G1046 is held pending actual publication. Other backlog goals remain release 2; this cleanup is release 1/P1. Never consume banked usage reset.\n\nAdditional owner authorization, verbatim: \"Again, seems like clutter to me if we don’t even use those old workflows\". Retire .agents/fixtures/graph12 and graph26, including obsolete historical-layout transition and golden baggage. This is an explicit additional scope, not permission to remove generic engine behavior coverage. engine_fixtures.TEMPLATES currently makes graph12 the general engine suite default, so migrate Sim/World/default helpers and tests to the current shipped 15-node workflow or genuinely small purpose-built scenario graphs. Do not copy a full historical workflow inline/under another name or create a new fixture framework. GRAPH26-dependent old lens/migration classes may be retired only when their unique generic behavior is preserved in current scenarios.\n\nTargeted affected areas include engine_fixtures, test_engine_journeys, test_engine_lenses, lens_polish, review_lenses, merge_sync, owner_questions, branching GOLDEN_FP and sync_card, plus fixture JSON g1038_fingerprints, node_def_fp1.1 and g1039_round_replays. Preserve meaningful independence, review/filter/findings, frontier, carry, fingerprint and current-plus-renamed full capture-to-merge journeys. Adapt current graph output/readiness/ordering helpers: current15 adds object cost/filter verdict output and review.filter must be renamed along with review.subject, preserve and selectors. Existing current15 Pilot support may be reused. Enumerate preserved unique behaviors versus retired historical-layout assertions in the design/review; never blindly delete failing tests.\n\nRuntime changes remain limited to the already authorized defaults/history simplification. Fixture retirement changes tests/helpers and related documentation, not generic engine semantics or installed repository policy. Preserve current templates/default, capability-floor requirements, current-hash review/decline receipts, read-only advisory behavior, customizations/local deletions, explicit safe two-way comparisons and command quoting. Verify generated/installable packages exclude removed history and fixtures while containing current templates. Focused real local checks first, then full unchanged configured local validation, package checks and exact-head CI. No new infrastructure, no release/paper-pin/main actions, and no banked usage reset. Root performs final current-head CI verification and any authorized admin merge; send the concrete dev PR promptly.",
-  "state": "open",
+  "state": "closed",
   "title": "remove template history and obsolete workflow fixtures"
 }
