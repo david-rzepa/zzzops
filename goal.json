@@ -78,6 +78,33 @@
       },
       "status": "done"
     },
+    "base": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T20:53:10Z",
+      "fp_parts": {
+        "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
+        "inputs": {
+          "heads": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "merges": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "policy": {}
+      },
+      "holder": "codex:summary1045/base-1",
+      "input_fp": "v1:sha256:a63dd4f9b663828d20c7af5969db386d8dca78d1dc6caa436946320590be78d6",
+      "ok": true,
+      "output": {
+        "base_commit": "c455b09914b49fd65e169f91a4f79110e3e2540b",
+        "branch": "zzzops/work/g1045",
+        "replay_map": {},
+        "replay_pos": {},
+        "stack": [],
+        "synced": null
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "design": {
       "attempt": 1,
       "correction_runs": 0,
