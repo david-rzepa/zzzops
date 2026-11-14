@@ -472,15 +472,15 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T19:56:35Z",
+      "finished_at": "2026-11-14T20:26:08Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:a7755b44958de1db6bde0fbee7c5f9a49294d9663157b035e6faaee9537d2434",
-          "commands": "v1:sha256:99cbc02e7c8d9c14ca6024edb8fd5db7ef20ff3bf0d4a0025b92906b4830d577"
+          "code": "v1:sha256:5a0e12c4af2bfb1f7effc979234cf4f73309e3e699124f46107599116eb34f68",
+          "commands": "v1:sha256:2e82afef1c390ffc8006695de9a550990de2efdc310b013c61034fef7ceec631"
         },
         "policy": {
           "verification": {
@@ -498,14 +498,14 @@
           ]
         }
       },
-      "holder": "codex:wp1036-r3/run-tests-3",
-      "input_fp": "v1:sha256:d2ac9f89a48107f0a7bbf07d56a64c6aa2f5d486f41f2bb6acf867b0ead48d4f",
+      "holder": "codex:wp1036-r5/run-tests-4",
+      "input_fp": "v1:sha256:dc26f02f3bf7c3ae3f8bc46ebcb926f1c16ebbf0a98d9fb64e2d0ecbde0251f7",
       "ok": true,
       "output": {
         "result": {
           "details": [
             {
-              "cmd": "git diff --check c455b09914b49fd65e169f91a4f79110e3e2540b -- README.md docs/WHITEPAPER.md docs/blog/release-1.md",
+              "cmd": "git diff --check c455b09914b49fd65e169f91a4f79110e3e2540b -- README.md docs/WHITEPAPER.md",
               "exit": 0,
               "milliseconds": 4,
               "seconds": 0,
@@ -515,10 +515,10 @@
             {
               "cmd": "python3 .github/scripts/run_product_validation.py --platform linux --local",
               "exit": 0,
-              "milliseconds": 192273,
-              "seconds": 192,
+              "milliseconds": 215799,
+              "seconds": 215,
               "source": "verification",
-              "tail": "_ids\": [], \"error\": \"loader failed\"}\n.........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n..s\n......................................................\n........................................................\n{\"status\": \"success\", \"inventory_count\": 1121, \"inventory_sha256\": \"d3badaba6bb39ddf86eae553917db164f8b7dd99fce6153fde5c0c0dc4165f58\", \"workers\": 20, \"wall_seconds\": 192.17238087900114, \"aggregate_test_seconds\": 3621.936618195001, \"slowest_tests\": [[\"test_engine_owner_questions.DurabilityTests.test_the_decision_survives_a_reopen_a_stale_rerun_and_a_second_round\", 53.0133855389995], [\"test_engine_lenses.FullLensJourneyTests.test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body\", 46.38969664400065], [\"test_engine_branching.SyncTests.test_dev_moving_under_an_open_sync_pr\", 43.30029330200159], [\"test_engine_journeys.JourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 42.47504869699878], [\"test_engine_branching.FinishTests.test_finish_merges_into_production_back_into_dev_and_keeps_the_branch\", 42.263185058998715]], \"executed_count\": 1121, \"completed_count\": 1121, \"worker_seconds\": [184.14840452300086, 170.9897661690011, 189.14008181200006, 177.84672954800044, 175.78320345099928, 167.14954354699876, 166.72691793599915, 186.70776477500112, 189.6267862929999, 182.93812342800084, 182.1983064750002, 164.03289201799998, 189.2624101319998, 183.9579006310014, 188.93285299299896, 185.06752183400022, 192.0787046259993, 177.68116340000051, 184.37531137299993, 189.89006672399955], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
+              "tail": "\": 0, \"failure_ids\": [], \"error_ids\": [], \"error\": \"loader failed\"}\n.........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n..s\n......................................................\n........................................................\n{\"status\": \"success\", \"inventory_count\": 1121, \"inventory_sha256\": \"d3badaba6bb39ddf86eae553917db164f8b7dd99fce6153fde5c0c0dc4165f58\", \"workers\": 20, \"wall_seconds\": 215.7016273420013, \"aggregate_test_seconds\": 4092.2196439069958, \"slowest_tests\": [[\"test_engine_owner_questions.DurabilityTests.test_the_decision_survives_a_reopen_a_stale_rerun_and_a_second_round\", 54.083396420999634], [\"test_engine_branching.FinishTests.test_finish_merges_into_production_back_into_dev_and_keeps_the_branch\", 53.651714342999185], [\"test_engine_branching.SyncTests.test_dev_moving_under_an_open_sync_pr\", 50.28876034899804], [\"test_engine_branching.SyncTests.test_conflicting_sync_is_an_agent_item_then_an_approval\", 50.265273342], [\"test_engine_journeys.JourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 48.485921777999465]], \"executed_count\": 1121, \"completed_count\": 1121, \"worker_seconds\": [207.30105093800012, 195.86833000499973, 212.80515547100003, 199.5590058279995, 199.78362150400062, 192.8467273640017, 190.8567042850009, 210.33006615799968, 213.2120167130015, 205.47962827000083, 205.49294580499918, 188.34006157199838, 212.20629548700163, 206.4495808190004, 212.43853482600025, 207.75390597700243, 215.5960656490024, 201.07484226000088, 207.83012901300026, 214.2586254839989], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
             }
           ],
           "passed": true,
@@ -537,7 +537,7 @@
               "status": "unavailable",
               "verification": {
                 "caveat": "informational; machine load and concurrent goal-command workload may differ",
-                "delta_ms": 55742,
+                "delta_ms": 79268,
                 "source": {
                   "finished_at": "2026-11-04T02:48:57Z",
                   "goal": 1044,
@@ -560,16 +560,16 @@
             },
             "goal_ms": 4,
             "parallel_commands": false,
-            "plan_sha256": "f90ec936176733aeebfbb56604405a007f5c5fbd48171c6363e0c27736cbf5e1",
-            "total_ms": 192277,
-            "verification_ms": 192273,
+            "plan_sha256": "8057ae9ad7628e2f867e9b4a528ffa5d29521125cb63f580cc060e8e09a3e34d",
+            "total_ms": 215803,
+            "verification_ms": 215799,
             "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1",
             "workers": {
               "goal": 20,
               "verification": 20
             }
           },
-          "tree": "81ec923ee2451bfc3913fec5fcd2c64835aab0bb"
+          "tree": "10c4ea3b5644838b9e1a1b0eab5f86608e2ecd19"
         }
       },
       "reason": "stale",
