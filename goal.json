@@ -8,7 +8,35 @@
     "issue": null
   },
   "priority": "P1",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T22:13:54Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "spec": "v1:sha256:f3c29cfec31e775401951900900383e44f7758d338bce13005aeb2457fd60e30"
+        },
+        "policy": {}
+      },
+      "holder": "codex:g1047/design-1",
+      "input_fp": "v1:sha256:a2663635516ca36094ab2b029cfd4f253043e84313ba143970a98eb21e2f220a",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "9e9475ecec33c072c79dc2ac8927dafe2e6f88b4",
+          "commit": "40915ac94ae1c2ca1112aea9292cb864ecfcabd4",
+          "path": ".zzzops/reviews/1047/design.md"
+        },
+        "summary": "Removes template-history reconstruction and obsolete graph12/graph26 fixture baggage while preserving current templates, repository customization and generic engine behavior coverage. Keeps schema-1 hashes as opaque equality receipts with explicit manual local/current comparisons, safe missing/invalid/tombstone handling and no new capability or schema. Assigns all helper/test migration to test_design and defaults/archive/guidance/package cleanup to implementation, with a retained-behavior map, real local checks and unchanged full/package/CI gates."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
