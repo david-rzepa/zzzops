@@ -1,0 +1,34 @@
+{
+  "files": {
+    "POLICY.json": "b937166ffb441b4b93cdca948e4c9020f2d26002",
+    "prompts/approve_design.md": "8b6e29cb52980f3461a1fa4f460e6a775b215c07",
+    "prompts/approve_finish.md": "b71b84d02f42d95d2d7d90785707198ce385412e",
+    "prompts/approve_merge.md": "69c8fb27a5f4332a0b56a630f7c849fd371393e4",
+    "prompts/approve_start.md": "a8d7b77b131abd4f4f6d1781faa22372f67ae219",
+    "prompts/design.md": "dc1b63deaecdba7c4b0ed358ab60e204a0b0a700",
+    "prompts/filter.md": "4376779eb80606bbf98657c7c0cad969f2cc20a5",
+    "prompts/implement.md": "849273f20862e98a8b820a630c47d56781bf85dd",
+    "prompts/lens_adversary.md": "516796d80f53d6133b8048aeeccea41593c2729c",
+    "prompts/lens_compliance.md": "65ee98244eafc848d04e0e733675cc21c1bad291",
+    "prompts/lens_concurrency.md": "e29572184e78458fa6f23e484a0e9c989acb4dae",
+    "prompts/lens_correctness.md": "b96a1976823fb1625b0c48a05667cea54ba0cd77",
+    "prompts/lens_craft.md": "7ffb8a7dd2b9cbb9c08cb3b26b1b53169771275f",
+    "prompts/lens_experience.md": "2dc0e4974ba337671ab3488ecd45e3d0549dd322",
+    "prompts/lens_intent.md": "1c0eb392ab60ccb9c18fcf9b46714f94d4457a7c",
+    "prompts/lens_missing.md": "8aa364c123102acb98669f6f18b7b9a873a57f0d",
+    "prompts/lens_rollout.md": "5a7d6a2bbd1ab2114b66e0c335ed04284262917e",
+    "prompts/lens_simplicity.md": "a339a29a050d47dc3e0e58c090f5fa4b447d7f99",
+    "prompts/lens_tests.md": "f7b9e48a533ddb0cd80792c8457267ad2390eea3",
+    "prompts/lens_truth.md": "744b50eef9c86ed77ca77bb2d8ba3510c037fb13",
+    "prompts/review.md": "e7f242e47d58fae8012cb296b66b03451b4dc472",
+    "prompts/review_tests.md": "a93511452512db06382fe87472203f079e9bdefd",
+    "prompts/test_design.md": "a5752c8154172749344de086e44b311adddfbc52",
+    "workflow.json": "6874fdaf969cd963e112c6b736457d0e84c55bcf"
+  },
+  "removed": {
+    "prompts/review_design.md": "915f555c952aaa18656d2776a02993ac23942404",
+    "prompts/review_impl.md": "26b98429432907bc24a682eb186aaf7bf33039ce"
+  },
+  "schema": 1,
+  "template": "default"
+}

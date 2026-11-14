@@ -1,0 +1,4 @@
+interface:
+  display_name: "[ZzzOps 0.0.0-dev] Migrate Repository"
+  short_description: "Move a pre-reset ZzzOps repository to the new engine"
+  default_prompt: "Use $migrate-zzzops-repository to migrate this repository's pre-reset ZzzOps state to the new engine."

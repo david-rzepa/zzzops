@@ -1,0 +1,1 @@
+Record key `last_output` on blocked agent records: findings on the output a block replaced stay live on the retry (G1040). Require it only with the revised design step 4 (`that no entry in human_decisions answers`); with the older step 4 the designer blocks again on every answered owner question.

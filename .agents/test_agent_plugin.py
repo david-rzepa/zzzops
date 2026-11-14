@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import runpy
+import shutil
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,12 +16,7 @@ SKILL_UI = {
     "add-zzzops-goal": ("Add Goal", "Capture one durable project goal safely"),
     "bootstrap-zzzops-repository": ("Bootstrap Repository", "Create or strengthen an agent-ready repository"),
     "execute-zzzops": ("Execute", "Run the primary autonomous ZzzOps goal loop"),
-    "migrate-to-zzzops": ("Migrate TODOs", "Discover and migrate repository TODOs safely"),
-    "review-agentic-engineering": ("Review Agentic Engineering", "Improve how you work with software agents"),
-    "review-zzzops-policy": ("Review Policy", "Initialize or review project operating policy"),
-    "send-zzzops-feedback": ("Send Feedback", "Preview and send privacy-safe ZzzOps feedback"),
-    "suggest-zzzops-work": ("Suggest Work", "Audit project gaps and suggest durable work"),
-    "validate-zzzops-installation": ("Validate Installation", "Validate one repository after install or upgrade"),
+    "migrate-zzzops-repository": ("Migrate Repository", "Move a pre-reset ZzzOps repository to the new engine"),
 }
 SHIPPED_SKILLS = set(SKILL_UI)
 SUPPORT_EMAIL = "zzzops.support@gmail.com"
@@ -27,6 +26,25 @@ def quoted_yaml_value(data: bytes, field: str) -> str:
     prefix = field + ":"
     line = next(line for line in data.decode("utf-8").splitlines() if line.lstrip().startswith(prefix))
     return json.loads(line.split(":", 1)[1].strip())
+
+HARNESS_ENV = ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "HOME", "USERPROFILE")
+NEUTRAL_HINT = "reinstall ZzzOps from the Claude Code or Codex marketplace it was installed from."
+
+
+def broken_copy_status(plugin: Path, env: dict[str, str], *, codex_version: str | None = None) -> dict:
+    """Copy the package to `plugin`, break one SKILL.md, and run that copy's own package_status() under `env`."""
+    shutil.copytree(PLUGIN, plugin, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"))
+    if codex_version is not None:
+        manifest_path = plugin / ".codex-plugin" / "plugin.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["version"] = codex_version
+        manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    skill = plugin / "skills" / "add-zzzops-goal" / "SKILL.md"
+    skill.write_text(skill.read_text(encoding="utf-8").replace("v0.0.0-dev", "v9.9.9", 1), encoding="utf-8")
+    cleared = {key: value for key, value in os.environ.items() if key not in HARNESS_ENV}
+    with mock.patch.dict(os.environ, {**cleared, **env}, clear=True):
+        package = runpy.run_path(str(plugin / "zzzops" / "package.py"))
+        return package["package_status"]()
 
 
 class AgentPluginTests(unittest.TestCase):
@@ -52,16 +70,17 @@ class AgentPluginTests(unittest.TestCase):
 
     def test_canonical_source_identifies_every_skill_as_development(self) -> None:
         package = runpy.run_path(str(PLUGIN / "zzzops" / "package.py"))
-        manifest_paths = (
+        versioned_manifest_paths = (
             PLUGIN / "plugin.json",
             PLUGIN / ".codex-plugin" / "plugin.json",
-            PLUGIN / ".claude-plugin" / "plugin.json",
         )
-        for path in manifest_paths:
+        for path in versioned_manifest_paths:
             self.assertEqual("0.0.0-dev", json.loads(path.read_text(encoding="utf-8"))["version"])
+        claude = json.loads((PLUGIN / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        self.assertNotIn("version", claude)
         marketplace = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
-        self.assertEqual("0.0.0-dev", marketplace["metadata"]["version"])
-        self.assertEqual("0.0.0-dev", marketplace["plugins"][0]["version"])
+        self.assertNotIn("version", marketplace["metadata"])
+        self.assertNotIn("version", marketplace["plugins"][0])
         for skill in SHIPPED_SKILLS:
             skill_path = PLUGIN / "skills" / skill / "SKILL.md"
             agent_path = PLUGIN / "skills" / skill / "agents" / "openai.yaml"
@@ -74,6 +93,92 @@ class AgentPluginTests(unittest.TestCase):
         status = package["package_status"]()
         self.assertTrue(status["ok"], status["detail"])
         self.assertEqual("0.0.0-dev", status["version"])
+
+    def test_channel_follows_the_version_through_one_shared_rule(self) -> None:
+        """G1033: the build and the check share package.channel_for_version."""
+        channel_for_version = runpy.run_path(str(PLUGIN / "zzzops" / "package.py"))["channel_for_version"]
+        self.assertEqual("development", channel_for_version("0.0.0-dev"))
+        self.assertEqual("official", channel_for_version("1.0.0"))
+        self.assertEqual("official", channel_for_version("2.0.0"))
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = Path(directory) / "plugin"
+            shutil.copytree(PLUGIN, plugin, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"))
+            manifest_path = plugin / ".codex-plugin" / "plugin.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["version"] = "0.0.0-dev+codex.123"
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+            package = runpy.run_path(str(plugin / "zzzops" / "package.py"))
+            # the channel comes from the Agent Plugins manifest, which the Codex cachebuster never changes
+            self.assertEqual("development", package["channel_for_version"](package["read_plugin_manifest"]()["version"]))
+            status = package["package_status"]()
+            self.assertTrue(status["ok"], status["detail"])
+
+    def test_reinstall_hint_names_the_harness_the_package_was_installed_for(self) -> None:
+        """G1033: a failing self-check tells the user how to repair it in the harness that installed it."""
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory).resolve()
+            elsewhere = {"CLAUDE_CONFIG_DIR": str(tmp / "no-claude"), "CODEX_HOME": str(tmp / "no-codex"),
+                         "HOME": str(tmp / "no-home"), "USERPROFILE": str(tmp / "no-home")}
+
+            with self.subTest(layout="claude install cache"):
+                status = broken_copy_status(tmp / "claude/plugins/cache/mk/zzzops/abc",
+                                            {**elsewhere, "CLAUDE_CONFIG_DIR": str(tmp / "claude")})
+                self.assertFalse(status["ok"])
+                self.assertEqual("claude", status["harness"])
+                self.assertIn("skill discovery metadata", status["detail"])
+                self.assertIn("Claude Code", status["detail"])
+                self.assertIn("claude plugin marketplace update mk", status["detail"])
+                self.assertIn("claude plugin update zzzops@mk", status["detail"])
+                self.assertNotIn("Codex", status["detail"])
+
+            with self.subTest(layout="claude install cache under the default home"):
+                home = {**elsewhere, "HOME": str(tmp / "home"), "USERPROFILE": str(tmp / "home")}
+                del home["CLAUDE_CONFIG_DIR"]
+                status = broken_copy_status(tmp / "home/.claude/plugins/cache/other/zzzops/unknown", home)
+                self.assertEqual("claude", status["harness"])
+                self.assertIn("claude plugin update zzzops@other", status["detail"])
+
+            with self.subTest(layout="codex install cache"):
+                status = broken_copy_status(tmp / "codex/plugins/cache/mk/zzzops/abc",
+                                            {**elsewhere, "CODEX_HOME": str(tmp / "codex")})
+                self.assertFalse(status["ok"])
+                self.assertEqual("codex", status["harness"])
+                self.assertIn("reinstall ZzzOps from its Codex marketplace.", status["detail"])
+                self.assertNotIn("Claude Code", status["detail"])
+
+            with self.subTest(layout="codex cachebuster"):
+                status = broken_copy_status(tmp / "busted/zzzops", elsewhere, codex_version="0.0.0-dev+codex.123")
+                self.assertEqual("codex", status["harness"])
+                self.assertIn("Codex marketplace", status["detail"])
+
+            with self.subTest(layout="generated claude marketplace run in place"):
+                generated = tmp / "generated"
+                (generated / ".claude-plugin").mkdir(parents=True)
+                (generated / ".claude-plugin" / "marketplace.json").write_text(
+                    json.dumps({"name": "generated-mk", "plugins": [{"name": "zzzops", "source": "./zzzops"}]}),
+                    encoding="utf-8")
+                status = broken_copy_status(generated / "zzzops", elsewhere)
+                self.assertEqual("claude", status["harness"])
+                self.assertIn("claude plugin update zzzops@generated-mk", status["detail"])
+
+            with self.subTest(layout="source checkout with both marketplaces"):
+                source = tmp / "source"
+                for catalog in (".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json"):
+                    (source / catalog).parent.mkdir(parents=True, exist_ok=True)
+                    (source / catalog).write_text('{"name": "zzzops"}', encoding="utf-8")
+                status = broken_copy_status(source / "plugins" / "zzzops", elsewhere)
+                self.assertIsNone(status["harness"])
+                self.assertIn(NEUTRAL_HINT, status["detail"])
+
+            with self.subTest(layout="unrecognised"):
+                status = broken_copy_status(tmp / "plain/zzzops", elsewhere)
+                self.assertFalse(status["ok"])
+                self.assertIsNone(status["harness"])
+                self.assertTrue(status["detail"].endswith("; " + NEUTRAL_HINT), status["detail"])
+
+        status = runpy.run_path(str(PLUGIN / "zzzops" / "package.py"))["package_status"]()
+        self.assertTrue(status["ok"], status["detail"])
+        self.assertIn("harness", status)
 
     def test_open_and_codex_manifests_describe_the_same_release(self) -> None:
         open_manifest = json.loads((PLUGIN / "plugin.json").read_text(encoding="utf-8"))
@@ -94,10 +199,30 @@ class AgentPluginTests(unittest.TestCase):
         self.assertEqual("AVAILABLE", entry["policy"]["installation"])
         self.assertEqual("ON_USE", entry["policy"]["authentication"])
 
-    def test_package_contains_exactly_the_nine_product_skills(self) -> None:
+    def test_package_contains_exactly_the_three_product_skills(self) -> None:
+        package = runpy.run_path(str(PLUGIN / "zzzops" / "package.py"))
         actual = {path.name for path in (PLUGIN / "skills").iterdir() if (path / "SKILL.md").is_file()}
         self.assertEqual(SHIPPED_SKILLS, actual)
+        self.assertEqual(SHIPPED_SKILLS, package["SHIPPED_SKILLS"])
         self.assertFalse((PLUGIN / "skills" / "run-zzzops-acceptance").exists())
+
+    def test_all_product_skills_load_shared_communication_contract(self) -> None:
+        guide = PLUGIN / "rules" / "COMMUNICATION.md"
+        self.assertTrue(guide.is_file(), "the shared communication guide is missing")
+        guide_text = guide.read_text(encoding="utf-8")
+        for signal in ("Lead with the outcome", "Keep internal machinery internal", "Do not hide", "progressive detail"):
+            self.assertIn(signal, guide_text)
+        cli_usage = (PLUGIN / "zzzops" / "references" / "CLI_USAGE.md").read_text(encoding="utf-8")
+        for verb in ("`next", "`show", "`new", "`start", "`submit", "`renew", "`abandon", "`answer", "`reopen", "`edit",
+                     "`validate"):
+            self.assertIn(verb, cli_usage)
+        for retired in ("--intent", "bind", "portfolio", "--include-feedback", "next_steps"):
+            self.assertNotIn(retired, cli_usage)
+        for skill in SHIPPED_SKILLS:
+            text = (PLUGIN / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("../../rules/COMMUNICATION.md", text, skill)
+            self.assertIn("../../zzzops/references/CLI_USAGE.md", text, skill)
+            self.assertNotIn("--intent", text, skill)
 
     def test_package_contains_valid_progressively_disclosed_concepts(self) -> None:
         package = runpy.run_path(str(PLUGIN / "zzzops" / "package.py"))
@@ -105,10 +230,6 @@ class AgentPluginTests(unittest.TestCase):
         self.assertTrue(status["ok"], status["detail"])
         self.assertTrue((PLUGIN / "concepts" / "bounded-commitment.md").is_file())
         self.assertTrue((PLUGIN / "zzzops" / "concepts.py").is_file())
-
-    def test_agentic_coaching_requires_explicit_invocation(self) -> None:
-        metadata = (PLUGIN / "skills" / "review-agentic-engineering" / "agents" / "openai.yaml").read_text(encoding="utf-8")
-        self.assertIn("allow_implicit_invocation: false", metadata)
 
     def test_legacy_installer_surfaces_are_absent(self) -> None:
         for relative in (
@@ -146,9 +267,8 @@ class AgentPluginTests(unittest.TestCase):
             "## Who receives data",
             "## Retention",
             "## Your choices and controls",
-            "GitHub Issues",
+            "Git branches",
             "OpenAI processes",
-            "public feedback",
             "no ZzzOps-operated server",
         ):
             self.assertIn(required, privacy)
@@ -161,20 +281,25 @@ class AgentPluginTests(unittest.TestCase):
         self.assertIn("https://openai.com/policies/developer-apps-terms/", compliance)
         self.assertIn("https://developers.openai.com/plugins/app-guidelines", compliance)
         self.assertIn("## Owner checklist before submission or publication", compliance)
-        self.assertIn("GitHub Issues", codex_manifest["interface"]["longDescription"])
+        self.assertIn("Git branches", codex_manifest["interface"]["longDescription"])
         self.assertEqual(["Write"], codex_manifest["interface"]["capabilities"])
 
     def test_restricted_data_boundary_is_shipped(self) -> None:
-        goal_rules = (PLUGIN / "rules" / "GOAL_SYSTEM.md").read_text(encoding="utf-8")
-        feedback_skill = (PLUGIN / "skills" / "send-zzzops-feedback" / "SKILL.md").read_text(encoding="utf-8")
-        for restricted in (
-            "credentials",
-            "payment cards",
-            "health data",
-            "government IDs",
-        ):
-            self.assertIn(restricted, goal_rules)
-            self.assertIn(restricted, feedback_skill)
+        guide = (PLUGIN / "rules" / "COMMUNICATION.md").read_text(encoding="utf-8")
+        add_goal = (PLUGIN / "skills" / "add-zzzops-goal" / "SKILL.md").read_text(encoding="utf-8")
+        for restricted in ("credentials", "payment cards", "health data", "government IDs"):
+            self.assertIn(restricted, guide)
+        self.assertIn("data boundary", add_goal)
+
+    def test_project_intent_label_agrees_across_capture_lens_and_approval(self) -> None:
+        prompts = PLUGIN / "zzzops" / "templates" / "default" / "prompts"
+        skill = (PLUGIN / "skills" / "add-zzzops-goal" / "SKILL.md").read_text(encoding="utf-8")
+        lens = (prompts / "lens_intent.md").read_text(encoding="utf-8")
+        approval = (prompts / "approve_design.md").read_text(encoding="utf-8")
+        for name, text in (("SKILL.md", skill), ("lens_intent.md", lens), ("approve_design.md", approval)):
+            self.assertIn("Project intent:", text, name)
+        self.assertIn("Never offer to skip `approve_design` for a goal whose spec has a `Project intent:` paragraph", skill)
+        self.assertIn("accepts nothing", lens)
 
 
 if __name__ == "__main__":

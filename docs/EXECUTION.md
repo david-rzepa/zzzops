@@ -1,70 +1,53 @@
-# Goal branches and review
+# How ZzzOps execution works
 
-## Workflow adherence
+## Goals and state
+A goal is one `goal.json` on its own branch, `zzzops/goal/g<id>`: title, spec, priority, release, dependencies, skips, and one record per finished node. The branch log is the goal's history; every commit says what happened (`Outcome:`). Goal ids start at `settings.goals.first_id` and are never reused. Work happens on `zzzops/work/g<id>` in a local worktree under `.zzzops/worktrees/g<id>`; a phase in progress holds a lease, an empty commit on `zzzops/lease/g<id>/<node>`.
 
-Reviewed workflow adherence controls how agent work reaches this execution loop; it is distinct from the rigor used to specify and verify that work.
+## The workflow
+`.zzzops/workflow.json` is a graph owned by your project. The shipped default's main path is below; declared inputs add dependency edges:
 
-- `optional`: ZzzOps is available, but direct agent work is allowed.
-- `tracked`: substantial repository-changing agent work requires a durable goal, while otherwise-authorized implementation may run outside `$execute-zzzops`.
-- `managed`: repository-changing agent work uses the appropriate ZzzOps workflow, and tracked implementation runs through `$execute-zzzops`.
+```
+design ─┬→ review_design ───┐
+        └→ adversary_design ┴→ filter_design → approve_design → base → test_design → review_tests → implement → run_tests ─┐
+  ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+  └→ review_impl → filter_impl ─┬→ integrate ─────┬→ merge
+                                └→ approve_merge ─┘
+```
 
-Read-only investigation and ZzzOps administration are exempt. A user may authorize a narrowly scoped exception explicitly, but no adherence level weakens safety or other reviewed policy. `$review-zzzops-policy` reflects the approved level in a bounded `AGENTS.md` block while preserving other instructions. This is guidance for agents; ZzzOps cannot observe or control direct human edits and does not promise a universal gate.
+- **Agent nodes** (design, reviews, tests, implementation) are done by workers from a task card.
+- **Reviewers** work through several lenses each, one pass per lens. `review_design` applies `intent` (the goal's spec and the project's intent, `settings.intent`), `simplicity`, `truth`, `adversary`, `concurrency`, `rollout` and `experience`, and a separate `adversary_design` runs beside it. `review_impl` applies `compliance`, `correctness`, `missing` (what outside the diff should have changed too), `tests` and `craft`. Every finding names its `lens`. Each finding says what goes wrong if it is ignored (`impact`) and whether the reviewer claims it must be fixed (`material`). A **filter** node per subject then joins them: a material finding reopens the work; the filter judges every other one `keep` (it reopens too) or `note` (shown on the next card and to you, never blocking). The filter may promote a note but never demote a material finding. Goals remove lenses that do not apply with `<reviewer>:<lens>` skip keys (`intent`, `simplicity`, `compliance`, `missing` and `craft`, the reviewers, the filters and `approve_merge` cannot be skipped); every skip and its reason is shown on the approvals and in the pull request.
+- **Human nodes** (`approve_design`, `approve_merge`) are your decisions, answered in conversation.
+- **Ops** run inside `zzzops start`: `git.base` puts the goal's commits on its stack base, `checks.run` runs the tests on the exact code, `git.integrate` builds the pull request without review artifacts and reads its required checks, and `github.merge` merges at the reviewed head.
 
-Branch/review behavior is project policy, proposed during initialization from repository evidence. The shipped default uses one branch and PR per source-changing goal, bases independent goals on the nearest authorized trunk, and lets descendants continue from a dependency's exact verified review checkpoint. Review is presented when safe work is exhausted, without conversational approval prompts between goals. Policy review foregrounds this choice; repositories may instead require immediate per-goal review and completed dependencies before descendant writes. Read-only agents may still investigate later goals in advance without claiming, editing, branching, or marking them started.
+A node runs when its inputs are current. Each record stores their fingerprint; a changed input makes the node stale. Code has two identities: `tree` (the code being checked) and `change` (the goal's own change). Eligible carried checkpoints retain change-bound judgments; changed code trees rerun checks. The shipped implementation reviewer also takes the base as an input, so it reviews interactions with new trunk changes after a sync. A commit-only move that leaves selected inputs unchanged does not itself rerun a phase.
 
-Where pull requests are supported, the fallback also uses one PR per source-changing goal. Being small, related, or selected in one run is not enough to bundle goals. Repository policy or an explicit user instruction may permit a shared PR, but every affected goal records the override, rationale, shared branch/PR, target, and review consequence before work is combined. Parent and child goals retain separate PRs targeting their resolved pseudo-trunks. PR granularity is independent of commit/squash policy, and capture-only goal creation remains Git-free.
+Sync behavior follows policy. Requiring `merge_sync` merges the target into the work branch; otherwise the engine retains legacy rebase mode. Merge-mode carry compares each checkpoint's own changed lines without surrounding context and checks that hand-resolved files in its scope preserve a complete union of both sides. Other resolutions conservatively stale the affected work. Rebase mode retains its stricter replay-based eligibility. Carry never promises that every review or check can be skipped.
 
-| Scenario | Base | Integration target |
-| --- | --- | --- |
-| Independent root goal | Nearest authorized trunk | Repository-policy target |
-| Dependent goal after dependencies complete | Nearest authorized trunk containing dependencies | Repository-policy target containing dependencies |
-| Direct child | Parent pseudo-trunk | Parent pseudo-trunk |
-| Child with sibling dependency | Sibling dependency branch | Nearest parent pseudo-trunk |
-| Multiple dependencies | Reviewed base containing all | Nearest authorized target |
+## Ordering
+With the default ordering, `zzzops next` lists discovery first (designs and their approvals), then delivery, by release, priority and goal id. Ordering belongs to project policy. Questions and design approvals from several goals are collected together, so you can answer them in one sitting.
 
-Canonical goal state records branch/base/target/PR and review checkpoint. After implementation, automated checks, and self-review, source work gets a `human-action` blocker rather than `done`. Under the default exhaustion gate, execution releases that goal, continues actionable descendants from the exact checkpoint, and eventually presents one concise PR queue in dependency and merge order. The PR review UI—not commands such as “approve goal 1”—is the approval surface. Checks, merge authority, release policy, and dependency integration order remain mandatory.
+## Corrections
+A reviewer that requests changes raises findings on the node they concern; that node is reopened and its next card lists the findings. The agent answers each with `fixed: …` or `disputed: …`; the reviewer then re-decides. A finding still disputed after a second round becomes a question for you. Failed checks raise findings the same way.
 
-Requested changes reuse the affected branch and create a new verified checkpoint. When an ancestor changes, execution pauses only its affected descendants, invalidates their stale checkpoints and approvals, retargets or rebases exclusively owned unintegrated branches in dependency order, recomputes every immediate-base diff, and reruns the relevant probes and required checks. Unsafe or unauthorized reconciliation blocks that chain while unrelated work continues. After approval, the agent merges only with authority, verifies the target, resolves the blocker, and completes the goal.
+With `round_budget` required, the default limit is 10 rounds per stage, counting agent submissions that introduce new material findings rather than only follow-ups or carried findings. A stale rerun caused solely by base-selecting inputs is exempt only for a node without checkpoint outputs, even if it raises a material finding; checkpoint-writing phases follow the normal qualifying-finding rule. Existing definition and policy-change exemptions remain. Without this capability, the legacy correction limit is one total per goal: three times its number of agent nodes. An explicit goal budget overrides either default; existing recorded counts are retained when the rule changes. Crash and blocked-loop caps remain separate.
 
-The workflow remains agent-driven. ZzzOps deliberately has no universal branch-management script: repository instructions, hosting rules, dependency ancestry, dirty state, and merge authority require contextual inspection.
+With `blocked_findings` required, live corrections remain on blocked retry cards. Adopt it together with, or after, the revised design prompt that checks recorded human decisions before asking again. Unanswered owner questions still stop the design.
 
-## Continuation after capture
+## Stacked delivery
+A dependent goal does not wait for its dependency to merge: once the dependency's pull request is reviewed and integrated (with checks passed for a PR into the integration branch), the dependent's `base` stacks its commits on the dependency's PR head, and its own PR targets the dependency's PR branch, showing only its own code. With two or more unmerged dependencies, a combine commit on `zzzops/stack/g<id>` and a draft "stack" PR show the combination. Merges happen in dependency order; after each, dependents are retargeted and synced. Prior work carries only when its mode's checkpoint eligibility checks pass.
 
-Execute-all intent may remain active across a same-task yield or queue-exhausted handoff. If the next turn merely captures unrelated work, ZzzOps completes that capture and re-enters ordinary inventory once, so the new goal joins the queue without jumping it. Explicit stop, pause, replacement, capture-only wording, authority/blocker boundaries, or loss of a trustworthy same-task signal wins. Time proximity alone is never evidence; separate tasks and unsupported harnesses do not share intent.
+The PR is built on the last recorded base as tests and implementation parts with conventional commit subjects; empty parts are omitted. Its final code tree is the tested one, and review artifacts remain on the work branch. Keeping those artifacts out of PR history does not remove independent review.
 
-Goal capture uses the project policy's adaptive requirements-interview depth before creating the canonical issue. The default `standard` depth establishes outcome and observable acceptance, checks scope, and explores constraints, dependencies, risks, authority, or verification only when they can materially change the goal. It treats the requesting user as the requirements and acceptance owner; multi-party stakeholder discovery is outside this behavior.
+## Optional release and hotfix lines
+Projects can configure `settings.branching` with capability `release_lines` to use release and hotfix branches with their own line goals. Finishing a line requires approval of the recorded tip, merges that tip into the configured production branch, and back-merges to integration. These Git operations do not tag, deploy or publish releases; branching is not enabled by the default policy.
 
-Engineering rigor supplies that depth rather than adding a second quality knob. Capture records evidenced risk categories and any authorized override; the portfolio derives the effective level and maps `vibe`, `structured`, and `agentic` to `light`, `standard`, and `thorough`. Authentication or payment work can therefore escalate a structured project goal to agentic without changing the project default, while an unknown risk label or forbidden downgrade blocks instead of silently lowering the bar. Legacy reviewed policies retain their existing capture depth until reconciled.
+## Your decisions
+Every human item has a plain question, summaries (never bare hashes), a facts line, and the exact command to record your answer. An answer is fenced: if the question changed since you saw it, it is refused and the new one is shown. "Not yet" records nothing. You can also merge a PR on GitHub yourself; ZzzOps records it.
 
-The same effective level controls completion. Vibe work may rely on observed behavior where policy permits. Structured work requires observable acceptance, targeted automation, and the repository's canonical verification contract. Agentic work additionally requires every relevant deterministic gate, regression check, architectural constraint, and security, data, recovery, or operations signal. Checks must be run and observed; merely adding CI or a verification script is not evidence. Work suggestion compares those declared expectations with the real harness and proposes evidenced gap-closing goals rather than editing the repository silently.
+Owner questions are blocked items whose question starts `owner question:`: a design worker or reviewer found a choice that only you should make (one that is costly to undo outside the goal, or that changes what the product does). They are yours even when approvals are delegated: the root agent collects them across goals and asks them in one sitting, and records your words verbatim with your name. An answer the root agent gives for you on other questions says `decided_by` "<agent> (root agent), delegated by <you>". Every approval and the PR body list these human decisions.
 
-## Incidental entropy observations
-
-Ordinary execution never schedules a broad entropy review. When work already exposes concrete repository decay outside the current goal—such as stale context, a repeated pattern, an obsolete prose-only guardrail, or verification drift—the agent may record one compact evidence fact and one to four relevant paths. It must not pause implementation to search for observations or design future work.
-
-The inbox lives under the repository's common Git directory, so worktrees share it and plugin upgrades do not erase it. Each observation is an atomically created, fingerprint-named file, so concurrent duplicates collapse without a global counter or lock. Every `$suggest-zzzops-work` invocation checks observations permitted by the existing refill `allowed_categories` policy and validates them against the current repository. Shipped defaults enable documentation, tests, and non-behavioral code-quality observations; projects can exclude those categories through the same policy.
-
-Stale or duplicate observations are dismissed. Supported observations remain through dry-run preview and are consumed only after an ordinary goal is confirmed. The inbox is not a second backlog, health score, automatic repair mechanism, or grant of goal-write authority. A user can request a wider repository entropy review through `$suggest-zzzops-work` without another skill or setting.
-
-Execution assumes no user is present. It never pauses to ask an interactive question: consequential unknowns, including authority and safety gates, are recorded as categorized issue blockers with recommendations and recheck triggers. Independent goals continue, and the durable blocker queue is summarized at handoff.
-
-## Adaptive discovery of unknowns
-
-ZzzOps treats uncertainty reduction as an adaptive lifecycle concern, not a mandatory phase. Capture and preparation run a bounded blind-spot pass only when unfamiliarity or a change-sensitive decision could materially affect architecture, scope, acceptance, or the quality bar. The pass identifies known unknowns, tacit criteria, and plausible blind spots, then chooses the cheapest useful evidence source or experiment. Execution preserves only material assumptions, constraints, and plan deviations in goal history. Review handoffs explain consequential decisions and remaining unknowns, adding comprehension checks only when they materially improve safe approval.
-
-The patterns from Anthropic's [field guide to finding unknowns](https://claude.com/blog/a-field-guide-to-claude-fable-finding-your-unknowns) map to shipped behavior as follows:
-
-| Pattern | Disposition | ZzzOps behavior |
-| --- | --- | --- |
-| Blind-spot pass | Adopt | Trigger boundedly from evidenced unfamiliarity or decision risk; return actionable questions, risks, references, or experiments. |
-| Brainstorms and prototypes | Adapt | Use bounded alternatives or disposable prototypes only when tacit criteria or feasibility could change the implementation. |
-| Interviews | Already satisfied | Capture interviews adapt to reviewed depth; unattended execution records blockers and never requests a live interview. |
-| References | Adopt | Prefer source, schemas, tests, fixtures, and other high-fidelity references over duplicated prose when they encode semantics better. |
-| Implementation plans | Adapt | Foreground data models, interfaces, architecture, and user-visible decisions; subordinate trusted mechanical steps. |
-| Implementation notes | Adapt | Append material assumptions, constraints, and deviations to durable goal history instead of requiring a temporary notes file. |
-| Pitches and explainers | Adopt | Completion handoffs explain consequential behavior, trade-offs, remaining unknowns, and non-obvious failure modes. |
-| Quizzes | Adapt | Add a few high-value comprehension checks only when reviewer understanding materially affects approval; never replace verification or review gates. |
-
-## Completion self-review
-
-Before human review or completion, the agent reviews the actual goal diff, criteria, tests, and relevant surroundings. It removes only in-scope dead code proven obsolete by the implementation, retains uncertain dynamic/generated/vendor or unrelated paths, fixes findings in observable chunks, reruns affected and relevant wider checks, and records either findings or a clean review. The pass does not authorize repository-wide cleanup or unrelated bug fixes.
+## Pausing, policy changes and recovery
+- Hold one goal with `zzzops edit G --file hold.json --base <goal commit>`, where `hold.json` is `{"set": {"state": "held"}}` and the goal commit comes from `zzzops show G` (without `--base`, `edit` only previews). Stop everything by stopping the agents.
+- A `zzzops/policy/*` branch pauses all new work until it lands on the integration branch (or is deleted): that is how policy changes.
+- An interrupted phase leaves its lease to expire; `start --reclaim` takes it over, and the late phase's submit is refused. Committed work stays in the worktree, with salvage commands.
+- Repairs are plain Git recipes: [REPAIR.md](../plugins/zzzops/zzzops/references/REPAIR.md). Setup problems: [SETUP.md](../plugins/zzzops/zzzops/references/SETUP.md).

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Build deterministic, validated OpenAI and Claude release artifacts."""
+"""Build the deterministic, validated OpenAI portal skills bundle."""
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import io
 import json
 import os
@@ -36,10 +35,6 @@ class BundleError(ValueError):
 
 def canonical_json(value: Any) -> bytes:
     return (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
-
-
-def sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 def read_json(path: Path) -> Any:
@@ -187,17 +182,22 @@ def scan_for_secrets(relative: str, data: bytes) -> None:
 def plugin_files(root: Path, version: str) -> dict[str, bytes]:
     plugin = root / "plugins" / "zzzops"
     development_version = "0.0.0-dev"
-    for relative in ("plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json"):
+    for relative in ("plugin.json", ".codex-plugin/plugin.json"):
         manifest = read_json(plugin / relative)
         if not isinstance(manifest, dict) or manifest.get("version") != development_version:
             raise BundleError(
                 f"canonical development manifest must use {development_version}: {relative}"
             )
+    claude_manifest = read_json(plugin / ".claude-plugin" / "plugin.json")
+    if not isinstance(claude_manifest, dict) or "version" in claude_manifest:
+        raise BundleError("canonical Claude manifest must omit version so Git commits drive updates")
     package = runpy.run_path(str(plugin / "zzzops" / "package.py"))
     renderer = package["render_skill_metadata"]
+    # One rule for the channel a build claims, shared with package_status(), so a build never fails its own check.
+    channel = package["channel_for_version"](version)
     result: dict[str, bytes] = {}
     allowed_top_level = {
-        ".claude-plugin", ".codex-plugin", "assets", "concepts", "plugin.json", "rules", "scripts", "skills", "zzzops",
+        ".claude-plugin", ".codex-plugin", "assets", "bin", "concepts", "plugin.json", "rules", "scripts", "skills", "zzzops",
     }
     for path in sorted(plugin.rglob("*"), key=lambda item: item.relative_to(plugin).as_posix()):
         relative = path.relative_to(plugin).as_posix()
@@ -212,10 +212,11 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
             data = data.replace(b"\r\n", b"\n")
         if relative in {"plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json"}:
             manifest = json.loads(data.decode("utf-8-sig"))
-            manifest["version"] = version
+            if relative != ".claude-plugin/plugin.json":
+                manifest["version"] = version
             data = canonical_json(manifest)
         try:
-            data = renderer(relative, data, version, "official")
+            data = renderer(relative, data, version, channel)
         except ValueError as exc:
             raise BundleError(f"invalid skill discovery metadata in {relative}: {exc}") from exc
         scan_for_secrets(relative, data)
@@ -223,7 +224,7 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
     required = {
         "plugin.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "assets/logo.png", "assets/logo-dark.png",
         "assets/composer-icon.png", "assets/composer-icon-dark.png", "concepts/bounded-commitment.md",
-        "scripts/cleanup_legacy.py", "zzzops/concepts.py",
+        "scripts/cleanup_legacy.py", "zzzops/concepts.py", "zzzops/zzzops.py", "zzzops/engine/cli.py", "bin/zzzops",
     }
     missing = sorted(required - set(result))
     if missing:
@@ -234,12 +235,8 @@ def plugin_files(root: Path, version: str) -> dict[str, bytes]:
         PurePosixPath(path).parts[1] for path in result
         if len(PurePosixPath(path).parts) >= 3 and PurePosixPath(path).parts[0] == "skills"
     }
-    if shipped_skills != {
-        "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
-        "review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
-        "validate-zzzops-installation",
-    }:
-        raise BundleError("plugin archive must contain exactly the nine product skills")
+    if shipped_skills != {"add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-zzzops-repository"}:
+        raise BundleError("plugin archive must contain exactly the four product skills")
     missing_metadata = sorted(
         f"skills/{skill}/{relative}"
         for skill in shipped_skills
@@ -279,19 +276,16 @@ def claude_marketplace_files(root: Path, version: str) -> dict[str, bytes]:
         "name", "description", "author", "homepage", "repository", "license", "keywords",
     )
     manifest = {field: canonical_manifest[field] for field in manifest_fields}
-    manifest["version"] = version
     marketplace = {
         "name": canonical_manifest["name"],
         "owner": canonical_manifest["author"],
         "metadata": {
             "description": canonical_manifest["description"],
-            "version": version,
         },
         "plugins": [{
             "name": canonical_manifest["name"],
             "source": "./zzzops",
             "description": canonical_manifest["description"],
-            "version": version,
             "keywords": canonical_manifest["keywords"],
             "category": "development",
             "tags": ["agentic-engineering", "coding-agents", "repository-bootstrap"],
@@ -312,36 +306,10 @@ def zip_bytes(files: dict[str, bytes]) -> bytes:
             info = ZipInfo(relative, ZIP_TIMESTAMP)
             info.compress_type = ZIP_DEFLATED
             info.create_system = 3
-            info.external_attr = 0o100644 << 16
+            info.external_attr = (0o100755 if relative.startswith("bin/") else 0o100644) << 16
             archive.writestr(info, data, compress_type=ZIP_DEFLATED, compresslevel=9)
     temporary.seek(0)
     return temporary.read()
-
-
-def listing_markdown(listing: dict[str, Any]) -> str:
-    info = listing["listing"]
-    prompts = "\n".join(f"- {prompt}" for prompt in listing["starter_prompts"])
-    return (
-        f"# {info['name']} listing\n\n"
-        f"- Submission type: Skills only\n- Short description: {info['short_description']}\n"
-        f"- Category: {info['category']}\n- Developer: {info['developer_name']}\n"
-        f"- Website: {info['website_url']}\n- Support: {info['support_url']}\n"
-        f"- Privacy: {info['privacy_policy_url']}\n- Terms: {info['terms_url']}\n\n"
-        f"## Long description\n\n{info['long_description']}\n\n## Starter prompts\n\n{prompts}\n\n"
-        f"## Availability\n\n{listing['availability']['choice']}: {listing['availability']['rationale']}\n"
-    )
-
-
-def tests_markdown(tests: dict[str, Any]) -> str:
-    sections = ["# Submission test cases\n"]
-    for label, key in (("Positive", "positive"), ("Negative", "negative")):
-        sections.append(f"## {label}\n")
-        for case in tests[key]:
-            sections.append(f"### {case['id']}\n")
-            for field, value in case.items():
-                if field != "id":
-                    sections.append(f"- {field.replace('_', ' ').title()}: {value}\n")
-    return "\n".join(sections)
 
 
 def validate_archive(data: bytes, expected: dict[str, bytes], label: str) -> None:
@@ -367,101 +335,42 @@ def validate_release_artifacts(directory: Path, expected: dict[str, tuple[dict[s
         validate_archive((directory / filename).read_bytes(), contents, label)
 
 
-def build_bundles(root: Path, output: Path, version: str, release_notes: str) -> dict[str, Path]:
+def build_bundle(root: Path, output: Path, version: str) -> dict[str, Path]:
     root = root.resolve()
     output = output.resolve()
     if not SEMVER.fullmatch(version):
         raise BundleError("version must be a concrete semantic release version")
     if output.exists() and any(output.iterdir()):
         raise BundleError("output directory must be empty before release preparation")
-    release_notes = require_text(release_notes, "release notes").replace("\r\n", "\n").rstrip() + "\n"
-    listing, tests, attestations = validate_sources(root)
+    validate_sources(root)
     plugin_contents = plugin_files(root, version)
     plugin_data = zip_bytes(plugin_contents)
     plugin_name = f"zzzops-plugin-v{version}.zip"
-    submission = {
-        "schema_version": 1,
-        "submission_type": "skills_only",
-        "version": version,
-        "listing": listing["listing"],
-        "assets": listing["assets"],
-        "starter_prompts": listing["starter_prompts"],
-        "availability": listing["availability"],
-        "tests": {"positive": tests["positive"], "negative": tests["negative"]},
-        "release_notes": release_notes.strip(),
-        "official_submission_docs": listing["official_submission_docs"],
-        "plugin_archive": {"filename": plugin_name, "sha256": sha256(plugin_data)},
-        "human_actions": ["upload", "review attestations", "submit for review", "publish after approval"],
-    }
-    packet_contents = {
-        "ATTESTATIONS.md": attestations.encode("utf-8"),
-        "LISTING.md": listing_markdown(listing).encode("utf-8"),
-        "RELEASE_NOTES.md": (f"# ZzzOps v{version}\n\n" + release_notes).encode("utf-8"),
-        "TEST_CASES.md": tests_markdown(tests).encode("utf-8"),
-        "submission.json": canonical_json(submission),
-    }
-    for packet_name, source_key in (
-        ("assets/logo.png", "logo_light"), ("assets/logo-dark.png", "logo_dark"),
-        ("assets/composer-icon.png", "composer_icon_light"),
-        ("assets/composer-icon-dark.png", "composer_icon_dark"),
-    ):
-        packet_contents[packet_name] = root.joinpath(*PurePosixPath(listing["assets"][source_key]).parts).read_bytes()
-    for relative, data in packet_contents.items():
-        scan_for_secrets(relative, data)
-    manifest = {
-        "schema_version": 1,
-        "version": version,
-        "plugin_archive": {"filename": plugin_name, "sha256": sha256(plugin_data)},
-        "files": {relative: sha256(data) for relative, data in sorted(packet_contents.items())},
-    }
-    packet_contents["manifest.json"] = canonical_json(manifest)
-    submission_data = zip_bytes(packet_contents)
-    claude_marketplace_contents = claude_marketplace_files(root, version)
-    claude_plugin_contents = {
-        relative.removeprefix("zzzops/"): data
-        for relative, data in claude_marketplace_contents.items()
-        if relative.startswith("zzzops/")
-    }
-    claude_plugin_data = zip_bytes(claude_plugin_contents)
     validate_archive(plugin_data, plugin_contents, "plugin")
-    validate_archive(submission_data, packet_contents, "submission")
-    validate_archive(claude_plugin_data, claude_plugin_contents, "Claude plugin")
     output.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix="zzzops-marketplace-", dir=output.parent))
     try:
         plugin_path = staging / plugin_name
-        submission_path = staging / f"zzzops-openai-submission-v{version}.zip"
-        claude_plugin_path = staging / f"zzzops-claude-plugin-v{version}.zip"
         plugin_path.write_bytes(plugin_data)
-        submission_path.write_bytes(submission_data)
-        claude_plugin_path.write_bytes(claude_plugin_data)
         validate_release_artifacts(staging, {
             plugin_path.name: (plugin_contents, "written plugin"),
-            submission_path.name: (packet_contents, "written submission"),
-            claude_plugin_path.name: (claude_plugin_contents, "written Claude plugin"),
         })
         if output.exists():
             output.rmdir()
         staging.replace(output)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
-    return {
-        "plugin": output / plugin_path.name,
-        "submission": output / submission_path.name,
-        "claude_plugin": output / claude_plugin_path.name,
-    }
+    return {"plugin": output / plugin_path.name}
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build validated OpenAI and Claude marketplace release artifacts")
+    parser = argparse.ArgumentParser(description="Build the validated OpenAI portal skills bundle")
     parser.add_argument("--version", required=True)
-    parser.add_argument("--release-notes-file", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     root = Path(__file__).resolve().parents[2]
     try:
-        notes = args.release_notes_file.read_text(encoding="utf-8-sig")
-        result = build_bundles(root, args.output, args.version, notes)
+        result = build_bundle(root, args.output, args.version)
     except (BundleError, OSError, UnicodeError) as exc:
         print(f"Marketplace bundle validation failed: {exc}", file=sys.stderr)
         return 2

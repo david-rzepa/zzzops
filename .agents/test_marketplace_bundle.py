@@ -5,7 +5,10 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
+import runpy
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -21,14 +24,42 @@ SKILL_UI = {
     "add-zzzops-goal": ("Add Goal", "Capture one durable project goal safely"),
     "bootstrap-zzzops-repository": ("Bootstrap Repository", "Create or strengthen an agent-ready repository"),
     "execute-zzzops": ("Execute", "Run the primary autonomous ZzzOps goal loop"),
-    "migrate-to-zzzops": ("Migrate TODOs", "Discover and migrate repository TODOs safely"),
-    "review-agentic-engineering": ("Review Agentic Engineering", "Improve how you work with software agents"),
-    "review-zzzops-policy": ("Review Policy", "Initialize or review project operating policy"),
-    "send-zzzops-feedback": ("Send Feedback", "Preview and send privacy-safe ZzzOps feedback"),
-    "suggest-zzzops-work": ("Suggest Work", "Audit project gaps and suggest durable work"),
-    "validate-zzzops-installation": ("Validate Installation", "Validate one repository after install or upgrade"),
+    "migrate-zzzops-repository": ("Migrate Repository", "Move a pre-reset ZzzOps repository to the new engine"),
 }
 SHIPPED_SKILLS = set(SKILL_UI)
+CANONICAL_VERSION = json.loads((ROOT / "plugins" / "zzzops" / "plugin.json").read_text(encoding="utf-8"))["version"]
+NO_POLICY = "this repository has no ZzzOps policy on `main`; run the bootstrap skill"
+
+
+def package_check_entries(environment: list[str]) -> list[str]:
+    """validate's environment also carries git and gh checks (no token in CI); select only the package check's."""
+    return [entry for entry in environment
+            if entry.startswith("plugin package") or "skill discovery metadata" in entry]
+
+
+def run_full_validate(plugin: Path, workspace: Path) -> dict:
+    """Run the full `validate` of a built plugin from a pushed one-commit repository, through zzzops.py (any OS)."""
+    import engine_fixtures as fx
+    home = workspace / "home"
+    home.mkdir()
+    env = fx.isolated_env(str(home))
+    repo, origin = workspace / "repo", workspace / "origin.git"
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", *args], check=True, capture_output=True, env=env)
+
+    git("init", "-q", "-b", "main", str(repo))
+    git("-C", str(repo), "commit", "-q", "--allow-empty", "-m", "initial")
+    git("init", "-q", "--bare", str(origin))
+    git("-C", str(repo), "remote", "add", "origin", str(origin))
+    git("-C", str(repo), "push", "-q", "origin", "main")
+    git("-C", str(repo), "config", "zzzops.integrationBranch", "main")
+    result = subprocess.run([sys.executable, str(plugin / "zzzops" / "zzzops.py"), "validate"],
+                            cwd=repo, env=env, capture_output=True, text=True)
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise AssertionError(f"validate printed no JSON: {result.stderr}{result.stdout}") from exc
 
 
 def quoted_yaml_value(data: bytes, field: str) -> str:
@@ -54,38 +85,22 @@ class MarketplaceBundleTests(unittest.TestCase):
 
     def test_fixed_version_build_is_deterministic_and_complete(self) -> None:
         with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
-            notes = "Initial skills-only submission.\n"
-            one = self.builder.build_bundles(ROOT, Path(first), "2.0.0", notes)
-            two = self.builder.build_bundles(ROOT, Path(second), "2.0.0", notes)
-            self.assertEqual({"plugin", "submission", "claude_plugin"}, set(one))
-            for key in ("plugin", "submission", "claude_plugin"):
-                self.assertEqual(
-                    hashlib.sha256(one[key].read_bytes()).hexdigest(),
-                    hashlib.sha256(two[key].read_bytes()).hexdigest(),
-                )
-
-            self.assertEqual("zzzops-claude-plugin-v2.0.0.zip", one["claude_plugin"].name)
-            with ZipFile(one["claude_plugin"]) as archive:
-                names = archive.namelist()
-                self.assertIn(".claude-plugin/plugin.json", names)
-                self.assertIn("zzzops/zzzops.py", names)
-                self.assertNotIn(".claude-plugin/marketplace.json", names)
-                packaged_manifest = json.loads(archive.read(".claude-plugin/plugin.json"))
-                committed_manifest = json.loads(
-                    (ROOT / "plugins" / "zzzops" / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
-                )
-                expected_manifest = {**committed_manifest, "version": "2.0.0"}
-                self.assertEqual(expected_manifest, packaged_manifest)
+            one = self.builder.build_bundle(ROOT, Path(first), "2.0.0")
+            two = self.builder.build_bundle(ROOT, Path(second), "2.0.0")
+            self.assertEqual({"plugin"}, set(one))
+            self.assertEqual(
+                hashlib.sha256(one["plugin"].read_bytes()).hexdigest(),
+                hashlib.sha256(two["plugin"].read_bytes()).hexdigest(),
+            )
             with ZipFile(one["plugin"]) as archive:
                 names = archive.namelist()
                 self.assertIn("plugin.json", names)
                 self.assertIn(".codex-plugin/plugin.json", names)
                 self.assertIn("scripts/cleanup_legacy.py", names)
                 self.assertNotIn("skills/run-zzzops-acceptance/SKILL.md", names)
-                self.assertIn("zzzops/references/bootstrap/ANALYZE.md", names)
-                self.assertIn("zzzops/references/bootstrap/PLAN.md", names)
-                self.assertIn("zzzops/references/bootstrap/GREENFIELD.md", names)
-                self.assertIn("zzzops/references/bootstrap/BROWNFIELD.md", names)
+                for shipped in ("zzzops/references/SETUP.md", "zzzops/references/REPAIR.md", "zzzops/engine/cli.py",
+                                "zzzops/templates/default/workflow.json", "bin/zzzops"):
+                    self.assertIn(shipped, names)
                 self.assertFalse(any("__pycache__" in name or name.endswith((".pyc", ".pyo")) for name in names))
                 self.assertEqual("2.0.0", json.loads(archive.read("plugin.json"))["version"])
                 self.assertEqual("2.0.0", json.loads(archive.read(".codex-plugin/plugin.json"))["version"])
@@ -106,36 +121,30 @@ class MarketplaceBundleTests(unittest.TestCase):
                     self.builder.validate_portal_png(name, packaged)
                     self.assertEqual((ROOT / "plugins" / "zzzops" / name).read_bytes(), packaged)
 
-            with ZipFile(one["submission"]) as archive:
-                names = set(archive.namelist())
-                self.assertEqual({
-                    "ATTESTATIONS.md", "LISTING.md", "RELEASE_NOTES.md", "TEST_CASES.md",
-                    "assets/composer-icon-dark.png", "assets/composer-icon.png",
-                    "assets/logo-dark.png", "assets/logo.png", "manifest.json", "submission.json",
-                }, names)
-                submission = json.loads(archive.read("submission.json"))
-                manifest = json.loads(archive.read("manifest.json"))
-                self.assertEqual("skills_only", submission["submission_type"])
-                self.assertEqual("2.0.0", submission["version"])
-                self.assertLessEqual(len(submission["listing"]["short_description"]), 30)
-                self.assertEqual("https://github.com/david-rzepa/zzzops", submission["listing"]["website_url"])
-                self.assertGreaterEqual(len(submission["tests"]["positive"]), 5)
-                self.assertGreaterEqual(len(submission["tests"]["negative"]), 3)
-                self.assertEqual(
-                    hashlib.sha256(one["plugin"].read_bytes()).hexdigest(),
-                    submission["plugin_archive"]["sha256"],
-                )
-                self.assertEqual("2.0.0", manifest["version"])
-                self.assertEqual(
-                    hashlib.sha256(archive.read("submission.json")).hexdigest(),
-                    manifest["files"]["submission.json"],
-                )
+            listing, tests, attestations = self.builder.validate_sources(ROOT)
+            self.assertEqual("skills_only", listing["submission_type"])
+            self.assertGreaterEqual(len(tests["positive"]), 5)
+            self.assertGreaterEqual(len(tests["negative"]), 3)
+            self.assertIn("human review gates", attestations)
+
+    def test_default_workflow_and_templates_ship_in_the_bundle(self) -> None:
+        """The default graph and its prompts must not rely on checkout-only files."""
+        files = self.builder.plugin_files(ROOT, "2.0.0")
+        workflow = json.loads(files["zzzops/templates/default/workflow.json"])
+        nodes = workflow["graphs"]["default"]["nodes"]
+        self.assertEqual(15, len(nodes))                         # the consolidated review graph (G1022)
+        for node in nodes.values():
+            if node["kind"] != "op":
+                self.assertIn(f"zzzops/templates/default/prompts/{node['prompt']}", files)
+            for lens in (node.get("lenses") or {}).values():
+                self.assertIn(f"zzzops/templates/default/prompts/{lens['prompt']}", files)
+        json.loads(files["zzzops/templates/default/POLICY.json"])
 
     def test_invalid_version_or_incomplete_sources_fail_before_output(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
             with self.assertRaisesRegex(self.builder.BundleError, "version"):
-                self.builder.build_bundles(ROOT, output, "latest", "notes")
+                self.builder.build_bundle(ROOT, output, "latest")
             self.assertEqual([], list(output.iterdir()))
         with self.assertRaisesRegex(self.builder.BundleError, "secret-like"):
             self.builder.scan_for_secrets("config.txt", b"OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz")
@@ -155,14 +164,24 @@ class MarketplaceBundleTests(unittest.TestCase):
             with self.assertRaisesRegex(self.builder.BundleError, "canonical development manifest"):
                 self.builder.plugin_files(root, "2.0.0")
 
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copytree(ROOT / "plugins" / "zzzops", root / "plugins" / "zzzops")
+            manifest_path = root / "plugins" / "zzzops" / ".claude-plugin" / "plugin.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["version"] = "0.0.0-dev"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(self.builder.BundleError, "Claude manifest must omit version"):
+                self.builder.plugin_files(root, "2.0.0")
+
     def test_stale_release_output_is_rejected_before_any_partial_refresh(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "marketplace"
             output.mkdir()
-            stale = output / "zzzops-claude-plugin-v1.9.0.zip"
+            stale = output / "unexpected.zip"
             stale.write_bytes(b"stale")
             with self.assertRaisesRegex(self.builder.BundleError, "output directory must be empty"):
-                self.builder.build_bundles(ROOT, output, "2.0.0", "notes")
+                self.builder.build_bundle(ROOT, output, "2.0.0")
             self.assertEqual({stale.name}, {path.name for path in output.iterdir()})
 
     def test_release_validation_rejects_missing_divergent_and_invalid_archives(self) -> None:
@@ -173,26 +192,26 @@ class MarketplaceBundleTests(unittest.TestCase):
                 )
         divergent = self.builder.zip_bytes({"file": b"observed"})
         with self.assertRaisesRegex(self.builder.BundleError, "content mismatch"):
-            self.builder.validate_archive(divergent, {"file": b"expected"}, "Claude plugin")
+            self.builder.validate_archive(divergent, {"file": b"expected"}, "plugin")
         with self.assertRaisesRegex(self.builder.BundleError, "not a valid ZIP"):
-            self.builder.validate_archive(b"invalid", {}, "Claude plugin")
+            self.builder.validate_archive(b"invalid", {}, "plugin")
 
     def test_claude_marketplace_is_derived_from_the_canonical_plugin(self) -> None:
         files = self.builder.claude_marketplace_files(ROOT, "2.0.0")
         self.assertIn("zzzops/concepts/bounded-commitment.md", files)
         self.assertIn("zzzops/zzzops/concepts.py", files)
-        skill = files["zzzops/skills/execute-zzzops/SKILL.md"].decode("utf-8")
-        self.assertIn("[[bounded commitment]](../../concepts/bounded-commitment.md)", skill)
+        instruction = files["zzzops/skills/execute-zzzops/SKILL.md"].decode("utf-8")
+        self.assertIn("[[bounded commitment]](../../concepts/bounded-commitment.md)", instruction)
         manifest = json.loads(files["zzzops/.claude-plugin/plugin.json"])
         marketplace = json.loads(files[".claude-plugin/marketplace.json"])
 
         self.assertEqual("zzzops", manifest["name"])
-        self.assertEqual("2.0.0", manifest["version"])
+        self.assertNotIn("version", manifest)
         self.assertEqual("zzzops", marketplace["name"])
         self.assertEqual(manifest["description"], marketplace["metadata"]["description"])
-        self.assertEqual("2.0.0", marketplace["metadata"]["version"])
+        self.assertNotIn("version", marketplace["metadata"])
         self.assertEqual("./zzzops", marketplace["plugins"][0]["source"])
-        self.assertEqual("2.0.0", marketplace["plugins"][0]["version"])
+        self.assertNotIn("version", marketplace["plugins"][0])
         self.assertEqual(manifest["keywords"], marketplace["plugins"][0]["keywords"])
         self.assertEqual("development", marketplace["plugins"][0]["category"])
         self.assertEqual(
@@ -201,6 +220,16 @@ class MarketplaceBundleTests(unittest.TestCase):
         )
 
         canonical = self.builder.plugin_files(ROOT, "2.0.0")
+        canonical_skills = {
+            relative.split("/")[1] for relative in canonical
+            if relative.startswith("skills/") and relative.endswith("/SKILL.md")
+        }
+        generated_skills = {
+            relative.split("/")[2] for relative in files
+            if relative.startswith("zzzops/skills/") and relative.endswith("/SKILL.md")
+        }
+        self.assertEqual(SHIPPED_SKILLS, canonical_skills)
+        self.assertEqual(canonical_skills, generated_skills)
         for relative, content in canonical.items():
             self.assertEqual(content, files[f"zzzops/{relative}"], relative)
 
@@ -214,15 +243,13 @@ class MarketplaceBundleTests(unittest.TestCase):
         self.assertEqual("./plugins/zzzops", marketplace["plugins"][0]["source"])
         self.assertEqual(canonical["name"], marketplace["name"])
         self.assertEqual(canonical["author"], marketplace["owner"])
-        self.assertEqual(
-            {"description": canonical["description"], "version": canonical["version"]},
-            marketplace["metadata"],
-        )
+        self.assertEqual({"description": canonical["description"]}, marketplace["metadata"])
         self.assertEqual(canonical["name"], marketplace["plugins"][0]["name"])
         self.assertEqual(canonical["description"], marketplace["plugins"][0]["description"])
-        self.assertEqual(canonical["version"], marketplace["plugins"][0]["version"])
+        self.assertNotIn("version", marketplace["plugins"][0])
         self.assertEqual(canonical["name"], manifest["name"])
-        for field in ("version", "description", "author", "homepage", "repository", "license", "keywords"):
+        self.assertNotIn("version", manifest)
+        for field in ("description", "author", "homepage", "repository", "license", "keywords"):
             self.assertEqual(canonical[field], manifest[field], field)
 
     def test_public_discovery_metadata_keeps_one_truthful_positioning(self) -> None:
@@ -239,7 +266,7 @@ class MarketplaceBundleTests(unittest.TestCase):
 
         expected_keywords = [
             "agentic-engineering", "coding-agents", "autonomous-development", "repository-bootstrap",
-            "goal-management", "github-issues", "codex", "claude-code",
+            "goal-management", "git-native", "codex", "claude-code",
         ]
         self.assertEqual("Agentic engineering with durable goals for autonomous coding agents", canonical["description"])
         self.assertEqual(expected_keywords, canonical["keywords"])
@@ -262,7 +289,7 @@ class MarketplaceBundleTests(unittest.TestCase):
             root = Path(directory)
             shutil.copytree(ROOT / "plugins" / "zzzops", root / "plugins" / "zzzops")
             (root / "plugins" / "zzzops" / "skills" / "add-zzzops-goal" / "SKILL.md").unlink()
-            with self.assertRaisesRegex(self.builder.BundleError, "skill discovery metadata"):
+            with self.assertRaisesRegex(self.builder.BundleError, "product skills|skill discovery metadata"):
                 self.builder.claude_marketplace_files(root, "2.0.0")
         with self.assertRaisesRegex(self.builder.BundleError, "version"):
             self.builder.claude_marketplace_files(ROOT, "latest")
@@ -291,6 +318,40 @@ class MarketplaceBundleTests(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(self.builder.BundleError, "unsafe generated path"):
                     self.claude_builder.write_marketplace(ROOT, Path(directory) / "unsafe", "2.0.0")
+
+    def test_generated_claude_marketplace_passes_the_full_package_check(self) -> None:
+        """G1033: a Claude marketplace built for the canonical or a release version passes its own self-check."""
+        for version, channel in ((CANONICAL_VERSION, "development"), ("2.0.0", "official")):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as directory:
+                workspace = Path(directory)
+                out = self.claude_builder.write_marketplace(ROOT, workspace / "out", version)
+                for skill in SHIPPED_SKILLS:
+                    description = quoted_yaml_value(
+                        (out / "zzzops" / "skills" / skill / "SKILL.md").read_bytes(), "description")
+                    self.assertTrue(description.startswith(f"ZzzOps v{version} — {channel} plugin. "),
+                                    (skill, description))
+                report = run_full_validate(out / "zzzops", workspace)
+                self.assertEqual([], package_check_entries(report["environment"]), report)
+                self.assertEqual([NO_POLICY], report["policy"], report)
+
+    def test_package_check_assertion_fails_on_a_wrong_channel_build_with_a_claude_hint(self) -> None:
+        """The negative case: a SKILL.md rendered with the wrong channel is reported, with a Claude Code hint."""
+        package = runpy.run_path(str(ROOT / "plugins" / "zzzops" / "zzzops" / "package.py"))
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            out = self.claude_builder.write_marketplace(ROOT, workspace / "out", CANONICAL_VERSION)
+            relative = "skills/add-zzzops-goal/SKILL.md"
+            skill = out / "zzzops" / relative
+            skill.write_bytes(package["render_skill_metadata"](
+                relative, skill.read_bytes(), CANONICAL_VERSION, "official"))
+            report = run_full_validate(out / "zzzops", workspace)
+            entries = package_check_entries(report["environment"])
+            self.assertEqual(1, len(entries), report)
+            self.assertIn("skill discovery metadata", entries[0])
+            self.assertIn(relative, entries[0])
+            self.assertIn("Claude Code", entries[0])
+            self.assertIn("claude plugin update zzzops@zzzops", entries[0])
+            self.assertNotIn("Codex", entries[0])
 
 
 if __name__ == "__main__":

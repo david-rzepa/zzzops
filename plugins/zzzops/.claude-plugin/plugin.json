@@ -14,9 +14,8 @@
     "autonomous-development",
     "repository-bootstrap",
     "goal-management",
-    "github-issues",
+    "git-native",
     "codex",
     "claude-code"
-  ],
-  "version": "0.0.0-dev"
+  ]
 }

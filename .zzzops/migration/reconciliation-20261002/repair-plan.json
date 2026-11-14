@@ -1,0 +1,294 @@
+{
+  "source_commit": "45aea1fa556a3e2edafc8c57f52bbfc33613f996",
+  "members": {
+    "384": {
+      "notes": [
+        "Fulfilled historical prerequisite #383: closed/done, PR #388 merged as `3fea62dd5a69cf2a38ea1f41b4ad127f0eff5de3`, verified in dev ancestry. This relationship remains part of the goal history; it no longer represents outstanding scheduling work. Current workflow reviews and work authority remain required.",
+        "Fulfilled historical prerequisite #379: closed/done, PR #392 merged as `4452393444d6635b77b8973e724afbaff751cffd`, verified in dev ancestry. This relationship remains part of the goal history; it no longer represents outstanding scheduling work. Current workflow reviews and work authority remain required.",
+        "Fulfilled historical prerequisite #390: closed/done, PR #412 merged as `a06c95141d1c4faa39507061587f8268baf6eb44`, PR #414 merged as `d9d9426f56142ac78daf6b7c4decf16b439fdcb7`, verified in dev ancestry. This relationship remains part of the goal history; it no longer represents outstanding scheduling work. Current workflow reviews and work authority remain required.",
+        "Retired the obsolete branch reservation `codex/goal-384-entropy-lifecycle-acceptance`: PR #389 was merged into dev as `bf6a23868beaece4a1834f2db076f7708d0759b8`; the remote branch and its provider reservation label are absent. Existing blockers, parent and remaining resource hints are retained. This does not mark the goal complete."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/384.md",
+      "fulfilled_dependencies": [
+        383,
+        379,
+        390
+      ],
+      "retained_dependencies": [],
+      "moved_risk_annotations": [],
+      "restore_missing_priority_label": null
+    },
+    "433": {
+      "notes": [
+        "Fulfilled historical prerequisite #431: closed/done, PR #441 merged as `2c71700dc5816ae49cdb7bf3636a05f0bdeb11ef`, verified in dev ancestry. This relationship remains part of the goal history; it no longer represents outstanding scheduling work. Current workflow reviews and work authority remain required."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/433.md",
+      "fulfilled_dependencies": [
+        431
+      ],
+      "retained_dependencies": [],
+      "moved_risk_annotations": [],
+      "restore_missing_priority_label": null
+    },
+    "434": {
+      "notes": [
+        "Fulfilled historical prerequisite #431: closed/done, PR #441 merged as `2c71700dc5816ae49cdb7bf3636a05f0bdeb11ef`, verified in dev ancestry. This relationship remains part of the goal history; it no longer represents outstanding scheduling work. Current workflow reviews and work authority remain required."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/434.md",
+      "fulfilled_dependencies": [
+        431
+      ],
+      "retained_dependencies": [],
+      "moved_risk_annotations": [],
+      "restore_missing_priority_label": null
+    },
+    "435": {
+      "notes": [
+        "Fulfilled historical prerequisite #432: closed/done, PR #442 merged as `6938f89d655ace33cf2c3e83508386f073a47802`, verified in dev ancestry. This relationship remains part of the goal history; it no longer represents outstanding scheduling work. Current workflow reviews and work authority remain required."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/435.md",
+      "fulfilled_dependencies": [
+        432
+      ],
+      "retained_dependencies": [
+        433,
+        434
+      ],
+      "moved_risk_annotations": [],
+      "restore_missing_priority_label": null
+    },
+    "436": {
+      "notes": [
+        "Fulfilled historical prerequisite #432: closed/done, PR #442 merged as `6938f89d655ace33cf2c3e83508386f073a47802`, verified in dev ancestry. This relationship remains part of the goal history; it no longer represents outstanding scheduling work. Current workflow reviews and work authority remain required."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/436.md",
+      "fulfilled_dependencies": [
+        432
+      ],
+      "retained_dependencies": [
+        433,
+        435
+      ],
+      "moved_risk_annotations": [],
+      "restore_missing_priority_label": null
+    },
+    "437": {
+      "notes": [
+        "Fulfilled historical prerequisite #432: closed/done, PR #442 merged as `6938f89d655ace33cf2c3e83508386f073a47802`, verified in dev ancestry. This relationship remains part of the goal history; it no longer represents outstanding scheduling work. Current workflow reviews and work authority remain required."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/437.md",
+      "fulfilled_dependencies": [
+        432
+      ],
+      "retained_dependencies": [
+        434
+      ],
+      "moved_risk_annotations": [],
+      "restore_missing_priority_label": null
+    },
+    "438": {
+      "notes": [
+        "Fulfilled historical prerequisite #432: closed/done, PR #442 merged as `6938f89d655ace33cf2c3e83508386f073a47802`, verified in dev ancestry. This relationship remains part of the goal history; it no longer represents outstanding scheduling work. Current workflow reviews and work authority remain required."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/438.md",
+      "fulfilled_dependencies": [
+        432
+      ],
+      "retained_dependencies": [
+        433,
+        434,
+        435,
+        436,
+        437,
+        440
+      ],
+      "moved_risk_annotations": [],
+      "restore_missing_priority_label": null
+    },
+    "440": {
+      "notes": [
+        "Fulfilled historical prerequisite #431: closed/done, PR #441 merged as `2c71700dc5816ae49cdb7bf3636a05f0bdeb11ef`, verified in dev ancestry. This relationship remains part of the goal history; it no longer represents outstanding scheduling work. Current workflow reviews and work authority remain required.",
+        "Fulfilled historical prerequisite #432: closed/done, PR #442 merged as `6938f89d655ace33cf2c3e83508386f073a47802`, verified in dev ancestry. This relationship remains part of the goal history; it no longer represents outstanding scheduling work. Current workflow reviews and work authority remain required."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/440.md",
+      "fulfilled_dependencies": [
+        431,
+        432
+      ],
+      "retained_dependencies": [
+        433,
+        434
+      ],
+      "moved_risk_annotations": [],
+      "restore_missing_priority_label": null
+    },
+    "456": {
+      "notes": [
+        "Fulfilled historical prerequisite #432: closed/done, PR #442 merged as `6938f89d655ace33cf2c3e83508386f073a47802`, verified in dev ancestry. This relationship remains part of the goal history; it no longer represents outstanding scheduling work. Current workflow reviews and work authority remain required."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/456.md",
+      "fulfilled_dependencies": [
+        432
+      ],
+      "retained_dependencies": [],
+      "moved_risk_annotations": [],
+      "restore_missing_priority_label": null
+    },
+    "457": {
+      "notes": [
+        "Fulfilled historical prerequisite #432: closed/done, PR #442 merged as `6938f89d655ace33cf2c3e83508386f073a47802`, verified in dev ancestry. This relationship remains part of the goal history; it no longer represents outstanding scheduling work. Current workflow reviews and work authority remain required."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/457.md",
+      "fulfilled_dependencies": [
+        432
+      ],
+      "retained_dependencies": [],
+      "moved_risk_annotations": [],
+      "restore_missing_priority_label": null
+    },
+    "458": {
+      "notes": [
+        "Fulfilled historical prerequisite #432: closed/done, PR #442 merged as `6938f89d655ace33cf2c3e83508386f073a47802`, verified in dev ancestry. This relationship remains part of the goal history; it no longer represents outstanding scheduling work. Current workflow reviews and work authority remain required."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/458.md",
+      "fulfilled_dependencies": [
+        432
+      ],
+      "retained_dependencies": [
+        457
+      ],
+      "moved_risk_annotations": [],
+      "restore_missing_priority_label": null
+    },
+    "459": {
+      "notes": [
+        "Fulfilled historical prerequisite #432: closed/done, PR #442 merged as `6938f89d655ace33cf2c3e83508386f073a47802`, verified in dev ancestry. This relationship remains part of the goal history; it no longer represents outstanding scheduling work. Current workflow reviews and work authority remain required."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/459.md",
+      "fulfilled_dependencies": [
+        432
+      ],
+      "retained_dependencies": [
+        457,
+        458
+      ],
+      "moved_risk_annotations": [],
+      "restore_missing_priority_label": null
+    },
+    "460": {
+      "notes": [
+        "Fulfilled historical prerequisite #432: closed/done, PR #442 merged as `6938f89d655ace33cf2c3e83508386f073a47802`, verified in dev ancestry. This relationship remains part of the goal history; it no longer represents outstanding scheduling work. Current workflow reviews and work authority remain required."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/460.md",
+      "fulfilled_dependencies": [
+        432
+      ],
+      "retained_dependencies": [
+        457,
+        458,
+        459
+      ],
+      "moved_risk_annotations": [],
+      "restore_missing_priority_label": null
+    },
+    "467": {
+      "notes": [
+        "Restored the original canonical goal object, including revision 1, from GitHub edit history. The current specification above is retained."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/467.md",
+      "fulfilled_dependencies": [],
+      "retained_dependencies": [],
+      "moved_risk_annotations": [],
+      "restore_missing_priority_label": "zzzops:priority:P1"
+    },
+    "545": {
+      "notes": [
+        "Preserved design and review concerns from legacy risk annotations: `data_integrity`. These concerns remain requirements for understanding, verification, and review. Current policy has no named minimum for these tags, so they are represented here as specification concerns rather than undefined policy selectors; all policy-defined risk categories remain active."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/545.md",
+      "fulfilled_dependencies": [],
+      "retained_dependencies": [],
+      "moved_risk_annotations": [
+        "data_integrity"
+      ],
+      "restore_missing_priority_label": null
+    },
+    "546": {
+      "notes": [
+        "Preserved design and review concerns from legacy risk annotations: `data_integrity`. These concerns remain requirements for understanding, verification, and review. Current policy has no named minimum for these tags, so they are represented here as specification concerns rather than undefined policy selectors; all policy-defined risk categories remain active."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/546.md",
+      "fulfilled_dependencies": [],
+      "retained_dependencies": [],
+      "moved_risk_annotations": [
+        "data_integrity"
+      ],
+      "restore_missing_priority_label": null
+    },
+    "547": {
+      "notes": [
+        "Preserved design and review concerns from legacy risk annotations: `concurrency`, `data_integrity`. These concerns remain requirements for understanding, verification, and review. Current policy has no named minimum for these tags, so they are represented here as specification concerns rather than undefined policy selectors; all policy-defined risk categories remain active."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/547.md",
+      "fulfilled_dependencies": [],
+      "retained_dependencies": [
+        498
+      ],
+      "moved_risk_annotations": [
+        "concurrency",
+        "data_integrity"
+      ],
+      "restore_missing_priority_label": null
+    },
+    "557": {
+      "notes": [
+        "Preserved design and review concerns from legacy risk annotations: `data_integrity`. These concerns remain requirements for understanding, verification, and review. Current policy has no named minimum for these tags, so they are represented here as specification concerns rather than undefined policy selectors; all policy-defined risk categories remain active."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/557.md",
+      "fulfilled_dependencies": [],
+      "retained_dependencies": [],
+      "moved_risk_annotations": [
+        "data_integrity"
+      ],
+      "restore_missing_priority_label": null
+    },
+    "561": {
+      "notes": [
+        "Initialized the missing first canonical revision to 1. Creation and update timestamps are identical; GitHub records no edits/comments and execution history is empty. No prior revision is claimed or overwritten."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/561.md",
+      "fulfilled_dependencies": [],
+      "retained_dependencies": [],
+      "moved_risk_annotations": [],
+      "restore_missing_priority_label": null
+    },
+    "562": {
+      "notes": [
+        "Preserved design and review concerns from legacy risk annotations: `concurrency`, `data_integrity`. These concerns remain requirements for understanding, verification, and review. Current policy has no named minimum for these tags, so they are represented here as specification concerns rather than undefined policy selectors; all policy-defined risk categories remain active."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/562.md",
+      "fulfilled_dependencies": [],
+      "retained_dependencies": [],
+      "moved_risk_annotations": [
+        "concurrency",
+        "data_integrity"
+      ],
+      "restore_missing_priority_label": null
+    },
+    "566": {
+      "notes": [
+        "Preserved design and review concerns from legacy risk annotations: `data_integrity`. These concerns remain requirements for understanding, verification, and review. Current policy has no named minimum for these tags, so they are represented here as specification concerns rather than undefined policy selectors; all policy-defined risk categories remain active."
+      ],
+      "target": ".zzzops/migration/reconciliation-20261002/repairs/566.md",
+      "fulfilled_dependencies": [],
+      "retained_dependencies": [
+        497,
+        499
+      ],
+      "moved_risk_annotations": [
+        "data_integrity"
+      ],
+      "restore_missing_priority_label": null
+    }
+  }
+}

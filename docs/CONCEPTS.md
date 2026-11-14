@@ -40,3 +40,7 @@ The required non-empty sections are Meaning, Decision rule, Scope and authority,
 Agents resolve only definitions explicitly linked by the document and load each target once. Related-concept prose is not traversed automatically. Whole-catalog loading is reserved for deterministic authoring and package validation, where it is necessary to detect unlinked first uses and catalog conflicts.
 
 Material definition changes require review of affected policy, prompts, goals, acceptance behavior, and compatibility notes. Concepts explain meaning and decision tests; user and safety authority, repository instructions, reviewed policy, and goal state remain authoritative.
+
+## Where the concepts are used
+
+The execute skill links *safe useful work* (what to do while human decisions are pending), *bounded commitment* (what a blocked worker may still do) and *exact head* (what `merge` merges); the add-goal skill links *effective engineering rigor* (how thorough a spec must be). The engine itself does not interpret concepts: the workflow, its fingerprints and its human gates are defined in `.zzzops/workflow.json` and [How execution works](EXECUTION.md).

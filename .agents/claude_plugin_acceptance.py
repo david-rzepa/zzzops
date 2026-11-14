@@ -4,26 +4,26 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 from typing import Any
-from zipfile import ZipFile
 
 
-EXPECTED_SKILLS = {
-    "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
-    "review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
-    "validate-zzzops-installation",
-}
+EXPECTED_SKILLS = {"add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-zzzops-repository"}
 
 
 class AcceptanceError(ValueError):
     """The generated plugin failed an observable Claude acceptance boundary."""
+
+
+NO_VERSION_WARNING = "version: No version specified. Consider adding a version following semver"
 
 
 def run(command: list[str], *, env: dict[str, str] | None = None) -> str:
@@ -42,16 +42,103 @@ def json_output(command: list[str], *, env: dict[str, str] | None = None) -> Any
         raise AcceptanceError(f"command returned invalid JSON: {command[0]} {command[1]}") from exc
 
 
-def validate_available(records: Any, version: str, source: str = "./zzzops") -> None:
+def require_no_package_check(report: Any) -> None:
+    """Fail if a full `validate` report carries a plugin package self-check entry.
+
+    The environment list also holds git and gh checks; CI runs without a GitHub token, so those are expected
+    and ignored. Only the package check's entries (and the G1033 mismatch text) fail acceptance.
+    """
+    environment = report.get("environment") if isinstance(report, dict) else None
+    if not isinstance(environment, list) or any(not isinstance(entry, str) for entry in environment):
+        raise AcceptanceError("full validate did not return an environment list")
+    problems = [entry for entry in environment
+                if entry.startswith("plugin package") or "skill discovery metadata" in entry]
+    if problems:
+        raise AcceptanceError(f"full validate reports a plugin package problem: {problems[0][:300]}")
+
+
+def prepare_validate_project(project: Path, origin: Path, *, env: dict[str, str]) -> None:
+    """Give `project` one pushed commit and an integration branch so the full `validate` runs every check."""
+    identity = ["-c", "user.name=ZzzOps acceptance", "-c", "user.email=acceptance@example.invalid"]
+    run(["git", "-C", str(project), *identity, "commit", "-q", "--allow-empty", "-m", "initial"], env=env)
+    run(["git", "init", "-q", "--bare", str(origin)], env=env)
+    run(["git", "-C", str(project), "remote", "add", "origin", str(origin)], env=env)
+    run(["git", "-C", str(project), "push", "-q", "origin", "HEAD:refs/heads/main"], env=env)
+    run(["git", "-C", str(project), "config", "zzzops.integrationBranch", "main"], env=env)
+
+
+def full_validate(runtime: Path, project: Path, *, env: dict[str, str]) -> Any:
+    """Run the packaged CLI's full `validate` in `project`; it exits non-zero there (no policy), so read its JSON."""
+    result = subprocess.run([sys.executable, str(runtime), "validate"], cwd=project, env=env,
+                            text=True, capture_output=True, check=False)
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        detail = (result.stderr.strip() or result.stdout.strip() or "no command output").splitlines()[0]
+        raise AcceptanceError(f"full validate returned invalid JSON: {detail[:300]}") from exc
+
+
+def validate_versionless(path: Path, *, env: dict[str, str]) -> None:
+    """Keep strict validation except for Claude's warning about its documented SHA mode."""
+    command = ["claude", "plugin", "validate", str(path), "--strict"]
+    result = subprocess.run(command, env=env, text=True, capture_output=True, check=False)
+    if result.returncode == 0:
+        return
+    detail = "\n".join(part for part in (result.stdout, result.stderr) if part)
+    if (
+        detail.count(NO_VERSION_WARNING) != 1
+        or "Found 1 warning" not in detail
+        or "Validation failed (--strict treats warnings as errors)" not in detail
+    ):
+        raise AcceptanceError("strict Claude validation failed beyond the documented SHA-version warning")
+    run(["claude", "plugin", "validate", str(path)], env=env)
+
+
+def commit_marketplace(marketplace: Path, marker: str, *, initialize: bool = False) -> str:
+    """Commit one observable marketplace revision and return its Git identity."""
+    if initialize:
+        run(["git", "init", "--initial-branch", "main", str(marketplace)])
+    (marketplace / "zzzops" / ".acceptance-revision").write_text(marker + "\n", encoding="utf-8")
+    run(["git", "-C", str(marketplace), "add", "."])
+    run([
+        "git", "-C", str(marketplace), "-c", "user.name=ZzzOps Acceptance",
+        "-c", "user.email=acceptance@invalid.example", "commit", "-m", f"revision {marker}",
+    ])
+    revision = run(["git", "-C", str(marketplace), "rev-parse", "HEAD"]).strip()
+    if not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise AcceptanceError("generated marketplace has no full Git commit identity")
+    return revision
+
+
+def write_repository_marketplace(root: Path, output: Path) -> Path:
+    """Create the repository-native marketplace shape used by the Git revision probe."""
+    output.mkdir()
+    shutil.copytree(
+        root / "plugins" / "zzzops", output / "zzzops",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+    )
+    catalog = json.loads((root / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8-sig"))
+    catalog["plugins"][0]["source"] = "./zzzops"
+    manifest = output / ".claude-plugin" / "marketplace.json"
+    manifest.parent.mkdir()
+    manifest.write_text(json.dumps(catalog, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return output
+
+
+def validate_available(records: Any, version: str | None, source: str = "./zzzops") -> None:
     expected = {
         "pluginId": "zzzops@zzzops", "name": "zzzops", "marketplaceName": "zzzops",
-        "version": version, "source": source,
+        "source": source,
     }
+    if version is not None:
+        expected["version"] = version
     if (
         not isinstance(records, list) or len(records) != 1 or not isinstance(records[0], dict)
         or any(records[0].get(key) != value for key, value in expected.items())
+        or (version is None and "version" in records[0])
     ):
-        raise AcceptanceError("available plugin inventory does not match the expected marketplace")
+        observed = records[0] if isinstance(records, list) and len(records) == 1 else records
+        raise AcceptanceError(f"available plugin inventory mismatch: expected {expected!r}, observed {observed!r}")
 
 
 def validate_details(details: str) -> None:
@@ -68,7 +155,10 @@ def validate_install(records: Any, config: Path, version: str) -> Path:
         raise AcceptanceError("installed plugin inventory must contain exactly ZzzOps")
     record = records[0]
     if record.get("id") != "zzzops@zzzops" or record.get("version") != version or record.get("enabled") is not True:
-        raise AcceptanceError("installed ZzzOps identity, version, or enabled state is invalid")
+        raise AcceptanceError(
+            f"installed ZzzOps identity, version, or enabled state is invalid: "
+            f"expected version {version!r}, observed {record!r}"
+        )
     install_text = record.get("installPath")
     if not isinstance(install_text, str) or not install_text:
         raise AcceptanceError("installed ZzzOps has no cache path")
@@ -82,13 +172,15 @@ def validate_install(records: Any, config: Path, version: str) -> Path:
     return install
 
 
-def extract_archive(archive_path: Path, destination: Path) -> None:
-    with ZipFile(archive_path) as archive:
-        for name in archive.namelist():
-            relative = Path(name)
-            if relative.is_absolute() or ".." in relative.parts:
-                raise AcceptanceError(f"release archive contains an unsafe path: {name}")
-        archive.extractall(destination)
+def validate_skill_launch_contract(install: Path) -> None:
+    """Require every cached skill to use the package-owned CLI reference and launcher, never the retired --intent."""
+    if not (install / "bin" / "zzzops").is_file() or not (install / "zzzops" / "zzzops.py").is_file():
+        raise AcceptanceError("cached plugin is missing its launcher or packaged runtime")
+    for name in EXPECTED_SKILLS:
+        skill = install / "skills" / name / "SKILL.md"
+        text = skill.read_text(encoding="utf-8")
+        if "../../zzzops/references/CLI_USAGE.md" not in text or "--intent" in text:
+            raise AcceptanceError("cached skill does not use its package-owned CLI reference")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -97,61 +189,92 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     root = Path(__file__).resolve().parents[1]
     manifest = json.loads((root / "plugins" / "zzzops" / "plugin.json").read_text(encoding="utf-8-sig"))
-    version = manifest.get("version") if isinstance(manifest, dict) else None
-    if not isinstance(version, str) or not version:
+    product_version = manifest.get("version") if isinstance(manifest, dict) else None
+    if not isinstance(product_version, str) or not product_version:
         print("Claude plugin acceptance failed: canonical plugin version is missing", file=sys.stderr)
         return 2
     try:
         with tempfile.TemporaryDirectory(prefix="zzzops-claude-acceptance-") as directory:
             workspace = Path(directory)
-            plugin = workspace / "plugin"
-            artifacts = workspace / "artifacts"
+            marketplace = workspace / "marketplace"
+            generated_marketplace = workspace / "generated"
             config = workspace / "config"
             project = workspace / "project"
-            release_notes = workspace / "RELEASE_NOTES.md"
             config.mkdir()
             project.mkdir()
-            release_notes.write_text("Claude release artifact acceptance.\n", encoding="utf-8")
+            run(["git", "init", "-q", "-b", "main", str(project)])
             env = os.environ.copy()
             env["CLAUDE_CONFIG_DIR"] = str(config)
+            prepare_validate_project(project, workspace / "origin.git", env=env)
             observed_version = run(["claude", "--version"], env=env).strip()
             if not observed_version.startswith(args.claude_version + " "):
                 raise AcceptanceError(f"Claude CLI version drift: expected {args.claude_version}, observed {observed_version}")
             built = json_output([
-                sys.executable, str(root / ".github" / "scripts" / "build_marketplace_bundle.py"),
-                "--version", version, "--release-notes-file", str(release_notes),
-                "--output", str(artifacts),
+                sys.executable, str(root / ".github" / "scripts" / "build_claude_plugin.py"),
+                "--version", product_version, "--output", str(generated_marketplace),
             ])
-            claude_plugin = Path(built.get("claude_plugin", "")) if isinstance(built, dict) else Path()
-            if not claude_plugin.is_file():
-                raise AcceptanceError("release builder did not produce the Claude plugin archive")
-            extract_archive(claude_plugin, plugin)
-            run(["claude", "plugin", "validate", str(root), "--strict"], env=env)
-            run(["claude", "plugin", "validate", str(plugin), "--strict"], env=env)
-            run(["claude", "plugin", "marketplace", "add", str(root), "--scope", "user"], env=env)
+            generated = Path(built.get("marketplace", "")) if isinstance(built, dict) else Path()
+            generated_plugin = generated / "zzzops"
+            if generated.resolve() != generated_marketplace.resolve() or not generated_plugin.is_dir():
+                raise AcceptanceError("Claude generator did not produce the expected repository marketplace")
+            require_no_package_check(full_validate(generated_plugin / "zzzops" / "zzzops.py", project, env=env))
+            write_repository_marketplace(root, marketplace)
+            plugin = marketplace / "zzzops"
+            first_revision = commit_marketplace(marketplace, "first", initialize=True)
+            first_cache_version = first_revision[:12]
+            validate_versionless(root, env=env)
+            validate_versionless(generated, env=env)
+            validate_versionless(generated_plugin, env=env)
+            validate_versionless(marketplace, env=env)
+            validate_versionless(plugin, env=env)
+            run(["claude", "plugin", "marketplace", "add", str(marketplace), "--scope", "user"], env=env)
             available = json_output(["claude", "plugin", "list", "--available", "--json"], env=env)
             validate_available(
                 available.get("available") if isinstance(available, dict) else None,
-                version,
-                "./plugins/zzzops",
+                None,
             )
             run(["claude", "plugin", "install", "zzzops@zzzops", "--scope", "user", "--yes"], env=env)
-            install = validate_install(json_output(["claude", "plugin", "list", "--json"], env=env), config, version)
+            install = validate_install(
+                json_output(["claude", "plugin", "list", "--json"], env=env), config, first_cache_version,
+            )
+            if (install / ".acceptance-revision").read_text(encoding="utf-8").strip() != "first":
+                raise AcceptanceError("first installed cache does not contain the first Git revision")
+            validate_skill_launch_contract(install)
+
+            second_revision = commit_marketplace(marketplace, "second")
+            second_cache_version = second_revision[:12]
+            run(["claude", "plugin", "marketplace", "update", "zzzops"], env=env)
+            run(["claude", "plugin", "update", "zzzops@zzzops", "--scope", "user"], env=env)
+            updated = validate_install(
+                json_output(["claude", "plugin", "list", "--json"], env=env), config, second_cache_version,
+            )
+            if updated == install or (updated / ".acceptance-revision").read_text(encoding="utf-8").strip() != "second":
+                raise AcceptanceError("Claude did not install the second Git-backed plugin revision")
+            install = updated
+            validate_skill_launch_contract(install)
             details = run(["claude", "plugin", "details", "zzzops@zzzops"], env=env)
             validate_details(details)
             cached_skills = {path.name for path in (install / "skills").iterdir() if path.is_dir()}
             if cached_skills != EXPECTED_SKILLS:
                 raise AcceptanceError("cached skill directories differ from the intended ZzzOps surface")
-            inspection = json_output([
-                sys.executable, str(install / "zzzops" / "zzzops.py"), "--repo", str(project), "init", "inspect",
-            ])
-            package = inspection.get("capabilities", {}).get("plugin_package", {}) if isinstance(inspection, dict) else {}
-            if package.get("ok") is not True or package.get("version") != version:
-                raise AcceptanceError("packaged ZzzOps runtime cannot validate its installed cache copy")
+            runtime = install / "zzzops" / "zzzops.py"
+            usage = run([sys.executable, str(runtime), "--help"], env=env)
+            if "usage: zzzops" not in usage:
+                raise AcceptanceError("packaged ZzzOps runtime does not print its usage")
+            checked = json_output([sys.executable, str(runtime), "validate", "--policy", "--dir",
+                                   str(install / "zzzops" / "templates" / "default")])
+            if not isinstance(checked, dict) or checked.get("ok") is not True:
+                raise AcceptanceError("packaged ZzzOps runtime rejects its own shipped templates")
+            require_no_package_check(full_validate(runtime, project, env=env))
     except (AcceptanceError, OSError, UnicodeError, json.JSONDecodeError) as exc:
         print(f"Claude plugin acceptance failed: {exc}", file=sys.stderr)
         return 2
-    print(json.dumps({"accepted": True, "claude_version": args.claude_version, "plugin_version": version, "skills": sorted(EXPECTED_SKILLS)}))
+    print(json.dumps({
+        "accepted": True, "claude_version": args.claude_version,
+        "plugin_version": product_version,
+        "claude_cache_versions": [first_cache_version, second_cache_version],
+        "skills": sorted(EXPECTED_SKILLS),
+    }))
     return 0
 
 

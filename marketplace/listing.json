@@ -5,7 +5,7 @@
   "listing": {
     "name": "ZzzOps",
     "short_description": "Agentic engineering goals",
-    "long_description": "ZzzOps is an agentic engineering workflow for autonomous coding agents. It supports repository bootstrapping, captures durable goals in GitHub Issues, and executes prioritized work under reviewed project policy with verification, resumability, explicit blockers, and human approval at consequential boundaries.",
+    "long_description": "ZzzOps is an agentic engineering workflow for autonomous coding agents. It supports repository bootstrapping, keeps durable goals on Git branches of the repository, and executes prioritized work under the repository's policy with verification, resumability, explicit blockers, and human approval at consequential boundaries.",
     "category": "Developer Tools",
     "developer_name": "David Rzepa",
     "website_url": "https://github.com/david-rzepa/zzzops",

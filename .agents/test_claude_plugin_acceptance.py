@@ -3,19 +3,16 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from zipfile import ZipFile
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
 HARNESS = ROOT / ".agents" / "claude_plugin_acceptance.py"
-EXPECTED_SKILLS = {
-    "add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-to-zzzops",
-    "review-agentic-engineering", "review-zzzops-policy", "send-zzzops-feedback", "suggest-zzzops-work",
-    "validate-zzzops-installation",
-}
+EXPECTED_SKILLS = {"add-zzzops-goal", "bootstrap-zzzops-repository", "execute-zzzops", "migrate-zzzops-repository"}
 
 
 def load_harness():
@@ -39,10 +36,16 @@ class ClaudePluginAcceptanceTests(unittest.TestCase):
         self.harness.validate_available(available, "2.0.0")
         available[0]["source"] = "./plugins/zzzops"
         self.harness.validate_available(available, "2.0.0", "./plugins/zzzops")
-        details = "Skills (9)  " + ", ".join(sorted(EXPECTED_SKILLS)) + "\n  Agents (0)"
+        details = f"Skills ({len(EXPECTED_SKILLS)})  " + ", ".join(sorted(EXPECTED_SKILLS)) + "\n  Agents (0)"
         self.harness.validate_details(details)
         with self.assertRaisesRegex(self.harness.AcceptanceError, "skill inventory"):
-            self.harness.validate_details(details.replace("validate-zzzops-installation", "unexpected"))
+            self.harness.validate_details(details.replace("execute-zzzops", "unexpected"))
+
+        del available[0]["version"]
+        self.harness.validate_available(available, None, "./plugins/zzzops")
+        available[0]["version"] = "stale"
+        with self.assertRaisesRegex(self.harness.AcceptanceError, "inventory mismatch"):
+            self.harness.validate_available(available, None, "./plugins/zzzops")
 
     def test_install_must_resolve_inside_isolated_cache_with_runtime(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -58,13 +61,65 @@ class ClaudePluginAcceptanceTests(unittest.TestCase):
             with self.assertRaisesRegex(self.harness.AcceptanceError, "isolated Claude cache"):
                 self.harness.validate_install(record, config, "2.0.0")
 
-    def test_release_archive_extraction_rejects_traversal(self) -> None:
+    def test_cached_skill_launch_contract_rejects_the_retired_intent_cli(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            archive = Path(directory) / "unsafe.zip"
-            with ZipFile(archive, "w") as output:
-                output.writestr("../escape", "unsafe")
-            with self.assertRaisesRegex(self.harness.AcceptanceError, "unsafe path"):
-                self.harness.extract_archive(archive, Path(directory) / "output")
+            install = Path(directory)
+            (install / "zzzops").mkdir()
+            (install / "zzzops" / "zzzops.py").write_text("# runtime\n", encoding="utf-8")
+            (install / "bin").mkdir()
+            (install / "bin" / "zzzops").write_text("#!/bin/sh\n", encoding="utf-8")
+            for name in EXPECTED_SKILLS:
+                skill = install / "skills" / name
+                skill.mkdir(parents=True)
+                (skill / "SKILL.md").write_text("[CLI usage](../../zzzops/references/CLI_USAGE.md)\n", encoding="utf-8")
+            self.harness.validate_skill_launch_contract(install)
+            (install / "skills" / "execute-zzzops" / "SKILL.md").write_text(
+                "run zzzops.py --intent execute\n[CLI usage](../../zzzops/references/CLI_USAGE.md)\n", encoding="utf-8")
+            with self.assertRaisesRegex(self.harness.AcceptanceError, "package-owned CLI reference"):
+                self.harness.validate_skill_launch_contract(install)
+            (install / "bin" / "zzzops").unlink()
+            with self.assertRaisesRegex(self.harness.AcceptanceError, "launcher"):
+                self.harness.validate_skill_launch_contract(install)
+
+    def test_versionless_validation_allows_only_claudes_documented_sha_warning(self) -> None:
+        warning = (
+            "Found 1 warning\nplugins[0] plugin.json → " + self.harness.NO_VERSION_WARNING
+            + "\nValidation failed (--strict treats warnings as errors)\n"
+        )
+        strict = subprocess.CompletedProcess(["claude"], 1, warning, "")
+        accepted = subprocess.CompletedProcess(["claude"], 0, "valid\n", "")
+        with mock.patch.object(self.harness.subprocess, "run", side_effect=[strict, accepted]) as run:
+            self.harness.validate_versionless(Path("marketplace"), env={})
+        self.assertEqual(2, run.call_count)
+
+        extra = subprocess.CompletedProcess(["claude"], 1, warning.replace("Found 1 warning", "Found 2 warnings"), "")
+        with mock.patch.object(self.harness.subprocess, "run", return_value=extra):
+            with self.assertRaisesRegex(self.harness.AcceptanceError, "beyond"):
+                self.harness.validate_versionless(Path("marketplace"), env={})
+    def test_full_validate_must_report_no_package_check_entry(self) -> None:
+        """G1033: acceptance runs the full validate and ignores git/gh entries (CI has no token) but not the package's."""
+        require = self.harness.require_no_package_check
+        require({"ok": False, "environment": ["gh is not authenticated: run gh auth login"], "policy": ["none"]})
+        require({"ok": True, "environment": [], "policy": []})
+        for entry in (
+            "plugin package: skill discovery metadata does not match the plugin build: skills/a/SKILL.md; hint",
+            "plugin package check failed: boom",
+            "something about skill discovery metadata",
+        ):
+            with self.subTest(entry=entry):
+                with self.assertRaisesRegex(self.harness.AcceptanceError, "package"):
+                    require({"ok": False, "environment": ["gh is not installed", entry], "policy": []})
+        for malformed in (None, [], {"ok": True}, {"environment": "plugin package: x"}):
+            with self.subTest(malformed=malformed):
+                with self.assertRaises(self.harness.AcceptanceError):
+                    require(malformed)
+
+    def test_main_requires_no_package_check_entry_from_both_runtimes(self) -> None:
+        """G1033: acceptance runs the full validate from the generated marketplace and from the installed cache."""
+        import inspect
+        source = inspect.getsource(self.harness.main)
+        self.assertGreaterEqual(source.count("require_no_package_check("), 2,
+                                "main() must check the generated and the installed runtime's full validate")
 
 
 if __name__ == "__main__":

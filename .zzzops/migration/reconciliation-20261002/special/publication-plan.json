@@ -1,0 +1,94 @@
+{
+  "artifact_commit": "8da6ed68eb7fa3b47ce2d55da3147f498267d73a",
+  "policy_digest": "sha256:4dd26708a248719b1d881b254d73243de2892da6651729c9a61e74f79936b3f5",
+  "policy_ref": {
+    "hash": "sha256:260a4bcf55aef8cc971faac6fd9a24c4c78f9ae2009acde1069b8033a7fd3447",
+    "uri": "git:8da6ed68eb7fa3b47ce2d55da3147f498267d73a:.zzzops/migration/reconciliation-20261002/special/policy.json"
+  },
+  "members": {
+    "498": {
+      "revision": 706,
+      "parent": null,
+      "dependencies": [],
+      "source_path": ".zzzops/migration/reconciliation-20261002/special/498-source.json",
+      "graph_path": ".zzzops/migration/reconciliation-20261002/special/498-graph.json",
+      "retired_administrative_payload": null,
+      "historical_spec_archive": null,
+      "source_ref": {
+        "hash": "sha256:d336d506dbb84f01c40af82eef42386c9076895ca6767c78c103e986c5598da4",
+        "uri": "git:8da6ed68eb7fa3b47ce2d55da3147f498267d73a:.zzzops/migration/reconciliation-20261002/special/498-source.json"
+      },
+      "graph_ref": {
+        "hash": "sha256:6a046262fe1ab08ed3ea0bb414c5bf33e9b48aeeb8344dce3a6cc7ba8eaf583c",
+        "uri": "git:8da6ed68eb7fa3b47ce2d55da3147f498267d73a:.zzzops/migration/reconciliation-20261002/special/498-graph.json"
+      },
+      "spec_path": ".zzzops/migration/reconciliation-20261002/special/498-spec.json"
+    },
+    "521": {
+      "revision": 21,
+      "parent": null,
+      "dependencies": [],
+      "source_path": ".zzzops/migration/reconciliation-20261002/special/521-source.json",
+      "graph_path": ".zzzops/migration/reconciliation-20261002/special/521-graph.json",
+      "retired_administrative_payload": {
+        "hash": "sha256:c5e252a1c04a6b4480976b059444813c8a110702ad054c94056fe03990667203",
+        "uri": "zzzops:david-rzepa/zzzops:goal:521:sha256:c5e252a1c04a6b4480976b059444813c8a110702ad054c94056fe03990667203"
+      },
+      "historical_spec_archive": ".zzzops/migration/reconciliation-20261002/sources/521-decoded-spec.json",
+      "source_ref": {
+        "hash": "sha256:414748da54201e516be9600d8b2949c0b80c81b7ba2503b13bada428fa7394b8",
+        "uri": "git:8da6ed68eb7fa3b47ce2d55da3147f498267d73a:.zzzops/migration/reconciliation-20261002/special/521-source.json"
+      },
+      "graph_ref": {
+        "hash": "sha256:9032cd44595a4ba2b1fb0a77a4be8607734913ca444c9a1bbd96168ddeeb4220",
+        "uri": "git:8da6ed68eb7fa3b47ce2d55da3147f498267d73a:.zzzops/migration/reconciliation-20261002/special/521-graph.json"
+      },
+      "spec_path": ".zzzops/migration/reconciliation-20261002/special/521-spec.json"
+    },
+    "522": {
+      "revision": 73,
+      "parent": null,
+      "dependencies": [],
+      "source_path": ".zzzops/migration/reconciliation-20261002/special/522-source.json",
+      "graph_path": ".zzzops/migration/reconciliation-20261002/special/522-graph.json",
+      "retired_administrative_payload": {
+        "hash": "sha256:ba92b62219ec8f43effbecc04d63ead2e0a3c881f8534cf698fbb1ca4ecb00dd",
+        "uri": "zzzops:david-rzepa/zzzops:goal:522:sha256:ba92b62219ec8f43effbecc04d63ead2e0a3c881f8534cf698fbb1ca4ecb00dd"
+      },
+      "historical_spec_archive": ".zzzops/migration/reconciliation-20261002/sources/522-decoded-spec.json",
+      "source_ref": {
+        "hash": "sha256:c7c69c8d5ef3097fabbcd91ec3b05089a256a8397905e2634fe7624bf968e2f7",
+        "uri": "git:8da6ed68eb7fa3b47ce2d55da3147f498267d73a:.zzzops/migration/reconciliation-20261002/special/522-source.json"
+      },
+      "graph_ref": {
+        "hash": "sha256:9032cd44595a4ba2b1fb0a77a4be8607734913ca444c9a1bbd96168ddeeb4220",
+        "uri": "git:8da6ed68eb7fa3b47ce2d55da3147f498267d73a:.zzzops/migration/reconciliation-20261002/special/522-graph.json"
+      },
+      "spec_path": ".zzzops/migration/reconciliation-20261002/special/522-spec.json"
+    },
+    "523": {
+      "revision": 25,
+      "parent": null,
+      "dependencies": [
+        521,
+        522
+      ],
+      "source_path": ".zzzops/migration/reconciliation-20261002/special/523-source.json",
+      "graph_path": ".zzzops/migration/reconciliation-20261002/special/523-graph.json",
+      "retired_administrative_payload": {
+        "hash": "sha256:a7b6d53008024ec796976bdc6e9187a84f3ff145bcb7ab9c74b94f3c29e9a057",
+        "uri": "zzzops:david-rzepa/zzzops:goal:523:sha256:a7b6d53008024ec796976bdc6e9187a84f3ff145bcb7ab9c74b94f3c29e9a057"
+      },
+      "historical_spec_archive": ".zzzops/migration/reconciliation-20261002/sources/523-decoded-spec.json",
+      "source_ref": {
+        "hash": "sha256:91a4e38292ca6ce3030f2fe9c0a3af00b4130190ba163a3d5af6a55e4668763d",
+        "uri": "git:8da6ed68eb7fa3b47ce2d55da3147f498267d73a:.zzzops/migration/reconciliation-20261002/special/523-source.json"
+      },
+      "graph_ref": {
+        "hash": "sha256:a3dce675ffe848d7ae2008910348a00042710b03bc23956e511c29ddf9e230a9",
+        "uri": "git:8da6ed68eb7fa3b47ce2d55da3147f498267d73a:.zzzops/migration/reconciliation-20261002/special/523-graph.json"
+      },
+      "spec_path": ".zzzops/migration/reconciliation-20261002/special/523-spec.json"
+    }
+  }
+}

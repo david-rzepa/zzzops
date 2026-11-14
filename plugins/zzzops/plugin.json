@@ -10,5 +10,5 @@
   "homepage": "https://github.com/david-rzepa/zzzops",
   "repository": "https://github.com/david-rzepa/zzzops",
   "license": "Apache-2.0",
-  "keywords": ["agentic-engineering", "coding-agents", "autonomous-development", "repository-bootstrap", "goal-management", "github-issues", "codex", "claude-code"]
+  "keywords": ["agentic-engineering", "coding-agents", "autonomous-development", "repository-bootstrap", "goal-management", "git-native", "codex", "claude-code"]
 }

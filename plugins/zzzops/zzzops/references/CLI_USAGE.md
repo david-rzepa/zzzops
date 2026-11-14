@@ -1,0 +1,50 @@
+# ZzzOps CLI
+
+Every verb prints one JSON object (`show` prints text unless `--json`). **Running it:** with the plugin's launcher on `PATH` (Claude Code), `zzzops <verb> …`. Otherwise run `<python> <plugin>/zzzops/zzzops.py <verb> …`, where `zzzops.py` is the file next to this reference's folder (`../zzzops.py` from here) and `<python>` is the first of `python3`, `python` and `py -3` that reports Python 3.10 or later (`<python> --version`). After the first call, run every command exactly as the CLI prints it (its `command` field); in PowerShell prefix it with `& `. Global flags: `--remote R`, `--integration B`, `--repo DIR` (find the repository from DIR, any directory inside it or one of its worktrees, instead of the working directory; file arguments stay relative to where you run; task-card, `renew` and `abandon` commands already end with `--repo <primary worktree>`, so they run from anywhere), and `--policy-ref REF` (a read-only preview for `next`, `show` and `validate`: the policy is read from `REF`, a `zzzops/policy/*` branch or its topic, a branch on the remote, or a local commit, instead of the integration branch; the previewed branch does not pause its own preview, and `validate` adds the impact on current goals; commands that change goals refuse it). Exit codes: 0 ok; 1 refused (fix the input or the state); 2 remote unreachable or the push refused by a rule; 3 lost a race (re-read and retry); 4 policy blocked (including `legacy_policy`: a pre-reset `.zzzops/POLICY.json`; run the migrate-zzzops-repository skill).
+
+| Verb | Use |
+|---|---|
+| `next [--goal G]… [--all]` | What to do: `actions` (run their `start` command), `needs_human` (full items with `--goal`), `waiting`, `running`, `wake_at`, `blockers`. Read-only. |
+| `show G [--node X] [--json]` | One goal: its document, goal commit (for `edit --base`), node states and leases. |
+| `new --file F` | Create a goal from `{"title", "spec", "priority"?, "release"?, "depends_on"?, "skip"?, "links"?, "request_key"?, "flow"?}` (`release` defaults to the effective release; `flow: {"hotfix": "<x>"}` marks a hotfix member and needs `settings.branching`). Returns the goal's `design` action. Safe to rerun: the same request (its `request_key`, by default title, spec and depends_on) returns the existing goal with `created.recovered: true`; the key reused with different contents is refused. |
+| `start G X --as L [--reclaim] [--force]` | Claim a node. Agent nodes print the task card; op nodes run to completion. |
+| `submit G X --attempt N --as L --output F [--artifact A]` | Finish an agent phase. `--blocked F` instead records a question for the human or the agent (`{"waiting_for", "question" or "instructions", "options"?, "recommendation"?}`). |
+| `renew G X --attempt N` | Keep the lease alive (every quarter of its timeout); `inputs_changed: true` means the inputs changed since start (abandon and restart, or finish knowing it re-runs). |
+| `abandon G X --attempt N` | Give up a phase; the node becomes reclaimable, so the next `start` needs `--reclaim` (a plain `start` is refused); it prints `restart`, the `start … --reclaim` command to run. `--force --note T` acts on anyone's lease. |
+| `answer G X --fp P --file F` | Record a human decision (the item's `answer_template`). Refused with `fp_mismatch` when the question changed. |
+| `reopen G X --note T` | Re-run a done node (for example re-observe a flaky check). |
+| `edit G… (--file F… \| --set PATH=JSON…) [--base C]…` | Change goals: hold, unhold, depend, skip (a node, or one lens with `skip.<node>:<lens>`), close, budget, waive. Without `--base` for every goal it is a dry run that prints the impact preview. Both the preview and the applied result list `live_leases_on_changed_nodes` (running phases whose inputs the edit changes, with `abandon` and `restart` commands). `carried_findings` lists the open findings that stay live after the edit although their review went stale, each with the `--set` lines that waive it in the same edit. |
+| `release cut N --answer F` | With `settings.branching`: answer a `release_cut` item. Cuts `<release_prefix>N` from the integration tip and creates its line goal; `F` is the item's `answer_template` (`{"decision": "approved", "quote", "decided_by"}`). Safe to rerun: a cut that already happened returns its goal with `created.recovered: true`. |
+| `hotfix start X --answer F` | With `settings.branching`: answer a `hotfix_start` item. Creates `<hotfix_prefix>X` from the production branch and its line goal; a finished hotfix name is refused (choose a new one). |
+| `validate [G…]` / `validate --policy [--dir D]` | Check goals, the environment and policy files, and show the engine's `build` and `capabilities`; changes nothing. With `--policy-ref REF`, check the policy on `REF` and report its impact. |
+
+`ZZZOPS_TRACE=<file>` appends one JSON line per network call (`git fetch`, `push`, `ls-remote`, and every `gh` call) with `cmd`, `rc` and `ms`. Local git commands are not traced.
+
+**Examples.**
+```sh
+zzzops next --goal 1002
+zzzops start 1002 implement --as claude:9c1d/implement-1
+zzzops submit 1002 implement --attempt 1 --as claude:9c1d/implement-1 --output out.json
+zzzops edit 1002 --set 'state="held"' --base <goal commit from show>
+zzzops validate --policy --dir .zzzops
+zzzops next --policy-ref zzzops/policy/ci-lint
+```
+
+**Legacy state.** `next` and `validate` report pre-reset goals/files as `legacy`; an old policy blocks writes as `legacy_policy`. Offer `migrate-zzzops-repository` once; the legacy notice alone does not pause work. See [legacy detection and compatibility](MIGRATING.md#legacy-detection-and-compatibility) for fields, rechecks and policy-controlled dismissal.
+
+**Engine capabilities.** `settings.engine.requires` lists the capabilities (names such as `lens_findings`) that every engine working on the repository must have. An engine that lacks one pauses work and refuses writes with `engine_too_old`, whose blocker and error `details` carry `missing`; reads still work. Upgrade the plugin (REPAIR.md, "Upgrade the engine"). `validate` shows the running engine as `engine: {build, capabilities}`, and `zzzops --version` prints the build (`<plugin version> <revision>`), which the `Engine:` trailer of every goal commit also records. `settings.engine.min` is deprecated: it still works (`1.0.0` needs nothing, `1.1.0` needs `lens_findings`, `1.2.0` needs `lens_findings` and `finding_follows`, `1.3.0` needs those and `lenses`, anything higher is refused), and `validate` warns `engine_min_deprecated`. An older engine reports `policy_invalid` on `requires`: upgrade it, never remove the key. Maintainers: a change on SPEC §4.5's list (a new goal schema; fingerprint, canonical-JSON, `code_tree` or `change` semantics; an op `version`; the lease format; any new POLICY or workflow key, field or op; any new record or finding key) ships a new capability, `engine/capabilities/<name>.txt`.
+
+Require `blocked_findings` in the same policy PR as the revised design step 4, or after it, never before. That prompt exempts owner questions that `human_decisions` already answers. Blocked agents then retain live corrections on their retry cards; the default template's required set is unchanged.
+
+Response-key refusals include `details.why` for each `no_longer_live` id: `superseded`, `resolved`, `waived`, `other_target`, `target_blocked`, `target_changed`, or `not_live`. Answer missing ids under `respond_to`; drop obsolete response keys, then resubmit.
+
+**Outputs** of agent nodes are JSON files: every declared output except checkpoints and artifacts; `responses` for every listed correction (`fixed: …` or `disputed: …`); review nodes give `decision`, `summary` and a status for every finding in `previous.findings` (ids in `previous.resolved` need none; restating them `resolved` is accepted, `open` is refused "already resolved"); a new review finding may carry `"follows": "<prior id>"` when it narrows a partly fixed finding you resolve (allowed once the policy requires capability `finding_follows` in `settings.engine.requires`; it keeps the dispute count, never `upheld`); a correction marked `stale_review` came from a review whose inputs changed since, and still needs `fixed:` or `disputed:`; a lens (a review with a `filter`) gives each new finding `impact` and `material`, and a filter gives `verdicts` (`keep` or `note`, with a `reason`) for every non-material `candidate` on its card. Checkpoint keys are optional: omit the key to default to your work branch's HEAD, including a phase that adds no commit. To choose an earlier commit, name `{"<key>": {"commit": "<full 40-hex sha>"}}`; ref names such as `HEAD` and short shas are refused.
+
+
+**Goal sync.** Require `merge_sync` only after every writer is upgraded; otherwise base retains rebase mode. Never remove it while an open work branch has sync merges. See [REPAIR.md](REPAIR.md#goal-sync-checkpoints-and-delivery) for rollout, rollback, conventional subjects, scoped checkpoints and conflict recovery.
+
+**Measured verification (`test_cost`).** Observed timings compare total/repository costs with one newest tested merged source; unavailable is never zero. Deltas are informational. Policy-enabled lanes share a capped CPU budget. See [adoption and local sharding](MIGRATING.md#adopting-measured-test-cost-capability-test_cost) for qualifications and settings.
+
+**Round budgets:** `round_budget` gates per-stage limits on new material-finding rounds (default 10); see [adoption](MIGRATING.md#clean-sync-reviews-and-round-budgets).
+
+[Defaults](MIGRATING.md#shipped-default-updates).

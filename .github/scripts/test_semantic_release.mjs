@@ -26,14 +26,12 @@ assert.equal(analyzerName, "@semantic-release/commit-analyzer");
 assert.equal(notesName, "./.github/scripts/semantic_release_notes.cjs");
 assert.equal(notesPlugin.generatorPackage, "@semantic-release/release-notes-generator");
 
-test("marketplace bundles gate publication and become GitHub release assets", () => {
+test("the required OpenAI bundle gates publication and becomes a release asset", () => {
   assert.equal(releaseConfig.plugins[2], "./.github/scripts/semantic_release_bundle.cjs");
   const [githubPlugin, githubOptions] = releaseConfig.plugins[3];
   assert.equal(githubPlugin, "@semantic-release/github");
   assert.deepEqual(githubOptions.assets.map(({ path }) => path), [
-    "dist/marketplace/zzzops-plugin-v*.zip",
-    "dist/marketplace/zzzops-openai-submission-v*.zip",
-    "dist/marketplace/zzzops-claude-plugin-v*.zip"
+    "dist/marketplace/zzzops-plugin-v*.zip"
   ]);
 });
 

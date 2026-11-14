@@ -1,7 +1,7 @@
 # Project success charter
 
 **Status:** complete
-**Last reviewed:** 2026-08-24
+**Last reviewed:** 2026-10-26
 
 ## Overall goal
 - Outcome: ZzzOps lets supported coding agents manage long-term project work autonomously with durable state, minimal babysitting, and explicit human control.
@@ -12,7 +12,7 @@
 ## Success metrics
 | KPI | Why it matters | Baseline | Target / threshold | Evidence source | Review cadence |
 | --- | --- | --- | --- | --- | --- |
-| Canonical goal integrity | Lost or duplicated goal truth defeats autonomous execution. | GitHub Issues are the canonical backend. | Zero known lost or duplicated canonical goals. | Backend portfolio and migration/idempotency tests. | Each release |
+| Canonical goal integrity | Lost or duplicated goal truth defeats autonomous execution. | Goal branches (`zzzops/goal/g<id>`) are the canonical store. | Zero known lost or duplicated canonical goals. | Backend portfolio and migration/idempotency tests. | Each release |
 | Time to usable backlog | Setup friction increases babysitting. | Not yet measured. | Supported plugin install to initialized, capturable backlog in under 10 minutes. | Timed supported-platform plugin installation and initialization acceptance run. | Each release |
 | Autonomous workflow transitions | Measures whether agents can continue without unscheduled intervention. | Not yet measured. | At least 80% of eligible workflow transitions need no unscheduled human input. | Goal histories and categorized blocker records. | Monthly after at least 20 transitions |
 
@@ -54,16 +54,4 @@ When KPIs conflict, prefer: user authority and safety, correctness, privacy, ver
 
 ## Operating policy
 
-- `[policy:backend]` **Canonical goal backend**: github_issues (default origin unknown)
-- `[policy:git_review_release]` **Git, review, and release**: Use one chained branch and PR per goal: start from dev, then stack each subsequent goal from the preceding exact reviewed checkpoint and merge in dependency order. Use Conventional Commits, human review after checks, and owner-only main releases. (default origin unknown)
-- `[policy:execution_continuation]` **Execution and work continuation**: Continue across actionable goals under reviewed dependency and resource policy, incorporate newly captured goals at the next safe checkpoint, and persist unanswered questions without live interviewing, notification, polling, or waiting. (default origin unknown)
-- `[policy:verification_testing]` **Verification and testing**: Require artifact-appropriate observable evidence in small chunks; documentation and test cases need no recursive tests, while product behavior and reusable test infrastructure require direct verification. (default origin unknown)
-- `[policy:code_quality]` **Code-quality and refactoring boundaries**: Preserve behavior unless a goal explicitly authorizes a behavior change. (default origin unknown)
-- `[policy:dependencies_tooling]` **Dependencies, tooling, and generated artifacts**: Use project-native tooling; do not hand-edit generated or dependency-owned files; generate supported platform distributions from shared canonical sources and verify them with platform-native validation and acceptance evidence. (default origin unknown)
-- `[policy:security_privacy_compliance]` **Security, privacy, secrets, and compliance**: Repository policy may tighten but never weaken safety and authority boundaries. (default origin unknown)
-- `[policy:documentation_style]` **Documentation and style**: Follow evidenced repository documentation and style conventions; use outcome-first, low-technical-detail user updates by default while allowing explicit project policy to override the style. (default origin unknown)
-- `[policy:deployment_resources]` **Deployment, environment, and resources**: Do not deploy without authority; choose bounded parallelism from the deterministic tracked-file repository size. (default origin unknown)
-- `[policy:autonomy_approval_parallelism]` **Autonomy, approvals, and parallelism**: Interview adaptively during goal capture at the reviewed depth; treat the requesting user as the sole stakeholder; execute unattended by persisting consequential questions as durable blockers; repair in-scope CI failures without another approval; record privacy-safe execution reports; refill valuable bounded work; and use up to three size-aware workers. (default origin unknown)
-- `[policy:automated_design]` **Automated design authority**: disabled (customized from a ZzzOps default)
-
-Detailed rationale and review history: [PROJECT_AUDIT.md](PROJECT_AUDIT.md). Canonical policy state: [POLICY.json](POLICY.json).
+Settings and per-section agent instructions: [POLICY.json](POLICY.json). The phase graph: [workflow.json](workflow.json); node prompts: [prompts/](prompts/). Policy changes land on `dev` through a `zzzops/policy/*` branch, which pauses new work until it lands. This file is hand-edited and not bound to the policy.

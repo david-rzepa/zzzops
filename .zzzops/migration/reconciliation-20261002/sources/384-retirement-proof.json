@@ -1,0 +1,8 @@
+{
+  "resource": "branch:codex/goal-384-entropy-lifecycle-acceptance",
+  "reservation_label": "zzzops:resource:bdcd669ab626f7bf20c05d748cdee672",
+  "label_absent": true,
+  "remote_branch_absent": true,
+  "merge_commit": "bf6a23868beaece4a1834f2db076f7708d0759b8",
+  "merge_on_dev": true
+}

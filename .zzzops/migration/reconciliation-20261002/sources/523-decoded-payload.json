@@ -1,0 +1,45 @@
+{
+  "evidence": [
+    {
+      "hash": "sha256:e47421cecf2957d7667bbf436b88c86c0c121aa1659fb653c2728022090114ec",
+      "uri": "zzzops:david-rzepa/zzzops:goal:523:sha256:e47421cecf2957d7667bbf436b88c86c0c121aa1659fb653c2728022090114ec"
+    }
+  ],
+  "graph": {
+    "hash": "sha256:a1f38ef3fa75aa265c013d1b5ca8c4255cb46802a999ca6a712cca934c3e68d2",
+    "uri": "urn:sha256:a1f38ef3fa75aa265c013d1b5ca8c4255cb46802a999ca6a712cca934c3e68d2"
+  },
+  "operational": {
+    "leases": [],
+    "receipts": [
+      {
+        "payload": "sha256:4134a89898c5398d3bf71ad89a9df076a961c3e11fa0b1b05bdb074408875ba9",
+        "request": "goal523-conversion-analyze-start-20261001",
+        "result": {
+          "hash": "sha256:6d0b980dc120016ab0b071c57c0b6afaf08fd4230aa3c7067c82542c517da955",
+          "uri": "zzzops:david-rzepa/zzzops:goal:523:sha256:6d0b980dc120016ab0b071c57c0b6afaf08fd4230aa3c7067c82542c517da955"
+        }
+      },
+      {
+        "payload": "sha256:f8a3e3ef62ae04ab8621af54aecdb2016403844426c0aeab87316ec04db588ad",
+        "request": "goal523-conversion-analyze-bind-20261001",
+        "result": {
+          "hash": "sha256:6756fcbf11df138f7b4732521dc5d60bc35e468ecb76b61e577ea92f62b02b0c",
+          "uri": "zzzops:david-rzepa/zzzops:goal:523:sha256:6756fcbf11df138f7b4732521dc5d60bc35e468ecb76b61e577ea92f62b02b0c"
+        }
+      },
+      {
+        "payload": "sha256:9225c2d3aef6c50b0642ccbd28ca508ee0e7d470405fff7fface15de4b62d912",
+        "request": "goal523-conversion-analyze-submit-20261001",
+        "result": {
+          "hash": "sha256:2604d90aa1b746859d9699d6e905ce0a3cd74f9747b41ebb95061a5d2e0ce4ec",
+          "uri": "zzzops:david-rzepa/zzzops:goal:523:sha256:2604d90aa1b746859d9699d6e905ce0a3cd74f9747b41ebb95061a5d2e0ce4ec"
+        }
+      }
+    ]
+  },
+  "spec": {
+    "hash": "sha256:c46b59cb0407143249bdd85b62cc0a82bf806cb2358c5dc6b7201bc4a5b27f23",
+    "uri": "urn:sha256:c46b59cb0407143249bdd85b62cc0a82bf806cb2358c5dc6b7201bc4a5b27f23"
+  }
+}

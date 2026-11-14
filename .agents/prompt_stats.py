@@ -13,93 +13,47 @@ HARNESS_PROMPTS = {
     "codex": ("AGENTS.md",),
 }
 
-# These limits protect context paid on every Codex turn and the two frequent ZzzOps paths. At the
-# goal #297 baseline, always-loaded/codex is 625 tokens. Goal #302 reduced capture/execution to
-# 3,324/8,452 tokens; their ceilings retain only the measured 13-token execution margin. Cold
-# mutually exclusive workflows remain advisory rather than competing for one aggregate allowance.
+COMMUNICATION_PROMPT = "plugins/zzzops/rules/COMMUNICATION.md"
+CLI_USAGE_PROMPT = "plugins/zzzops/zzzops/references/CLI_USAGE.md"
+SETUP_PROMPT = "plugins/zzzops/zzzops/references/SETUP.md"
+REPAIR_PROMPT = "plugins/zzzops/zzzops/references/REPAIR.md"
+MIGRATING_PROMPT = "plugins/zzzops/zzzops/references/MIGRATING.md"
+COLD_ONLY_PROMPTS = {REPAIR_PROMPT, MIGRATING_PROMPT}
+
+# These limits protect context paid on every Codex turn and the two frequent ZzzOps paths (capture and execution).
+# Task cards and `next` carry the per-phase context at run time (at most 4 KB and 8 KB), so the static skills stay small.
 ENFORCED_PROMPT_BUDGETS = {
     "always-loaded/codex": 700,
-    "capture/codex": 3_324,
-    "execution/codex": 8_465,
+    "capture/codex": 3_700,
+    "execution/codex": 8_800,
 }
 
 WORKFLOW_PROMPTS = {
-    "agentic-coaching": (
-        "plugins/zzzops/skills/review-agentic-engineering/SKILL.md",
-        "plugins/zzzops/skills/review-agentic-engineering/references/ATTRIBUTION.md",
-        "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "bootstrap-greenfield": (
-        "plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md",
-        "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
-        "plugins/zzzops/zzzops/references/bootstrap/PLAN.md",
-        "plugins/zzzops/zzzops/references/bootstrap/GREENFIELD.md",
-        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
-        "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "bootstrap-brownfield": (
-        "plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md",
-        "plugins/zzzops/zzzops/references/bootstrap/ANALYZE.md",
-        "plugins/zzzops/zzzops/references/bootstrap/PLAN.md",
-        "plugins/zzzops/zzzops/references/bootstrap/BROWNFIELD.md",
-        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
-        "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "capture": (
-        "plugins/zzzops/skills/add-zzzops-goal/SKILL.md",
-        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
-        "plugins/zzzops/rules/CONTINUATION.md", "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "execution": (
-        "plugins/zzzops/skills/execute-zzzops/SKILL.md",
-        "plugins/zzzops/skills/execute-zzzops/references/EXECUTE.md",
-        "plugins/zzzops/skills/execute-zzzops/references/BRANCH_REVIEW.md",
-        "plugins/zzzops/skills/execute-zzzops/references/SELF_REVIEW.md",
-        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
-        "plugins/zzzops/rules/GOAL_SYSTEM.md", "plugins/zzzops/rules/CONTINUATION.md",
-        "plugins/zzzops/rules/EXECUTION_STRATEGY.md", "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "policy-review": (
-        "plugins/zzzops/skills/review-zzzops-policy/SKILL.md",
-        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "migration": (
-        "plugins/zzzops/skills/migrate-to-zzzops/SKILL.md",
-        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
-        "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "suggestion": (
-        "plugins/zzzops/skills/suggest-zzzops-work/SKILL.md",
-        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/BACKENDS.md",
-        "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "acceptance": (
-        ".agents/skills/run-zzzops-acceptance/SKILL.md",
-        "plugins/zzzops/rules/FEEDBACK.md",
-    ),
-    "feedback": (
-        "plugins/zzzops/skills/send-zzzops-feedback/SKILL.md",
-        "plugins/zzzops/rules/INITIALIZATION.md", "plugins/zzzops/rules/FEEDBACK.md",
-    ),
+    "bootstrap": ("plugins/zzzops/skills/bootstrap-zzzops-repository/SKILL.md", COMMUNICATION_PROMPT),
+    "capture": ("plugins/zzzops/skills/add-zzzops-goal/SKILL.md", COMMUNICATION_PROMPT),
+    "execution": ("plugins/zzzops/skills/execute-zzzops/SKILL.md", COMMUNICATION_PROMPT),
+}
+
+# Entry is the skill initially loaded by the harness; hot adds what it always reads; cold documents are read only
+# when a situation calls for them (setup problems, repairs, migration).
+ENTRY_PROMPTS = {workflow: paths[:1] for workflow, paths in WORKFLOW_PROMPTS.items()}
+
+COLD_WORKFLOW_PROMPTS = {
+    "bootstrap": (SETUP_PROMPT,),
+    "capture": (),
+    "execution": (SETUP_PROMPT, REPAIR_PROMPT),
 }
 
 WORKFLOW_SIGNALS = {
-    "agentic-coaching": ("Run only when explicitly invoked", "at most two", "Only genuine `prompt_specification_gap`", "Remain read-only", "Do not resolve `ambiguous` candidates by guessing", "$send-zzzops-feedback"),
-    "bootstrap-greenfield": ("never silently de-escalate", "adaptive product interview", "exactly one canonical top-level product-outcome goal", "canonical verification", "Continue from harness outcomes into product milestones", "ordered PR review queue"),
-    "bootstrap-brownfield": ("evidence-led product/harness audit", "top-level product-outcome goal", "reconcile it in place", "$migrate-to-zzzops", "canonical verification", "until exhaustion"),
-    "capture": ("duplicate/relationship matches", "interview at", "owns requirements/acceptance", "active same-task execute intent", "effective engineering rigor", "vibe → light", "never silently de-escalate", "Git-free creation"),
-    "execution": ("complete:true", "smallest falsifiable chunk", "difficulty is cost, not value", "human_at_exhaustion", "human_after_checks", "PR review queue", "Execution assumes the user is absent", "Before substantive work on a newly selected goal", "safe useful work", "effective engineering rigor", "created-but-unrun machinery is not proof"),
-    "policy-review": ("only this workflow changes or confirms policy", "explicit approval of the current digest", "The policy is already approved", "privacy-safe execution reports"),
-    "migration": ("explicit completeness review", "preserve every source location", "apply only after explicit approval"),
-    "suggestion": ("no-write default", "zzzops-refill", "never copy source labels", "goal-effective engineering rigor", "incomplete canonical verification", "proposed goal—not a silent change"),
-    "acceptance": ("exactly one active item", "Never infer an ID", "blockers unchecked"),
-    "feedback": ("exact target, title, labels, and body", "public", "nothing was deleted"),
+    "bootstrap": ("validate --policy", "zzzops/policy/bootstrap", "Automatically delete head branches", "zzzops.committer"),
+    "capture": ("new --file", "Never offer to skip the merge approval", "approve_design", "Dispatch it to a worker",
+                "settings.intent", "Amend the intent", "Project intent:"),
+    "execution": ("wake_at", "next --goal", "independence", "maximum timeout", "responses", "Never busy-poll"),
 }
 
 GLOBAL_SIGNALS = (
-    "user/safety > project rules",
-    "Human-facing goal links",
-    "Reports accept no free text",
+    "Lead with the outcome",
+    "Data boundary",
 )
 
 def canonical_size(data: bytes) -> int:
@@ -114,11 +68,10 @@ def prompt_files(root: Path) -> list[Path]:
     files.extend(product_skills)
     for skill in product_skills:
         files.extend((skill.parent / "references").glob("*.md"))
-    files.extend((root / "plugins" / "zzzops" / "zzzops" / "references" / "bootstrap").glob("*.md"))
-    files.extend((root / "plugins" / "zzzops" / "zzzops" / "templates" / "project-goals").glob("*.md"))
+    files.extend((root / "plugins" / "zzzops" / "zzzops" / "references").glob("*.md"))
+    files.extend((root / "plugins" / "zzzops" / "zzzops" / "templates" / "default" / "prompts").glob("*.md"))
     files.extend((root / "plugins" / "zzzops" / "concepts").glob("*.md"))
     files.extend((root / ".agents" / "skills").glob("*/SKILL.md"))
-    files.extend((root / ".agents" / "skills").glob("*/references/*.md"))
     return sorted({path for path in files if path.is_file()}, key=lambda path: path.relative_to(root).as_posix())
 
 
@@ -140,13 +93,24 @@ def render_report(rows: list[tuple[str, int, int]]) -> str:
 
 def prompt_profile(root: Path, paths: tuple[str, ...]) -> tuple[int, int, str]:
     unique_paths = dict.fromkeys(paths)
-    data = b"\n".join((root / path).read_bytes() for path in unique_paths)
+    optional_harness_paths = {path for items in HARNESS_PROMPTS.values() for path in items}
+    data = b"\n".join((root / path).read_bytes() for path in unique_paths
+                      if path not in optional_harness_paths or (root / path).is_file())
     size = canonical_size(data)
     return size, math.ceil(size / 4), data.decode("utf-8")
 
 
 def workflow_profile(root: Path, workflow: str, harness: str) -> tuple[int, int, str]:
-    return prompt_profile(root, (*HARNESS_PROMPTS[harness], *WORKFLOW_PROMPTS[workflow]))
+    return prompt_profile(root, (*HARNESS_PROMPTS[harness], CLI_USAGE_PROMPT, *WORKFLOW_PROMPTS[workflow]))
+
+
+def workflow_path_profiles(root: Path, workflow: str, harness: str) -> dict[str, tuple[int, int]]:
+    """Measure progressive-disclosure paths without charging cold prompts to entry."""
+    return {
+        "entry": prompt_profile(root, (*HARNESS_PROMPTS[harness], CLI_USAGE_PROMPT, *ENTRY_PROMPTS[workflow]))[:2],
+        "hot": workflow_profile(root, workflow, harness)[:2],
+        "cold": prompt_profile(root, COLD_WORKFLOW_PROMPTS.get(workflow, ()))[:2],
+    }
 
 
 def enforced_context_profiles(root: Path) -> dict[str, tuple[int, int]]:
@@ -160,19 +124,19 @@ def enforced_context_profiles(root: Path) -> dict[str, tuple[int, int]]:
 
 
 def policy_context_profiles(root: Path) -> dict[str, tuple[int, int]]:
-    cold_review_skill = "plugins/zzzops/skills/review-zzzops-policy/SKILL.md"
     static_hot = tuple(
         path.relative_to(root).as_posix()
         for path in prompt_files(root)
-        if path.relative_to(root).as_posix() != cold_review_skill
+        if path.relative_to(root).as_posix() not in COLD_ONLY_PROMPTS
     )
     project_policy = tuple(
         path for path in (".zzzops/PROJECT.md", ".zzzops/POLICY.json")
         if (root / path).is_file()
     )
     cold_review = (
-        *WORKFLOW_PROMPTS["policy-review"],
-        "plugins/zzzops/zzzops/templates/project-goals/INIT_PLAN.json",
+        *WORKFLOW_PROMPTS["bootstrap"],
+        "plugins/zzzops/zzzops/templates/default/POLICY.json",
+        "plugins/zzzops/zzzops/templates/default/workflow.json",
     )
     return {
         "static-hot-prompts": prompt_profile(root, static_hot)[:2],
@@ -238,14 +202,14 @@ def render_workflow_report(root: Path) -> str:
     table = [
         "# Advisory routed workflow prompt report",
         "",
-        "Directly routed plugin prompts plus the Codex repository root; conditional execution create/unblock documents are excluded. Capture and execution also have blocking limits in `--check`.",
+        "Entry measures the initially loaded skill. Hot measures the first CLI-returned instruction. Conditional cold measures phase or branch instructions and is never charged to entry. Capture and execution hot paths also have blocking limits in `--check`.",
         "",
-        "| Workflow | Codex bytes | Codex est. tokens |",
-        "| --- | ---: | ---: |",
+        "| Workflow | Entry tokens | Hot tokens | Conditional cold tokens |",
+        "| --- | ---: | ---: | ---: |",
     ]
     for workflow in WORKFLOW_PROMPTS:
-        codex = workflow_profile(root, workflow, "codex")
-        table.append(f"| {workflow} | {codex[0]} | {codex[1]} |")
+        profiles = workflow_path_profiles(root, workflow, "codex")
+        table.append(f"| {workflow} | {profiles['entry'][1]} | {profiles['hot'][1]} | {profiles['cold'][1]} |")
     return "\n".join(table) + "\n"
 
 

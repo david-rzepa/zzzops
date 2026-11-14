@@ -1,660 +1,104 @@
 {
-  "approval": {
-    "date": "2026-08-24",
-    "digest": "sha256:c7e608653e0503853f51b4500c959f44590c6290bd64da64fc91454c7709a683",
-    "reviewer": "user"
-  },
-  "backend": "github_issues",
-  "bindings": {
-    "audit": {
-      "digest": "sha256:2c2af6b5603056219e5f5b9d30db3c712d45d5e813bec2a89b2274f7020ced13",
-      "path": ".zzzops/PROJECT_AUDIT.md"
+  "schema_version": 2,
+  "settings": {
+    "engine": {
+      "requires": [
+        "blocked_findings",
+        "finding_follows",
+        "lens_findings",
+        "lenses",
+        "merge_sync",
+        "round_budget",
+        "test_cost"
+      ]
     },
-    "project": {
-      "digest": "sha256:c959d713ee58579ff743fbdb537a6d20006fff95da6fcbb3d18018556a0d06dc",
-      "path": ".zzzops/PROJECT.md"
+    "integration_branch": "dev",
+    "verification": {
+      "commands": [
+        "python3 .github/scripts/run_product_validation.py --platform linux --local"
+      ],
+      "required_ci": [
+        "dev-required-tests"
+      ],
+      "timeout_minutes": 60,
+      "ci_timeout_minutes": 120
+    },
+    "releases": {
+      "current": 1
+    },
+    "leases": {
+      "ttl_minutes": 120
+    },
+    "parallelism": {
+      "max_workers": 10
+    },
+    "scheduling": {
+      "order": "stage_first"
+    },
+    "goals": {
+      "first_id": 1000
+    },
+    "merge": {
+      "method": "merge"
+    },
+    "routing": {
+      "tiers": {
+        "routine": [
+          "gpt-6-luna:low",
+          "gpt-5.6-luna:low",
+          "claude-haiku-4-5-20251001"
+        ],
+        "bounded": [
+          "gpt-6.1-terra:medium",
+          "gpt-5.6-terra:medium",
+          "claude-sonnet-5-5"
+        ],
+        "reasoning": [
+          "gpt-6.1-sol:high",
+          "gpt-6.1-terra:high",
+          "claude-opus-5-5"
+        ],
+        "architectural": [
+          "gpt-6.1-sol:xhigh",
+          "gpt-6-astra:high",
+          "claude-fable-5-1",
+          "claude-opus-5-5"
+        ]
+      }
+    },
+    "intent": {
+      "purpose": "Let coding agents carry long-running repository work through durable, reviewable goals, so a developer can stop supervising without losing progress, priorities or control.",
+      "serves": "Developers who delegate project work to coding agents, and the agents doing it.",
+      "not": [
+        "A general project-management suite.",
+        "A ceremony framework: every mechanism must prevent a real failure worth its cost.",
+        "A second source of truth beside Git.",
+        "An engine that invents human decisions or acts without authority.",
+        "A deploy, CI or release-publishing tool: its release support is a branching strategy.",
+        "Inherently opinionated: it ships an opinionated default graph, but every opinion (graph, lenses, prompts, policy) can be customised by the project."
+      ],
+      "principles": [
+        "Git is the store; state is visible and repairable by hand.",
+        "A small engine; the graph, prompts and policy belong to the project.",
+        "Human authority is explicit: approvals may be delegated, but decisions with big consequences go to the owner, batched.",
+        "Reviews are independent, and a finding must matter.",
+        "Guard against drift at both levels: from what a goal asked for, and from the project's original intent. A goal that departs from the project's intent is flagged when it is added, and the owner either changes the goal or amends the intent.",
+        "Prefer deleting to adding; keep prompts distilled."
+      ]
     }
   },
-  "charter": {
-    "acceptance_criteria": [
-      "A clean supported Agent Plugin installation can be agent-initialized and capture a canonical goal without manual form filling.",
-      "An execution run can prioritize, unblock, verify, checkpoint, and cycle across durable goals without losing state.",
-      "Unsupported capabilities and human-only decisions become explicit categorized blockers rather than invented behavior.",
-      "Supported coding agents receive concise, discoverable Agent Plugin workflow semantics.",
-      "Tests prove Agent Plugin packaging and marketplace discovery, backend invariants, fast observable feedback, and prompt-budget accounting."
-    ],
-    "beneficiaries": [
-      "developers delegating long-running project work to coding agents"
-    ],
-    "constraints": [
-      "Remain primarily agent-driven and keep deterministic scripts narrow and cross-platform.",
-      "Do not silently dual-write, fail over, invent user decisions, or expose secrets.",
-      "Keep installed prompts distilled and prompt counts current.",
-      "Use available subscription capacity to advance evidenced project goals and safe valuable backlog work; do not let quota maximization override value, safety, or user authority.",
-      "Keep Codex and Claude Code distributions generated from shared canonical sources; claim platform support only after platform-native validation and install/discovery/workflow acceptance evidence."
-    ],
-    "kpis": [
-      {
-        "baseline": "GitHub Issues are the canonical backend.",
-        "cadence": "Each release",
-        "evidence": "Backend portfolio and migration/idempotency tests.",
-        "name": "Canonical goal integrity",
-        "target": "Zero known lost or duplicated canonical goals.",
-        "why": "Lost or duplicated goal truth defeats autonomous execution."
-      },
-      {
-        "baseline": "Not yet measured.",
-        "cadence": "Each release",
-        "evidence": "Timed supported-platform plugin installation and initialization acceptance run.",
-        "name": "Time to usable backlog",
-        "target": "Supported plugin install to initialized, capturable backlog in under 10 minutes.",
-        "why": "Setup friction increases babysitting."
-      },
-      {
-        "baseline": "Not yet measured.",
-        "cadence": "Monthly after at least 20 transitions",
-        "evidence": "Goal histories and categorized blocker records.",
-        "name": "Autonomous workflow transitions",
-        "target": "At least 80% of eligible workflow transitions need no unscheduled human input.",
-        "why": "Measures whether agents can continue without unscheduled intervention."
-      }
-    ],
-    "non_goals": [
-      "Replace general-purpose project management suites.",
-      "Guarantee capabilities that Codex does not expose.",
-      "Restore or maintain the retired per-project installer, or maintain divergent Codex and Claude Code workflow implementations.",
-      "Spend tokens on work with no evidenced link to project value."
-    ],
-    "outcome": "ZzzOps lets supported coding agents manage long-term project work autonomously with durable state, minimal babysitting, and explicit human control.",
-    "precedence": "user authority and safety, correctness, privacy, verified project value, autonomy, then prompt savings",
-    "time_horizon": "ongoing, reviewed monthly",
-    "unacceptable_tradeoffs": [
-      "More autonomy at the expense of user health, privacy, repository safety, or observable correctness.",
-      "Lower prompt cost by omitting state required for safe resumption or human control."
-    ],
-    "why_it_matters": "Users can stop supervising agents late into the night without losing progress, priorities, blockers, or available work."
-  },
-  "history": [
-    {
-      "actor": "ZzzOps initialization",
-      "change": "Created pending revision 15",
-      "date": "2026-08-02",
-      "reason": "Confirmed agent-generated draft; explicit policy review still required."
-    },
-    {
-      "actor": "user",
-      "change": "Reviewed policy revision 16",
-      "date": "2026-08-02",
-      "reason": "Approved: backend, git_review_release, execution_continuation, verification_testing, code_quality, dependencies_tooling, security_privacy_compliance, documentation_style, deployment_resources, autonomy_approval_parallelism; source digest sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c."
-    },
-    {
-      "actor": "ZzzOps initialization",
-      "change": "Created pending revision 17",
-      "date": "2026-08-09",
-      "reason": "Confirmed agent-generated draft; explicit policy review still required."
-    },
-    {
-      "actor": "ZzzOps initialization",
-      "change": "Created pending revision 18",
-      "date": "2026-08-09",
-      "reason": "Confirmed agent-generated draft; explicit policy review still required."
-    },
-    {
-      "actor": "user",
-      "change": "Reviewed policy revision 19",
-      "date": "2026-08-09",
-      "reason": "Approved: automated_design; source digest sha256:334572a80f28915d6759f1cd4c896cc6c7ea5b1f3c37a6d2c7e910d424aed4b8."
-    },
-    {
-      "actor": "ZzzOps initialization",
-      "change": "Created pending revision 20",
-      "date": "2026-08-24",
-      "reason": "Confirmed agent-generated draft; explicit policy review still required."
-    },
-    {
-      "actor": "user",
-      "change": "Reviewed policy revision 21",
-      "date": "2026-08-24",
-      "reason": "Approved: dependencies_tooling; source digest sha256:bba4a1c6f56f647dbf146676e340a481d26b9afc729e3944848b8b3279c75ad6."
-    }
-  ],
-  "initialized": true,
-  "policy": {
-    "evidence": [
-      {
-        "finding": "The existing confirmed charter defines the outcome, KPIs, acceptance criteria, and value constraints.",
-        "id": "E-001",
-        "kind": "observed",
-        "source": ".zzzops/PROJECT.md"
-      },
-      {
-        "finding": "Repository guidance requires dev-based per-goal implementation and PRs, Conventional Commits, human review, owner-only main releases, prompt-budget checks, observable work, and reviewed PROJECT policy as the operational source of truth.",
-        "id": "E-002",
-        "kind": "observed",
-        "source": "AGENTS.md"
-      },
-      {
-        "finding": "GitHub Issues are enabled for david-rzepa/zzzops and the authenticated user has ADMIN permission.",
-        "id": "E-003",
-        "kind": "observed",
-        "source": "init inspect 2026-07-18"
-      },
-      {
-        "finding": "Health reminders were removed and GitHub Issues is now the only supported canonical goal backend.",
-        "id": "E-004",
-        "kind": "observed",
-        "source": "user decisions and completed issues #77/#81"
-      },
-      {
-        "finding": "User decisions require review-ready dependency stacking, a brief bounded human-unblock watch, and artifact-specific verification without recursive documentation or test meta-tests.",
-        "id": "E-005",
-        "kind": "observed",
-        "source": "user decisions and goals #59/#88/#94/#95"
-      },
-      {
-        "finding": "Communication style is reviewed project policy; outcome-first, low-technical-detail updates are the user's preferred ZzzOps default and may be overridden by explicit project policy.",
-        "id": "E-006",
-        "kind": "observed",
-        "source": "user decision and goal #102"
-      },
-      {
-        "finding": "User selected bounded refill for documentation, test coverage, and non-behavioral code quality, completed dependencies before writable implementation, read-only advance investigation, and up to three size-aware workers with clean worktree removal or reuse.",
-        "id": "E-007",
-        "kind": "observed",
-        "source": "user decisions and goal #117 on 2026-07-20"
-      },
-      {
-        "finding": "Use chained per-goal PRs from exact reviewed checkpoints; interview only during capture at standard adaptive depth with the requesting user as sole stakeholder; execute unattended with durable blockers; capture test-discovered out-of-scope bugs as blocked goals; enable privacy-safe execution reports.",
-        "id": "E-008",
-        "kind": "proposed",
-        "source": "user decisions 2026-08-01"
-      },
-      {
-        "finding": "Authorization to execute a goal includes diagnosing and repairing CI failures caused by that goal's own changes; do not ask for separate fix approval unless the repair expands scope or needs new authority.",
-        "id": "E-009",
-        "kind": "proposed",
-        "source": "user decision 2026-08-02"
-      },
-      {
-        "finding": "Adopt Agent Plugins v1 for Codex, remove the legacy installer and Claude v2 support, and direct Claude users to final legacy release v1.2.0.",
-        "id": "E-010",
-        "kind": "proposed",
-        "source": "user decisions and goal #253 on 2026-08-09"
-      },
-      {
-        "finding": "Disable automated design authority; require explicit user direction for design choices.",
-        "id": "E-011",
-        "kind": "proposed",
-        "source": "user decision 2026-08-09"
-      },
-      {
-        "finding": "Support generated, acceptance-gated Claude Code plugin artifacts derived from shared canonical sources; preserve removal of the retired per-project installer and prohibit divergent platform implementations.",
-        "id": "E-012",
-        "kind": "proposed",
-        "source": "user decision and goal #300 on 2026-08-24"
-      }
-    ],
-    "schema_version": 1,
-    "sections": [
-      {
-        "applicable": true,
-        "confidence": "high",
-        "decision": "github_issues",
-        "default_disposition": "accepted",
-        "default_origin": "user decision and current product scope",
-        "exceptions": [],
-        "id": "backend",
-        "rationale": "GitHub capability is usable and completed issue #81 made it the only supported authority.",
-        "required": true,
-        "review": {
-          "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
-          "reviewer": "user"
-        },
-        "settings": {
-          "authority": "github_issues",
-          "capability_evidence": "init inspect 2026-07-18",
-          "fallback": "forbidden",
-          "repository_identity": "david-rzepa/zzzops",
-          "tradeoffs": {
-            "github_issues": "shared native issue queue requiring GitHub access"
-          }
-        },
-        "source_ids": [
-          "E-003",
-          "E-004"
-        ],
-        "title": "Canonical goal backend",
-        "unresolved": []
-      },
-      {
-        "applicable": true,
-        "confidence": "high",
-        "decision": "Use one chained branch and PR per goal: start from dev, then stack each subsequent goal from the preceding exact reviewed checkpoint and merge in dependency order. Use Conventional Commits, human review after checks, and owner-only main releases.",
-        "default_disposition": "changed",
-        "default_origin": "repository policy",
-        "exceptions": [],
-        "id": "git_review_release",
-        "rationale": "The user explicitly selected chained PRs while retaining per-goal review units and ordered integration.",
-        "required": true,
-        "review": {
-          "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
-          "reviewer": "user"
-        },
-        "settings": {
-          "branch_base": "dev",
-          "child_target": "nearest_parent_branch",
-          "commit_style": "conventional",
-          "commit_unit": "verified_subgoal",
-          "conversational_approval": "allowed_otherwise",
-          "dependency_base": "dependency_branch",
-          "execution_branch": "per_goal",
-          "merge_after_approval": "when_authorized",
-          "multiple_dependency_base": "reviewed_base_containing_all",
-          "parent_pseudo_trunk": true,
-          "pr_approval": "required_when_repository_requires_pr",
-          "pull_request_target": "preceding_goal_branch_then_dev",
-          "pull_request_unit": "per_goal",
-          "read_only_dependency_investigation": "allowed_before_completion",
-          "release_actor": "david-rzepa",
-          "release_branch": "main",
-          "release_update": "explicit_owner_force_push",
-          "release_workflow": "main_update_runs_release_ci",
-          "review_gate": "human_after_checks",
-          "review_pending_dependency": "stack_from_reviewed_checkpoint",
-          "review_state_reads_per_checkpoint": 1,
-          "shared_pull_request": "explicit_reviewed_override"
-        },
-        "source_ids": [
-          "E-002",
-          "E-005",
-          "E-007",
-          "E-008"
-        ],
-        "title": "Git, review, and release",
-        "unresolved": []
-      },
-      {
-        "applicable": true,
-        "confidence": "high",
-        "decision": "Continue across actionable goals under reviewed dependency and resource policy, incorporate newly captured goals at the next safe checkpoint, and persist unanswered questions without live interviewing, notification, polling, or waiting.",
-        "default_disposition": "changed",
-        "default_origin": "ZzzOps default",
-        "exceptions": [],
-        "id": "execution_continuation",
-        "rationale": "Execution is unattended; durable blockers preserve every consequential request without requiring a live user.",
-        "required": true,
-        "review": {
-          "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
-          "reviewer": "user"
-        },
-        "settings": {
-          "after_additive_capture": "resume_once_and_reprioritize",
-          "continue_while_actionable": true,
-          "cross_task": "require_explicit_harness_signal",
-          "execute_intent": "same_task_until_superseded",
-          "exhausted_handoff_retains_intent": true,
-          "max_easy_wins": 2,
-          "new_goal_checkpoint": "next_safe_checkpoint",
-          "stop_reasons_clear_intent": [
-            "user_stop",
-            "pause",
-            "replacement_request",
-            "capture_only",
-            "required_authority",
-            "blocking_boundary"
-          ],
-          "triage_new_first": true
-        },
-        "source_ids": [
-          "E-001",
-          "E-005",
-          "E-008"
-        ],
-        "title": "Execution and work continuation",
-        "unresolved": []
-      },
-      {
-        "applicable": true,
-        "confidence": "high",
-        "decision": "Require artifact-appropriate observable evidence in small chunks; documentation and test cases need no recursive tests, while product behavior and reusable test infrastructure require direct verification.",
-        "default_disposition": "changed",
-        "default_origin": "repository policy",
-        "exceptions": [],
-        "id": "verification_testing",
-        "rationale": "Root instructions forbid unobservable implementation and unsanctioned test-bug fixes.",
-        "required": true,
-        "review": {
-          "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
-          "reviewer": "user"
-        },
-        "settings": {
-          "artifact_verification": {
-            "documentation": "inspect_artifact_no_feature_test",
-            "product_runtime": "risk_proportionate_behavioral_probe",
-            "test_cases": "run_changed_tests_no_recursive_meta_test",
-            "test_harness": "focused_behavioral_regression"
-          },
-          "mode": "chunk_probe",
-          "test_bug": "capture_as_blocker",
-          "widen": "as_relevant"
-        },
-        "source_ids": [
-          "E-002",
-          "E-005",
-          "E-008"
-        ],
-        "title": "Verification and testing",
-        "unresolved": []
-      },
-      {
-        "applicable": true,
-        "confidence": "medium",
-        "decision": "Preserve behavior unless a goal explicitly authorizes a behavior change.",
-        "default_disposition": "accepted",
-        "default_origin": "ZzzOps default",
-        "exceptions": [],
-        "id": "code_quality",
-        "rationale": "A bounded self-review prevents unrelated cleanup from expanding work.",
-        "required": true,
-        "review": {
-          "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
-          "reviewer": "user"
-        },
-        "settings": {
-          "completion_self_review": "required_before_review_or_done",
-          "dead_code": "remove_only_if_evidenced_and_in_scope",
-          "dynamic_generated_vendor": "retain_without_proof",
-          "non_behavioral_only_without_feature_goal": true,
-          "record_clean_review": true,
-          "reverify_after_changes": true,
-          "review_scope": "goal_diff_tests_and_relevant_surroundings"
-        },
-        "source_ids": [
-          "E-002"
-        ],
-        "title": "Code-quality and refactoring boundaries",
-        "unresolved": []
-      },
-      {
-        "applicable": true,
-        "confidence": "medium",
-        "decision": "Use project-native tooling; do not hand-edit generated or dependency-owned files; generate supported platform distributions from shared canonical sources and verify them with platform-native validation and acceptance evidence.",
-        "default_disposition": "accepted",
-        "default_origin": "ZzzOps default",
-        "exceptions": [],
-        "id": "dependencies_tooling",
-        "rationale": "Keeps deterministic mechanics portable, ownership clear, and Codex/Claude support aligned without divergent implementations.",
-        "required": true,
-        "review": {
-          "approved": true,
-          "date": "2026-08-24",
-          "reviewed_digest": "sha256:bba4a1c6f56f647dbf146676e340a481d26b9afc729e3944848b8b3279c75ad6",
-          "reviewer": "user"
-        },
-        "settings": {
-          "dependency_changes": "explicit_scope",
-          "generated_files": "source_or_generator_only",
-          "tooling": "project_native"
-        },
-        "source_ids": [
-          "E-001",
-          "E-012"
-        ],
-        "title": "Dependencies, tooling, and generated artifacts",
-        "unresolved": []
-      },
-      {
-        "applicable": true,
-        "confidence": "high",
-        "decision": "Repository policy may tighten but never weaken safety and authority boundaries.",
-        "default_disposition": "accepted",
-        "default_origin": "ZzzOps safety boundary",
-        "exceptions": [],
-        "id": "security_privacy_compliance",
-        "rationale": "The charter expressly forbids secret exposure and invented authority.",
-        "required": true,
-        "review": {
-          "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
-          "reviewer": "user"
-        },
-        "settings": {
-          "production_mutation": "explicit_authority",
-          "project_constraints": [],
-          "secrets": "never_expose"
-        },
-        "source_ids": [
-          "E-001"
-        ],
-        "title": "Security, privacy, secrets, and compliance",
-        "unresolved": []
-      },
-      {
-        "applicable": true,
-        "confidence": "high",
-        "decision": "Follow evidenced repository documentation and style conventions; use outcome-first, low-technical-detail user updates by default while allowing explicit project policy to override the style.",
-        "default_disposition": "accepted",
-        "default_origin": "repository policy and user-preferred ZzzOps default",
-        "exceptions": [],
-        "id": "documentation_style",
-        "rationale": "Repository instructions require prompt-budget updates, and the user selected concise actionable communication as this project's default without making it universal policy.",
-        "required": true,
-        "review": {
-          "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
-          "reviewer": "user"
-        },
-        "settings": {
-          "communication": {
-            "style": "outcome_first",
-            "technical_detail": "decision_risk_failure_or_request",
-            "user_action": "one_clear_action_with_reason_and_next_step"
-          },
-          "documentation": "repository_conventions",
-          "installed_prompt_markdown_check": ".agents/prompt_stats.py --check",
-          "prompt_budget_ceiling": "explicit_value_justification",
-          "prompt_counts": "do_not_commit",
-          "style": "repository_conventions"
-        },
-        "source_ids": [
-          "E-002",
-          "E-006"
-        ],
-        "title": "Documentation and style",
-        "unresolved": []
-      },
-      {
-        "applicable": true,
-        "confidence": "high",
-        "decision": "Do not deploy without authority; choose bounded parallelism from the deterministic tracked-file repository size.",
-        "default_disposition": "accepted",
-        "default_origin": "repository policy",
-        "exceptions": [],
-        "id": "deployment_resources",
-        "rationale": "Repository release policy restricts main updates, while the tracked tree is below 100 MB and the user selected size-aware parallel defaults.",
-        "required": true,
-        "review": {
-          "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
-          "reviewer": "user"
-        },
-        "settings": {
-          "delegate_wait_after_seconds": 60,
-          "deployment": "explicit_authority",
-          "resource_mode": "size_aware"
-        },
-        "source_ids": [
-          "E-002",
-          "E-007"
-        ],
-        "title": "Deployment, environment, and resources",
-        "unresolved": []
-      },
-      {
-        "applicable": true,
-        "confidence": "high",
-        "decision": "Interview adaptively during goal capture at the reviewed depth; treat the requesting user as the sole stakeholder; execute unattended by persisting consequential questions as durable blockers; repair in-scope CI failures without another approval; record privacy-safe execution reports; refill valuable bounded work; and use up to three size-aware workers.",
-        "default_disposition": "changed",
-        "default_origin": "user-selected ZzzOps defaults and project policy",
-        "exceptions": [],
-        "id": "autonomy_approval_parallelism",
-        "rationale": "This separates present-user requirements discovery from unattended execution while preserving durable control, chained progress, and privacy-safe machinery feedback.",
-        "required": true,
-        "review": {
-          "approved": true,
-          "date": "2026-08-02",
-          "reviewed_digest": "sha256:049640647764a6cc2c9834da01fb74a767c6a2efb5652ac34a76954f4b8b134c",
-          "reviewer": "user"
-        },
-        "settings": {
-          "blocker_interview": "capture_only",
-          "blocker_order": [
-            "safety_access_human",
-            "cross_goal_decisions",
-            "specification",
-            "technical_unknown"
-          ],
-          "capture_defaults": {
-            "confidence": "low",
-            "difficulty": "unknown",
-            "priority": "P2"
-          },
-          "claim_ttl_hours": 4,
-          "dependency_implementation_gate": "stack_from_reviewed_checkpoint",
-          "execution_reports": {
-            "enabled": true
-          },
-          "in_scope_ci_failure_repair": "authorized_without_additional_approval",
-          "max_workers": 3,
-          "parallelization": {
-            "at_or_above_threshold_mode": "read_only",
-            "below_threshold_mode": "worktrees",
-            "measurement": "existing_git_tracked_worktree_bytes",
-            "threshold_bytes": 104857600
-          },
-          "planning": {
-            "decompose_at": "L",
-            "max_depth": 3
-          },
-          "project_parallel_ceiling": "size_aware",
-          "read_only_dependency_investigation": true,
-          "refill": {
-            "allowed_categories": [
-              "documentation",
-              "tests",
-              "code_quality_non_behavioral"
-            ],
-            "enabled": true,
-            "max_per_run": 3
-          },
-          "requirements_interview": {
-            "capture_depth": "standard",
-            "execution_questions": "durable_blockers_only",
-            "mode": "adaptive",
-            "stakeholder_model": "requesting_user_only"
-          },
-          "worktree_lifecycle": {
-            "abandoned_or_dirty": "forbidden",
-            "after_task": "remove_or_retain_clean_for_reuse",
-            "reuse_requires": [
-              "clean_state",
-              "reviewed_base",
-              "new_goal_resources",
-              "safe_branch_reassignment"
-            ]
-          }
-        },
-        "source_ids": [
-          "E-001",
-          "E-002",
-          "E-004",
-          "E-007",
-          "E-008",
-          "E-009"
-        ],
-        "title": "Autonomy, approvals, and parallelism",
-        "unresolved": []
-      },
-      {
-        "applicable": true,
-        "confidence": "medium",
-        "decision": "disabled",
-        "default_disposition": "changed",
-        "default_origin": "user decision",
-        "default_provenance": {
-          "catalog_digest": "sha256:d90cefdbd3d5d0e7822c2c5a5e3773054dcf50f4a95517de58a7bf5048ef7250",
-          "default_id": "zzzops.policy.automated_design",
-          "schema_version": 1,
-          "source": {
-            "revision": "65828e7ec5d088a93a978b19be73c8be5053d5e6781e3b52dd5065f203b7093a",
-            "version": "2.0.0"
-          },
-          "status": "customized"
-        },
-        "exceptions": [],
-        "id": "automated_design",
-        "rationale": "Require explicit user direction for design choices; unattended execution persists them as durable blockers.",
-        "required": true,
-        "review": {
-          "approved": true,
-          "date": "2026-08-09",
-          "reviewed_digest": "sha256:334572a80f28915d6759f1cd4c896cc6c7ea5b1f3c37a6d2c7e910d424aed4b8",
-          "reviewer": "user"
-        },
-        "settings": {
-          "decision_record": [
-            "alternatives",
-            "rationale",
-            "assumptions",
-            "falsifiable_validation_signal"
-          ],
-          "hard_stops": [
-            "product_scope",
-            "incompatible_public_contract",
-            "destructive_migration",
-            "external_spending",
-            "deployment",
-            "external_write",
-            "human_review",
-            "safety_authority",
-            "higher_authority"
-          ],
-          "insufficient_evidence": "durable_design_blocker",
-          "privacy_security": "unambiguously_risk_reducing_without_material_behavior_change",
-          "scope": "reversible_in_scope_implementation",
-          "selection_basis": [
-            "project_objectives",
-            "kpi_evidence",
-            "constraints",
-            "precedence"
-          ]
-        },
-        "source_ids": [
-          "E-002",
-          "E-011"
-        ],
-        "title": "Automated design authority",
-        "unresolved": []
-      }
-    ]
-  },
-  "repository": {
-    "identity": "david-rzepa/zzzops",
-    "remote": "https://github.com/david-rzepa/zzzops.git"
-  },
-  "revision": 21,
-  "schema_version": 1
+  "instructions": {
+    "workflow": "Require durable tracked goals for substantial repository work. Read-only investigation and ZzzOps administration are exempt. Execute the configured phase graph with its independent reviews and human approvals.",
+    "rigor": "Assess engineering risk and commitment carefully, raise rigor when evidence warrants it, and scale requirements discovery from light through thorough with effective rigor.",
+    "communication": "Follow evidenced repository documentation and style conventions, communicate outcomes first, and include implementation detail only where it helps decisions.",
+    "verification": "Require artifact-appropriate observable evidence in small chunks. Documentation and test cases need no recursive tests; product behavior and reusable test infrastructure require direct verification. Use the smallest unique falsifiable local probe, widen when relevant, and capture test-discovered product bugs separately.",
+    "code_quality": "Preserve behavior unless a goal explicitly authorizes a behavior change. Without a feature goal, limit cleanup to behavior-preserving changes; remove dead code only with evidence and treat dynamic, generated, and vendored code conservatively.",
+    "dependencies": "Use project-native tooling, do not hand-edit generated artifacts, and make dependency changes only with explicit goal scope and verification.",
+    "security": "Never expose secrets or mutate production without authority. Repository rules may tighten but cannot weaken safety, privacy, or compliance boundaries.",
+    "git": "Follow repository rules. Commit normally on the goal's work branch with conventional messages; never rewrite pushed commits. Never bypass required checks, merge authority, or release authority. Preserve or migrate shipped contracts.",
+    "deployment": "Do not deploy without authority. Wait rather than duplicate active delegated work.",
+    "routing": "Choose a model at or above the node's capability tier, preferring the listed models; keep human interaction on the root agent.",
+    "review": "You are an independent reviewer: do not read the other reviews of this subject (`.zzzops/reviews/<goal>/` files of other nodes) before you submit. Approving with no findings is a good outcome. Raise a finding only when you can name what goes wrong if it is ignored: give `impact` (that consequence, concretely) and `material` (true: it must be fixed before the work proceeds; false: a note, preference or idea). An independent filter may promote a note; it never demotes a material finding. On code, target `test_design` for a problem in the tests; `implement` cannot change them. On a re-review, read what changed first (`previous.changed` or `previous.interdiff`) and give every prior finding a status. Check claims against the integration tip (`read_dev`); on code, against the subject's own commit (`code.commit`). Write the full review to the artifact and a one-line verdict in `summary`. Raise an owner's choice as the `owner_questions` instruction says; an owner question targets the design, even on code.",
+    "owner_questions": "**Owner questions.** A choice belongs to the owner when undoing it, if it turned out wrong, would reach outside this goal's own change. That covers: other goals that build on it; users' repositories or installed policy; stored records or formats; names or outputs that others consume, such as CLI output, branch names and config keys; and external systems. A choice that changes what the product does for its users, or the project's direction, also belongs to the owner. The exception is when one option clearly dominates. Every other choice belongs to the designer, who decides it and records the reasoning; a reviewer who disagrees raises an ordinary finding. **Reviewers:** for each owner's choice the work makes, or leaves open, raise a finding on the design (`target`: the design node) whose text starts `owner question:` (that prefix is reserved for this; never use it for anything else), with the question, the options and your recommendation. It is always material. Do not ask again about a choice the design records as an owner decision; if the design contradicts one, raise an ordinary material finding. Resolve an owner question only when an entry in `human_decisions` on your card answers it and the design's `## Owner decisions` section quotes that answer; otherwise keep it open. **Designers:** never decide an owner's choice. Ask it with `--blocked`, as your prompt says."
+  }
 }

@@ -1,0 +1,45 @@
+{
+  "result": "All25 remaining regular goal migrations reconciled",
+  "ordinary_record_repairs_and_installed_cli_migrations": 21,
+  "explicit_manual_conversions_using_installed_transaction_writer": 4,
+  "public_cli_validation": {
+    "members": 25,
+    "all_status": "already_current",
+    "ready_nodes": {
+      "understand": 25,
+      "legacy_blockers": 8
+    },
+    "schema_blockers": []
+  },
+  "regular_open_goals": {
+    "count": 98,
+    "canonical_schema": 2
+  },
+  "excluded_feedback_issues": [
+    363,
+    410
+  ],
+  "preservation": {
+    "all_original_comments_retained_unchanged": true,
+    "all_goals_remain_open": true,
+    "parent_relationships_retained": true,
+    "policy_and_model_inventory_unchanged": true,
+    "historical_completed_prerequisites_unchanged_and_closed": [
+      379,
+      383,
+      390,
+      431,
+      432
+    ],
+    "missing_priority_label_restored": {
+      "goal": 467,
+      "priority": "P1",
+      "source": "Original captured goal in GitHub edit history"
+    }
+  },
+  "archive_branch": "chore/522-reconcile-legacy-goals",
+  "source_commit": "45aea1fa556a3e2edafc8c57f52bbfc33613f996",
+  "source_graph_commit": "8da6ed68eb7fa3b47ce2d55da3147f498267d73a",
+  "specification_commit": "312a5745103f4ab4f3af3e47ea4dbed82fd13552",
+  "note": "Archived references are live migration inputs. Retain their commits on the remote; these are evidence artifacts, not unintegrated product implementation."
+}

@@ -1,9 +1,9 @@
 # OpenAI plugin submission attestations
 
-These are human review gates, not declarations made by CI. The publisher checks them in the OpenAI submission portal only after comparing the generated packet with the final draft.
+These are human review gates, not declarations made by CI. The publisher checks them in the OpenAI submission portal only after comparing the canonical repository sources with the final draft.
 
 - [ ] The listing, publisher identity, website, support, privacy, and terms information are accurate and publicly accessible.
-- [ ] The uploaded skills archive is the exact archive identified by `submission.json` and `manifest.json`.
+- [ ] The uploaded skills archive is the exact versioned `zzzops-plugin` asset from the reviewed release.
 - [ ] The final skills were tested locally using the submitted file tree.
 - [ ] Starter prompts and all positive and negative test cases accurately describe current behavior and are reproducible without private context.
 - [ ] Country and region availability was reviewed against the portal's current choices and the publisher's support readiness.

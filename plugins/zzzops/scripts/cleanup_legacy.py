@@ -43,6 +43,9 @@ _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _REVISION = re.compile(r"^[0-9a-f]{40,64}$")
 _VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$")
 _PORTABLE_PART = re.compile(r"^[A-Za-z0-9._-]+$")
+_PYTHON_CACHE_SUFFIX = re.compile(
+    r"[A-Za-z0-9_]+(?:-[A-Za-z0-9_]+)*(?:\.opt-[0-9]+)?\.(?:pyc|pyo)"
+)
 
 
 class CleanupError(ValueError):
@@ -152,6 +155,26 @@ def legacy_inventory(repo: Path) -> dict[str, str]:
             if item.is_file():
                 result[relative] = file_digest(item)
     return dict(sorted(result.items()))
+
+
+def recognized_python_caches(inventory: dict[str, str], owned: dict[str, str]) -> set[str]:
+    result: set[str] = set()
+    for relative in inventory:
+        path = PurePosixPath(relative)
+        if path.parent.name != "__pycache__":
+            continue
+        for source in owned:
+            source_path = PurePosixPath(source)
+            prefix = source_path.stem + "."
+            if (
+                source_path.suffix == ".py"
+                and source_path.parent == path.parent.parent
+                and path.name.startswith(prefix)
+                and _PYTHON_CACHE_SUFFIX.fullmatch(path.name[len(prefix):])
+            ):
+                result.add(relative)
+                break
+    return result
 
 
 def parse_lock(repo: Path) -> tuple[dict[str, str] | None, str | None]:
@@ -289,7 +312,8 @@ def build_plan(repo: Path, catalog: dict[str, Any] | None = None) -> CleanupPlan
         elif lock is not None:
             source = "installation lock"
             actual = {path: digest for path, digest in inventory.items() if path != MANIFEST_RELATIVE}
-            unknown = sorted(set(actual) - set(lock))
+            caches = recognized_python_caches(actual, lock)
+            unknown = sorted(set(actual) - set(lock) - caches)
             mismatched = sorted(
                 path for path in set(actual) & set(lock)
                 if lock_file_digest(target_path(repo, path)) != lock[path]
@@ -305,7 +329,8 @@ def build_plan(repo: Path, catalog: dict[str, Any] | None = None) -> CleanupPlan
         elif manifest is not None:
             source = "legacy install manifest"
             actual = {path: digest for path, digest in inventory.items() if path != MANIFEST_RELATIVE}
-            unknown = sorted(set(actual) - set(manifest))
+            caches = recognized_python_caches(actual, manifest)
+            unknown = sorted(set(actual) - set(manifest) - caches)
             mismatched: list[str] = []
             for relative, expected in manifest.items():
                 path = target_path(repo, relative)
@@ -321,7 +346,8 @@ def build_plan(repo: Path, catalog: dict[str, Any] | None = None) -> CleanupPlan
                 expected = release["files"]
                 if CATALOG_ANCHOR not in inventory or inventory.get(CATALOG_ANCHOR) != expected.get(CATALOG_ANCHOR):
                     continue
-                unknown = set(inventory) - set(expected)
+                caches = recognized_python_caches(inventory, expected)
+                unknown = set(inventory) - set(expected) - caches
                 mismatched = [path for path in set(inventory) & set(expected) if inventory[path] != expected[path]]
                 if not unknown and not mismatched:
                     matches.append((name, expected))

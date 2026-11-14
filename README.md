@@ -2,96 +2,77 @@
 
 **Infinite backlog for agents. Finite bedtime for token-addicted humans.**
 
-ZzzOps is an agentic-engineering workflow for developers who want autonomous coding agents to bootstrap repositories and handle substantial work without constant supervision. It turns project policy, specifications, TODOs, dependencies, verification evidence, and blockers into a durable goal graph backed by GitHub Issues—then gives agents a reliable loop for working through it.
+ZzzOps is an agentic-engineering workflow for developers who want autonomous coding agents to bootstrap repositories and carry long-running work through durable, reviewable goals. Each goal lives on its own Git branch. A workflow owned by your project coordinates agents, independent reviews, checks and human decisions, so work can stop and resume without rebuilding the plan from chat history.
 
-Use ZzzOps when a task is too important or too long-lived to exist only in one chat. The goal is simple: make the repository and its feedback loops clear enough that agents can keep moving, stop safely, and resume without you reconstructing the plan.
+Use ZzzOps when a task is too important or too long-lived to exist only in one chat. It ships a default workflow you can customise; your decisions come back in batches.
 
 ## Get started
 
 ### 1. Install ZzzOps
 
-ZzzOps v2 is an [Agent Plugin](https://agent-plugins.org/). For Codex, install it from the [official ZzzOps listing in the Codex Plugins Directory](https://chatgpt.com/plugins/plugins_6a7892fe4c548191a9e0dbfb8ac2c987), then open a new Codex task in the repository where you want to use it.
+ZzzOps is an [Agent Plugin](https://agent-plugins.org/). This page describes the Git-native engine under development on `dev` for v3. The latest published release is v2.1.0, the pre-reset engine; the workflow below needs a release containing the new engine.
 
-As a secondary Git option, pin an immutable release tag:
+Once a supporting release is published, Codex users can install it from the [official ZzzOps listing in the Codex Plugins Directory](https://chatgpt.com/plugins/plugins_6a7892fe4c548191a9e0dbfb8ac2c987), then open a new Codex task in the target repository.
+
+As a secondary Git option, pin an immutable supporting release tag:
 
 ```powershell
-codex plugin marketplace add david-rzepa/zzzops@v2.0.1
+codex plugin marketplace add david-rzepa/zzzops@<release tag>
 codex plugin add zzzops@zzzops
 ```
 
-See [advanced installation options](docs/ADVANCED.md#alternative-installations) to follow the moving `latest` channel, refresh an installation, or change pinned versions.
-
-Claude Code users can install from this repository:
+Claude Code users can install a supporting release from this repository:
 
 ```powershell
-claude plugin marketplace add david-rzepa/zzzops
+claude plugin marketplace add david-rzepa/zzzops@latest
 claude plugin install zzzops@zzzops
 ```
 
-Claude and Codex use the same canonical implementation. See the [Claude Code installation and submission notes](docs/CLAUDE_MARKETPLACE.md).
+The release-only `latest` branch gives each Claude update a new Git-derived cache version. Claude and Codex use the same canonical implementation. See the [Claude Code installation and submission notes](docs/CLAUDE_MARKETPLACE.md).
 
 ### 2. Bootstrap the repository
 
-In the target repository, start with the initial project specification:
+In the target repository:
 
 ```text
-Use $bootstrap-zzzops-repository to create this project from the following specification: <purpose, stack, deployment target, constraints, and first milestone>.
+Use $bootstrap-zzzops-repository to initialize this repository for ZzzOps.
 ```
 
-For an existing repository:
+Bootstrap writes `.zzzops/POLICY.json`, `.zzzops/workflow.json` and the node prompts from the shipped templates, validates them, lands them on your integration branch, and checks the harness and GitHub settings ZzzOps needs. See [Initialization](docs/INITIALIZATION.md).
 
-```text
-Use $bootstrap-zzzops-repository to make this existing repository agent-ready.
-```
-
-Bootstrap first clarifies the product outcome, initial milestone, constraints, and consequential unknowns, then automatically hands off to `$review-zzzops-policy` when policy needs review. That policy review is the one mandatory approval before ordinary work. Bootstrap creates exactly one top-level product goal and continues from the engineering harness into safe product milestones through distinct stacked PRs until no useful authorized work remains.
-
-Use `$review-zzzops-policy` directly later whenever you want to review or adjust policy without bootstrapping the repository again.
-
-### 3. Add or import more work
-
-To import an existing backlog:
-
-```text
-Use $migrate-to-zzzops to inspect and migrate existing TODOs.
-```
-
-To capture one new outcome:
+### 3. Add work
 
 ```text
 Use $add-zzzops-goal to capture <the thing we should eventually do>.
 ```
 
-Goals live in GitHub Issues with their dependencies, blockers, acceptance evidence, and next action. Goal capture itself does not create a branch, commit, push, or pull request.
+You and the agent write the spec, then a worker starts the design. If it needs an owner choice, the question comes back before it proceeds. Questions and design approvals from several goals are collected together.
 
 ### 4. Execute—and go to bed
 
 ```text
-Use $execute-zzzops to work on all available goals until nothing safe remains.
+Use $execute-zzzops to work through all available goals until nothing safe remains.
 ```
 
-For a persistent Codex run:
-
-```text
-/goal Use $execute-zzzops to work through all available project goals until complete or genuinely blocked.
-```
-
-ZzzOps prioritizes available work, follows the reviewed repository policy, verifies each change, preserves resumable state, and turns unanswered decisions into explicit blockers. By default, source-changing goals produce separate verified stacked PRs without conversational approval prompts; once safe work is exhausted, ZzzOps presents the PRs in dependency order for human review. Passing checks never replace required PR approval, merge authority, or release gates, and policy review can select stricter per-goal gating.
+The default workflow puts discovery first, dispatches workers, runs Git/GitHub operations, and brings design approvals, merge approvals and unresolved owner questions back to you. Delegating approvals does not let an agent invent an owner choice. Once a dependency has an integrated PR, a dependent goal can stack its PR on it, showing its own change before the dependency merges. Merges still happen in dependency order; passing checks never replace your merge approval.
 
 When you remember “one last thing,” add a goal instead of opening six files and seeing sunrise.
 
 ## What to read next
 
-- [Advanced ZzzOps workflows](docs/ADVANCED.md) — bootstrap behavior, policy and goal mechanics, installation validation, feedback, coaching, and the full capability map.
+- [Deterministic progressive disclosure](docs/WHITEPAPER.md) — a general disclosure pattern, parallel eligible work and customizable workflows.
+- [How execution works](docs/EXECUTION.md) — goals, reviews, eligible carry after sync, checks, stacked delivery, optional release/hotfix lines and recovery.
+- [Skills](docs/SKILLS.md) and the [CLI reference](plugins/zzzops/zzzops/references/CLI_USAGE.md).
+- [Design and specification](docs/design/README.md) — the engine contract (SPEC) and its rationale (DESIGN).
 - [Maintaining ZzzOps](docs/MAINTAINING.md) — repository architecture, releases, CI, validation commands, file ownership, and prompt budgets.
 - [Privacy policy](PRIVACY.md) and [OpenAI compliance review](docs/OPENAI_COMPLIANCE.md).
 - [Apache-2.0 license](LICENSE).
 
 ## Trust, compatibility, and support
 
-ZzzOps uses your existing GitHub authentication and stores canonical goals in GitHub Issues, so goal visibility matches repository visibility. Do not put secrets, payment-card data, health information, government identifiers, or other restricted or raw sensitive data in goals; redact it or link to an approved private system.
+ZzzOps uses your existing Git and GitHub authentication and stores goals on Git branches of your repository (`zzzops/goal/*`), so goal visibility matches repository visibility. Do not put secrets, payment-card data, health information, government identifiers, or other restricted or raw sensitive data in goals; redact it or link to an approved private system.
 
-ZzzOps has no ZzzOps-operated server, telemetry, advertising, or commerce. It is independently developed and is not created, supported, certified, endorsed by, or affiliated with OpenAI or Anthropic. The installed control CLI requires Python 3.10 or newer.
+ZzzOps has no ZzzOps-operated server, telemetry, advertising, or commerce. It is independently developed and is not created, supported, certified, endorsed by, or affiliated with OpenAI or Anthropic. The installed control CLI requires Python 3.10 or newer. Repositories declare required engine capabilities, so an older plugin may need upgrading; `engine.min` is deprecated but still supported. Installing a new engine does not adopt its workflow or activate optional capabilities in an existing repository.
 
 The project is licensed under [Apache-2.0](LICENSE), including its patent grant. The license permits forks and reuse but does not grant rights to imply official endorsement or misuse the ZzzOps name.
 

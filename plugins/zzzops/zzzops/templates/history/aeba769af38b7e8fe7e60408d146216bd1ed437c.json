@@ -1,0 +1,85 @@
+{
+  "schema_version": 2,
+  "settings": {
+    "engine": {
+      "requires": [
+        "lens_findings",
+        "lenses"
+      ]
+    },
+    "integration_branch": "main",
+    "verification": {
+      "commands": [],
+      "required_ci": [],
+      "timeout_minutes": 60,
+      "ci_timeout_minutes": 120
+    },
+    "releases": {
+      "current": 1
+    },
+    "leases": {
+      "ttl_minutes": 120
+    },
+    "parallelism": {
+      "max_workers": 10
+    },
+    "scheduling": {
+      "order": "stage_first"
+    },
+    "goals": {
+      "first_id": 1
+    },
+    "merge": {
+      "method": "merge"
+    },
+    "routing": {
+      "tiers": {
+        "routine": [
+          "gpt-6-luna:low",
+          "gpt-5.6-luna:low",
+          "claude-haiku-4-5-20251001"
+        ],
+        "bounded": [
+          "gpt-6.1-terra:medium",
+          "gpt-5.6-terra:medium",
+          "claude-sonnet-5-5"
+        ],
+        "reasoning": [
+          "gpt-6.1-sol:high",
+          "gpt-6.1-terra:high",
+          "claude-opus-5-5"
+        ],
+        "architectural": [
+          "gpt-6.1-sol:xhigh",
+          "gpt-6-astra:high",
+          "claude-fable-5-1",
+          "claude-opus-5-5"
+        ]
+      }
+    },
+    "intent": {
+      "purpose": "TODO: what this project is for, in one sentence, in the owner's words.",
+      "serves": "TODO: whom it serves.",
+      "not": [
+        "TODO: what it deliberately is not, and must never become."
+      ],
+      "principles": [
+        "TODO: the principles that must survive every change."
+      ]
+    }
+  },
+  "instructions": {
+    "workflow": "Substantial repository work needs a tracked goal. Read-only investigation is exempt. Follow the node's prompt and this card; ask the human only what the card says is theirs to decide.",
+    "rigor": "Assess engineering risk and commitment, and scale requirements discovery from light to thorough with it. Raise rigor when evidence warrants it.",
+    "communication": "Follow the repository's documentation and style conventions. Lead with outcomes; add implementation detail only where it helps a decision.",
+    "review": "You are an independent reviewer: do not read the other reviews of this subject (`.zzzops/reviews/<goal>/` files of other nodes) before you submit. Approving with no findings is a good outcome. Raise a finding only when you can name what goes wrong if it is ignored: give `impact` (that consequence, concretely) and `material` (true: it must be fixed before the work proceeds; false: a note, preference or idea). An independent filter may promote a note; it never demotes a material finding. On code, target `test_design` for a problem in the tests; `implement` cannot change them. On a re-review, read what changed first (`previous.changed` or `previous.interdiff`) and give every prior finding a status. Check claims against the integration tip (`read_dev`); on code, against the subject's own commit (`code.commit`). Write the full review to the artifact and a one-line verdict in `summary`. Raise an owner's choice as the `owner_questions` instruction says; an owner question targets the design, even on code.",
+    "owner_questions": "**Owner questions.** A choice belongs to the owner when undoing it, if it turned out wrong, would reach outside this goal's own change. That covers: other goals that build on it; users' repositories or installed policy; stored records or formats; names or outputs that others consume, such as CLI output, branch names and config keys; and external systems. A choice that changes what the product does for its users, or the project's direction, also belongs to the owner. The exception is when one option clearly dominates. Every other choice belongs to the designer, who decides it and records the reasoning; a reviewer who disagrees raises an ordinary finding. **Reviewers:** for each owner's choice the work makes, or leaves open, raise a finding on the design (`target`: the design node) whose text starts `owner question:` (that prefix is reserved for this; never use it for anything else), with the question, the options and your recommendation. It is always material. Do not ask again about a choice the design records as an owner decision; if the design contradicts one, raise an ordinary material finding. Resolve an owner question only when an entry in `human_decisions` on your card answers it and the design's `## Owner decisions` section quotes that answer; otherwise keep it open. **Designers:** never decide an owner's choice. Ask it with `--blocked`, as your prompt says.",
+    "verification": "Give observable evidence in small chunks. Product behaviour and reusable test infrastructure need direct tests; documentation does not. Use the smallest falsifiable local check first, then widen.",
+    "code_quality": "Preserve behaviour unless the goal authorizes a change. Remove dead code only with evidence; treat generated and vendored code conservatively.",
+    "dependencies": "Use project-native tooling, never hand-edit generated artifacts, and change dependencies only within the goal's scope and with verification.",
+    "security": "Never expose secrets or mutate production without authority. Repository rules may tighten, never weaken, safety, privacy or compliance boundaries.",
+    "git": "Commit normally on the goal's work branch; never rewrite pushed commits; never bypass required checks or merge authority.",
+    "deployment": "Do not deploy without authority.",
+    "routing": "Choose a model at or above the node's capability tier, preferring the listed models. Keep human interaction on the root agent."
+  }
+}
