@@ -274,10 +274,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T22:49:21Z",
+      "finished_at": "2026-11-14T22:56:31Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
@@ -354,36 +354,34 @@
         ".agents/test_template_history.py",
         ".agents/test_template_history_seed.py"
       ],
-      "holder": "codex:cleanup1047/test_design-1",
+      "holder": "codex:cleanup1047/test_design-2",
       "input_fp": "v1:sha256:18d698575a8256664d26b59cb3d24c6af1968c4f9e3da858f6fbf72a8bb25ed5",
       "ok": true,
       "output": {
         "commands": [
-          "python3 .github/scripts/run_product_validation.py --platform linux --local --report /home/dave/.cache/zzzops-template-history-removal/test_design/combined-final-report.json"
+          "python3 -m unittest discover -s .agents -p test_engine_defaults.py -v"
         ],
         "cost": {
           "changed_tests": [
             {
-              "duration_ms": 4157,
+              "duration_ms": 1317,
               "id_or_scope": ".agents/test_engine_defaults.py (18 cases)",
-              "observation": "Expected pre-implementation RED: 16 assertion/subtest failures expose inferred history, old merge/apply rows, opaque-hash upgrade claims and local-state/tombstone behavior; all 18 cases executed."
-            },
-            {
-              "duration_ms": 3607477,
-              "id_or_scope": "Other changed test modules (733 executed cases)",
-              "observation": "Aggregate measured case time, not wall time; all passed. Full configured run also verified all 1103 non-default cases green, including current/renamed complete and stacked journeys."
+              "observation": "Measured unittest suite time; expected pre-implementation RED with 16 assertion/subtest failures and zero errors. Whole-command time includes startup."
             }
           ],
           "checkpoint": "69515cd35e533ac104d12c4e4ad971f84fcc3aef",
           "commands": [
             {
-              "cmd": "python3 .github/scripts/run_product_validation.py --platform linux --local --report /home/dave/.cache/zzzops-template-history-removal/test_design/combined-final-report.json",
-              "duration_ms": 202660,
+              "cmd": "python3 -m unittest discover -s .agents -p test_engine_defaults.py -v",
+              "duration_ms": 1389,
               "exit": 1
             }
           ],
-          "summary": "1121/1121 executed and completed in202660ms wall;16 expected defaults assertions fail,0errors/skips. Runtime untouched. Shared default is shipped15; historical graph12/26 and replay/golden/archive-only tests retired with generic mechanism coverage preserved. Detailed retention map, exact IDs, per-module measured costs and logs: /home/dave/.cache/zzzops-template-history-removal/test_design/.",
-          "total_ms": 202660
+          "summary": "Output-only correction. Frozen tests unchanged. Portable focused command executed once; existing configured repository validation supplies the full suite separately. Original 1121-case RED report/logs and retention inventories preserved in the test_design cache.",
+          "total_ms": 1389
+        },
+        "responses": {
+          "review_tests:1:1": "fixed: Replaced the outgoing full-suite command and host-specific report path with the measured portable defaults-only unittest command. Kept tests.commit69515cd35e533ac104d12c4e4ad971f84fcc3aef and all frozen test code unchanged; original full-run evidence is preserved."
         },
         "tests": {
           "base": "4bc7b4deba5f1a98595ab795cdb5c088c14b3c66",
@@ -392,7 +390,7 @@
           "tree": "0b58a83e144ec575fa32b246d993d9d670bcb2ba"
         }
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     }
   },
