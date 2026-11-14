@@ -150,28 +150,28 @@
       "status": "done"
     },
     "design": {
-      "attempt": 10,
+      "attempt": 11,
       "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-14T20:10:26Z",
+      "finished_at": "2026-11-14T20:16:37Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
           "dep_designs": "v1:sha256:d0703625f9457fd9740830f12dd16828745df6edf4b11fa5787394a059e02855",
-          "spec": "v1:sha256:4b8f5d449cef1d6c75cc3ffe6cc051d925c87311a583e02aef5f42818f434696"
+          "spec": "v1:sha256:6f4a422c90f600655791c8de70c6b4db4e37acb3d58274ece1693f41ed69b2b0"
         },
         "policy": {}
       },
-      "holder": "codex:wp1036-r4/design-10",
-      "input_fp": "v1:sha256:4122c3e82b91a5d2a319cc387f4079dd5ebd5708ed110d28cbe0757dcd8c9778",
+      "holder": "codex:wp1036-r5/design-11",
+      "input_fp": "v1:sha256:ec5799326493ecacb646d15aa4abb845c40cb9ebfc6850063e69bc83ce03f377",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "17b9b6e95a4a12e222333a94c07c700bf1d5d2d4",
-          "commit": "8e20ea197a766c58a81aa25e83310ad69e01f518",
+          "blob": "dfc3746610ef409bc7cb56b3bb1383fbe328301a",
+          "commit": "d49b092ccc7f4bdf986b7813426edc1025f1a733",
           "path": ".zzzops/reviews/1036/design.md"
         },
-        "summary": "Adds a concise introduction explaining what ZzzOps is, whom it serves, durable coordination across sessions and release branching/merge scope before the existing illustration. Removes the blog file and operative blog requirements, explicitly superseding historical WD3/WD4 while preserving the settled paper design and all verification/GitHub gates."
+        "summary": "Preserves the focused ZzzOps introduction and blog removal, and adds a concise substantive Prior Work section using completed primary-source research. The comparison covers established HCI disclosure, hybrid model-chosen skill loading, software-triggered scoped memory, existing exact term use at dotagents, and predefined workflows, with explicit overlap and limits. Historical owner quotes remain, WD3/WD4 stay superseded, and the paper makes no coinage, priority, novelty or superiority claim."
       },
       "reason": "stale",
       "status": "done"
