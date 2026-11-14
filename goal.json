@@ -389,16 +389,16 @@
       "status": "done"
     },
     "review_impl": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T20:02:11Z",
+      "finished_at": "2026-11-14T20:33:02Z",
       "fp_parts": {
         "def": "v1:sha256:ba0e80cd449a16330f3e62cea7fab93aad71b666081fd28f1c0386cf4f3d2d24",
         "inputs": {
           "base": "v1:sha256:92fb166bb2d877c78854032c50996843982ef4f5cff7b5a092fb2d8ca03148d7",
-          "code": "v1:sha256:fc094a10350b2d29da9a1d7904ede359dcaf174d6f6765e16869ad134aa6532a",
-          "doc": "v1:blob:cf5f4303629f8dd290edc690a00d433058591e9f",
+          "code": "v1:sha256:26f0094e34c48fa1b8df2b7a4a12bdfd90e4b06b58a839168a356118c4c7a96f",
+          "doc": "v1:blob:dfc3746610ef409bc7cb56b3bb1383fbe328301a",
           "tests": "v1:sha256:d1b819ee6603e0d12a36b6ea6471b3a63dd503237ea65e8eb224c99b8633284b"
         },
         "lenses": [
@@ -409,27 +409,27 @@
           "craft"
         ],
         "policy": {},
-        "subject": "v1:sha256:bf29602040fbc1f93c75bda4a56ea48193b1b23a8d19cca7461faa8d1e487ff3"
+        "subject": "v1:sha256:8603dcd1deb38c0bde23be17a20208dfc10bacaaf6468f428c5102d1c915e5f5"
       },
-      "holder": "codex:wp1036-r3/review-impl-3",
-      "input_fp": "v1:sha256:b837933b071d08eeeb834a9cbb498b0794ac20b7ce78292c1f1371e1e84ddeeb",
+      "holder": "codex:wp1036-r5/review-impl-4",
+      "input_fp": "v1:sha256:25d2ca7fd2cfa2c88ea02838790ea71536771ef7b3e744235937f7008589c24c",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "32d579b733d463d0f247e92fdbc96a6227f45f07",
-          "commit": "c35c002c5e606d8cb9ca102919ee6f1be86e6a92",
+          "blob": "dd4bf669561c21841f10407d7e81acc10d0338d0",
+          "commit": "b4759a792788b1b2da04d8cbf0d038021bbed443",
           "path": ".zzzops/reviews/1036/review_impl.md"
         },
-        "summary": "Approved: the concise paper and aligned blog/README implement design9, accurately distinguish multiple-action/model guidance from dispatch, label Future Work as proposed, and remove obsolete evidence machinery. Required local validation and focused checks passed; no findings."
+        "summary": "Approved: the focused introduction, selective primary-cited Prior Work, bounded Future Work framing and blog removal implement design11 without priority or unsupported implementation claims. Fresh required validation and focused link/whitespace checks passed; no findings."
       },
       "reason": "stale",
       "reviewed": {
         "code": {
           "base": "c455b09914b49fd65e169f91a4f79110e3e2540b",
-          "change": "20d23cf45efdd7700d57822b9a97dc512a3a7f72",
-          "commit": "669b4b7cabc49d11ad1eb5f7c6ece0d26b9adce6",
-          "tree": "81ec923ee2451bfc3913fec5fcd2c64835aab0bb"
+          "change": "378ade22b8079bcca74ccbe266fb41297d5e8a43",
+          "commit": "fad289123f0a66cf1063b8f9a8f2bcb785821cbe",
+          "tree": "10c4ea3b5644838b9e1a1b0eab5f86608e2ecd19"
         }
       },
       "status": "done"
