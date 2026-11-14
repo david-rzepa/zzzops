@@ -223,6 +223,43 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T20:58:58Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:20590aebc3aa36067eb90c26660a95b5413cfc34",
+          "tests": "v1:sha256:d5e0aaa5666396be76e0753dee303757ca3e26b8b216fd9924b09acec128e177"
+        },
+        "policy": {},
+        "subject": "v1:sha256:e3797ee550826073dff79aa0efa5e93140b7621c0571fa0a205b770201652905"
+      },
+      "holder": "codex:summary1045/review_tests-1",
+      "input_fp": "v1:sha256:73ba327598d16bddf6ba1cbe64ac4f210d2deab41e49eb3c69c510210e14ff8c",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "cb4a6a4805461d6cb0c1d6fe3d1b02c4d5963ac6",
+          "commit": "221ba96a27e628ce5de71ced271e3605826e3a2d",
+          "path": ".zzzops/reviews/1045/review_tests.md"
+        },
+        "summary": "Approved: original 15 tests are byte-identical, cover the bounded summary behavior and real Git/CLI persistence/read-only paths, and have complete honest red/cost evidence; no findings."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "c455b09914b49fd65e169f91a4f79110e3e2540b",
+          "change": "feef69257aacdff96781117f112c664dd5ea1abd",
+          "commit": "64840b2e9fa7e71d2c5ec817d8bdb5a17255e775",
+          "tree": "647fcdc63b4487f5237e4ce2d3dd72bfcdee4659"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
