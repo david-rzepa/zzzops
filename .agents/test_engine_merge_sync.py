@@ -485,20 +485,15 @@ class InterdiffTests(msf.OpFixture):
 
 
 class UpgradeAndFingerprintTests(unittest.TestCase):
-    def test_node_and_journey_fingerprints_stay_at_the_pre_feature_baseline(self):
-        import hashlib
+    def test_merge_sync_capability_keeps_current_journey_fingerprints(self):
         import test_engine_branching as branching
-        from engine.fingerprint import node_def_fp
-        golden = json.loads((fx.ROOT / ".agents/fixtures/g1038_fingerprints.json").read_text())
-        for label, path in (("graph12", fx.TEMPLATES), ("graph26", fx.GRAPH26), ("shipped", fx.SHIPPED)):
-            with self.subTest(graph=label):
-                wf = json.loads((path / "workflow.json").read_text())
-                policy = json.loads((path / "POLICY.json").read_text())
-                values = {g: {n: node_def_fp(d) for n, d in data["nodes"].items()}
-                          for g, data in wf["graphs"].items()}
-                digest = hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
-                self.assertEqual(golden["node_defs"][label], digest)
-                self.assertEqual(golden["journeys"][label], branching.journey_fps(wf, policy=policy))
+        for renamed in (False, True):
+            with self.subTest(renamed=renamed):
+                wf = fx.renamed_workflow() if renamed else fx.load_template("workflow.json")
+                policy = fx.load_template("POLICY.json")
+                baseline = branching.journey_fps(wf, policy=policy)
+                policy["settings"]["engine"]["requires"].append("merge_sync")
+                self.assertEqual(baseline, branching.journey_fps(wf, policy=policy))
 
     def test_a_package_without_merge_sync_is_paused_by_the_policy(self):
         import shutil

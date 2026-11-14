@@ -161,7 +161,7 @@ class CapabilityTests(CardJourney):
         self.through_design(g)
         c = self.A.start(g, self.n("test_design"))
         self.A.worktree(g).commit({"tests/test_cut.py": "def test_cut():\n    assert cut() == 1\n"}, "test: cut")
-        self.A.submit(g, self.n("test_design"), c, {"commands": ["python -m pytest tests"]})
+        self.A.submit(g, self.n("test_design"), c, {"commands": ["python -m pytest tests"], "cost": {}})
         self.review(self.B, g, "review_tests", "changes_requested", [{"target": self.n("test_design"), "text": "more"}])
 
     def test_reclaimed_reopened_correction_keeps_its_capability(self):
@@ -342,8 +342,12 @@ class CardTextTests(CardJourney):
         when = c["commands"]["renew"]["when"]
         self.assertIn(str(c["lease"]["renew_every_minutes"]), when)
         self.assertIn(str(c["lease"]["timeout_minutes"]), when)
+        renew = c["commands"]["renew"]
+        argv = renew.get("argv") or shlex.split(renew["command"])[1:]
         self.assertEqual(["renew", str(c["goal"]), c["node"], "--attempt", str(c["lease"]["attempt"]), "--repo"],
-                         c["commands"]["renew"]["argv"][:-1])            # G1028: --repo <primary>
+                         argv[:-1])                                      # G1028: --repo <primary>
+        self.assertIn(os.path.realpath(argv[-1]),
+                      {os.path.realpath(repo.path) for repo in self.w.clones.values()})
 
     def test_non_review_card_with_artifact(self):
         g = self.goal()
@@ -483,7 +487,6 @@ class DocsTests(unittest.TestCase):
 
     def test_no_short_sha_checkpoint_override_shown(self):
         # Engine, references, skills and templates only; this repo's .zzzops/prompts is policy (separate change).
-        # Historical snapshots preserve old bytes; current defaults must use full SHAs.
         roots = (fx.PLUGIN_CODE / "engine", fx.PLUGIN_CODE / "references", fx.PLUGIN_CODE / "templates" / "default",
                  fx.PLUGIN_CODE.parent / "skills")
         bad = ('"commit": "<sha>"', '\\"commit\\": \\"<sha>\\"')

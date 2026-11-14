@@ -33,7 +33,7 @@ class ChecksJourney(Journey):
         self.through_design(g)
         c = self.A.start(g, "test_design")
         self.A.worktree(g).commit({"tests/test_cut.txt": "cut returns 1\n"}, "test: cut")
-        self.A.submit(g, "test_design", c, {"commands": [test_cmd]})
+        self.A.submit(g, "test_design", c, {"commands": [test_cmd], "cost": {}})
         self.review(self.B, g, "review_tests")
         c = self.A.start(g, "implement")
         self.A.worktree(g).commit({"src/cut.py": body}, "feat: cut")

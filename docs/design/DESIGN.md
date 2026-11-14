@@ -587,7 +587,7 @@ A command timeout has a fail-closed recovery boundary: group termination failure
    **Stated limitation** (`x2:L7`): the equality test holds only until another policy change lands. A squash-landed branch that was not deleted then fails both tests and blocks new work again, with the "policy change in progress" message. The deletion warning is the mitigation: delete a landed branch promptly.
 7. **Report.** Every response carries `{coordinator: {commit, current, policy_branches}}`.
 
-**Default provenance (G1024).** The repository still owns its explicit policy; installing a plugin never replaces it or introduces runtime fallback. Separate `.zzzops/TEMPLATE.json` records per-file last-reviewed normalized blob ids and removed-file tombstones, without a setting, capability or fingerprint. The append-only plugin `templates/history/` store retains old contents for working diffs and three-way merges. `next` gives a compact, non-blocking `policy_update`; every valid `validate` form expands the comparison, apply advice and exact reviewed/inferred record. Missing/invalid provenance is advisory; newer unknown bases are preserved and never offered as downgrades, and tombstones prevent old engines resurrecting removed defaults. All comparisons are local at the selected policy commit/directory, with no network cost/cache; computation failure drops the notice. Updates and record-only declines land through reviewed policy branches. Resolve `policy_merge_markers`, decide workflow.json before its prompts, and never edit TEMPLATE.json in a goal (SPEC §3.2, §3.15–§3.16, §8.3).
+**Default review receipts (G1024, amended by G1047).** The repository still owns its explicit policy; installing a plugin never replaces it or introduces runtime fallback. Separate schema-1 `.zzzops/TEMPLATE.json` records opaque per-file last-reviewed normalized blob hashes, without a setting, capability or fingerprint. G1047 retires the historical archive, inferred bases, reconstruction and three-way upgrades. `next` gives a compact, non-blocking `policy_update`; every valid `validate` form expands manual local/current comparison guidance and the exact current shipped snapshot for explicit review or decline. Hash differences never establish plugin age. Missing/invalid receipts are advisory and infer nothing; an actual newer schema keeps its guard and offers no replacement. Legacy removed entries mean reviewed absence, quiet until a path reappears; new receipts contain exactly current shipped `files`. Review/decline quiets the notice even when local edits or deletions are kept, until another shipped change. Reads write no policy or provenance, and local/private choices stay untouched. Comparisons are local at the selected policy commit/directory, with no network cost/cache; computation failure drops the notice. Updates and record-only declines land through reviewed policy branches. Resolve `policy_merge_markers`, decide workflow.json before its prompts, and never edit TEMPLATE.json in a goal (SPEC §3.2, §3.15–§3.16, §8.3). No new persisted keys, operations, leases or fingerprint semantics change, so SPEC §4.5 needs no new capability/schema and existing floors remain enforced.
 
 **How a policy change works (D11):**
 1. Create `zzzops/policy/<topic>` from `<integration>`, edit `.zzzops/POLICY.json`, `workflow.json` or `prompts/`, and run `zzzops validate --policy --dir <checkout>`. Besides the structural checks, it prints the **impact** on in-flight goals: the frontier evaluated under the current policy and under the new one, over all open and held goals, summarized as agent phases staled (by node), human gates re-asked, live leases on changed or removed nodes ("land after these finish"), records and skips orphaned, goals with an unknown graph, and new dead ends or stuck items. The skill pastes this summary into the policy PR (`evo:H2`).
@@ -994,9 +994,11 @@ The under-five-minute full run on the owner's machine is measured acceptance evi
 
 ## 4. Default workflow and worked examples
 
+G1047 retires the old complete graph fixtures and layout-upgrade recipes. The current shipped template is the maintained default; the abbreviated worked examples retain revision 6.3's names only to illustrate generic mechanisms, not to prescribe an old graph or an adoption path. Historical graph amendments remain in HISTORY §4.
+
 ### 4.1 Default graph (`graphs.default`, 15 nodes)
 
-**Amended by G1022.** The shipped graph has 15 nodes: `review_design` applies the seven design lenses (`intent`, `simplicity`, `truth`, `adversary`, `concurrency`, `rollout`, `experience`) and runs beside a separate `adversary_design`, and both feed `filter_design`; `review_impl` applies five lenses (`compliance`, `correctness`, `missing`, `tests`, `craft`) and feeds `filter_impl` (§3.8). `intent`, `simplicity`, `compliance`, `missing` and `craft` are not skippable. The G1000 text below describes the 26-node graph it replaces: read `review_design` plus `adversary_design` for the seven `<lens>_design` nodes, and `review_impl` for the seven `<lens>_impl` nodes. The shipped policy still uses the legacy default 3 × 9 agent nodes = 27 until round_budget is explicitly required; that activates default 10 per actor stage (G1039).
+**Amended by G1022.** The shipped graph has 15 nodes: `review_design` applies the seven design lenses (`intent`, `simplicity`, `truth`, `adversary`, `concurrency`, `rollout`, `experience`) and runs beside a separate `adversary_design`, and both feed `filter_design`; `review_impl` applies five lenses (`compliance`, `correctness`, `missing`, `tests`, `craft`) and feeds `filter_impl` (§3.8). `intent`, `simplicity`, `compliance`, `missing` and `craft` are not skippable. G1047 removes the superseded full graph representations and tests current and fully renamed graphs instead. The shipped policy still uses the legacy default 3 × 9 agent nodes = 27 until round_budget is explicitly required; that activates default 10 per actor stage (G1039).
 
 **Sync-review/round-budget adoption (G1039).** The shipped workflow adds review_impl.base as a non-context selector of base.base_commit; the review prompt asks only for semantic conflicts after a sync plus actual intervening goal edits. This remains configurable graph data. A separately owner-approved installed-policy branch, after merge_sync activation, requires round_budget and adopts the base edge/prompt. G1039 leaves default POLICY.requires unchanged. Old counters are never reset; review definition changes stale once but retain the established definition exemption. Result budget readers use stages under the capability and the legacy total shape otherwise.
 
@@ -1014,17 +1016,9 @@ design ─┬→ review_design ───┐
                                 └→ approve_merge ─┘
 ```
 
-**Amended by G1000 (#748).** `review_design` and `review_impl` are replaced by seven review lenses per subject, `<lens>_design` and `<lens>_impl` for `intent`, `simplicity`, `truth`, `adversary`, `concurrency`, `rollout` and `experience`. Each set feeds one filter, `filter_design` or `filter_impl` (§3.8). Wherever the table and worked examples below name `review_design`, read the lenses joined by `filter_design`; for `review_impl`, read the impl lenses joined by `filter_impl`. `base` gates on `filter_design.summary`, `approve_merge` is ready once `filter_impl` is ok, and `design` dependents read `deps.filter_design.summary`. The graph's source of truth is the shipped template; SPEC §7 states the engine's rules for any graph.
+**Historical lens layout (G1000, superseded by G1022 and G1047).** The earlier separate-node graph is no longer a shipped upgrade target or test fixture. Its filter and finding mechanisms remain generic engine behavior (§3.8); the current template supplies their bindings, and SPEC §7 states the rules for any graph.
 
-```
-design ─┬→ <7 lenses>_design → filter_design → approve_design → base → test_design → review_tests → implement → run_tests
-        └ (each lens reads design.doc and goal.spec)                                                            │
-   ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-   └→ <7 lenses>_impl → filter_impl ─┬→ integrate ─────┬→ merge
-                                     └→ approve_merge ─┘
-```
-
-**Why seven lenses.** The lens set comes from G1000's experiment (HISTORY §4). The five-lens hypothesis covered 12 of the 24 issues that would have caused harm; the seven lenses as run covered 23 of 24. Running all sixteen candidate lenses cost twice as much for one more low-severity issue. `intent` and `simplicity` are not skippable, because every change must serve the goal and stay simple; the other five are skippable, so a goal trims them with paired skips (`skip.concurrency_design` and `skip.concurrency_impl` for a docs-only goal).
+**Why seven design lenses.** The lens set comes from G1000's experiment (HISTORY §4). The five-lens hypothesis covered 12 of the 24 issues that would have caused harm; the seven lenses as run covered 23 of 24. Running all sixteen candidate lenses cost twice as much for one more low-severity issue. `intent` and `simplicity` are not skippable, because every change must serve the goal and stay simple; a goal trims an optional current reviewer lens with `skip["<node>:<lens>"]`.
 
 **Bindings of the shipped graph** (moved from SPEC §7 when the default graph became configuration, owner decision 2026-11-01):
 
@@ -1051,44 +1045,7 @@ design ─┬→ <7 lenses>_design → filter_design → approve_design → base
 
 **Tradeoffs.** The human approves before CI. A dependent stacks only once its dependency's `integrate` is ok, so the chain root's required checks delay its dependents, and while a dependency's `integrate` re-runs or polls CI, its dependents' delivery is a named wait and their human items are hidden (their answers are kept). A CI failure that needs a code fix changes `change` and re-asks `approve_merge` (rare: `run_tests` already ran the tests locally). A stacked goal's GitHub PR targets its dependency's branch, so its GitHub diff is only its own code; with k ≥ 2 the stack PR shows the combined dependencies. `approve_merge` stays required in the default graph; a repository may mark it optional in its own `workflow.json`.
 
-The revision 6.3 graph, kept for the record of its rationale:
-
-```
-design → review_design → approve_design → base → test_design → review_tests → implement → run_tests → review_impl ─┬→ integrate ─────┬→ merge
-                                                                                                                  └→ approve_merge ─┘
-```
-
-`approve_merge` runs parallel to `integrate`: it needs only an approved `review_impl`, so the merge question can be answered before the goal's own CI (§3.16).
-
-```
-DISCOVERY   design(worker) → review_design(worker, review of design)
-            → approve_design(human, review of design)
-DELIVERY    base(op, workspace; stacks on integrated dependencies) → test_design(worker, workspace)
-            → review_tests(worker, review of test_design) → implement(worker, workspace, preserve test_design)
-            → run_tests(op, workspace) → review_impl(worker, review of implement)
-            → integrate(op, workspace; PR, stack PR, required checks when the PR targets I)
-              and, in parallel, approve_merge(human, review of implement)
-            → merge(op, release_gate; waits for dependencies to merge)                        [terminal]
-```
-
-The full `workflow.json` is the shipped template, `plugins/zzzops/zzzops/templates/default/workflow.json`; SPEC §7 states the rules any graph must satisfy.
-
-| Node | Key inputs (✱ = context: gates readiness, not fingerprinted) | Identity bound | Output |
-|---|---|---|---|
-| `design` | `goal.spec`; `deps.design.doc`; `deps.review_design.summary`✱ (optional) | dependency design blobs, reviewed only | `summary`, `doc` (artifact) |
-| `review_design` | `goal.spec`, `design.doc`; subject `design` | design blob | review |
-| `approve_design` | `design.summary`, `design.doc`; `review_design.summary`✱; subject `design` | design blob | human review |
-| `base` | per dependency: `deps.merge.merge_commit` (optional) if merged, else `deps.integrate.pr.head`; `review_design.summary`✱ (not optional, so a skipped approval still needs an approved review; `model:M4`); `approve_design.summary`✱ (optional, so a skipped approval does not block) | dependency PR heads and merge commits | `branch`, `base_commit`, `stack`, `replay_map` |
-| `test_design` | `design.doc`, `base.base_commit` | design blob, base | `tests` (checkpoint), `commands`; `frozen` on the record |
-| `review_tests` | `design.doc`, `test_design.tests.change`; subject `test_design` | tests `change` | review |
-| `implement` | `design.doc`, `test_design.tests.change`, `base.base_commit`; `test_design.commands`✱, `review_tests.summary`✱; `preserve: test_design` | tests `change`, base | `code` (checkpoint), `summary` |
-| `run_tests` | `implement.code.tree`, `test_design.commands`; policy `verification.commands` | code `tree` | `result {passed, tree, details}` |
-| `review_impl` | `design.doc`, `test_design.tests.change`, `implement.code.change`; `run_tests.result`✱; subject `implement` | code `change` | review |
-| `integrate` | `implement.code.tree`, `base.base_commit` and its stack; `review_impl.summary`✱, `design.summary`✱, `run_tests.result`✱; policy `verification.required_ci` | code `tree` | `pr {number, url, head, tree, base}`, `ci {required, passed, failed}` or `ci {stacked: true, checks}` |
-| `approve_merge` | `implement.code.change`; `implement.summary`✱, `design.summary`✱, `review_tests.summary`✱, `review_impl.summary`✱; subject `implement`. The PR link is display only. | code `change`, not the PR head | human review |
-| `merge` | `integrate.pr`; `approve_merge.summary`✱, `base.base_commit`✱, `goal.links.issue`✱; `release_gate`; every dependency merged | PR head | `merge_commit`, `merged_at`; the goal then closes by the generic rule |
-
-Because a context input must still resolve, and a producer resolves only when current and ok, each ✱ edge on an approval or a check is a gate: for example `merge` cannot run until `approve_merge` is approved, and `review_impl` cannot run until `run_tests` passed. `approve_merge` stays required: the default graph offers no skip for it (D3).
+Revision 6.3's complete graph listing is retired by G1047. The current bindings above and shipped `workflow.json` define the maintained default; the abbreviated examples below illustrate the mechanisms without serving as an old workflow to install.
 
 **Changed in revision 6:** `design` runs as a worker (A4); `approve_merge` no longer consumes `integrate` (A1); `base` stacks on integrated dependencies and gates on `review_design` (A1, `model:M4`); a dependent's `design` gates on the dependency's design review (`econ:M2`); `implement` gains a `summary` (`econ:M1`).
 
@@ -1151,7 +1108,7 @@ G1001 is a few steps ahead of G1002. G1002 stacks on G1001's PR.
 - **Dispute.** `implement` re-submits the same code with `responses: {"review_impl:1:1": "disputed: the null case cannot occur because …"}`.
   - The output changed, so the finding dies. `review_impl`'s record is now non-ok with no live findings, so it is `ready (not_ok)` and re-runs; the reviewer sees the dispute. `run_tests` stays current: the tree did not change.
   - If the reviewer keeps the dispute open, the human is asked "uphold or waive?".
-- **Too many corrections.** Under legacy policy this 12-node worked example stops after total counted re-runs exceed 18 (3 × 6 agents). With round_budget required, the current rule is per actor stage at >= the explicit limit or default 10 new-material-finding rounds, with its precise base-only/no-checkpoint and redefinition exemptions (§3.6; SPEC §4.10). The owner chooses continue, hold or cancel; inherited counts are retained.
+- **Too many corrections.** Under legacy policy this revision 6.3 worked example stops after total counted re-runs exceed 18 (3 × 6 agents). With round_budget required, the current rule is per actor stage at >= the explicit limit or default 10 new-material-finding rounds, with its precise base-only/no-checkpoint and redefinition exemptions (§3.6; SPEC §4.10). The owner chooses continue, hold or cancel; inherited counts are retained.
 - **Human rejects at `approve_merge`.**
   - The answer is `changes_requested` with the human's words as a finding targeting `implement` (or `design`). The ordinary loop follows.
   - "Cancel this goal" is an `edit` that sets `state: closed`, `closed.reason: cancelled` and a note, with `--base <goal commit>`. The item prints the exact command, with the values in a file (§3.15). Its output prints `gh pr close` for the goal's PR.
@@ -1203,7 +1160,7 @@ All three merge in order with no further human input: the approvals bind `change
 | R10 | Heartbeat daemon, capacity ledger, label phase leases, the `reserve` CLI, observed-stop recovery, working inputs, response store | Empty-commit lease branches; staleness from commit time; reclaim; atomic finish | **Lost:** automatic renewal. An expired lease can be taken over; the late submit is rejected, and its work is kept in the local worktree, with salvage commands. |
 | R11 | Installation-validation gate, `plugin_freshness.py`, `entropy_review.py` (dead), the legacy-cleanup gate | `package_status` self-check; `validate` | **Lost:** automatic detection of retired per-repo installs (D9 covers keeping `cleanup_legacy.py` as a manual tool). Automatic detection was restored without a gate by the `legacy` item (G1015). |
 | R12 | v1 goal and phase model, intent/skill routing, the 52-operation dispatcher, `_private_main`, `policy_context` receipt caches | The 11-verb CLI (§3.15) | None functionally. |
-| R13 | The default graph's ceremony nodes and the 37-node INIT_PLAN graph | The 12-node default graph | `approve_understanding` becomes `approve_design` (an inline decision). The repository and publication authorization nodes are gone. The merge decision is D3. |
+| R13 | The default graph's ceremony nodes and the 37-node INIT_PLAN graph | The current shipped default graph | The reset renamed `approve_understanding` to `approve_design` (an inline decision). The repository and publication authorization nodes are gone. The merge decision is D3; G1047 retires the old complete graph fixtures and upgrade recipes. |
 | R14 | Revision 5's speculative guards (A5): the engine self-test with compiled-in constants, the verb-scoped diff check, the clock-skew refusal across all goal tips, `edit.confirm_threshold` and `edit --yes`, orphan-lease pruning inside every write, the work-in-progress push in `renew`, and the eight dependency miss reasons | Unit tests in CI (including a hostile global Git configuration); the `Engine:` trailer and the engine floor and ceiling; a skew warning on lease tips; `edit`'s preview and `--base`; orphans excluded from the frontier and reported by `validate`, deleted at goal close or by the one-line `REPAIR.md` recipe; one `dependency` reason plus the dependency's state | **Lost:** runtime refusal when an engine build computes identities or document changes wrongly; tests and the version rules are the protection. A crashed agent's committed but unpushed work stays on its machine (`REPAIR.md` has the push recipe). A fast clock produces a warning, not a refusal. |
 | R15 | `bootstrap.py` and its test, and the bootstrap skill's `--intent bootstrap` path with its `BOOTSTRAP.json` provenance comparison and post-harness review checkpoint | The bootstrap skill as a checklist over `validate`, the shipped templates `zzzops/templates/default/` and plain `git`/`gh` (§3.17) | **Lost:** a recorded approval of the repository's initial capabilities. Bootstrap is now ordinary files landed on the integration branch, like any policy change. |
 
@@ -1366,7 +1323,7 @@ The implementation is accepted when all of these hold. Commands and fixtures go 
 
 ---
 
-**Default update acceptance (G1024).** Identical reviewed defaults are quiet; upstream edits show working quoted diff/merge commands, including paths with spaces; non-overlap preserves local edits and overlap warns on markers. Record-only decline stays quiet until another upstream change. Inference recognizes history matches and leaves custom content unknown. Added/removed/deleted files, invalid/newer records, unknown bases and tombstones stay advisory under version skew. Both policy-preview and directory comparison use their selected source; explicit next stays capped while writes omit notices. Current history bytes and the pinned seed remain bundled. Targeted tests cover these behaviors without repeated full journeys.
+**Default update acceptance (G1024, amended by G1047).** Identical reviewed hashes are quiet even with local edits or deletions; differing opaque hashes give ordinary review notices. Every row offers manual handling, and both-present files have quoted local/current diffs, including paths with spaces and shell punctuation. Absent/current-only/local-only paths preserve the local choice without automatic copy/delete/merge advice. Review and record-only decline store exactly current shipped hashes, retire legacy removed entries and stay quiet until another shipped change. Missing/invalid receipts offer that snapshot for explicit review without inference; actual newer schemas offer no replacement. Legacy removed entries stay quiet while absent and become additions on reappearance. Reads preserve policy, provenance and private files. Both policy-preview and directory comparison use their selected source; explicit next stays capped while writes omit notices. Targeted tests cover these behaviors; generic engine journeys use current and fully renamed graphs or small explicit scenarios, without historical archives, seeds or copied full workflows.
 
 ## 11. Change log
 

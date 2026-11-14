@@ -286,15 +286,20 @@ class StackedDeliveryTests(GitHubJourney):
             self.approve(g, "approve_merge")
         prs = self.gh.load()["prs"]
         self.assertEqual(["dev", f"zzzops/pr/g{a}", f"zzzops/pr/g{b}"], [prs[k]["baseRefName"] for k in ("1", "2", "3")])
-        # now no further human input: run every action until the three goals close
+        # Clean restacks rerun the current graph's base-bound implementation
+        # review; unchanged reviewed changes retain the human approvals.
         for _ in range(40):
             nxt = self.w.ok("a", "next")
             self.assertEqual([], [i for i in nxt["needs_human"] if i["kind"] != "close"], nxt["needs_human"])
-            ops = [x for x in nxt["actions"] if x["kind"] == "op"]
-            if not ops:
+            actions = [x for x in nxt["actions"] if x["goal"] in (a, b, c)]
+            if not actions:
                 break
-            x = ops[0]
-            self.op(x["goal"], x["node"])
+            x = actions[0]
+            if x["kind"] == "op":
+                self.op(x["goal"], x["node"])
+            else:
+                self.assertEqual("review_impl", x["node"], x)
+                self.review(self.B, x["goal"], "review_impl")
         for g in (a, b, c):
             self.assertEqual("closed", self.show(g)["goal"]["state"], g)
         log = self.w.remote_git("log", "--format=%s", "dev")
@@ -385,7 +390,7 @@ class RequiredChecksOnStacksTests(GitHubJourney):
         wtd = self.A.worktree(g)
         c = self.A.start(g, "test_design")
         wtd.commit({f"tests/t{g}.txt": "t\n"}, f"test: G{g}")
-        self.A.submit(g, "test_design", c, {"commands": ["true"]})
+        self.A.submit(g, "test_design", c, {"commands": ["true"], "cost": {}})
         self.review(self.B, g, "review_tests")
         c = self.A.start(g, "implement")
         wtd.commit({f"src/m{g}.py": "x\n"}, f"feat: G{g}")
@@ -428,7 +433,7 @@ class CostBudgetTests(GitHubJourney):
         wtd = self.A.worktree(g)
         c = self.A.start(g, "test_design")
         wtd.commit({f"tests/t{g}.txt": "t\n"}, "test: t")
-        self.A.submit(g, "test_design", c, {"commands": ["true"]})
+        self.A.submit(g, "test_design", c, {"commands": ["true"], "cost": {}})
         self.review(self.B, g, "review_tests")
         c = self.A.start(g, "implement")
         wtd.commit({f"src/m{g}.py": "x\n"}, "feat: m")

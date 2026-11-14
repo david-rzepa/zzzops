@@ -1,17 +1,7 @@
-"""G1000: parallel review lenses in the 26-node graph (design rev 4, §3-§9 and §13).
+"""Generic filtered-review, intent and provenance contracts on the current shipped workflow.
 
-These tests run on the frozen 26-node template (`fx.GRAPH26`, `.agents/fixtures/graph26`: G1020's shipped template,
-frozen by G1022 when the shipped graph became 15 nodes); the other engine tests run on the frozen 12-node graph
-(`.agents/fixtures/graph12`). The shipped graph's own tests are in `test_engine_review_lenses.py`. They are written before the implementation and define these contracts:
-
-- A lens is a review node with `review: {"subject": S, "filter": F}`. Every new finding of a lens carries
-  `impact` (non-empty text) and `material` (boolean).
-- A filter node outputs `summary` (text) and `verdicts`: {"<finding id>": {"verdict": "keep" | "note",
-  "reason": "<text>"}}, exactly for the non-material candidates on its card. Its card lists `candidates`:
-  [{id, lens, target, text, impact, material, response}].
-- A target's card lists `notes` [{text, impact, lens, reason, ...}]; a lens's re-review card has
-  `previous.changed` (`git diff <old blob> <new blob>`); a node that declares `policy` keys has a card section
-  `policy: {key: value}`.
+Reviews join at their filter; only non-material candidates receive keep/note verdicts.
+Intent and definition changes stale the responsible reviewers without consuming correction rounds.
 """
 
 from __future__ import annotations
@@ -29,24 +19,19 @@ import engine_fixtures as fx
 from engine import schemas
 from engine.ops import OPS
 
-LENSES = ("intent", "simplicity", "truth", "adversary", "concurrency", "rollout", "experience")
-REQUIRED = ("intent", "simplicity")
-SUBJECTS = {"design": "filter_design", "impl": "filter_impl"}
-SHIPPED_NODES = (["design"] + [f"{l}_design" for l in LENSES] + ["filter_design", "approve_design", "base",
-                 "test_design", "review_tests", "implement", "run_tests"] + [f"{l}_impl" for l in LENSES]
-                 + ["filter_impl", "integrate", "approve_merge", "merge"])
+SHIPPED_NODES = fx.DEFAULT_NODES
 INTENT = {"purpose": "Ship small, reliable tools.", "serves": "Developers who use the tools.",
           "not": ["A framework."], "principles": ["Keep it small."]}
 HEX40 = "1234567890abcdef1234567890abcdef12345678"
 
 
 def shipped(name: str) -> dict:
-    """A file of the frozen 26-node template (the template these tests were written against)."""
-    return json.loads((fx.GRAPH26 / name).read_text(encoding="utf-8"))
+    """A current shipped template file."""
+    return json.loads((fx.SHIPPED / name).read_text(encoding="utf-8"))
 
 
 def shipped_prompt_exists(name: str) -> bool:
-    return (fx.GRAPH26 / "prompts" / name).is_file()
+    return (fx.SHIPPED / "prompts" / name).is_file()
 
 
 def verdict(v: str, reason: str = "judged by the filter") -> dict:
@@ -60,17 +45,12 @@ def lens_finding(text: str, material: bool, impact: str = "something concrete go
     return f
 
 
-SHIPPED_RENAME = {n: f"n{i + 1:02d}_x" for i, n in enumerate(SHIPPED_NODES)}
+SHIPPED_RENAME = dict(fx.RENAME)
 
 
 def renamed_shipped() -> dict:
     """The shipped workflow with every node id renamed, `review.filter` included."""
-    wf = fx.renamed_workflow(shipped("workflow.json"), SHIPPED_RENAME)
-    for g in wf["graphs"].values():
-        for nd in g["nodes"].values():
-            if "filter" in (nd.get("review") or {}):
-                nd["review"]["filter"] = SHIPPED_RENAME.get(nd["review"]["filter"], nd["review"]["filter"])
-    return wf
+    return fx.renamed_workflow(shipped("workflow.json"), SHIPPED_RENAME)
 
 
 def push_goal_doc(w: fx.World, doc: dict, parent: str):
@@ -104,7 +84,7 @@ class ShippedTemplateTests(unittest.TestCase):
     def copy_template(self):
         d = os.path.join(tempfile.mkdtemp(), "tpl")
         self.addCleanup(shutil.rmtree, os.path.dirname(d), True)
-        shutil.copytree(fx.GRAPH26, d)
+        shutil.copytree(fx.SHIPPED, d)
         return d
 
     def test_design_intent_node_receives_the_goal_spec(self):
@@ -118,7 +98,7 @@ class ShippedTemplateTests(unittest.TestCase):
             self.assertIn({"from": "goal.spec"}, [{"from": s.get("from")} for s in node["inputs"].values()], name)
 
     def test_validate_policy_passes_with_exactly_one_placeholder_warning(self):
-        rc, out = self.validate_dir(fx.GRAPH26)
+        rc, out = self.validate_dir(fx.SHIPPED)
         self.assertEqual(0, rc, out)
         self.assertTrue(out["ok"], out)
         self.assertEqual(["intent_placeholder"], [w["kind"] for w in out["warnings"]], out)
@@ -159,57 +139,10 @@ class ShippedTemplateTests(unittest.TestCase):
         self.assertEqual([], schemas.validate_policy(self.policy))
         self.assertEqual([], schemas.validate_workflow(self.wf, self.policy, shipped_prompt_exists, OPS))
 
-    def test_the_26_node_graph(self):
-        self.assertEqual(sorted(SHIPPED_NODES), sorted(self.nodes))
-        self.assertEqual(26, len(self.nodes))
-        for removed in ("review_design", "review_impl"):
-            self.assertNotIn(removed, self.nodes)
-        g = schemas.build_graph("default", self.wf["graphs"]["default"])
-        for subj, short in (("design", "design"), ("implement", "impl")):
-            filt = SUBJECTS[short]
-            self.assertEqual("bounded", self.nodes[filt]["capability"])
-            self.assertIs(False, self.nodes[filt]["skippable"])
-            self.assertEqual({"summary": "text", "verdicts": "object"}, self.nodes[filt]["outputs"])
-            for lens in LENSES:
-                n = f"{lens}_{short}"
-                nd = self.nodes[n]
-                self.assertEqual({"subject": subj, "filter": filt}, nd["review"], n)
-                self.assertEqual("reasoning", nd["capability"], n)
-                self.assertEqual(f"lens_{lens}.md", nd["prompt"], n)
-                self.assertIn("review", nd["instructions"], n)
-                self.assertEqual(lens not in REQUIRED, nd.get("skippable", True), n)
-                self.assertEqual(["intent"] if lens == "intent" else [], nd.get("policy", []), n)
-                # the filter reads every lens summary; optional exactly for the skippable lenses
-                spec = [s for s in self.nodes[filt]["inputs"].values() if s["from"] == f"{n}.summary"]
-                self.assertEqual(1, len(spec), (filt, n))
-                self.assertFalse(spec[0].get("context", False), (filt, n))
-                self.assertEqual(lens not in REQUIRED, spec[0].get("optional", False), (filt, n))
-                self.assertIn(n, g.producers(filt))
-        self.assertIs(False, self.nodes["approve_merge"]["skippable"])
-        self.assertEqual("filter_design.summary", self.nodes["approve_design"]["inputs"]["filter"]["from"])
-        self.assertFalse(self.nodes["approve_design"]["inputs"]["filter"].get("context", False))
-        froms = {n: {s["from"] for s in (self.nodes[n].get("inputs") or {}).values()} for n in self.nodes}
-        self.assertIn("filter_design.summary", froms["base"])
-        self.assertIn("filter_impl.summary", froms["integrate"])
-        self.assertIn("filter_impl.summary", froms["approve_merge"])
-        self.assertIn("deps.filter_design.summary", froms["design"])
-        for n in self.nodes:
-            self.assertFalse(any(f.split(".")[0] in ("review_design", "review_impl") for f in froms[n]), n)
-
-    def test_every_node_has_a_prompt_and_old_review_prompts_are_gone(self):
-        for n, nd in self.nodes.items():
-            if nd["kind"] != "op":
-                self.assertTrue(shipped_prompt_exists(nd["prompt"]), (n, nd["prompt"]))
-        for lens in LENSES:
-            self.assertTrue(shipped_prompt_exists(f"lens_{lens}.md"), lens)
-        self.assertTrue(shipped_prompt_exists("filter.md"))
-        self.assertFalse(shipped_prompt_exists("review_design.md"))
-        self.assertFalse(shipped_prompt_exists("review_impl.md"))
-        self.assertIn("review", self.policy["instructions"])
 
     def test_human_prompts_start_with_the_question(self):
         for name in ("approve_design.md", "approve_merge.md"):
-            first = (fx.GRAPH26 / "prompts" / name).read_text().splitlines()[0]
+            first = (fx.SHIPPED / "prompts" / name).read_text().splitlines()[0]
             self.assertTrue(first.startswith("# ") and first.endswith("?"), first)
 
     def test_engine_source_names_no_shipped_node(self):
@@ -222,11 +155,6 @@ class ShippedTemplateTests(unittest.TestCase):
                 if pattern.search(line):
                     hits.append(f"{path.relative_to(fx.ROOT)}:{i}: {line.strip()}")
         self.assertEqual([], hits)
-
-    def test_frozen_fixture_is_the_12_node_graph(self):
-        self.assertEqual(fx.DEFAULT_NODES, list(fx.load_template("workflow.json")["graphs"]["default"]["nodes"]))
-        self.assertNotEqual(fx.TEMPLATES.resolve(), fx.GRAPH26.resolve())
-        self.assertNotEqual(fx.SHIPPED.resolve(), fx.GRAPH26.resolve())
 
 
 # --------------------------------------------------------------------------------------------- schema rules
@@ -253,17 +181,17 @@ class LensSchemaTests(unittest.TestCase):
                             schemas.validate_workflow(wf, fx.load_template("POLICY.json"), fx.prompt_exists, OPS)))
 
     def test_filter_input_from_a_skippable_lens_must_be_optional(self):
-        spec = next(s for s in self.nodes["filter_design"]["inputs"].values() if s["from"] == "truth_design.summary")
+        spec = next(s for s in self.nodes["filter_design"]["inputs"].values() if s["from"] == "adversary_design.summary")
         spec.pop("optional", None)
-        self.assertTrue(self.errors(), "a required input from a skippable lens must be refused")
+        self.assertTrue(self.errors(), "a required input from a skippable reviewer must be refused")
 
     def test_filter_input_from_a_required_lens_must_be_required(self):
-        spec = next(s for s in self.nodes["filter_design"]["inputs"].values() if s["from"] == "intent_design.summary")
+        spec = next(s for s in self.nodes["filter_design"]["inputs"].values() if s["from"] == "review_design.summary")
         spec["optional"] = True
-        self.assertTrue(self.errors(), "an optional input from a non-skippable lens must be refused")
+        self.assertTrue(self.errors(), "an optional input from a non-skippable reviewer must be refused")
 
     def test_lenses_naming_one_filter_share_one_subject(self):
-        self.nodes["truth_impl"]["review"]["filter"] = "filter_design"
+        self.nodes["review_impl"]["review"]["filter"] = "filter_design"
         self.assertTrue(self.errors())
 
     def test_graph_requires_intent_when_a_node_declares_it(self):
@@ -276,7 +204,9 @@ class LensSchemaTests(unittest.TestCase):
 class IntentShapeTests(unittest.TestCase):
     def policy(self, intent):
         p = fx.load_template("POLICY.json")
-        if intent is not None:
+        if intent is None:
+            p["settings"].pop("intent", None)
+        else:
             p["settings"]["intent"] = intent
         return p
 
@@ -354,7 +284,10 @@ class Pilot:
         if "decision" in schema:
             prior = [{"id": f["id"], "status": "open" if f["id"] in keep_open else "resolved"}
                      for f in (card.get("previous") or {}).get("findings", []) if f["status"] == "open"]
-            new = list(findings)
+            new = [dict(f) for f in findings]
+            for finding in new:
+                if "id" not in finding and card.get("lenses") and "lens" not in finding:
+                    finding["lens"] = card["lenses"]["apply"][0]
             out = {"decision": "changes_requested" if new or keep_open else "approved",
                    "summary": summary or f"{node} verdict", "findings": prior + new}
         else:
@@ -372,7 +305,7 @@ class Pilot:
                         fx.GitDir(card["workspace"], self.w.env).commit(
                             {f"work/{self.rev.get(node, node)}.txt": f"{node} {self.turn}\n"}, f"{kind}: {node}")
                 elif t == "object":
-                    out[k] = {}  # Generic fixture value for newly declared object outputs.
+                    out[k] = {}
                 elif t == "strings":
                     out[k] = ["true"]
                 elif t in ("text", "string"):
@@ -430,7 +363,8 @@ class Pilot:
 
 
 def lens_ids(subject="design", skip=()):
-    return [f"{l}_{subject}" for l in LENSES if f"{l}_{subject}" not in skip]
+    reviewers = ["review_design", "adversary_design"] if subject == "design" else ["review_impl"]
+    return [name for name in reviewers if name not in skip]
 
 
 class LensWorld(unittest.TestCase):
@@ -450,7 +384,7 @@ class LensWorld(unittest.TestCase):
         policy["settings"]["intent"] = copy.deepcopy(INTENT)
         self.w.bootstrap(policy=policy, workflow=wf, prompts=False)
         self.w.push_dev({f".zzzops/prompts/{p.name}": p.read_text(encoding="utf-8")
-                         for p in sorted((fx.GRAPH26 / "prompts").iterdir())}, "chore(zzzops): prompts")
+                         for p in sorted((fx.SHIPPED / "prompts").iterdir())}, "chore(zzzops): prompts")
         self.p = Pilot(self.w, self.m)
 
     def n(self, x):
@@ -494,14 +428,14 @@ class LensWorld(unittest.TestCase):
 
 
 class LensJourneyTests(LensWorld):
-    def test_1_seven_design_lenses_run_in_parallel_with_distinct_holders(self):
+    def test_design_reviewers_run_in_parallel_with_distinct_holders(self):
         g = self.goal()
         self.through_design(g)
         nxt = self.w.ok("a", "next", "--goal", str(g))
         ready = sorted(self.p.rev.get(a["node"], a["node"]) for a in nxt["actions"] if a["goal"] == g)
         self.assertEqual(sorted(lens_ids()), ready)
         designer = self.p.record(g, "design")["holder"]
-        labels = [f"claude:{i}{i}{i}{i}/lens-{i}" for i in range(1, 8)]
+        labels = [f"claude:{i}{i}{i}{i}/lens-{i}" for i in range(1, 3)]
         self.assertNotIn(designer, labels)
         cards = {}
         for lens, label in zip(lens_ids(), labels):
@@ -514,19 +448,19 @@ class LensJourneyTests(LensWorld):
 
     def test_2_material_findings_wait_for_the_filter_then_reopen_the_design_once(self):
         g = self.goal()
-        st = self.lenses_done(g, {"truth_design": [{"findings": [lens_finding("claims are untestable", True)]}],
+        st = self.lenses_done(g, {"review_design": [{"findings": [lens_finding("claims are untestable", True)]}],
                                   "adversary_design": [{"findings": [lens_finding("skips can be gamed", True)]}]})
         self.assertEqual("current", st["design"])                      # waiting for the filter: the join
         self.assertTrue(st["approve_design"].startswith("blocked"), st["approve_design"])
         for lens in lens_ids():                                        # a filtered lens's record is ok
             self.assertTrue(self.p.record(g, lens)["ok"], lens)
-        truth_ids, adv_ids = self.lens_finding_ids(g, "truth_design"), self.lens_finding_ids(g, "adversary_design")
+        truth_ids, adv_ids = self.lens_finding_ids(g, "review_design"), self.lens_finding_ids(g, "adversary_design")
         self.assertEqual(1, len(truth_ids))
         card, _ = self.p.run(g, "filter_design", summary="filter: two material findings reopen the design")
         cands = self.candidates_of(card)
         self.assertEqual(set(truth_ids + adv_ids), set(cands))
         c = cands[truth_ids[0]]
-        self.assertEqual((self.n("truth_design"), self.n("design"), "claims are untestable", True),
+        self.assertEqual((f"{self.n('review_design')}:intent", self.n("design"), "claims are untestable", True),
                          (c["lens"], c["target"], c["text"], c["material"]))
         self.assertEqual("something concrete goes wrong", c["impact"])
         self.assertIn("response", c)
@@ -551,21 +485,6 @@ class LensJourneyTests(LensWorld):
         st = self.p.states(g)
         self.assertEqual("needs_human (approve)", st["approve_design"])
 
-    def test_4_and_7_approve_design_lists_the_filter_every_lens_and_the_skips(self):
-        reason = "docs-only goal: nothing runs concurrently"
-        g = self.goal(skip={"concurrency_design": reason, "concurrency_impl": reason})
-        hooks = {lens: [{"summary": f"{lens} says fine"}] for lens in lens_ids()}
-        hooks["filter_design"] = [{"summary": "filter: nothing reopens, no notes"}]
-        self.p.drive(g, lambda st: st["approve_design"] == "needs_human (approve)", hooks)
-        st = self.p.states(g)
-        self.assertEqual("skipped", st["concurrency_design"])
-        item = json.dumps(self.p.item(g, "approve_design"))
-        self.assertIn("filter: nothing reopens, no notes", item)
-        for lens in lens_ids(skip=("concurrency_design",)):
-            self.assertIn(f"{lens} says fine", item, lens)
-        self.assertIn("skipped", item)
-        self.assertIn(reason, item)
-        self.assertIn(self.n("concurrency_design"), item)
 
     def test_a_skipped_approval_still_waits_for_the_lenses_and_the_filter(self):
         g = self.goal(skip={"approve_design": "small goal"})
@@ -575,34 +494,34 @@ class LensJourneyTests(LensWorld):
         self.assertEqual("ready (new)", self.p.states(g)["base"])
 
     def test_5_new_refuses_a_skip_of_a_non_skippable_node(self):
-        for node in ("intent_design", "simplicity_impl", "filter_design", "approve_merge"):
+        for node in ("review_design", "review_impl", "filter_design", "approve_merge"):
             rc, err = self.w.run("a", "new", "--file", self.w.file({"title": "t", "spec": "s",
                                                                      "skip": {self.n(node): "not needed"}}))
             self.assertNotEqual(0, rc, node)
             self.assertIn("not skippable", json.dumps(err), (node, err))
-        self.goal(skip={"truth_design": "a skippable lens"})            # skippable lenses can be skipped
+        self.goal(skip={"adversary_design": "a skippable lens"})            # skippable lenses can be skipped
 
     def test_edit_refuses_a_skip_of_a_non_skippable_node(self):
         g = self.goal()
-        rc, err = self.w.run("a", "edit", str(g), "--set", f'skip.{self.n("intent_design")}="no"',
+        rc, err = self.w.run("a", "edit", str(g), "--set", f'skip.{self.n("review_design")}="no"',
                              "--base", self.p.tip(g))
         self.assertNotEqual(0, rc)
         self.assertIn("not skippable", json.dumps(err), err)
-        self.w.ok("a", "edit", str(g), "--set", f'skip.{self.n("rollout_design")}="internal change"',
+        self.w.ok("a", "edit", str(g), "--set", f'skip.{self.n("adversary_design")}="internal change"',
                   "--base", self.p.tip(g))
 
     def test_6_edit_refuses_a_new_skip_of_a_lens_with_live_findings(self):
         g = self.goal()
-        self.lenses_done(g, {"concurrency_design": [{"findings": [lens_finding("lease race", True)]}]})
+        self.lenses_done(g, {"adversary_design": [{"findings": [lens_finding("lease race", True)]}]})
         self.p.run(g, "filter_design")
         self.assertEqual("ready (reopened)", self.p.states(g)["design"])
-        rc, err = self.w.run("a", "edit", str(g), "--set", f'skip.{self.n("concurrency_design")}="noisy"',
+        rc, err = self.w.run("a", "edit", str(g), "--set", f'skip.{self.n("adversary_design")}="noisy"',
                              "--base", self.p.tip(g))
         self.assertNotEqual(0, rc, err)
         self.assertEqual("ready (reopened)", self.p.states(g)["design"])
         # waiving the finding first, visibly, makes the skip possible
-        fid = self.lens_finding_ids(g, "concurrency_design")[0]
-        lens = self.n("concurrency_design")
+        fid = self.lens_finding_ids(g, "adversary_design")[0]
+        lens = self.n("adversary_design")
         self.w.ok("a", "edit", str(g), "--set", f'records.{lens}.findings[{fid}].status="waived"',
                   "--set", f'records.{lens}.findings[{fid}].note="waived by Dave: out of scope"',
                   "--base", self.p.tip(g))
@@ -611,29 +530,29 @@ class LensJourneyTests(LensWorld):
     def test_6_a_skip_is_refused_while_findings_wait_for_the_filter_and_accepted_after_a_visible_waiver(self):
         g = self.goal()
         self.through_design(g)
-        self.p.run(g, "concurrency_design", findings=[lens_finding("lease race", True)])
-        ag, tcard = self.p.start(g, "truth_design")          # another lens is still running: no filter yet
+        self.p.run(g, "adversary_design", findings=[lens_finding("lease race", True)])
+        ag, tcard = self.p.start(g, "review_design")          # another reviewer is still running: no filter yet
         st = self.p.states(g)
-        self.assertEqual("running", st["truth_design"])
+        self.assertEqual("running", st["review_design"])
         self.assertTrue(st["filter_design"].startswith("blocked"), st["filter_design"])
         self.assertIsNone(self.p.record(g, "filter_design"))
         self.assertEqual("current", st["design"])              # the finding is not live yet
-        lens = self.n("concurrency_design")
-        fid = self.lens_finding_ids(g, "concurrency_design")[0]
+        lens = self.n("adversary_design")
+        fid = self.lens_finding_ids(g, "adversary_design")[0]
         rc, err = self.w.run("a", "edit", str(g), "--set", f'skip.{lens}="noisy"', "--base", self.p.tip(g))
         self.assertNotEqual(0, rc, err)
         msg = json.dumps(err)
         self.assertNotIn("not skippable", msg)
         self.assertIn(fid, msg)                                # the message names the finding ...
         self.assertIn("waived", msg)                           # ... and the waiver
-        self.assertNotEqual("skipped", self.p.states(g)["concurrency_design"])
+        self.assertNotEqual("skipped", self.p.states(g)["adversary_design"])
         # after a visible waiver the same skip is accepted
         self.w.ok("a", "edit", str(g), "--set", f'records.{lens}.findings[{fid}].status="waived"',
                   "--set", f'records.{lens}.findings[{fid}].note="waived by Dave: out of scope"',
                   "--base", self.p.tip(g))
         self.w.ok("a", "edit", str(g), "--set", f'skip.{lens}="noisy"', "--base", self.p.tip(g))
-        self.assertEqual("skipped", self.p.states(g)["concurrency_design"])
-        ag.submit(g, self.n("truth_design"), tcard, self.p.output(self.n("truth_design"), tcard), artifact="# r\n")
+        self.assertEqual("skipped", self.p.states(g)["adversary_design"])
+        ag.submit(g, self.n("review_design"), tcard, self.p.output(self.n("review_design"), tcard), artifact="# r\n")
         self.p.drive(g, lambda st: st["approve_design"] == "needs_human (approve)")
         item = json.dumps(self.p.item(g, "approve_design"))
         self.assertIn(fid, item)                               # the waiver shows on the approval ...
@@ -642,9 +561,9 @@ class LensJourneyTests(LensWorld):
 
     def test_6_a_lens_whose_only_open_findings_are_judged_notes_can_be_skipped(self):
         g = self.goal()
-        self.lenses_done(g, {"truth_design": [{"findings": [lens_finding("a wording nit", False)]}]})
-        lens = self.n("truth_design")
-        nid = self.lens_finding_ids(g, "truth_design")[0]
+        self.lenses_done(g, {"adversary_design": [{"findings": [lens_finding("a wording nit", False)]}]})
+        lens = self.n("adversary_design")
+        nid = self.lens_finding_ids(g, "adversary_design")[0]
         # not yet judged by the filter: not a note, so the skip is refused
         rc, err = self.w.run("a", "edit", str(g), "--set", f'skip.{lens}="noisy"', "--base", self.p.tip(g))
         self.assertNotEqual(0, rc, err)
@@ -652,66 +571,38 @@ class LensJourneyTests(LensWorld):
         self.p.run(g, "filter_design", verdicts={nid: verdict("note", "a nit")})
         self.assertEqual("current", self.p.states(g)["design"])
         self.w.ok("a", "edit", str(g), "--set", f'skip.{lens}="noisy"', "--base", self.p.tip(g))
-        self.assertEqual("skipped", self.p.states(g)["truth_design"])
+        self.assertEqual("skipped", self.p.states(g)["adversary_design"])
 
 
-class FullLensJourneyTests(LensWorld):
-    def test_8_capture_to_merge_and_the_pr_body_lists_every_code_lens_and_the_skips(self):
-        reason = "internal-only change"
-        g = self.goal(skip={"experience_design": reason, "experience_impl": reason})
-        hooks = {lens: [{"summary": f"{lens} ok"}] for lens in lens_ids("impl")}
-        hooks["filter_impl"] = [{"summary": "filter_impl: nothing reopens"}]
-        self.p.drive(g, lambda st: st["approve_merge"] == "needs_human (approve)" and st["integrate"] == "current",
-                     hooks, limit=200)
-        prs = self.gh.load()["prs"]
-        self.assertEqual(1, len(prs))
-        body = next(iter(prs.values()))["body"]
-        self.assertIn("## Reviews", body)
-        self.assertIn("filter_impl: nothing reopens", body)
-        for lens in lens_ids("impl", skip=("experience_impl",)):
-            self.assertIn(f"**{self.n(lens)}**: {lens} ok", body, body)
-        self.assertIn(f"skipped: {reason}", body)
-        self.assertIn(self.n("experience_impl"), body)
-        item = json.dumps(self.p.item(g, "approve_merge"))
-        self.assertIn("filter_impl: nothing reopens", item)
-        self.assertIn(reason, item)
-        self.p.drive(g, lambda st: not st)                    # a closed goal has no node states
-        self.assertEqual(("closed", "done"), (self.p.show(g)["goal"]["state"], self.p.show(g)["goal"]["closed"]["reason"]))
+class SkippedFindingVisibilityTests(LensWorld):
+    def test_a_late_finding_on_a_skipped_reviewer_stays_visible_through_merge(self):
+        g = self.goal()
+        self.through_design(g)
+        ag, card = self.p.start(g, "adversary_design")
+        reason = "skipped while running: Dave said so"
+        self.w.ok("a", "edit", str(g), "--set", f'skip.{self.n("adversary_design")}={json.dumps(reason)}',
+                  "--base", self.p.tip(g))
+        out = self.p.output(self.n("adversary_design"), card,
+                            findings=[lens_finding("late design finding", True)])
+        ag.submit(g, self.n("adversary_design"), card, out, artifact="# review\n")
+        self.assertEqual("skipped", self.p.states(g)["adversary_design"])
+        fid = self.lens_finding_ids(g, "adversary_design")[0]
+        self.p.drive(g, lambda st: st["approve_design"] == "needs_human (approve)")
+        approval = json.dumps(self.p.item(g, "approve_design"))
+        for text in (fid, "late design finding", reason, self.n("adversary_design")):
+            self.assertIn(text, approval)
+        self.p.drive(g, lambda st: st["approve_merge"] == "needs_human (approve)" and st["integrate"] == "current")
+        approval = json.dumps(self.p.item(g, "approve_merge"))
+        body = next(iter(self.gh.load()["prs"].values()))["body"]
+        for text in (fid, "late design finding", reason, self.n("adversary_design")):
+            self.assertIn(text, approval)
+            self.assertIn(text, body)
+        self.p.drive(g, lambda st: not st)
+        self.assertEqual("closed", self.p.show(g)["goal"]["state"])
         self.assertEqual("MERGED", next(iter(self.gh.load()["prs"].values()))["state"])
 
-    def late_finding_on_a_skipped_lens(self, g, lens, text):
-        """Skip `lens` while it runs with no record (edit accepts this), then let it land a material finding."""
-        ag, card = self.p.start(g, lens)
-        self.w.ok("a", "edit", str(g), "--set", f'skip.{self.n(lens)}="skipped while running: Dave said so"',
-                  "--base", self.p.tip(g))
-        out = self.p.output(self.n(lens), card, findings=[lens_finding(text, True)])
-        ag.submit(g, self.n(lens), card, out, artifact="# r\n")
-        self.assertEqual("skipped", self.p.states(g)[lens])
-        self.assertIn(text, [f["text"] for f in self.p.record(g, lens)["findings"] if f["status"] == "open"])
 
-    def test_open_findings_on_skipped_nodes_are_listed_on_approvals_and_the_pr_body(self):
-        """Approval directive (approve_design attempt 4): a late finding on a skipped node is never invisible."""
-        g = self.goal()
-        self.p.drive(g, lambda st: st["truth_design"].startswith("ready"))
-        self.late_finding_on_a_skipped_lens(g, "truth_design", "late design finding")
-        self.p.drive(g, lambda st: st["approve_design"] == "needs_human (approve)")
-        item = json.dumps(self.p.item(g, "approve_design"))
-        self.assertIn("late design finding", item)
-        self.assertIn(self.n("truth_design"), item)
-        self.p.drive(g, lambda st: st["experience_impl"].startswith("ready"), limit=200)
-        self.late_finding_on_a_skipped_lens(g, "experience_impl", "late impl finding")
-        self.p.drive(g, lambda st: st["approve_merge"] == "needs_human (approve)" and st["integrate"] == "current",
-                     limit=200)
-        item = json.dumps(self.p.item(g, "approve_merge"))
-        self.assertIn("late impl finding", item)
-        self.assertIn(self.n("experience_impl"), item)
-        body = next(iter(self.gh.load()["prs"].values()))["body"]
-        self.assertIn("late impl finding", body)
-        self.assertIn(self.n("experience_impl"), body)
-
-
-
-class RenamedFullLensJourneyTests(FullLensJourneyTests):
+class RenamedSkippedFindingVisibilityTests(SkippedFindingVisibilityTests):
     renamed = True
 
 
@@ -725,9 +616,9 @@ class RenamedLensJourneyTests(LensJourneyTests):
 class FilterTests(LensWorld):
     def test_a_note_judged_note_leaves_the_target_current_and_does_not_count(self):
         g = self.goal()
-        self.lenses_done(g, {"simplicity_design": [{"findings": [lens_finding("rename a helper", False,
+        self.lenses_done(g, {"review_design": [{"findings": [lens_finding("rename a helper", False,
                                                                                "slightly harder to read")]}]})
-        nid = self.lens_finding_ids(g, "simplicity_design")[0]
+        nid = self.lens_finding_ids(g, "review_design")[0]
         card, _ = self.p.run(g, "filter_design", verdicts={nid: verdict("note", "a preference")})
         self.assertEqual(False, self.candidates_of(card)[nid]["material"])
         st = self.p.states(g)
@@ -737,30 +628,30 @@ class FilterTests(LensWorld):
         # the note is on the approval item, with its lens
         item = json.dumps(self.p.item(g, "approve_design"))
         self.assertIn("rename a helper", item)
-        self.assertIn(self.n("simplicity_design"), item)
+        self.assertIn(self.n("review_design"), item)
         # and on the target's next card (the human asks for changes)
         self.p.answer(g, "approve_design", decision="changes_requested")
         ag, dcard = self.p.start(g, "design")
         notes = dcard.get("notes") or []
         self.assertEqual(1, len(notes), dcard)
-        self.assertEqual(("rename a helper", "slightly harder to read", self.n("simplicity_design"), "a preference"),
+        self.assertEqual(("rename a helper", "slightly harder to read", f"{self.n('review_design')}:intent", "a preference"),
                          (notes[0]["text"], notes[0]["impact"], notes[0]["lens"], notes[0]["reason"]))
         self.assertNotIn(nid, [c["id"] for c in dcard["corrections"]])
 
     def test_a_material_claim_reopens_whatever_the_filter_thinks(self):
         g = self.goal()
-        self.lenses_done(g, {"rollout_design": [{"findings": [lens_finding("no rollback path", True)]}]})
-        fid = self.lens_finding_ids(g, "rollout_design")[0]
+        self.lenses_done(g, {"adversary_design": [{"findings": [lens_finding("no rollback path", True)]}]})
+        fid = self.lens_finding_ids(g, "adversary_design")[0]
         card, _ = self.p.run(g, "filter_design")
         self.assertEqual(True, self.candidates_of(card)[fid]["material"])
         self.assertEqual("ready (reopened)", self.p.states(g)["design"])
 
     def test_a_note_promoted_to_keep_reopens_the_target(self):
         g = self.goal()
-        self.lenses_done(g, {"experience_design": [{"findings": [lens_finding("the error message is wrong", False)]}],
-                             "truth_design": [{"findings": [lens_finding("a nit", False)]}]})
-        keep = self.lens_finding_ids(g, "experience_design")[0]
-        nit = self.lens_finding_ids(g, "truth_design")[0]
+        self.lenses_done(g, {"review_design": [{"findings": [lens_finding("the error message is wrong", False)]}],
+                             "adversary_design": [{"findings": [lens_finding("a nit", False)]}]})
+        keep = self.lens_finding_ids(g, "review_design")[0]
+        nit = self.lens_finding_ids(g, "adversary_design")[0]
         self.p.run(g, "filter_design", verdicts={keep: verdict("keep", "the operator gets stuck"),
                                                  nit: verdict("note", "a nit")})
         self.assertEqual("ready (reopened)", self.p.states(g)["design"])
@@ -770,16 +661,16 @@ class FilterTests(LensWorld):
 
     def test_filter_verdicts_must_cover_exactly_the_notes(self):
         g = self.goal()
-        self.lenses_done(g, {"simplicity_design": [{"findings": [lens_finding("note one", False),
+        self.lenses_done(g, {"review_design": [{"findings": [lens_finding("note one", False),
                                                                  lens_finding("note two", False)]}],
-                             "truth_design": [{"findings": [lens_finding("material one", True)]}]})
-        n1, n2 = self.lens_finding_ids(g, "simplicity_design")
-        mat = self.lens_finding_ids(g, "truth_design")[0]
+                             "adversary_design": [{"findings": [lens_finding("material one", True)]}]})
+        n1, n2 = self.lens_finding_ids(g, "review_design")
+        mat = self.lens_finding_ids(g, "adversary_design")[0]
         ag, card = self.p.start(g, "filter_design")
         self.assertEqual({n1, n2, mat}, set(self.candidates_of(card)))
         for bad in ({n1: verdict("note")},                                        # missing a verdict
                     {n1: verdict("note"), n2: verdict("keep"), mat: verdict("note")},        # a material claim
-                    {n1: verdict("note"), n2: verdict("keep"), "truth_design:9:9": verdict("note")},  # unknown id
+                    {n1: verdict("note"), n2: verdict("keep"), "adversary_design:9:9": verdict("note")},  # unknown id
                     {n1: verdict("drop"), n2: verdict("keep")},                    # not keep or note
                     {n1: {"verdict": "note"}, n2: verdict("keep")}):              # no reason
             out = {"summary": "filter", "verdicts": bad}
@@ -795,17 +686,17 @@ class FilterTests(LensWorld):
 
     def test_lens_findings_need_impact_and_material(self):
         g = self.goal()
-        self.p.drive(g, lambda st: st["truth_design"].startswith("ready"))
-        ag, card = self.p.start(g, "truth_design")
+        self.p.drive(g, lambda st: st["adversary_design"].startswith("ready"))
+        ag, card = self.p.start(g, "adversary_design")
         for f in ({"text": "no labels"}, {"text": "no impact", "material": True},
                   {"text": "empty impact", "impact": " ", "material": True},
                   {"text": "not a bool", "impact": "x", "material": "yes"}):
-            rc, err = ag.submit(g, self.n("truth_design"), card,
+            rc, err = ag.submit(g, self.n("adversary_design"), card,
                                 {"decision": "changes_requested", "summary": "s", "findings": [f]}, artifact="# r\n",
                                 ok=False)
             self.assertNotEqual(0, rc, f)
             self.assertEqual("validation", err["error"]["code"], err)
-        ag.submit(g, self.n("truth_design"), card, {"decision": "changes_requested", "summary": "s",
+        ag.submit(g, self.n("adversary_design"), card, {"decision": "changes_requested", "summary": "s",
                                                     "findings": [lens_finding("labelled", True)]}, artifact="# r\n")
 
     def test_unfiltered_reviews_and_humans_are_unchanged(self):
@@ -819,26 +710,26 @@ class FilterTests(LensWorld):
 
     def test_a_crash_looping_lens_leaves_the_filter_visibly_blocked(self):
         g = self.goal()
-        self.p.drive(g, lambda st: st["concurrency_design"].startswith("ready"))
+        self.p.drive(g, lambda st: st["adversary_design"].startswith("ready"))
         for lens in lens_ids():
-            if lens in ("concurrency_design", "intent_design"):
+            if lens in ("adversary_design", "review_design"):
                 continue
             self.p.run(g, lens)
-        for lens in ("concurrency_design", "intent_design"):
+        for lens in ("adversary_design", "review_design"):
             for _ in range(3):
                 ag, card = self.p.start(g, lens)
                 ag.submit(g, self.n(lens), card, blocked={"waiting_for": "agent", "instructions": "try again",
                                                           "reason": "tool crashed"})
         st = self.p.states(g)
         self.assertTrue(st["filter_design"].startswith("blocked"), st["filter_design"])
-        self.assertIn(self.n("concurrency_design"), st["filter_design"])
+        self.assertIn(self.n("adversary_design"), st["filter_design"])
         nxt = self.w.ok("a", "next", "--goal", str(g))
         items = {x["node"]: x for x in nxt["needs_human"] if x["kind"] == "crash_loop"}
-        self.assertIn(self.n("concurrency_design"), items)
-        self.assertIn(self.n("intent_design"), items)
+        self.assertIn(self.n("adversary_design"), items)
+        self.assertIn(self.n("review_design"), items)
         sets = lambda it: [k for o in it.get("options", []) for k in ((o.get("file") or {}).get("set") or {})]
-        self.assertIn(f"skip.{self.n('concurrency_design')}", sets(items[self.n("concurrency_design")]))
-        self.assertNotIn(f"skip.{self.n('intent_design')}", sets(items[self.n("intent_design")]))
+        self.assertIn(f"skip.{self.n('adversary_design')}", sets(items[self.n("adversary_design")]))
+        self.assertNotIn(f"skip.{self.n('review_design')}", sets(items[self.n("review_design")]))
 
     def test_a_filter_holder_who_produced_the_subject_is_refused(self):
         g = self.goal()
@@ -859,7 +750,7 @@ class FilterTests(LensWorld):
             rc, err = ag.start(g, self.n(lens), ok=False)
             self.assertNotEqual(0, rc, lens)
             self.assertEqual("independence", err["error"]["code"], (lens, err))
-        self.p.drive(g, lambda st: st["truth_impl"].startswith("ready"), limit=200)
+        self.p.drive(g, lambda st: st["review_impl"].startswith("ready"), limit=200)
         implementer = self.p.record(g, "implement")["holder"]
         ag = next(a for a in self.p.agents if a.label == implementer)
         for lens in lens_ids("impl"):
@@ -870,15 +761,15 @@ class FilterTests(LensWorld):
     def unjudged_note(self, change):
         """F1: a lens re-run that adds a note stales the filter on `candidates` alone."""
         g = self.goal()
-        hooks = {"intent_design": [{"summary": "intent: serves the purpose"}]}
+        hooks = {"review_design": [{"summary": "intent: serves the purpose"}]}
         self.p.drive(g, lambda st: st["approve_design"] == "needs_human (approve)", hooks)
         filter_runs = self.p.record(g, "filter_design")["correction_runs"]
         change()
         st = self.p.states(g)
-        self.assertTrue(st["intent_design"].startswith("ready (stale"), st["intent_design"])
-        self.p.run(g, "intent_design", summary="intent: serves the purpose",
+        self.assertTrue(st["review_design"].startswith("ready (stale"), st["review_design"])
+        self.p.run(g, "review_design", summary="intent: serves the purpose",
                    findings=[lens_finding("the principle wording drifts", False)])
-        nid = self.lens_finding_ids(g, "intent_design")[0]
+        nid = self.lens_finding_ids(g, "review_design")[0]
         st = self.p.states(g)
         self.assertEqual("ready (stale: candidates)", st["filter_design"])
         self.assertEqual("current", st["design"])                          # not reopened ...
@@ -912,21 +803,21 @@ class FilterTests(LensWorld):
         self.check_unjudged_note_judged_note(lambda: self.set_intent(dict(INTENT, purpose="Ship small, fast tools.")))
 
     def test_unjudged_note_after_a_lens_rev_bump_keep(self):
-        self.check_unjudged_note(lambda: self.bump_rev("intent_design"))
+        self.check_unjudged_note(lambda: self.bump_rev("review_design"))
 
     def test_unjudged_note_after_a_lens_rev_bump_note(self):
-        self.check_unjudged_note_judged_note(lambda: self.bump_rev("intent_design"))
+        self.check_unjudged_note_judged_note(lambda: self.bump_rev("review_design"))
 
     def test_a_lens_reconfirming_the_same_notes_leaves_the_filter_fresh(self):
         g = self.goal()
-        self.lenses_done(g, {"simplicity_design": [{"summary": "simplicity: one note",
+        self.lenses_done(g, {"review_design": [{"summary": "simplicity: one note",
                                                     "findings": [lens_finding("merge two helpers", False)]}]})
-        nid = self.lens_finding_ids(g, "simplicity_design")[0]
+        nid = self.lens_finding_ids(g, "review_design")[0]
         self.p.run(g, "filter_design", verdicts={nid: verdict("note", "a preference")})
-        self.bump_rev("simplicity_design")
+        self.bump_rev("review_design")
         st = self.p.states(g)
-        self.assertTrue(st["simplicity_design"].startswith("ready (stale"), st)
-        card, _ = self.p.run(g, "simplicity_design", keep_open=(nid,), summary="simplicity: one note")
+        self.assertTrue(st["review_design"].startswith("ready (stale"), st)
+        card, _ = self.p.run(g, "review_design", keep_open=(nid,), summary="simplicity: one note")
         st = self.p.states(g)
         self.assertEqual("current", st["filter_design"])
         self.assertEqual("current", st["design"])
@@ -934,8 +825,8 @@ class FilterTests(LensWorld):
 
     def test_a_fresh_filter_record_without_a_verdict_keeps_the_note(self):
         g = self.goal()
-        self.lenses_done(g, {"simplicity_design": [{"findings": [lens_finding("merge two helpers", False)]}]})
-        nid = self.lens_finding_ids(g, "simplicity_design")[0]
+        self.lenses_done(g, {"review_design": [{"findings": [lens_finding("merge two helpers", False)]}]})
+        nid = self.lens_finding_ids(g, "review_design")[0]
         self.p.run(g, "filter_design", verdicts={nid: verdict("note", "a preference")})
         self.assertEqual("current", self.p.states(g)["design"])
         fp = self.p.record(g, "filter_design")["input_fp"]
@@ -961,9 +852,9 @@ class IntentTests(LensWorld):
     def test_the_intent_lens_card_shows_policy_intent(self):
         g = self.goal()
         self.through_design(g)
-        ag, card = self.p.start(g, "intent_design")
+        ag, card = self.p.start(g, "review_design")
         self.assertEqual({"intent": INTENT}, card.get("policy"))
-        ag, card = self.p.start(g, "truth_design", avoid=(ag.label,))
+        ag, card = self.p.start(g, "adversary_design", avoid=(ag.label,))
         self.assertNotIn("intent", card.get("policy") or {})
 
     def test_changing_intent_stales_only_the_intent_lenses(self):
@@ -971,35 +862,27 @@ class IntentTests(LensWorld):
         self.p.drive(g, lambda st: st["approve_design"] == "needs_human (approve)")
         self.set_intent(dict(INTENT, serves="Operators too."))
         st = self.p.states(g)
-        self.assertEqual("ready (stale: policy.intent)", st["intent_design"])
+        self.assertEqual("ready (stale: policy.intent)", st["review_design"])
         stale = sorted(n for n, s in st.items() if s.startswith("ready (stale"))
-        self.assertEqual(["intent_design"], stale, st)
+        self.assertEqual(["review_design"], stale, st)
         for lens in lens_ids():
-            if lens != "intent_design":
+            if lens != "review_design":
                 self.assertEqual("current", st[lens], lens)
         self.assertEqual("current", st["design"])
         # the intent re-run is exempt from the budget
-        self.p.run(g, "intent_design")
-        self.assertEqual(0, self.p.record(g, "intent_design")["correction_runs"])
+        self.p.run(g, "review_design")
+        self.assertEqual(0, self.p.record(g, "review_design")["correction_runs"])
 
-    def test_changing_intent_at_the_impl_stage_stales_only_the_intent_lenses(self):
+    def test_changing_intent_at_delivery_keeps_unaffected_implementation_current(self):
         g = self.goal()
-        self.p.drive(g, lambda st: all(st[l] == "current" for l in lens_ids("impl")), limit=200)
-        self.assertIsNotNone(self.p.record(g, "intent_impl"))
+        self.p.drive(g, lambda st: st["review_impl"] == "current", limit=200)
         self.set_intent(dict(INTENT, serves="Operators too."))
-        # base waits for filter_design (context input), so re-run intent_design first (same summary,
-        # so filter_design stays current) before reading the impl-stage states
-        self.p.run(g, "intent_design")
+        self.assertEqual("ready (stale: policy.intent)", self.p.states(g)["review_design"])
+        self.p.run(g, "review_design")
         if self.p.states(g)["filter_design"] != "current":
             self.p.run(g, "filter_design")
-        st = self.p.states(g)
-        self.assertEqual("ready (stale: policy.intent)", st["intent_impl"])
-        stale = {n for n, s in st.items() if s.startswith("ready (stale")}
-        self.assertEqual(set(), stale - {"intent_design", "intent_impl"}, st)
-        for lens in lens_ids("impl"):
-            if lens != "intent_impl":
-                self.assertEqual("current", st[lens], lens)
-        self.assertEqual("current", st["implement"])
+        self.assertEqual("current", self.p.states(g)["implement"])
+        self.assertEqual("current", self.p.states(g)["review_impl"])
 
 
 # --------------------------------------------------------------------------------------------- re-review pointer
@@ -1010,31 +893,31 @@ class PointerTests(LensWorld):
         g = self.goal()
         self.through_design(g)
         doc = self.p.record(g, "design")["output"]["doc"]
-        self.p.run(g, "simplicity_design")
-        reviewed = self.p.record(g, "simplicity_design").get("reviewed") or {}
+        self.p.run(g, "review_design")
+        reviewed = self.p.record(g, "review_design").get("reviewed") or {}
         self.assertEqual((doc["blob"], doc["commit"]),
                          ((reviewed.get("doc") or {}).get("blob"), (reviewed.get("doc") or {}).get("commit")), reviewed)
         # a lease overtaken by a design change lands stale and records no `reviewed`
-        ag, card = self.p.start(g, "truth_design")
+        ag, card = self.p.start(g, "adversary_design")
         self.w.ok("a", "edit", str(g), "--set", 'spec="a changed spec"', "--base", self.p.tip(g))
-        ag.submit(g, self.n("truth_design"), card, self.p.output(self.n("truth_design"), card), artifact="# r\n")
-        r = self.p.record(g, "truth_design")
+        ag.submit(g, self.n("adversary_design"), card, self.p.output(self.n("adversary_design"), card), artifact="# r\n")
+        r = self.p.record(g, "adversary_design")
         self.assertEqual("done", r["status"])
         self.assertNotIn("doc", r.get("reviewed") or {}, r)
 
     def test_a_missing_old_blob_says_review_in_full(self):
         g = self.goal()
-        self.lenses_done(g, {"truth_design": [{"findings": [lens_finding("wrong claim", True)]}]})
+        self.lenses_done(g, {"adversary_design": [{"findings": [lens_finding("wrong claim", True)]}]})
         self.p.run(g, "filter_design")
         self.p.run(g, "design")
         tip = self.p.tip(g)
         self.w.seed.git("fetch", "-q", "origin", f"refs/heads/zzzops/goal/g{g}")
         doc = json.loads(self.w.seed.git("show", "FETCH_HEAD:goal.json"))
-        r = doc["records"][self.n("truth_design")]
+        r = doc["records"][self.n("adversary_design")]
         self.assertIn("doc", r.get("reviewed") or {}, r)
         r["reviewed"]["doc"]["blob"] = HEX40
         push_goal_doc(self.w, doc, tip)
-        ag, card = self.p.start(g, "truth_design")
+        ag, card = self.p.start(g, "adversary_design")
         prev = json.dumps(card.get("previous"))
         self.assertIn("previous version not available; review in full", prev)
         self.assertNotIn(f"git diff {HEX40}", prev)

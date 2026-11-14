@@ -57,43 +57,41 @@ class FrontierTests(Base):
     def test_changes_requested_reopens_target_with_no_extra_phase(self):
         s = self.s
         s.goal(1)
-        self.to(1, "review_impl")
-        s.start(1, self.n("review_impl"))
-        s.submit(1, self.n("review_impl"), findings=[{"text": "null check missing"}])
-        st = self.state(1, "implement")
+        self.to(1, "review_tests")
+        s.start(1, self.n("review_tests"))
+        s.submit(1, self.n("review_tests"), findings=[{"text": "null check missing"}])
+        st = self.state(1, "test_design")
         self.assertEqual(("ready", "reopened"), (st["name"], st["reason"]))
-        self.assertEqual(["review_impl:%s" % "x"][:0], [])
         self.assertEqual(1, len(st["corrections"]))
-        self.assertEqual(self.n("review_impl") + ":1:1", st["corrections"][0]["id"])
+        self.assertEqual(self.n("review_tests") + ":1:1", st["corrections"][0]["id"])
         # the reviewer itself is blocked on its own live finding, not ready
-        rv = self.state(1, "review_impl")
+        rv = self.state(1, "review_tests")
         self.assertEqual("blocked", rv["name"])
-        # implement fixes it; the reviewer re-runs and resolves
-        s.step(1, self.n("implement"))
-        s.step(1, self.n("run_tests"))
-        rv = self.state(1, "review_impl")
+        # test_design fixes it; the reviewer re-runs and resolves
+        s.step(1, self.n("test_design"))
+        rv = self.state(1, "review_tests")
         self.assertEqual(("ready", "stale"), (rv["name"], rv["reason"]))
-        s.step(1, self.n("review_impl"))
-        self.assertEqual("current", self.name(1, "review_impl"))
+        s.step(1, self.n("review_tests"))
+        self.assertEqual("current", self.name(1, "review_tests"))
 
     def test_dispute_reaches_reviewer_then_escalates_on_second_round(self):
         s = self.s
         s.goal(1)
-        self.to(1, "review_impl")
-        rid = self.n("review_impl")
+        self.to(1, "review_tests")
+        rid = self.n("review_tests")
         s.start(1, rid)
         s.submit(1, rid, findings=[{"text": "rename x"}])
         fid = f"{rid}:1:1"
-        s.start(1, self.n("implement"))
-        s.submit(1, self.n("implement"), responses={fid: "disputed: x is the domain term"}, same=True)
+        s.start(1, self.n("test_design"))
+        s.submit(1, self.n("test_design"), responses={fid: "disputed: x is the domain term"}, same=True)
         # the dispute answers the finding (target_fp no longer matches): the reviewer is ready (not_ok)
-        rv = self.state(1, "review_impl")
+        rv = self.state(1, "review_tests")
         self.assertEqual(("ready", "not_ok"), (rv["name"], rv["reason"]))
-        self.assertEqual("current", self.name(1, "implement"))
+        self.assertEqual("current", self.name(1, "test_design"))
         # the reviewer keeps it open: round 2 -> a human dispute item
         s.start(1, rid)
         s.submit(1, rid, findings=[{"id": fid, "status": "open"}], decision="changes_requested")
-        st = self.state(1, "implement")
+        st = self.state(1, "test_design")
         self.assertEqual(("needs_human", "dispute"), (st["name"], st["kind"]))
         self.assertEqual(2, st["escalated"][0][1]["rounds"])
 
@@ -121,7 +119,12 @@ class FrontierTests(Base):
         self.to(1, "review_design")
         rid = self.n("review_design")
         s.start(1, rid)
-        s.submit(1, rid, findings=[{"text": "missing risks"}])
+        s.submit(1, rid, findings=[{"text": "missing risks", "lens": "intent",
+                                          "impact": "The design omits a required failure case.", "material": True}])
+        self.assertEqual("current", self.name(1, "design"))  # candidate awaits the filter join
+        s.step(1, self.n("adversary_design"))
+        s.step(1, self.n("filter_design"))
+        self.assertEqual("reopened", self.state(1, "design")["reason"])
         # the spec changes: the review is stale, but design's output is unchanged, so its finding stays live
         s.docs[1]["spec"] = "a different spec"
         self.assertEqual(("ready", "stale"), (self.state(1, "design")["name"], self.state(1, "design")["reason"]))
@@ -131,14 +134,14 @@ class FrontierTests(Base):
         # H1: a running state's fp is computed from recorded values
         s = self.s
         s.goal(1)
-        self.to(1, "review_impl")
-        rid = self.n("review_impl")
+        self.to(1, "review_tests")
+        rid = self.n("review_tests")
         s.start(1, rid)
-        self.assertEqual("running", self.name(1, "review_impl"))
-        self.assertIsNotNone(self.state(1, "review_impl")["fp"])
+        self.assertEqual("running", self.name(1, "review_tests"))
+        self.assertIsNotNone(self.state(1, "review_tests")["fp"])
         rec = s.submit(1, rid, findings=[{"text": "bug"}])
         self.assertIsNotNone(rec["findings"][0]["target_fp"])
-        self.assertEqual(s.docs[1]["records"][self.n("implement")]["attempt"], rec["findings"][0]["target_attempt"])
+        self.assertEqual(s.docs[1]["records"][self.n("test_design")]["attempt"], rec["findings"][0]["target_attempt"])
 
     def test_reopen_of_a_stale_node_is_not_dropped(self):
         s = self.s

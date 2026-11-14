@@ -24,9 +24,9 @@ class NameIndependenceTests(unittest.TestCase):
     def test_engine_source_names_no_shipped_node_and_no_lens(self):
         """G1022 test 12: the engine names neither a shipped (15-node) node id nor a lens: both come from the graph.
         `intent` (settings.intent) and `missing` (frontier) are engine vocabulary, like `base` and `merge`."""
-        from test_engine_review_lenses import DESIGN_LENSES, IMPL_LENSES, SHIPPED_NODES
-        names = [n for n in SHIPPED_NODES if n not in ("base", "merge")]
-        names += [l for l in DESIGN_LENSES + IMPL_LENSES if l not in ("intent", "missing")]
+        nodes = fx.load_template("workflow.json")["graphs"]["default"]["nodes"]
+        names = [n for n in nodes if n not in ("base", "merge")]
+        names += [lens for nd in nodes.values() for lens in nd.get("lenses", {}) if lens not in ("intent", "missing")]
         pattern = re.compile(r"[\"'](%s)[\"']" % "|".join(sorted(set(names))))
         hits = []
         for path in sorted((fx.PLUGIN_CODE / "engine").rglob("*.py")):
