@@ -81,6 +81,40 @@
       },
       "status": "done"
     },
+    "base": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T17:08:52Z",
+      "fp_parts": {
+        "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
+        "inputs": {
+          "heads": "v1:sha256:203861f0b59d2281dcc138da21a2fec3860db899e3f2c6d22adae6d807f2774d",
+          "merges": "v1:sha256:370b1a8026ee6f5219b8211721f15fd44d6822d50d2d6f79d88453769c64f0c2"
+        },
+        "policy": {}
+      },
+      "holder": "codex:wp1036/base-1",
+      "input_fp": "v1:sha256:1609fdba35fde4c79b57f1286104903b8dd0d44a595b2f0e9dc8fccd2ed71106",
+      "ok": true,
+      "output": {
+        "base_commit": "c455b09914b49fd65e169f91a4f79110e3e2540b",
+        "branch": "zzzops/work/g1036",
+        "replay_map": {},
+        "replay_pos": {},
+        "stack": [],
+        "synced": {
+          "merge": "1d7c3d1e8fa6db7b47a05a58c24e8d46479483e6",
+          "old": "8d8437af244f85c4dd6cb20c1ed502140cb9ff77",
+          "onto": "c455b09914b49fd65e169f91a4f79110e3e2540b",
+          "resolved": [],
+          "tip": "1d7c3d1e8fa6db7b47a05a58c24e8d46479483e6",
+          "work": "a5df2f13d8c5c58439589289e214a53b2b5b08c5"
+        }
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "design": {
       "attempt": 7,
       "correction_runs": 3,
