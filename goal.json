@@ -12,6 +12,41 @@
   },
   "priority": "P1",
   "records": {
+    "adversary_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T21:38:35Z",
+      "fp_parts": {
+        "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
+        "inputs": {
+          "doc": "v1:blob:b3e703a51d1b35335d22c2574b30f3da045388d0",
+          "spec": "v1:sha256:6163c1c9c5147e66ad416e6fc3067011d5affc2a15828d5d429be6f9115bbe14"
+        },
+        "policy": {},
+        "subject": "v1:sha256:0f26185f16e4b027d9ec1ed7fa8795d3e3347f7158772c99a4abe3e7228978c2"
+      },
+      "holder": "codex:paperpin1046/adversary_design-1",
+      "input_fp": "v1:sha256:d62c324b92c736bab720d82ae2a857257cd385b07dfe73ac02ac3f8520099271",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "c66b060f40f0fb7c8fe0a03e27684af873e6315a",
+          "commit": "2ac416588ac3474410ecb1686178548bf9b12f57",
+          "path": ".zzzops/reviews/1046/adversary_design.md"
+        },
+        "summary": "Approved: only the Implementation note changes after a verified real publication receipt; absent or inconsistent evidence prevents a pin, with no release or scope expansion."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "b3e703a51d1b35335d22c2574b30f3da045388d0",
+          "commit": "b273149e780292ad5ed48ce152c4ff142bed87b5"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 1,
       "correction_runs": 0,
