@@ -71,6 +71,32 @@
       "reason": "new",
       "status": "done"
     },
+    "filter_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-14T22:19:24Z",
+      "fp_parts": {
+        "candidates": [],
+        "def": "v1:sha256:c83a5e0ec02bc9504ff118f774138ad5517f6b3a5885d1c28444982e78d23a9f",
+        "inputs": {
+          "adversary": "v1:sha256:1f120945851481b38410e7ef3ce17b75e3fff23c5a4c1e363b866b2f33f792e3",
+          "doc": "v1:blob:9e9475ecec33c072c79dc2ac8927dafe2e6f88b4",
+          "review": "v1:sha256:2074fe6bf0c06c303f4618d52a644581b08a30b1c14fbefe082926a161978210",
+          "spec": "v1:sha256:f3c29cfec31e775401951900900383e44f7758d338bce13005aeb2457fd60e30"
+        },
+        "policy": {}
+      },
+      "holder": "codex:cleanup1047/filter_design-1",
+      "input_fp": "v1:sha256:cc82b11537656327ba4dc15c139b5159a04e4b8d0dae87d3935421c8867df499",
+      "ok": true,
+      "output": {
+        "summary": "Design review: approved. Adversarial review: approved. No material findings or candidate notes reopen work; there are 0 notes. The approved receipt matrix, generic-coverage retention map and test-design freeze ownership remain unchanged.",
+        "verdicts": {}
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 1,
       "correction_runs": 0,
