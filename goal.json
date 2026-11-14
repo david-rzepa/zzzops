@@ -257,28 +257,26 @@
       "status": "done"
     },
     "integrate": {
-      "attempt": 6,
+      "attempt": 7,
       "blocked": {
         "category": "external",
         "op_state": {
-          "head": "36f659e4e4930d6fb1998ca2043ecc85890f0fd9",
           "pending_since": 1794686603,
-          "polls": 1,
-          "rerun_head": null
+          "polls": 2
         },
-        "reason": "required checks pending: dev-required-tests (mergeable: MERGEABLE/BLOCKED)",
+        "reason": "GitHub is computing mergeability",
         "repeats": 1,
-        "retry_after": "2026-11-14T20:08:23Z",
+        "retry_after": "2026-11-14T20:36:08Z",
         "waiting_for": "time"
       },
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-14T20:03:23Z",
+      "finished_at": "2026-11-14T20:34:08Z",
       "fp_parts": {
         "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
         "inputs": {
           "base": "v1:sha256:92fb166bb2d877c78854032c50996843982ef4f5cff7b5a092fb2d8ca03148d7",
-          "code": "v1:sha256:a7755b44958de1db6bde0fbee7c5f9a49294d9663157b035e6faaee9537d2434"
+          "code": "v1:sha256:5a0e12c4af2bfb1f7effc979234cf4f73309e3e699124f46107599116eb34f68"
         },
         "policy": {
           "verification.required_ci": [
@@ -286,8 +284,8 @@
           ]
         }
       },
-      "holder": "codex:wp1036-r3/integrate-6",
-      "input_fp": "v1:sha256:0848d0474791f5a709015a67bad98fd67662421a25b923a92e58296c43d15bfe",
+      "holder": "codex:wp1036-r5/integrate-final",
+      "input_fp": "v1:sha256:396008dee4e8be10dd8a520dd125a58b9a8bd0ea9b9c8b230ceeea9e678c5ead",
       "ok": false,
       "output": null,
       "reason": "stale",
