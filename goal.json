@@ -171,6 +171,35 @@
       "reason": "new",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-15T00:22:25Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:edb53adab82f51dcc422c39caece5b35d781ef069c97f86df22c4c9d6e2efe47",
+          "doc": "v1:blob:b3e703a51d1b35335d22c2574b30f3da045388d0",
+          "tests": "v1:sha256:d1b819ee6603e0d12a36b6ea6471b3a63dd503237ea65e8eb224c99b8633284b"
+        },
+        "policy": {}
+      },
+      "holder": "codex:paperpin1046/implement-1",
+      "input_fp": "v1:sha256:f0d0f2b60911e0033ecb5c0f1ae9853f06983a3067dacf487d68d8ae63f69fb0",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "acab4c38a984494e2478f427a163602b394ded6e",
+          "change": "73398348d376b8b71f04c91a8b129a978d426c96",
+          "commit": "686e25f7a99e535d16cf5589091b306c25fb3b16",
+          "tree": "69099d91d58df56f99bfdaf716f2c42a447cbc0e"
+        },
+        "summary": "Updates only the whitepaper Implementation note to published version 3.0.0 / tag v3.0.0 (https://github.com/david-rzepa/zzzops/releases/tag/v3.0.0), immutable commit ed91d6c64b45e9c5d97ff883fae395b540a8733e (https://github.com/david-rzepa/zzzops/tree/ed91d6c64b45e9c5d97ff883fae395b540a8733e), and package build 3.0.0 e4cf74f4b756 (full revision e4cf74f4b756eedcb74277433eaea586fed4408997e87846bb0af03096e7b650). Public release/tag/asset metadata matched the verified root publication receipt: release ID 445691175, published 2026-11-15T00:05:45Z, non-draft/non-prerelease, asset https://github.com/david-rzepa/zzzops/releases/download/v3.0.0/zzzops-plugin-v3.0.0.zip with SHA-256 c73c6a4e5df717de2eb23b02a86bf2f5774b05c1aa7270c2977f896ce335e69b; the receipt verifies all 98 archive files, tag-content equality, self-check and the package CLI build. All conceptual prose, Prior Work and other files are unchanged; the accepted whitespace command passes, with pinned SPEC/DESIGN links in the note and detailed verification retained in the implement evidence artifact."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 1,
       "correction_runs": 0,
