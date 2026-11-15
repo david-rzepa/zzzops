@@ -82,23 +82,10 @@
       "status": "done"
     },
     "base": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 0,
-      "findings": [
-        {
-          "id": "base:reopen:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "base",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:9473351e36759f7064e8232522ee566cfe701595b0387e4d2b3b2572516eefea",
-          "text": "Refresh the prepared mechanical publication pin onto current dev after actual v3.0.0 publication receipt; preserve cleanup and use normal merge-sync/carry evaluation.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-14T21:40:47Z",
+      "findings": [],
+      "finished_at": "2026-11-15T00:16:34Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
         "inputs": {
@@ -107,18 +94,28 @@
         },
         "policy": {}
       },
-      "holder": "codex:paperpin1046/base-1",
+      "holder": "codex:paperpin1046/base-2",
       "input_fp": "v1:sha256:4c416db92d718d28e1dc9a8a78dbe47a6a6e23469a57a5b7c141f3829716bdf5",
       "ok": true,
       "output": {
-        "base_commit": "4bc7b4deba5f1a98595ab795cdb5c088c14b3c66",
+        "base_commit": "acab4c38a984494e2478f427a163602b394ded6e",
         "branch": "zzzops/work/g1046",
         "replay_map": {},
         "replay_pos": {},
+        "responses": {
+          "base:reopen:1": "fixed: re-run by git.base"
+        },
         "stack": [],
-        "synced": null
+        "synced": {
+          "merge": "a3d11e38c5b933ff7fbc9822c590306346fb85b1",
+          "old": "4bc7b4deba5f1a98595ab795cdb5c088c14b3c66",
+          "onto": "acab4c38a984494e2478f427a163602b394ded6e",
+          "resolved": [],
+          "tip": "a3d11e38c5b933ff7fbc9822c590306346fb85b1",
+          "work": "0a56265c161531b762e77ed74144a67091d25fc8"
+        }
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "design": {
@@ -278,20 +275,21 @@
     },
     "test_design": {
       "attempt": 1,
+      "carried_by": "base",
       "correction_runs": 0,
       "findings": [],
       "finished_at": "2026-11-14T21:41:49Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
-          "base": "v1:sha256:916723b6ef3ec5991b4a66ad87c937d8a430cf09fee7fc556a75ecd8c5143157",
+          "base": "v1:sha256:edb53adab82f51dcc422c39caece5b35d781ef069c97f86df22c4c9d6e2efe47",
           "doc": "v1:blob:b3e703a51d1b35335d22c2574b30f3da045388d0"
         },
         "policy": {}
       },
       "frozen": [],
       "holder": "codex:paperpin1046/test_design-1",
-      "input_fp": "v1:sha256:7df097eda3aae03d69504bd20d0bf11644afc435191bfa1846f6b9adefb11641",
+      "input_fp": "v1:sha256:d8460ae018b84d637c05156dbcef9611b90faa94b0a0b2a0146b17e932046247",
       "ok": true,
       "output": {
         "commands": [
@@ -311,10 +309,10 @@
           "total_ms": 2
         },
         "tests": {
-          "base": "4bc7b4deba5f1a98595ab795cdb5c088c14b3c66",
+          "base": "acab4c38a984494e2478f427a163602b394ded6e",
           "change": "0000000000000000000000000000000000000000",
-          "commit": "85460f5a1cf340393d5430547407c856be42e30c",
-          "tree": "efa69a9ebc87b24e356de41c5b9280ea71c0e120"
+          "commit": "a3d11e38c5b933ff7fbc9822c590306346fb85b1",
+          "tree": "866c6da30229481039892be52761401adaf0cdee"
         }
       },
       "reason": "new",
