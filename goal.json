@@ -222,6 +222,50 @@
         }
       },
       "status": "done"
+    },
+    "test_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-15T00:49:57Z",
+      "fp_parts": {
+        "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
+        "inputs": {
+          "base": "v1:sha256:308a830e8507c5d314bef613b27995048c68e5a240f5dcde83194ca2584f9194",
+          "doc": "v1:blob:741b23d1a6f079ac803cc42f744ab0985c005c79"
+        },
+        "policy": {}
+      },
+      "frozen": [],
+      "holder": "codex:papercli1048/test-design-1",
+      "input_fp": "v1:sha256:ec7b32c632ecfcaf03a9aab01c867fc68f96df33ed0721c24b6796e1979c2976",
+      "ok": true,
+      "output": {
+        "commands": [
+          "git diff --check ffb3e43f3be01ebd7733a3751d57f79c5dc7f33b HEAD"
+        ],
+        "cost": {
+          "changed_tests": [],
+          "checkpoint": "566528e2c23cc641c71e05d46989ee8a93239042",
+          "commands": [
+            {
+              "cmd": "git diff --check ffb3e43f3be01ebd7733a3751d57f79c5dc7f33b HEAD",
+              "duration_ms": 2,
+              "exit": 0
+            }
+          ],
+          "summary": "No source or test files changed for this prose-only goal. The existing Git whitespace command passed on the unchanged allowed checkpoint; the observed whole-command duration is recorded in integer milliseconds and changed_tests is empty. No red test, checker or infrastructure was fabricated. Editorial/source fidelity remains for the implementation review, with configured repository validation run once by the coordinator on the actual changed tree.",
+          "total_ms": 2
+        },
+        "tests": {
+          "base": "ffb3e43f3be01ebd7733a3751d57f79c5dc7f33b",
+          "change": "0000000000000000000000000000000000000000",
+          "commit": "566528e2c23cc641c71e05d46989ee8a93239042",
+          "tree": "69099d91d58df56f99bfdaf716f2c42a447cbc0e"
+        }
+      },
+      "reason": "new",
+      "status": "done"
     }
   },
   "release": 2,
