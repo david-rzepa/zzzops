@@ -223,6 +223,43 @@
       },
       "status": "done"
     },
+    "review_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-15T00:50:57Z",
+      "fp_parts": {
+        "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
+        "inputs": {
+          "doc": "v1:blob:741b23d1a6f079ac803cc42f744ab0985c005c79",
+          "tests": "v1:sha256:d1b819ee6603e0d12a36b6ea6471b3a63dd503237ea65e8eb224c99b8633284b"
+        },
+        "policy": {},
+        "subject": "v1:sha256:e82d4072d3555d09908fcbd6218a3362bc4b0130d76e81cd1b295178c3a33ffa"
+      },
+      "holder": "codex:papercli1048/review-tests-1",
+      "input_fp": "v1:sha256:346c5e28490497bed6dcf7ce17fd3567c6b95e9209ef8b30d18f586a164491ad",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "cd27cc59336b2625984ebed53a660a288fd00b7a",
+          "commit": "74ffde8280ae34bcb877c326b8e1cbf591d52c9d",
+          "path": ".zzzops/reviews/1048/review_tests.md"
+        },
+        "summary": "Approved: unchanged tests and portable whitespace command fit the prose-only edit; configured full validation remains required once after implementation."
+      },
+      "reason": "new",
+      "reviewed": {
+        "tests": {
+          "base": "ffb3e43f3be01ebd7733a3751d57f79c5dc7f33b",
+          "change": "0000000000000000000000000000000000000000",
+          "commit": "566528e2c23cc641c71e05d46989ee8a93239042",
+          "tree": "69099d91d58df56f99bfdaf716f2c42a447cbc0e"
+        }
+      },
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "correction_runs": 0,
