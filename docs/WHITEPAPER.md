@@ -6,7 +6,7 @@
 
 ## Abstract
 
-Deterministic progressive disclosure is the selective delivery of prompts when explicit, software-evaluated conditions are satisfied. The software determines when each prompt becomes available, rather than giving an AI agent all prompts upfront or letting it decide which prompts to discover and load. Here, an AI agent is a software participant that uses a language model to carry out tasks. The pattern separates coordination—what work is eligible and what context to provide—from judgment about how to perform that work. ZzzOps illustrates the idea with a mostly unopinionated engine that interprets a customizable, repository-owned workflow, policy and prompts. Its frontier can expose several eligible actions, supporting independent parallel work and task-specific choices of language model. This paper develops the concept, illustrates its application and proposes further uses.
+Deterministic progressive disclosure is the selective delivery of prompts when explicit, software-evaluated conditions are satisfied. The software determines when each prompt becomes available, rather than giving an AI agent all prompts upfront or letting it decide which prompts to discover and load. Here, an AI agent is a software participant that uses a language model to carry out tasks. The pattern separates coordination—what work is eligible and what context to provide—from judgment about how to perform that work. ZzzOps illustrates the idea with a mostly unopinionated engine that interprets a customizable, repository-owned workflow, policy and prompts. It can expose several eligible actions at once, supporting independent parallel work and task-specific choices of language model. This paper develops the concept, illustrates its application and proposes further uses.
 
 ## Motivation
 
@@ -16,7 +16,7 @@ An agent can discover its own next task and retrieve the information it consider
 
 Deterministic progressive disclosure makes those coordination choices explicit. Software constructs a handoff from declared inputs and rules. The agent uses judgment within it: analyzing sources, writing a design or finding an error. Results then become inputs to later handoffs. Recorded state can preserve this arrangement across interrupted sessions, so work need not depend on one continuous chat.
 
-The idea applies beyond workflow engines. A user choice, a tool result or an application's state might select a prompt, a collection of documents or a tool configuration. Git and task graphs are possible implementation choices, rather than requirements of the concept.
+The idea applies beyond workflow engines. A user choice, a tool result or an application’s state might select a prompt, together with supporting documents or a tool configuration. Git and task graphs are possible implementation choices, rather than requirements of the concept.
 
 ## The pattern
 
@@ -25,7 +25,7 @@ A disclosure rule uses explicit inputs to select the prompt for an AI agent. The
 ```mermaid
 flowchart LR
   I[Explicit inputs] --> R[Disclosure rules]
-  R --> H[Instructions and context]
+  R --> H[Selected prompt and supporting context]
   H --> A[Agent work]
   A --> O[Result]
   O --> I
@@ -33,7 +33,7 @@ flowchart LR
 
 In prose, rules select a handoff from explicit inputs; the agent works with it; the result can inform another selection. Disclosure is progressive because the material provided can change as work proceeds.
 
-For example, a research assistant might offer a short explanation or a detailed comparison. A user's choice selects the corresponding instructions alongside the source material. The agent interprets the sources and writes the response. If the choice changes, software supplies the new instructions. The rule makes the handoff explicit without prescribing the answer.
+For example, a research assistant might offer a short explanation or a detailed comparison. A user’s choice selects the corresponding prompt alongside the source material. If the comparison flags conflicting evidence in its structured result, a software rule supplies a source-checking prompt with the conflicting claims attached. The AI agent investigates those claims and returns its findings. Each stage receives the prompt appropriate to the current situation, instead of receiving every stage’s instructions at the outset.
 
 This division separates selection from judgment. A system can specify the essential context for a task while allowing the agent to explore further. A review can become an explicit correction input, and a human decision can determine which work becomes eligible. The process designer chooses which decisions belong in rules and which remain with people or agents.
 
@@ -55,7 +55,7 @@ Its architecture separates a mostly unopinionated coordination engine from an op
 
 The workflow is a **directed acyclic graph**, or DAG: tasks connected by prerequisite links with no dependency loops. A task might produce a design, review it or request approval. The repository chooses the supported tasks, dependencies, instructions, reviews and approval arrangements. The engine retains common rules for valid state, eligibility, result freshness and coordinated writes.
 
-The shipped default takes a recorded goal through design, independent review and separate adversarial critique, then filtering and human design approval. Branch/base preparation leads to test design and test review, implementation, checks, and implementation review/filtering. Delivery requires an integration PR and human merge approval before merge. This is a dependency graph, not a fixed serial script: design review and adversarial critique can run together, and PR integration and merge approval can become eligible alongside each other. Findings can reopen earlier work.
+The shipped default starts with a design, followed by independent review and adversarial critique that can run in parallel. A filtering step assesses which review findings require changes before human design approval. The workflow then prepares a work branch, reviews the proposed tests, and proceeds through implementation, checks and review. Delivery brings the work into a pull request and requires human approval before merging. These prerequisites allow some steps to run together rather than imposing one fixed sequence. Findings can reopen earlier work: the dependency links remain acyclic, but a revised result can make affected tasks eligible to run again.
 
 ZzzOps exposes this process through its **command-line interface (CLI)**. A coordinator—an AI agent or program responsible for organizing the work—calls the CLI and follows the commands it returns.
 
@@ -77,9 +77,9 @@ flowchart TB
 
 `zzzops next` is the first disclosure: the CLI computes a **frontier**—a view of what can proceed and what must wait—and returns eligible actions, waits, human items and exact start commands. Several actions can be eligible together; capacity and shared-workspace limits constrain which can be started. A compact view may omit some. This overview identifies the work without returning its full task instructions.
 
-The coordinator follows an eligible action's `zzzops start` command. For an agent task, the CLI returns a task card with the selected prompt, task inputs, links to supporting material, and commands for submitting results or keeping the task active. For an operation, start runs that operation instead of returning an agent card. Human decisions remain explicit CLI items to answer.
+The coordinator follows an eligible action's `zzzops start` command. For an agent task, the CLI returns a task card with the selected prompt, task inputs, links to supporting material, and commands for submitting results or keeping the task active. For a software-executed step, such as running checks or preparing a work branch, start performs the operation instead of returning an agent card. Human decisions remain explicit CLI items to answer.
 
-After agent work, `zzzops submit` records the result and changes state; operations and human answers also update state. The coordinator calls next again. The software selects the disclosures, and the coordinator dispatches the indicated work. The diagram shows these CLI handoffs while the repository's configuration continues to supply the process choices.
+After agent work, `zzzops submit` records the result and changes state; operations and human answers also update state. The coordinator calls next again. The coordinator chooses which eligible task to start; the software determines which prompt that task receives. The diagram shows these CLI handoffs while the repository's configuration continues to supply the process choices.
 
 This separation makes deterministic disclosure reusable without imposing one rigid process. Two repositories can declare different workflows and obtain different handoffs from the same engine. “Mostly unopinionated” describes that separation of mechanism from process choices; the engine still makes assumptions and enforces constraints.
 
@@ -105,9 +105,9 @@ The following directions could extend how ZzzOps and other agent systems deliver
 
 **Research and evidence workflows.** Rules could disclose different instructions as sources arrive, analyses disagree or an uncertainty threshold is reached. One task might compare claims while another gathers missing material, with their results informing a later synthesis.
 
-**State-adaptive assistants.** User-facing software could choose instructions from explicit user choices, completed steps or application state. An assistant could receive the context appropriate to the current interaction without having to infer every procedural decision from conversation history.
+**State-adaptive assistants.** User-facing assistants could apply the same prompt-selection mechanism to application state and completed steps. An open question is how to explain a handoff to the user: which condition triggered it, and how can the user correct an unsuitable selection?
 
-**Human decision handoffs.** Systems could construct a decision request from the current alternatives and relevant context, pause the affected work, and use the recorded answer to select subsequent disclosures. This could make the relationship between human authority and agent work more visible.
+**Human decision handoffs.** Systems could assemble a decision request from changing alternatives, pause the affected work, and use the recorded answer to select subsequent prompts. Further work could examine what makes that decision request adequate, and when changed circumstances should require a fresh answer.
 
 Each direction raises a shared design question: which inputs and rules should control the handoff, and where should judgment remain open?
 
