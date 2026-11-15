@@ -108,4 +108,4 @@ Deterministic progressive disclosure puts the selection of an agent's instructio
 
 ## Implementation note
 
-The ZzzOps illustration was checked against [development source c455b099](https://github.com/david-rzepa/zzzops/tree/c455b09914b49fd65e169f91a4f79110e3e2540b), package build `0.0.0-dev d0738ea601d8`; it is not an official release announcement. [SPEC](design/SPEC.md) gives the implementation contract, and [DESIGN](design/DESIGN.md) records its rationale.
+The ZzzOps illustration refers to [ZzzOps 3.0.0, tag `v3.0.0`](https://github.com/david-rzepa/zzzops/releases/tag/v3.0.0), published from immutable commit [`ed91d6c64b45e9c5d97ff883fae395b540a8733e`](https://github.com/david-rzepa/zzzops/tree/ed91d6c64b45e9c5d97ff883fae395b540a8733e), package build `3.0.0 e4cf74f4b756`. [SPEC](https://github.com/david-rzepa/zzzops/blob/ed91d6c64b45e9c5d97ff883fae395b540a8733e/docs/design/SPEC.md) gives the implementation contract, and [DESIGN](https://github.com/david-rzepa/zzzops/blob/ed91d6c64b45e9c5d97ff883fae395b540a8733e/docs/design/DESIGN.md) records its rationale.
