@@ -2,11 +2,11 @@
 
 **David Rzepa**
 
-14 November 2026 · Working paper · Drafted and reviewed with AI agents
+14 November 2026
 
 ## Abstract
 
-Deterministic progressive disclosure is an architectural pattern in which deterministic software selects the information and instructions an agent receives according to explicit inputs and rules, rather than leaving disclosure decisions to the agent's own reasoning. The pattern separates coordination—what work is eligible and what context to provide—from judgment about how to perform that work. ZzzOps illustrates the idea with a mostly unopinionated engine that interprets a customizable, repository-owned workflow, policy and prompts. Its frontier can expose several eligible actions, supporting independent parallel work and task-specific model choices. This paper develops the concept, illustrates its application and proposes further uses.
+Deterministic progressive disclosure is the selective delivery of prompts when explicit, software-evaluated conditions are satisfied. The software determines when each prompt becomes available, rather than giving an agent all prompts upfront or letting it decide which prompts to discover and load. The pattern separates coordination—what work is eligible and what context to provide—from judgment about how to perform that work. ZzzOps illustrates the idea with a mostly unopinionated engine that interprets a customizable, repository-owned workflow, policy and prompts. Its frontier can expose several eligible actions, supporting independent parallel work and task-specific model choices. This paper develops the concept, illustrates its application and proposes further uses.
 
 ## Motivation
 
