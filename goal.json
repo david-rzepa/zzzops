@@ -159,23 +159,10 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 0,
-      "findings": [
-        {
-          "id": "implement:reopen:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "implement",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:0279c6dfe103da42bf4a30aaa34487ce88f19c59f0b74d5a869c5b4a5b615c58",
-          "text": "Precision correction: replace only the ambiguous capacity sentence with: Several actions can be eligible together; capacity and shared-workspace limits constrain which can be started. Preserve all other approved illustration content.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-15T00:53:23Z",
+      "findings": [],
+      "finished_at": "2026-11-15T00:58:58Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -185,19 +172,22 @@
         },
         "policy": {}
       },
-      "holder": "codex:papercli1048/implement-1",
+      "holder": "codex:papercli1048/implement-2",
       "input_fp": "v1:sha256:8cbebbccc0edb673289a4cf85dd378041d9b3ff558b58ca1432c009c2ee6b0f0",
       "ok": true,
       "output": {
         "code": {
           "base": "ffb3e43f3be01ebd7733a3751d57f79c5dc7f33b",
-          "change": "ac1fc877d5a45cca1be2508bad8716d1f7bdea5d",
-          "commit": "c6106fb7a56bda3476956452d73a16c917648613",
-          "tree": "60b55e83c5f3defa6c6aed86c2ef5e7a33dda9d9"
+          "change": "ad7b988084f19b6473080e589a070cc30f76a83b",
+          "commit": "d2132c2175bcb5c51b4d5222fe7ec8d4c69ff77c",
+          "tree": "77dceaa3efcb6fbc9068c886bba9bc60cdf03d31"
         },
-        "summary": "Adds a short sketch of the shipped default process and makes CLI disclosure concrete in the ZzzOps illustration: next returns eligible actions, waits, human items and start commands; start returns the selected agent card or executes an operation; submit and decisions update state before next runs again. The diagram and prose preserve parallel review, integration alongside merge approval, and coordinator/model-guidance boundaries. Only this section changed; the general definition, Prior Work, Future Work, verified release pin and every other section are byte-identical, and the accepted whitespace command passes."
+        "responses": {
+          "implement:reopen:1": "fixed: applied the exact requested sentence and retained the compact-view statement; all other bytes are unchanged."
+        },
+        "summary": "Replaces only the capacity sentence with the exact requested distinction: multiple actions can be eligible together, while capacity and shared-workspace limits constrain which can be started. The compact-view sentence and all other approved content are preserved, and the accepted whitespace command passes."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
