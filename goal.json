@@ -158,6 +158,31 @@
       "reason": "new",
       "status": "done"
     },
+    "filter_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-15T14:26:27Z",
+      "fp_parts": {
+        "candidates": [],
+        "def": "v1:sha256:5fab78ee7a74554d9897b964ee764247bd55068d6c3b2a64932fad9704979c4b",
+        "inputs": {
+          "code": "v1:sha256:9d573740798c5f362b79610ef43a8288a9e8707ff191766437bba80b31a6c0a1",
+          "doc": "v1:blob:741b23d1a6f079ac803cc42f744ab0985c005c79",
+          "review": "v1:sha256:73f3ca8ab47ccaf52260a59e8d7b8b468916837e73b0c32793a1916fb1316558"
+        },
+        "policy": {}
+      },
+      "holder": "codex:papercli1048/filter-impl-1",
+      "input_fp": "v1:sha256:4411b653cc0c64a2d9b5c26317e2600efecdf11d3668ed156e2f78599dd63a6a",
+      "ok": true,
+      "output": {
+        "summary": "Implementation review: approved. No material findings or candidate notes reopen work; there are 0 notes to classify. Dev-only scope and ordinary approval/exact-head gates remain unchanged.",
+        "verdicts": {}
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "implement": {
       "attempt": 2,
       "correction_runs": 0,
