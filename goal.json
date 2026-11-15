@@ -158,6 +158,35 @@
       "reason": "new",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-15T00:53:23Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:308a830e8507c5d314bef613b27995048c68e5a240f5dcde83194ca2584f9194",
+          "doc": "v1:blob:741b23d1a6f079ac803cc42f744ab0985c005c79",
+          "tests": "v1:sha256:d1b819ee6603e0d12a36b6ea6471b3a63dd503237ea65e8eb224c99b8633284b"
+        },
+        "policy": {}
+      },
+      "holder": "codex:papercli1048/implement-1",
+      "input_fp": "v1:sha256:8cbebbccc0edb673289a4cf85dd378041d9b3ff558b58ca1432c009c2ee6b0f0",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "ffb3e43f3be01ebd7733a3751d57f79c5dc7f33b",
+          "change": "ac1fc877d5a45cca1be2508bad8716d1f7bdea5d",
+          "commit": "c6106fb7a56bda3476956452d73a16c917648613",
+          "tree": "60b55e83c5f3defa6c6aed86c2ef5e7a33dda9d9"
+        },
+        "summary": "Adds a short sketch of the shipped default process and makes CLI disclosure concrete in the ZzzOps illustration: next returns eligible actions, waits, human items and start commands; start returns the selected agent card or executes an operation; submit and decisions update state before next runs again. The diagram and prose preserve parallel review, integration alongside merge approval, and coordinator/model-guidance boundaries. Only this section changed; the general definition, Prior Work, Future Work, verified release pin and every other section are byte-identical, and the accepted whitespace command passes."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 1,
       "correction_runs": 0,
