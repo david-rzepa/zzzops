@@ -260,21 +260,23 @@
       "status": "done"
     },
     "integrate": {
-      "attempt": 1,
+      "attempt": 2,
       "blocked": {
         "category": "external",
         "op_state": {
-          "pending_since": 1794702616,
-          "polls": 1
+          "head": "6cc786babf8f9380abd1502629d7e3ac6cde9041",
+          "pending_since": 1794702686,
+          "polls": 1,
+          "rerun_head": null
         },
-        "reason": "GitHub is computing mergeability",
+        "reason": "required checks pending: dev-required-tests (mergeable: MERGEABLE/BLOCKED)",
         "repeats": 1,
-        "retry_after": "2026-11-15T00:31:16Z",
+        "retry_after": "2026-11-15T00:36:26Z",
         "waiting_for": "time"
       },
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-15T00:30:16Z",
+      "finished_at": "2026-11-15T00:31:26Z",
       "fp_parts": {
         "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
         "inputs": {
@@ -287,11 +289,11 @@
           ]
         }
       },
-      "holder": "codex:paperpin1046/integrate-1",
+      "holder": "codex:paperpin1046/integrate-2",
       "input_fp": "v1:sha256:2e4b8fc661ee5674bb1a62200d717397afe3eb8cbb92d4b39f485989f9bb5bed",
       "ok": false,
       "output": null,
-      "reason": "new",
+      "reason": "retry",
       "status": "blocked"
     },
     "review_design": {
