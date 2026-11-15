@@ -302,6 +302,110 @@
       },
       "status": "done"
     },
+    "run_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-15T00:22:53Z",
+      "fp_parts": {
+        "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
+        "inputs": {
+          "code": "v1:sha256:6d22821cdbaf11cffd328758e9c547d45e8856edbe511a5e95ec9c86383fb802",
+          "commands": "v1:sha256:c5aa55ce7d85e205fa674b2efa49a5f3f315b929447c91db3868a94769704021"
+        },
+        "policy": {
+          "verification": {
+            "ci_timeout_minutes": 120,
+            "commands": [
+              "python3 .github/scripts/run_product_validation.py --platform linux --local"
+            ],
+            "required_ci": [
+              "dev-required-tests"
+            ],
+            "timeout_minutes": 60
+          },
+          "verification.commands": [
+            "python3 .github/scripts/run_product_validation.py --platform linux --local"
+          ]
+        }
+      },
+      "holder": "codex:paperpin1046/run-tests-1",
+      "input_fp": "v1:sha256:22b95663ec5cd2738966bf2f5e5bfc317b92e3e43ba91661fbba2bfb1eb94c30",
+      "ok": true,
+      "output": {
+        "result": {
+          "details": [
+            {
+              "cmd": "git diff --check 4bc7b4deba5f1a98595ab795cdb5c088c14b3c66 HEAD",
+              "exit": 0,
+              "milliseconds": 15,
+              "seconds": 0,
+              "source": "goal",
+              "tail": ""
+            },
+            {
+              "cmd": "python3 .github/scripts/run_product_validation.py --platform linux --local",
+              "exit": 0,
+              "milliseconds": 184897,
+              "seconds": 184,
+              "source": "verification",
+              "tail": "........\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n........................................................\n.........................................................\n........................................................\n{\"status\": \"success\", \"inventory_count\": 1121, \"inventory_sha256\": \"ded07b048891d737791697e127c3a85b2989be722452f27ca4e7106e7f467683\", \"workers\": 20, \"wall_seconds\": 184.79560952500105, \"aggregate_test_seconds\": 3351.4472832061147, \"slowest_tests\": [[\"test_engine_github.StackedDeliveryTests.test_chain_answered_in_one_sitting_then_merges_in_order\", 48.2275081029984], [\"test_engine_journeys.JourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 47.31830709099813], [\"test_engine_journeys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 46.4929523819992], [\"test_engine_branching.StackingTests.test_pr_already_retargeted_by_github_is_moved_to_dev\", 46.03223821800202], [\"test_engine_branching.FinishTests.test_finish_merges_into_production_back_into_dev_and_keeps_the_branch\", 45.98108949699963]], \"executed_count\": 1121, \"completed_count\": 1121, \"worker_seconds\": [156.19289568900058, 183.99627406900254, 173.36868152500028, 184.43852360799792, 179.32371457300178, 156.11697492500025, 175.400069411, 174.52478436599995, 175.03396552699996, 156.28140468799756, 179.91741465700034, 179.24244121199808, 136.36442634299965, 181.86190346399962, 175.53287936000197, 143.50851624700226, 172.39244804199916, 173.7986212959986, 143.96705943000052, 155.95138256099744], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
+            }
+          ],
+          "passed": true,
+          "timing": {
+            "baseline": {
+              "reason": "changed_commands_or_allocation",
+              "source": {
+                "finished_at": "2026-11-14T23:11:08Z",
+                "goal": 1047,
+                "goal_commit": "ec0aac47be01da9b0f851c2c9c7d3e035aa5c083",
+                "merge_commit": "acab4c38a984494e2478f427a163602b394ded6e",
+                "node": "run_tests",
+                "target": "dev",
+                "tree": "866c6da30229481039892be52761401adaf0cdee"
+              },
+              "status": "unavailable",
+              "verification": {
+                "caveat": "informational; machine load and concurrent goal-command workload may differ",
+                "delta_ms": -835,
+                "source": {
+                  "finished_at": "2026-11-14T23:11:08Z",
+                  "goal": 1047,
+                  "goal_commit": "ec0aac47be01da9b0f851c2c9c7d3e035aa5c083",
+                  "merge_commit": "acab4c38a984494e2478f427a163602b394ded6e",
+                  "node": "run_tests",
+                  "target": "dev",
+                  "tree": "866c6da30229481039892be52761401adaf0cdee"
+                },
+                "status": "available",
+                "verification_ms": 185732,
+                "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1"
+              }
+            },
+            "cpu_budget": 20,
+            "environment": {
+              "cpus": 20,
+              "platform": "linux",
+              "python": "3.14"
+            },
+            "goal_ms": 15,
+            "parallel_commands": false,
+            "plan_sha256": "6e59311788671b8e24b26df1bf4ad2e3f045deac9461e6b0121cde8bdd356af1",
+            "total_ms": 184912,
+            "verification_ms": 184897,
+            "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1",
+            "workers": {
+              "goal": 20,
+              "verification": 20
+            }
+          },
+          "tree": "69099d91d58df56f99bfdaf716f2c42a447cbc0e"
+        }
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "test_design": {
       "attempt": 1,
       "carried_by": "base",
