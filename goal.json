@@ -171,6 +171,31 @@
       "reason": "new",
       "status": "done"
     },
+    "filter_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-15T00:29:28Z",
+      "fp_parts": {
+        "candidates": [],
+        "def": "v1:sha256:5fab78ee7a74554d9897b964ee764247bd55068d6c3b2a64932fad9704979c4b",
+        "inputs": {
+          "code": "v1:sha256:07cb45b1e5fa7de5a537610497e5e62fe814d3f6e9287a82842cae7800a515f3",
+          "doc": "v1:blob:b3e703a51d1b35335d22c2574b30f3da045388d0",
+          "review": "v1:sha256:4b719ba06f5750d733483faa740fae51fa0e099698ee6b5e097846ce844a5b82"
+        },
+        "policy": {}
+      },
+      "holder": "codex:paperpin1046/filter-impl-1",
+      "input_fp": "v1:sha256:23157f070c61a767054b913d4d5b6b78c3d5c0dae805f2cda582393516b2eb29",
+      "ok": true,
+      "output": {
+        "summary": "Implementation review: approved. No material findings or candidate notes reopen work; there are 0 notes to classify. Ordinary approval and exact-head gates remain unchanged.",
+        "verdicts": {}
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "implement": {
       "attempt": 1,
       "correction_runs": 0,
