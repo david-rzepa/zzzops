@@ -57,24 +57,33 @@ Its architecture separates a mostly unopinionated coordination engine from an op
 
 The workflow is a **directed acyclic graph**, or DAG: tasks connected by prerequisite links with no dependency loops. A task might produce a design, review it or request approval. The repository chooses the supported tasks, dependencies, instructions, reviews and approval arrangements. The engine retains common rules for valid state, eligibility, result freshness and coordinated writes.
 
+The shipped default takes a recorded goal through design, independent review and separate adversarial critique, then filtering and human design approval. Branch/base preparation leads to test design and test review, implementation, checks, and implementation review/filtering. Delivery requires an integration PR and human merge approval before merge. This is a dependency graph, not a fixed serial script: design review and adversarial critique can run together, and PR integration and merge approval can become eligible alongside each other. Findings can reopen earlier work.
+
 ```mermaid
 flowchart TB
-  D[Default or custom process] --> W[Workflow, policy and prompts]
-  W --> E[Coordination engine]
-  S[Recorded state] --> E
-  E --> F[Eligible actions]
-  F --> C[Coordinator or harness]
-  C --> A[Task card A]
-  C --> B[Task card B]
+  W[Workflow, policy and prompts] --> N[CLI: zzzops next]
+  S[Recorded state] --> N
+  N --> F[Actions, waits and human items]
+  F --> C[Coordinator follows an eligible start command]
+  C --> T[CLI: zzzops start]
+  T -->|agent| A[Selected task card]
+  T -->|operation| O[Operation runs]
+  A --> U[Agent work: zzzops submit]
+  U --> S
+  O --> S
+  F --> H[Human answer through CLI]
+  H --> S
 ```
 
-In prose, the engine interprets the repository's configuration and recorded state to identify eligible actions. A coordinator selects and starts work; each agent task receives its own card. The default is one configuration of the process layer. The engine's invariants continue to apply when that layer changes.
+`zzzops next` is the first disclosure: the CLI computes a **frontier**—a view of what can proceed and what must wait—and returns eligible actions, waits, human items and exact start commands. Several actions can be eligible together, within capacity and shared-workspace limits; a compact view may omit some. This overview identifies the work without returning its full task instructions.
+
+The coordinator follows an eligible action's `zzzops start` command. For an agent task, the CLI returns a task card with the selected prompt, instructions, declared inputs and context, pointers, and exact submit/renew commands. For an operation, start runs that operation instead of returning an agent card. Human decisions remain explicit CLI items to answer.
+
+After agent work, `zzzops submit` records the result and changes state; operations and human answers also update state. The coordinator calls next again. The software selects the disclosures, and the coordinator dispatches the indicated work. The diagram shows these CLI handoffs while the repository's configuration continues to supply the process choices.
 
 This separation makes deterministic disclosure reusable without imposing one rigid process. Two repositories can declare different workflows and obtain different handoffs from the same engine. “Mostly unopinionated” describes that separation of mechanism from process choices; the engine still makes assumptions and enforces constraints.
 
-The engine computes a **frontier**: a view of what can proceed and what must wait. It can expose multiple eligible actions, rather than one compulsory next action. Independent tasks can run in parallel when capacity and shared-workspace constraints allow. For example, two independent reviews can become ready together, each receiving the design and its own review instructions, while later work waits for the required reviews.
-
-Eligible agent actions carry a capability requirement, and their task cards list configured model suggestions for that requirement. This gives the coordinator a basis for choosing models task by task. The coordinator or agent harness chooses and launches workers; the engine supplies eligibility and guidance rather than autonomously dispatching models or verifying which model ran. A compact status view can omit actions, so it need not display the entire eligible set at once.
+Eligible agent actions carry a capability requirement, and their task cards list configured model suggestions for that requirement. This gives the coordinator a basis for choosing models task by task. The coordinator or agent harness chooses and launches workers; the engine supplies eligibility and guidance rather than autonomously dispatching models or verifying which model ran.
 
 Suppose one review finds a missing constraint. The finding enters the recorded state, and the configured review process can reopen the design with that correction in its task card. After a revised design is submitted, the relevant review runs again. The workflow can then present the configured approval to a person. This synthetic example shows the loop: state determines eligible work; cards give clear instructions and context; results and decisions change the state; eligibility and disclosure are computed again.
 
