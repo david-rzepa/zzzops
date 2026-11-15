@@ -75,7 +75,7 @@ flowchart TB
   H --> S
 ```
 
-`zzzops next` is the first disclosure: the CLI computes a **frontier**—a view of what can proceed and what must wait—and returns eligible actions, waits, human items and exact start commands. Several actions can be eligible together, within capacity and shared-workspace limits; a compact view may omit some. This overview identifies the work without returning its full task instructions.
+`zzzops next` is the first disclosure: the CLI computes a **frontier**—a view of what can proceed and what must wait—and returns eligible actions, waits, human items and exact start commands. Several actions can be eligible together; capacity and shared-workspace limits constrain which can be started. A compact view may omit some. This overview identifies the work without returning its full task instructions.
 
 The coordinator follows an eligible action's `zzzops start` command. For an agent task, the CLI returns a task card with the selected prompt, instructions, declared inputs and context, pointers, and exact submit/renew commands. For an operation, start runs that operation instead of returning an agent card. Human decisions remain explicit CLI items to answer.
 
