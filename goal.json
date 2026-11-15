@@ -78,6 +78,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-15T14:26:56Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:9d573740798c5f362b79610ef43a8288a9e8707ff191766437bba80b31a6c0a1"
+        },
+        "policy": {},
+        "subject": "v1:sha256:85da656b1e6c54fccf11a5f59ab28acc384d2656073689c503ba241cfbe75680"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:2b4e8d24f3a073e5c96b17475f1db7a2e401c2da12aae848449f086815d259c9",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-15T14:26:56Z",
+        "decided_by": "Codex (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Do not wait for my approval",
+        "summary": "Approve the reviewed paper-only default workflow and CLI disclosure clarification with passing local gates, subject to ordinary current exact-head CI and root-controlled dev merge; no main or release changes."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "ffb3e43f3be01ebd7733a3751d57f79c5dc7f33b",
+          "change": "ad7b988084f19b6473080e589a070cc30f76a83b",
+          "commit": "d2132c2175bcb5c51b4d5222fe7ec8d4c69ff77c",
+          "tree": "77dceaa3efcb6fbc9068c886bba9bc60cdf03d31"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 1,
       "correction_runs": 0,
