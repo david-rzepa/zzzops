@@ -265,6 +265,52 @@
       },
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-15T00:28:36Z",
+      "fp_parts": {
+        "def": "v1:sha256:ba0e80cd449a16330f3e62cea7fab93aad71b666081fd28f1c0386cf4f3d2d24",
+        "inputs": {
+          "base": "v1:sha256:edb53adab82f51dcc422c39caece5b35d781ef069c97f86df22c4c9d6e2efe47",
+          "code": "v1:sha256:07cb45b1e5fa7de5a537610497e5e62fe814d3f6e9287a82842cae7800a515f3",
+          "doc": "v1:blob:b3e703a51d1b35335d22c2574b30f3da045388d0",
+          "tests": "v1:sha256:d1b819ee6603e0d12a36b6ea6471b3a63dd503237ea65e8eb224c99b8633284b"
+        },
+        "lenses": [
+          "compliance",
+          "correctness",
+          "missing",
+          "tests",
+          "craft"
+        ],
+        "policy": {},
+        "subject": "v1:sha256:dec99101601b551908128e146cc53990ce339b91072ef25e139fcbdde8cae60c"
+      },
+      "holder": "codex:paperpin1046/review-impl-1",
+      "input_fp": "v1:sha256:114d38e66c53b25fa246f54ec150f56a8dcc2ba90ebfb4b7084f50dd72465228",
+      "ok": true,
+      "output": {
+        "decision": "approved",
+        "report": {
+          "blob": "241dfb3cfd1a792e82b6988d4e0ff19ee409abb1",
+          "commit": "0790df2f517c3016ea0639176733ee8c8ef52ad1",
+          "path": ".zzzops/reviews/1046/review_impl.md"
+        },
+        "summary": "Approved: only the Implementation note changes, all published version/tag/commit/build and pinned links match the supplied verified receipt, and exact-tree whitespace/full validation pass; no findings."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "acab4c38a984494e2478f427a163602b394ded6e",
+          "change": "73398348d376b8b71f04c91a8b129a978d426c96",
+          "commit": "686e25f7a99e535d16cf5589091b306c25fb3b16",
+          "tree": "69099d91d58df56f99bfdaf716f2c42a447cbc0e"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 1,
       "correction_runs": 0,
