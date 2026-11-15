@@ -84,7 +84,20 @@
     "base": {
       "attempt": 1,
       "correction_runs": 0,
-      "findings": [],
+      "findings": [
+        {
+          "id": "base:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "base",
+          "target_attempt": 1,
+          "target_fp": "v1:sha256:9473351e36759f7064e8232522ee566cfe701595b0387e4d2b3b2572516eefea",
+          "text": "Refresh the prepared mechanical publication pin onto current dev after actual v3.0.0 publication receipt; preserve cleanup and use normal merge-sync/carry evaluation.",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-14T21:40:47Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
