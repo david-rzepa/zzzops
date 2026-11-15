@@ -81,6 +81,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-15T00:30:14Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:07cb45b1e5fa7de5a537610497e5e62fe814d3f6e9287a82842cae7800a515f3"
+        },
+        "policy": {},
+        "subject": "v1:sha256:dec99101601b551908128e146cc53990ce339b91072ef25e139fcbdde8cae60c"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:014f91f59f97761c6b44e9782c86dd246b7bca93b24ddb0722bdf78bbf226003",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-15T00:30:14Z",
+        "decided_by": "Codex (root agent), delegated by Dave",
+        "decision": "approved",
+        "quote": "Do not wait for my approval",
+        "summary": "Approve the reviewed one-paragraph published-release pin with passing local gates, subject to ordinary current exact-head CI and root-controlled GitHub merge."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "acab4c38a984494e2478f427a163602b394ded6e",
+          "change": "73398348d376b8b71f04c91a8b129a978d426c96",
+          "commit": "686e25f7a99e535d16cf5589091b306c25fb3b16",
+          "tree": "69099d91d58df56f99bfdaf716f2c42a447cbc0e"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 2,
       "correction_runs": 0,
