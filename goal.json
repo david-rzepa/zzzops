@@ -188,24 +188,9 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 4,
+      "attempt": 5,
       "correction_runs": 3,
       "findings": [
-        {
-          "id": "review_design:3:1",
-          "impact": "A supported maintenance release cannot itself receive a follow-up nested patch: release insertion refuses because maintenance has no production_merge result.",
-          "lens": "truth",
-          "material": true,
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 7,
-          "target_fp": "v1:sha256:b316ade7b6899174c8839b68ca1e2e4d38e1910ce7d3a166165d575970436231",
-          "text": "The new source contract accepts only a completed source release with a successful finished `production_merge` record, but the approved maintenance mode deliberately finishes an older maintenance line without changing production. Therefore, after 3 is in production and 2.1 is finished as an isolated maintenance release, inserting a further 2.1.1 maintenance release from 2.1 cannot establish any acceptable source even though the owner requires arbitrarily nested insertions. Define and verify immutable released-source provenance for finished maintenance lines as well as production-merged lines, without treating an unapproved or unfinished line as released; extend the real remote tests to finish 2.1 as maintenance and insert/deliver a nested target from it.",
-          "upheld": false
-        },
         {
           "id": "review_design:4:1",
           "impact": "The engine can advance a patch line against stale production or revoked source provenance while reporting that the safety guard would have refused it.",
@@ -214,7 +199,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 8,
           "target_fp": "v1:sha256:f73598fd91c9d567fb593eb3371ca06c29a88d336843696b06452c9c5b7ad7b5",
@@ -222,11 +207,11 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-18T21:44:18Z",
+      "finished_at": "2026-11-18T21:49:17Z",
       "fp_parts": {
         "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
         "inputs": {
-          "doc": "v1:blob:daecf12014e1937b27e790b3235614699e370c4d",
+          "doc": "v1:blob:86f7d48b3914ae499720a35f318a1ac76a835727",
           "spec": "v1:sha256:6c504f8bbd39d0be305d7835795eeb46ee5e9d1642fbab9cc844e2c486f988a6"
         },
         "lenses": [
@@ -260,25 +245,25 @@
             "serves": "Developers who delegate project work to coding agents, and the agents doing it."
           }
         },
-        "subject": "v1:sha256:1e3264c636f52a5d19acf106360adf06dcb4f1ccd01344daa258691967594e30"
+        "subject": "v1:sha256:2a4600bfc11b6685bf9ce5a78cf694524246950331ededf1b133224fc48d2717"
       },
-      "holder": "codex:root/g1051-review-4",
-      "input_fp": "v1:sha256:62a2230f22089d4291c81f19a2ae4b202d00e193106b7c13519176a107b1ed60",
+      "holder": "codex:root/g1051-review-5",
+      "input_fp": "v1:sha256:5191c5024744119ad9898ce4153ae091b5cbf96b3f9f84e1da4dea4d4676d067",
       "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "deba178e8b5e71624d15516a7b4a54fb838028ad",
-          "commit": "8c6cb92e7ded5e6c3ed820f14df0e9c56d5ee27f",
+          "blob": "ba3a2046ec3b3eb52532929478a95c15a18d8b84",
+          "commit": "271df8054754c0cee2c62ce5707734f28ab5c0fb",
           "path": ".zzzops/reviews/1051/review_design.md"
         },
-        "summary": "Maintenance provenance is fixed, but per-destination CAS cannot detect an independent production change when updating the patch-line ref."
+        "summary": "The revised design accurately distinguishes provisional patch-line updates from independently changing production or source-goal refs, and requires guarded, freshly authorized promotion."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "daecf12014e1937b27e790b3235614699e370c4d",
-          "commit": "b3ff6cb89caf3d39f1c49b7bcbf0ec71ebf0c3d5"
+          "blob": "86f7d48b3914ae499720a35f318a1ac76a835727",
+          "commit": "6f078903cbb492bf0339671765d9df0b0e03d88c"
         }
       },
       "status": "done"
