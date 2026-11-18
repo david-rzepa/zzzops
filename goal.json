@@ -1,0 +1,18 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [],
+  "graph": "default",
+  "id": 1049,
+  "links": {
+    "issue": null
+  },
+  "priority": "P2",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Fix loss of test-path protection when a preserved test-producing node is blocked and then retried. This defect is blocking Project Base G12, which needs all accepted tests protected before implementation proceeds.\n\nObserved reproduction: in Breeze-Block-Games/project-base G12, test_design attempt 6 at goal commit 162d60c recorded 13 frozen paths and test checkpoint ad39eb5. Attempt 7 was blocked; its record discarded the frozen field. Attempt 8 completed at goal commit b493523 with a later test checkpoint 082177c, but recorded only two frozen paths. The earlier tests remain in that checkpoint; they were not deleted. In the affected engine, frozen_paths() carries previous frozen paths only when the immediately preceding record is done, so an intervening blocked record loses the prior protection. Git preserve checks and subsequent review scope then omit those paths.\n\nAcceptance criteria:\n- A preserved test checkpoint retains all applicable previously accepted frozen test paths across blocked attempts, retries, correction rounds, and design-driven invalidation; protect later newly added test paths as well. Do not silently freeze unrelated source or submodule gitlink paths.\n- Add direct regression tests that reproduce the observed done → blocked → retry/success sequence and prove later implementation modifications to every accepted frozen path are refused. Cover checkpoint ancestry and repeated blocked attempts as appropriate; preserve legitimate test corrections and existing history semantics.\n- Provide a supported, validated, provenance-preserving way to recover an already affected goal, including Project Base G12: restore protection for the actual union of accepted test paths at its latest checkpoint without discarding later tests, falsifying checkpoint identity/history, waiving the review finding, or adding meaningless changes to test files. Exercise recovery and subsequent independent review in a realistic local Git/remote fixture.\n- Verify compatibility and upgrade behavior for existing goals and older records, and document the recovery procedure and any engine compatibility requirements. Use local-first meaningful checks against the real engine and Git; preserve existing release and CI checks.\n\nDo not modify Project Base goal state until the recovery mechanism is implemented and validated. Avoid unrelated workflow changes or deployment.\n",
+  "state": "open",
+  "title": "Preserve accepted test paths across blocked retries and recover affected goals"
+}
