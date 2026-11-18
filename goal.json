@@ -155,7 +155,7 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 1,
       "findings": [
         {
@@ -166,7 +166,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 4,
           "target_fp": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7",
@@ -181,7 +181,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 4,
           "target_fp": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7",
@@ -196,7 +196,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 4,
           "target_fp": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7",
@@ -204,11 +204,11 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-18T21:10:01Z",
+      "finished_at": "2026-11-18T21:16:17Z",
       "fp_parts": {
         "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
         "inputs": {
-          "doc": "v1:blob:b2be1b1bcf5a9ce1592e1a6308664cf4c97eb1cc",
+          "doc": "v1:blob:d3ee9ff6527f2b520df37334693d822644dfd121",
           "spec": "v1:sha256:6c504f8bbd39d0be305d7835795eeb46ee5e9d1642fbab9cc844e2c486f988a6"
         },
         "lenses": [
@@ -242,25 +242,25 @@
             "serves": "Developers who delegate project work to coding agents, and the agents doing it."
           }
         },
-        "subject": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7"
+        "subject": "v1:sha256:f8a0bbceda2ac4f1987371f2d5785c85ba073b76c5e4db8a1c6633a7e9eff386"
       },
-      "holder": "codex:root/g1051-review-1",
-      "input_fp": "v1:sha256:4b14ba8e6d1cc2109852bc37ab453dfa384e5f4361c7a01236e081b91ad25346",
+      "holder": "codex:root/g1051-review-2",
+      "input_fp": "v1:sha256:84bcb5e21e82a0f31cb983688817266a9fbe8875b4a432839203e1f116fddfaa",
       "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "30d808ca9a9bfa038ddc04c8260486d7685bfe59",
-          "commit": "08c0b13e791add99dd5a16fbfcc2dc2438e73a40",
+          "blob": "67f22bdd1b34b57631b1a83c6b6ec55efff6727c",
+          "commit": "48c4acfdea718d8553c66f30531f3fd2ffdfa692",
           "path": ".zzzops/reviews/1051/review_design.md"
         },
-        "summary": "Patch isolation needs to cover later uncut work and pre-finish sync; an owner decision is needed for insertion after production advances."
+        "summary": "The revised design resolves all prior findings: it isolates inserted work before member dispatch, records patch heads without pre-approval forwarding, and implements the owner’s maintenance-release decision."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "b2be1b1bcf5a9ce1592e1a6308664cf4c97eb1cc",
-          "commit": "2788be0619b94d9df97fb339e9866bcc3bc4a42f"
+          "blob": "d3ee9ff6527f2b520df37334693d822644dfd121",
+          "commit": "9ed534523ebca82be21e1a9e051e17d2990ce41b"
         }
       },
       "status": "done"
