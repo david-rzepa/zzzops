@@ -10,29 +10,10 @@
   "priority": "P2",
   "records": {
     "design": {
-      "answer": {
-        "decided_at": "2026-11-18T18:51:00Z",
-        "decided_by": "David Rzepa",
-        "quote": "I think it would make most sense for the design review to decide whether the scaffolding stage is needed",
-        "text": "The design review should decide whether the scaffolding stage is needed for the goal."
-      },
-      "attempt": 2,
-      "blocked": {
-        "category": "decision",
-        "instructions": "The human answered: The design review should decide whether the scaffolding stage is needed for the goal.",
-        "options": [
-          "Q1: Automatically select from the approved design, adding conditional routing if needed.",
-          "Q1: Use an explicit per-goal coordinator decision with the existing skip mechanism."
-        ],
-        "question": "owner question: Q1: How should an optional scaffold stage be selected for a goal? The current engine has explicit per-goal skips, but no conditional graph routing; a merely optional dependency would leave a scaffold node runnable on every goal. Should the approved design automatically select whether scaffolding runs, or should the coordinator record an explicit per-goal skip/opt-in decision using existing workflow mechanisms?",
-        "reason": "owner question: Q1: How should an optional scaffold stage be selected for a goal? The current engine has explicit per-goal skips, but no conditional graph routing; a merely optional dependency would l",
-        "recommendation": "Q1: Automatically select based on design review so goals that do not need scaffolding proceed without unnecessary work; protect existing goals with reviewed migration.",
-        "repeats": 2,
-        "waiting_for": "agent"
-      },
+      "attempt": 3,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-18T18:50:39Z",
+      "finished_at": "2026-11-18T18:54:01Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -41,12 +22,19 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/zzzops1050-design-2",
+      "holder": "codex:root/zzzops1050-design-3",
       "input_fp": "v1:sha256:86803b65893a92790a5288c0bb60b80202829a5ada21643523747c9be19e6f3d",
-      "ok": false,
-      "output": null,
-      "reason": "stale",
-      "status": "blocked"
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "6e65cc4166ced0eb308e9005e159540200dea7dc",
+          "commit": "5e63f550368a5ff1b1d377f492fbee9929436e87",
+          "path": ".zzzops/reviews/1050/design.md"
+        },
+        "summary": "Let the design reviewer decide through a typed route whether a minimal contract scaffold and independent review are needed before tests; simple goals dispatch no scaffold workers. Add capability-gated conditional routing and Git-submodule-aware test preservation, and observe/document adoption and migration without fixing unrelated migration defects."
+      },
+      "reason": "retry",
+      "status": "done"
     }
   },
   "release": 1,
