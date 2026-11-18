@@ -122,10 +122,10 @@
       "status": "done"
     },
     "design": {
-      "attempt": 7,
+      "attempt": 8,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-18T21:37:13Z",
+      "finished_at": "2026-11-18T21:42:47Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -134,19 +134,20 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/zzzops1051-design-7",
+      "holder": "codex:root/zzzops1051-design-8",
       "input_fp": "v1:sha256:b2183dcebbd678d284b0c97de1c24a29f65c688dc5969715ee7398f6464d3cfd",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "f814d7df07ef42e2c1b96207e73870ae31393569",
-          "commit": "db4b4c92b1736ce85b4a56c054930a25ec6c557f",
+          "blob": "daecf12014e1937b27e790b3235614699e370c4d",
+          "commit": "b3ff6cb89caf3d39f1c49b7bcbf0ec71ebf0c3d5",
           "path": ".zzzops/reviews/1051/design.md"
         },
         "responses": {
-          "test_design:1:1": "fixed: specified release insert preview/action and approval schema, source-goal and Git provenance, race-safe pending verification, idempotence, capability name and rollout, plus real-CLI/remote test cases."
+          "adversary_design:3:1": "fixed: explicitly acknowledge goal CAS cannot atomically compare unchanged remote refs; define snapshot semantics, downstream actual destination CAS or safe refusal, and deterministic remote races after reread and before update.",
+          "review_design:3:1": "fixed: record exact approved maintenance finish tip and lineage as immutable release provenance without fabricating production_merge; validate it as nested source and test 2.1 to 2.1.1 with production at 3."
         },
-        "summary": "Define an explicit, reviewable release insert preview and answer-file action tied to immutable released source and production SHAs, with a pending-verification gate and fresh approval on external races. Gate dotted target state on a named capability after every writer is upgraded, preserving integer behavior until activation."
+        "summary": "Define verified insertion as an observed snapshot, with speculative isolated work permitted during external-ref races but every destination mutation guarded by real atomic expected-old-SHA remote updates. Record approved maintenance-line tip provenance separately from production merges so a completed 2.1 maintenance line can source an isolated 2.1.1 release."
       },
       "reason": "reopened",
       "status": "done"
