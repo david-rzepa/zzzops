@@ -6,6 +6,8 @@ inventing the proposed insertion CLI or storage/activation interfaces.
 """
 from __future__ import annotations
 
+import copy
+import json
 import unittest
 
 import engine_fixtures as fx
@@ -82,7 +84,14 @@ class IdentityTests(unittest.TestCase):
 
 
 class GitRemoteReleaseTests(Branching):
-    """Exercise the real CLI against throwaway bare Git and fake GitHub only."""
+    """Exercise the opted-in CLI against throwaway bare Git and fake GitHub only."""
+
+    def setUp(self):
+        super().setUp()
+        policy = copy.deepcopy(self.w.policy)
+        policy["settings"]["engine"].setdefault("requires", []).append("insertable_release_targets")
+        self.w.push_dev({".zzzops/POLICY.json": json.dumps(policy, indent=2) + "\n"},
+                        "chore: opt in to insertable targets")
 
     def test_new_dotted_goal_roundtrips_without_reassigning_later_goal(self):
         later = self.goal(release=3)
