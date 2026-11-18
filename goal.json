@@ -73,6 +73,40 @@
       },
       "status": "done"
     },
+    "approve_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-18T21:29:01Z",
+      "fp_parts": {
+        "def": "v1:sha256:d04fc5094a85157b7e25b3020caaee316324161c59b30d25d4aabb2e5c24f0ed",
+        "inputs": {
+          "doc": "v1:blob:d3ee9ff6527f2b520df37334693d822644dfd121",
+          "filter": "v1:sha256:120379c0bc0c97b2bfee81acd9c52a12a31b4fb4db1a0b99a8f82e15d96e8fc8",
+          "summary": "v1:sha256:32d2dba626c85a19c1c212dad4ded0c156e1b7bc93dc9351c388695acb98aac1"
+        },
+        "policy": {},
+        "subject": "v1:sha256:f8a0bbceda2ac4f1987371f2d5785c85ba073b76c5e4db8a1c6633a7e9eff386"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:c7ec434bd82ee963fe61d314f3f044ab7e669a0a6842a06c53df8ef15894ad56",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-18T21:29:01Z",
+        "decided_by": "David Rzepa",
+        "decision": "approved",
+        "quote": "Approved",
+        "summary": "Approved G1051 design for arbitrarily nested numeric release targets, equivalent trailing-zero aliases, and safely isolated patch and maintenance releases."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "d3ee9ff6527f2b520df37334693d822644dfd121",
+          "commit": "9ed534523ebca82be21e1a9e051e17d2990ce41b"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 6,
       "correction_runs": 0,
