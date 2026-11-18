@@ -8,7 +8,42 @@
     "issue": null
   },
   "priority": "P2",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "blocked": {
+        "category": "decision",
+        "options": [
+          "Q1: Use integer and dotted numeric identifiers such as 2, 2.1 and 2.10, ordered numerically by component; make 2 and 2.0 distinct identifiers.",
+          "Q1: Use full semantic versions, with an explicit compatibility mapping for existing integer releases.",
+          "Q2: Support insertion even if a later release has already been cut.",
+          "Q2: Support insertion only before a later release has been cut."
+        ],
+        "question": "owner question: Q1: What release-identifier grammar and equality should ZzzOps support? In particular, should 2 and 2.0 name the same target or different targets, and should identifiers be general dotted integer components or full semantic versions? Q2: Must an inserted release such as 2.1 be cut after a later release such as 3 has already been cut, or is insertion required only while later releases remain planned and uncut?",
+        "reason": "owner question: Q1: What release-identifier grammar and equality should ZzzOps support? In particular, should 2 and 2.0 name the same target or different targets, and should identifiers be general dot",
+        "recommendation": "Q1: Use dotted numeric identifiers without floating point, treating 2 and 2.0 as distinct so existing release identifiers never silently alias. Q2: Support insertion after a later release is cut if feasible, since a patch may be needed after work on the next release starts; review branch and merge implications before choosing the delivery mechanism.",
+        "repeats": 1,
+        "waiting_for": "human"
+      },
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-18T19:13:14Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "spec": "v1:sha256:9cac69f80082c93f6d58685c84a34e4a2d7b86e67357e5d4966702b594387020"
+        },
+        "policy": {}
+      },
+      "holder": "codex:root/zzzops1051-design-1",
+      "input_fp": "v1:sha256:a2a1fd06e42e5f6e31d05c555ce776d3f4a0ef09847fa3048c4b76d4df4fed19",
+      "ok": false,
+      "output": null,
+      "reason": "new",
+      "status": "blocked"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
