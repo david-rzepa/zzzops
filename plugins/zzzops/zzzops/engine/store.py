@@ -450,19 +450,28 @@ def build_ledger(git: Git, snap: Snapshot, commits: dict, st: State) -> dict:
     without trailers (closed by an older engine, or before branching was on) has its document read through the
     persistent cat-file batch, so the cost does not grow with the number of such goals."""
     from engine.lines import entry_of
+    from engine import release_id
     out = {}
     for g, c in sorted(commits.items()):
         if g in st.docs:
             out[g] = entry_of(st.docs[g])
             continue
         rel = c.trailer("Release")
-        if rel is not None and rel.isdigit():
+        try:
+            target = release_id.canonical(rel)
+        except ValueError:
+            target = None
+        if target is not None:
             line = c.trailer("Line")
-            out[g] = {"release": int(rel), "state": c.trailer("State") or "open", "closed": c.trailer("Closed"),
+            out[g] = {"release": target, "state": c.trailer("State") or "open", "closed": c.trailer("Closed"),
                       "line": line, "hotfix": c.trailer("Hotfix")}
             continue
         doc, _ = read_goal_json(git, snap.goals[g])
-        if isinstance(doc, dict) and isinstance(doc.get("release"), int):
+        if isinstance(doc, dict):
+            try:
+                release_id.components(doc.get("release"))
+            except ValueError:
+                continue
             out[g] = entry_of(doc)
     return out
 

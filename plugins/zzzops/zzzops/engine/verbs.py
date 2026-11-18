@@ -921,6 +921,14 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
             if old is None and not doc_files:
                 raise Refused("validation", f"G{g} is unreadable: replace it with a whole-document --file")
             d = copy.deepcopy(doc_files[g]) if doc_files else apply_sets(copy.deepcopy(old), set_entries)
+            from engine import release_id
+            if (isinstance(d.get("release"), str) and d.get("release") != (old or {}).get("release")
+                    and "insertable_release_targets" not in schemas.required_caps(sess.state.settings)):
+                raise Refused("validation", "string release targets require capability `insertable_release_targets`")
+            try:
+                d["release"] = release_id.canonical(d["release"])
+            except (KeyError, ValueError):
+                pass  # structural validation reports invalid releases
             schemas.normalize_flow(d)                         # G1025 §2: schema 2 only with `flow`
             d = fill_close_fields(sess, old or {}, d)
             d = fill_current_records(sess, d)

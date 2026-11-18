@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from engine import POLICY_SCHEMA, WORKFLOW_SCHEMA, GOAL_SCHEMAS
+from engine import POLICY_SCHEMA, WORKFLOW_SCHEMA, GOAL_SCHEMAS, release_id
 from engine.canon import find_floats, goal_bytes, parse_iso, version_tuple
 
 NODE_ID = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -932,8 +932,10 @@ def validate_goal(doc, old=None, all_docs: dict | None = None, workflow: dict | 
         e.add("goal.spec", f"1-{SPEC_LIMIT} bytes of text")
     if doc["priority"] not in ("P0", "P1", "P2", "P3"):
         e.add("goal.priority", "must be P0, P1, P2 or P3")
-    if not _is_int(doc["release"]) or doc["release"] < 1:
-        e.add("goal.release", "must be an integer >= 1")
+    try:
+        release_id.components(doc["release"])
+    except ValueError:
+        e.add("goal.release", "must be a positive integer or dotted numeric release")
     deps = doc["depends_on"]
     if not isinstance(deps, list) or not all(_is_int(d) for d in deps) or len(set(deps)) != len(deps):
         e.add("goal.depends_on", "must be an array of unique integers")
@@ -1000,8 +1002,13 @@ def validate_goal(doc, old=None, all_docs: dict | None = None, workflow: dict | 
         for d in deps:
             if d not in all_docs:
                 e.add("goal.depends_on", f"G{d} does not exist")
-            elif _is_int(doc["release"]) and _is_int(all_docs[d].get("release")) and all_docs[d]["release"] > doc["release"]:
-                e.add("goal.depends_on", f"G{d} is in release {all_docs[d]['release']}, after this goal's release {doc['release']}")
+            else:
+                try:
+                    later = release_id.components(all_docs[d].get("release")) > release_id.components(doc["release"])
+                except ValueError:
+                    later = False
+                if later:
+                    e.add("goal.depends_on", f"G{d} is in release {all_docs[d]['release']}, after this goal's release {doc['release']}")
         merged = dict(all_docs)
         merged[doc["id"]] = doc
         cycle = find_cycle(merged, doc["id"])
@@ -1048,7 +1055,7 @@ def flow_errors(flow) -> list:
         return ["must be an object"]
     if set(flow) == {"hotfix"}:
         return [] if ref_ok(flow["hotfix"]) and "/" not in flow["hotfix"] else ["hotfix must be a branch-name part"]
-    if set(flow) != FLOW_LINE_KEYS:
+    if set(flow) not in (FLOW_LINE_KEYS, FLOW_LINE_KEYS | {"inserted"}):
         return ['must be {"hotfix": "<name>"} or {"line", "name", "branch", "from", "cut"}']
     out = []
     if flow["line"] not in ("release", "hotfix"):
@@ -1058,6 +1065,8 @@ def flow_errors(flow) -> list:
             out.append(f"{k} must be a branch name")
     if not (isinstance(flow["cut"], str) and SHA.match(flow["cut"])):
         out.append("cut must be a full 40-hex sha")
+    if "inserted" in flow and (flow["line"] != "release" or not isinstance(flow["inserted"], dict)):
+        out.append("inserted metadata requires a release line")
     return out
 
 

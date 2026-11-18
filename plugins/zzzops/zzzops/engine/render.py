@@ -879,7 +879,7 @@ def line_items(ctx: Ctx, p: Portfolio, full: bool) -> list:
     b = s.get("branching") or {}
     I = s["integration_branch"]
     template = {"decision": "approved", "quote": "<the human's words, verbatim>", "decided_by": "<name>"}
-    key = (0, 0, 0, 0, 0)
+    key = (0, (), 0, 0, 0)
     if p.cut:
         N = p.cut["release"]
         branch = b["release_prefix"] + str(N)

@@ -202,7 +202,7 @@ class Session:
             flow = d.get("flow") or {}
             if flow.get("line"):
                 sr = next((records.get(n) for n in graph.topo if graph.nodes[n].get("schedule")), None)
-                if tip and flow["line"] == "release":
+                if tip and flow["line"] == "release" and not flow.get("inserted"):
                     u["behind"] = not self.ancestor(tip, self.snap.integration)
                 elif tip and sr and sr.get("status") == "done":
                     u["behind"] = tip != (sr.get("output") or {}).get("merged")
@@ -233,6 +233,13 @@ class Session:
         only on its line or on merged goals."""
         if not isinstance(d, dict):
             return []
+        from engine import release_id
+        try:
+            target = release_id.canonical(d.get("release"))
+        except ValueError:
+            target = None  # structural validation reports malformed identifiers
+        if isinstance(target, str) and "insertable_release_targets" not in schemas.required_caps(self.state.settings):
+            return ["goal.release: dotted targets need capability `insertable_release_targets` in settings.engine.requires"]
         prev = self.state.docs.get(g)
         flow, pflow = d.get("flow"), (prev or {}).get("flow")
         if flow != pflow:
@@ -266,7 +273,8 @@ class Session:
             return []
         p = self.portfolio()
         for x in p.lines:
-            if x.kind != "release" or x.name != str(d.get("release")):
+            from engine import release_id
+            if x.kind != "release" or not release_id.equal(x.name, d.get("release")):
                 continue
             if not x.open:
                 return [{"kind": "release_finished", "message": f"release {x.name} is finished; this goal targets "
@@ -517,7 +525,12 @@ def dependent_release_errors(g: int, d: dict, all_docs: dict) -> list:
     out = []
     for x, xd in sorted(all_docs.items()):
         if x != g and isinstance(xd, dict) and g in (xd.get("depends_on") or []) and xd.get("state") != "closed":
-            if isinstance(xd.get("release"), int) and isinstance(d.get("release"), int) and d["release"] > xd["release"]:
+            from engine import release_id
+            try:
+                later = release_id.components(d.get("release")) > release_id.components(xd.get("release"))
+            except ValueError:
+                later = False
+            if later:
                 out.append(f"goal.release: G{x} depends on G{g} but is in release {xd['release']}, before {d['release']}")
     return out
 
