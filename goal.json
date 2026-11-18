@@ -10,9 +10,16 @@
   "priority": "P2",
   "records": {
     "design": {
+      "answer": {
+        "decided_at": "2026-11-18T20:27:34Z",
+        "decided_by": "David Rzepa",
+        "quote": "They should be considered equivalent",
+        "text": "Treat 2 and 2.0 as equivalent identifiers for the same target release."
+      },
       "attempt": 2,
       "blocked": {
         "category": "decision",
+        "instructions": "The human answered: Treat 2 and 2.0 as equivalent identifiers for the same target release.",
         "options": [
           "Q1: Treat 2 and 2.0 as the same release and choose a canonical spelling.",
           "Q1: Treat 2 and 2.0 as distinct releases ordered by numeric components.",
@@ -22,7 +29,7 @@
         "reason": "owner question: Q1: Under dotted numeric release identifiers, should an existing integer target such as 2 and a dotted label such as 2.0 refer to the same release, be distinct releases ordered 2 befor",
         "recommendation": "Q1: Reject redundant trailing-zero forms so 2 keeps its existing identity, ordering is unambiguous, and different spellings cannot target different branches accidentally; keep 2.1 and 2.10 distinct.",
         "repeats": 1,
-        "waiting_for": "human"
+        "waiting_for": "agent"
       },
       "correction_runs": 0,
       "findings": [],
