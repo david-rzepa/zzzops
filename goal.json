@@ -9,6 +9,70 @@
   },
   "priority": "P2",
   "records": {
+    "adversary_design": {
+      "attempt": 1,
+      "correction_runs": 1,
+      "findings": [
+        {
+          "id": "adversary_design:1:1",
+          "impact": "A release can pass its member completion gate while the isolated patch branch omits a supposedly completed fix.",
+          "material": true,
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 4,
+          "target_fp": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7",
+          "text": "Enforce the requirement that an inserted patch line exists and is correctly based before any of its members can start or merge, and detect/recover members already completed on integration. Today target_of routes members without an open line to integration; merely specifying that the line should be created first does not stop a scheduler from completing a member on integration before line creation. Add a real remote fixture covering retarget/creation versus worker dispatch and completion.",
+          "upheld": false
+        },
+        {
+          "id": "adversary_design:1:2",
+          "impact": "An approved patch line can be created from an obsolete production commit after production advances, defeating the design’s baseline check and risking an incomplete or incorrectly based release.",
+          "material": true,
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 4,
+          "target_fp": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7",
+          "text": "Specify an atomic or otherwise race-safe guard binding inserted-line creation to the owner-approved production source, including direct remote production advances between preflight and branch creation; internal line leases alone do not serialize external pushes. Prevent member work from using a stale line and test the actual remote race.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-18T21:09:45Z",
+      "fp_parts": {
+        "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
+        "inputs": {
+          "doc": "v1:blob:b2be1b1bcf5a9ce1592e1a6308664cf4c97eb1cc",
+          "spec": "v1:sha256:6c504f8bbd39d0be305d7835795eeb46ee5e9d1642fbab9cc844e2c486f988a6"
+        },
+        "policy": {},
+        "subject": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7"
+      },
+      "holder": "codex:root/g1051-adversary-1",
+      "input_fp": "v1:sha256:01e066cfaaae06d8585c231307d7d2dda33b9f04a145ae23f1c503e8cc9249d4",
+      "ok": true,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "5810d212f86c11288a7f0c4526058cee220d27d2",
+          "commit": "b52e393da1b5f827bf9293e9780afa8d0d5aa906",
+          "path": ".zzzops/reviews/1051/adversary_design.md"
+        },
+        "summary": "Two release-isolation races need enforced routing and production-ref guards."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "b2be1b1bcf5a9ce1592e1a6308664cf4c97eb1cc",
+          "commit": "2788be0619b94d9df97fb339e9866bcc3bc4a42f"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 4,
       "correction_runs": 0,
