@@ -300,10 +300,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 5,
+      "attempt": 6,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-18T23:17:31Z",
+      "finished_at": "2026-11-18T23:27:37Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
@@ -316,7 +316,7 @@
         ".agents/test_engine_insertable_release_journeys.py",
         ".agents/test_engine_insertable_releases.py"
       ],
-      "holder": "codex:root/g1051-test-design-5",
+      "holder": "codex:root/g1051-test-design-6",
       "input_fp": "v1:sha256:6d00447a3a1a0c432548bdfe534e57fff9d4e8bbcdc5e77c6a154730a85f9fb8",
       "ok": true,
       "output": {
@@ -326,31 +326,30 @@
         "cost": {
           "changed_tests": [
             {
-              "duration_ms": 72601,
-              "id_or_scope": ".agents/test_engine_insertable_release*.py, 30 cases",
-              "observation": "unittest reports 30 cases in 72.601s; 31 failing subtests and one mixed-type ordering error against the unimplemented baseline. Feature-specific protected-PR, source-revocation and insertion assertions stop at the missing capability."
+              "duration_ms": 73008,
+              "id_or_scope": ".agents/test_engine_insertable_release*.py, 31 cases",
+              "observation": "unittest reports 31 cases in 73.008s; 32 failing subtests and one mixed-type ordering error against the unimplemented baseline. Feature-specific protected-PR and changed-finish-head assertions stop at the missing capability."
             }
           ],
-          "checkpoint": "5ff7f0abe7b128c388193745d1200fe3a559835b",
+          "checkpoint": "06374cd384419075ac7d2cc160bfadf1e18f36f3",
           "commands": [
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_insertable_release*.py' -v --durations 50",
-              "duration_ms": 72663,
+              "duration_ms": 73074,
               "exit": 1
             }
           ],
-          "summary": "Exact-checkpoint focused run against the real engine, isolated bare Git remotes and fake GitHub API. Red on missing feature; actual source integer-release journeys run. Revised cases model expected-PR-head checks and report base/source changes detected after protected-PR merge without requiring unavailable cross-ref atomicity. Fake GitHub does not prove actual hosted branch protection, and source-dependent new assertions cannot be exercised before implementation; real staging protection/required-check behavior remains a later integration gate.",
-          "total_ms": 72663
+          "summary": "Exact-checkpoint red run against real engine and isolated bare Git remotes using fake GitHub API. The intercepted actual finish merge call is checked against its target PR and exact synced/approved head before the race mutates that PR head. The fixture is not proof of real GitHub branch protections; those checks require the approved staging gate. Feature-dependent assertions cannot run until the capability exists.",
+          "total_ms": 73074
         },
         "responses": {
-          "review_tests:2:1": "fixed: source revocation is injected at the real provider merge boundary after an actual finish approval. The test drives the protected PR merge, permits it to occur, verifies main contains the patch without rollback, then requires source-mismatch reporting and paused dev forwarding; the fake provider call must include the expected-head guard. A separate real finish attempt checks a source reopened before preflight. No strict cross-ref atomicity is asserted; actual hosted branch-protection evidence remains a documented later staging gate.",
-          "review_tests:2:2": "fixed: obtain a genuine approved preview before importing the already-completed integration member, then attempt the mutating insertion with its fresh fingerprint if supplied or the genuine previously valid stale approval otherwise. Require rejection or blocked isolated provisional state, preservation of the old completed goal and integration history, and absence of the completed member from the patch branch."
+          "review_tests:3:1": "fixed: the provider boundary captures the actual invocation arguments, resolves the targeted PR and its destination, and asserts the expected-head value equals the exact synced head approved for that PR; it no longer scans unrelated historical calls. Added a distinct finish-line race which changes that exact PR head at the provider boundary and requires no production merge, no forward-port, an open PR and no completed goal."
         },
         "tests": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "f475913287402906ce93c25b5680ad7d9190109c",
-          "commit": "5ff7f0abe7b128c388193745d1200fe3a559835b",
-          "tree": "94e0f27935c647efdee6823e9956bd09d3fa9575"
+          "change": "cd00d6c794f4849cd139e0cb6a558df43799a785",
+          "commit": "06374cd384419075ac7d2cc160bfadf1e18f36f3",
+          "tree": "11f6b66504858824ace4e8e4ef58b443ba1b261f"
         }
       },
       "reason": "reopened",
