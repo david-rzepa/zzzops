@@ -245,6 +245,67 @@ class InsertedReleaseJourneys(Branching):
         self.assertEqual(advanced, self.tip("main"), "finish must not overwrite newer production")
         self.assertNotIn("src/approved_patch.py", self.w.remote_git("ls-tree", "-r", "--name-only", "refs/heads/main").splitlines())
 
+    def test_external_production_move_at_actual_finish_update_is_not_overwritten(self):
+        capability = fx.PLUGIN_CODE / "engine/capabilities/insertable_release_targets.txt"
+        self.assertTrue(capability.is_file(), "insertable release capability is not implemented")
+        self.finished_source()
+        self.activate()
+        patch = self.goal(release="1.1")
+        line = self.insert(self.preview())["goal"]
+        self.done(patch, code={"src/final_write_patch.py": "fixed = True\n"})
+        self.op(line, "sync")
+        self.approve(line, "approve_finish")
+        dev_before = self.tip("dev")
+        race_dir = Path(self.tmp) / "finish-write-race"
+        race_dir.mkdir()
+        ready, proceed = race_dir / "ready", race_dir / "proceed"
+        real_git = shutil.which("git")
+        self.assertIsNotNone(real_git)
+        wrapper = race_dir / "git"
+        wrapper.write_text(
+            f"#!{sys.executable}\n"
+            "import os, subprocess, sys, time\n"
+            "from pathlib import Path\n"
+            "args = sys.argv[1:]\n"
+            "transaction = 'update-ref' in args and '--stdin' in args\n"
+            "data = sys.stdin.buffer.read() if transaction else None\n"
+            "targeted = ('push' in args and any('refs/heads/main' in x for x in args)) or "
+            "(transaction and b'refs/heads/main' in data)\n"
+            "if targeted:\n"
+            "    Path(os.environ['G1051_RACE_READY']).write_text('ready')\n"
+            "    deadline = time.monotonic() + 20\n"
+            "    while not Path(os.environ['G1051_RACE_CONTINUE']).exists():\n"
+            "        if time.monotonic() >= deadline: sys.exit(124)\n"
+            "        time.sleep(0.01)\n"
+            f"p = subprocess.run([{real_git!r}] + args, input=data)\n"
+            "sys.exit(p.returncode)\n", encoding="utf-8")
+        wrapper.chmod(0o755)
+        env = self.w.cli_env(extra={"PATH": str(race_dir) + os.pathsep + self.w.extra_env["PATH"],
+                                   "G1051_RACE_READY": str(ready), "G1051_RACE_CONTINUE": str(proceed)})
+        proc = subprocess.Popen([sys.executable, str(fx.PLUGIN_CODE / "zzzops.py"), "start", str(line),
+                                 "finish", "--as", "claude:aaaa/op"], cwd=self.w.clones["a"].path,
+                                env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            deadline = time.monotonic() + 20
+            while not ready.exists() and proc.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(ready.exists(), "finish did not reach an actual guarded production update")
+            moved = self.push_branch("main", {"src/external_finish.py": "external = True\n"},
+                                     "fix: external production write during finish")
+            proceed.write_text("continue", encoding="utf-8")
+            stdout, stderr = proc.communicate(timeout=30)
+            result = json.loads(stdout)
+            self.assertEqual(moved, self.tip("main"), (result, stderr))
+            self.assertEqual(dev_before, self.tip("dev"), "failed promotion must not forward patch")
+            self.assertFalse((result.get("closed") or {}).get("reason") == "done", result)
+        finally:
+            proceed.write_text("continue", encoding="utf-8")
+            try:
+                proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate(timeout=5)
+
     def test_protected_remote_refusal_does_not_fall_back_to_unguarded_production_write(self):
         capability = fx.PLUGIN_CODE / "engine/capabilities/insertable_release_targets.txt"
         self.assertTrue(capability.is_file(), "insertable release capability is not implemented")
