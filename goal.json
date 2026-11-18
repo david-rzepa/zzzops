@@ -10,52 +10,36 @@
   "priority": "P2",
   "records": {
     "adversary_design": {
-      "attempt": 5,
+      "attempt": 6,
       "correction_runs": 1,
-      "findings": [
-        {
-          "follows": "adversary_design:3:1",
-          "id": "adversary_design:4:1",
-          "impact": "The approved test strategy cannot pass honestly against a real Git remote as written and could encourage a false claim that a patch-line CAS also guards production; this can stall delivery or obscure the reapproval required before production changes.",
-          "material": true,
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 8,
-          "target_fp": "v1:sha256:f73598fd91c9d567fb593eb3371ca06c29a88d336843696b06452c9c5b7ad7b5",
-          "text": "Resolve the contradiction between per-destination CAS and the test claim that every destination write fails after production alone changes. If production moves after the last read but the isolated patch-line ref is unchanged, an expected-old-value CAS on that patch line can succeed; it does not compare production. Specify whether isolated patch-line writes are acceptable speculative work pending reapproval, or require an actual cross-ref guard, then make the tests assert the realizable contract. Include a real-remote race where only production changes immediately before an otherwise valid patch-line push, distinct from races that change the destination itself.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-18T21:49:16Z",
+      "findings": [],
+      "finished_at": "2026-11-18T23:08:22Z",
       "fp_parts": {
         "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
         "inputs": {
-          "doc": "v1:blob:86f7d48b3914ae499720a35f318a1ac76a835727",
-          "spec": "v1:sha256:6c504f8bbd39d0be305d7835795eeb46ee5e9d1642fbab9cc844e2c486f988a6"
+          "doc": "v1:blob:b4f730d036d7169afa4a2a4c7c7c814b9522fc98",
+          "spec": "v1:sha256:36d23dbf43af22b9cc7117bb206dfaccc678b6f1574bc36a6de214fab025777e"
         },
         "policy": {},
-        "subject": "v1:sha256:2a4600bfc11b6685bf9ce5a78cf694524246950331ededf1b133224fc48d2717"
+        "subject": "v1:sha256:5a98dd972f1d033cd1fe1b0b27228dda295abf1d9980a2996c8412356e07e5a6"
       },
-      "holder": "codex:root/g1051-adversary-5",
-      "input_fp": "v1:sha256:b730659eb9f437e962374d5a9b025895284abce40be100467243d0663acc81b5",
+      "holder": "codex:root/g1051-adversary-6",
+      "input_fp": "v1:sha256:52603afe84bb20bc084c11194bc31a409f2f80718c68b40e2b289e066b3c30b2",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "fcd68fa41781f55d2bc3070fac942a79ff7d0529",
-          "commit": "f33cd43ce6917c68dbf0c52c5cc824565628847b",
+          "blob": "74b7354e86600eb797aa95b9b98c25f7552f5f24",
+          "commit": "7660e4d1b97ec4ac17992ebeadd135541f63c014",
           "path": ".zzzops/reviews/1051/adversary_design.md"
         },
-        "summary": "The per-destination CAS contract and race tests now distinguish provisional patch work from guarded promotion."
+        "summary": "Protected PR and snapshot semantics match the owner clarification; the remaining race is disclosed and reviewed."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "86f7d48b3914ae499720a35f318a1ac76a835727",
-          "commit": "6f078903cbb492bf0339671765d9df0b0e03d88c"
+          "blob": "b4f730d036d7169afa4a2a4c7c7c814b9522fc98",
+          "commit": "a8b3eed5959ea290e0ded9dd9f432856906eefd1"
         }
       },
       "status": "done"
