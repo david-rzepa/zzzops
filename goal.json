@@ -10,30 +10,30 @@
   "priority": "P2",
   "records": {
     "design": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-18T20:29:36Z",
+      "finished_at": "2026-11-18T21:03:19Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
           "dep_designs": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-          "spec": "v1:sha256:9cac69f80082c93f6d58685c84a34e4a2d7b86e67357e5d4966702b594387020"
+          "spec": "v1:sha256:6c504f8bbd39d0be305d7835795eeb46ee5e9d1642fbab9cc844e2c486f988a6"
         },
         "policy": {}
       },
-      "holder": "codex:root/zzzops1051-design-3",
-      "input_fp": "v1:sha256:a2a1fd06e42e5f6e31d05c555ce776d3f4a0ef09847fa3048c4b76d4df4fed19",
+      "holder": "codex:root/zzzops1051-design-4",
+      "input_fp": "v1:sha256:b2183dcebbd678d284b0c97de1c24a29f65c688dc5969715ee7398f6464d3cfd",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "36c8951f496e47c2daab9ac0a481b814779a8c53",
-          "commit": "89f24162ca9f8476eaa129d0b0256feb51d3a781",
+          "blob": "b2be1b1bcf5a9ce1592e1a6308664cf4c97eb1cc",
+          "commit": "2788be0619b94d9df97fb339e9866bcc3bc4a42f",
           "path": ".zzzops/reviews/1051/design.md"
         },
-        "summary": "Use canonical dotted numeric target identifiers with trailing-zero equivalence and numeric component ordering while preserving legacy integer releases. Explicitly support a production-based inserted patch line after a later release cut, with approved exact-head promotion and propagation, capability-gated compatibility, and real Git fixtures."
+        "summary": "Support arbitrarily nested dotted numeric target releases, with internal zero components retained and trailing-zero aliases normalized; allow safe insertion around already-cut later releases using verified Git ancestry. Preserve existing integer workflows and gate new state against older engines."
       },
-      "reason": "retry",
+      "reason": "stale",
       "status": "done"
     }
   },
