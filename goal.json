@@ -74,9 +74,16 @@
       "status": "done"
     },
     "design": {
+      "answer": {
+        "decided_at": "2026-11-18T21:13:04Z",
+        "decided_by": "David Rzepa",
+        "quote": "Allow isolated maintenance releases (Recommended)",
+        "text": "Allow an isolated maintenance release for the older target based on its own release, without moving the main production branch backwards."
+      },
       "attempt": 5,
       "blocked": {
         "category": "decision",
+        "instructions": "The human answered: Allow an isolated maintenance release for the older target based on its own release, without moving the main production branch backwards.",
         "options": [
           "Q1: Allow isolated maintenance releases without moving production backwards.",
           "Q1: Refuse targets older than current production."
@@ -85,7 +92,7 @@
         "reason": "owner question: Q1 (review_design:1:3): If release 3 is already in production, should ZzzOps still allow an inserted 2.1 as an isolated maintenance release based on release 2, while keeping the main p",
         "recommendation": "Q1: Allow an isolated maintenance release, preserving the current production branch and requiring explicit review of any forward propagation; this keeps deeper insertion useful without silently rolling back production.",
         "repeats": 1,
-        "waiting_for": "human"
+        "waiting_for": "agent"
       },
       "correction_runs": 0,
       "findings": [],
