@@ -10,9 +10,16 @@
   "priority": "P2",
   "records": {
     "design": {
+      "answer": {
+        "decided_at": "2026-11-18T18:51:00Z",
+        "decided_by": "David Rzepa",
+        "quote": "I think it would make most sense for the design review to decide whether the scaffolding stage is needed",
+        "text": "The design review should decide whether the scaffolding stage is needed for the goal."
+      },
       "attempt": 2,
       "blocked": {
         "category": "decision",
+        "instructions": "The human answered: The design review should decide whether the scaffolding stage is needed for the goal.",
         "options": [
           "Q1: Automatically select from the approved design, adding conditional routing if needed.",
           "Q1: Use an explicit per-goal coordinator decision with the existing skip mechanism."
@@ -21,7 +28,7 @@
         "reason": "owner question: Q1: How should an optional scaffold stage be selected for a goal? The current engine has explicit per-goal skips, but no conditional graph routing; a merely optional dependency would l",
         "recommendation": "Q1: Automatically select based on design review so goals that do not need scaffolding proceed without unnecessary work; protect existing goals with reviewed migration.",
         "repeats": 2,
-        "waiting_for": "human"
+        "waiting_for": "agent"
       },
       "correction_runs": 0,
       "findings": [],
