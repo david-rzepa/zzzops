@@ -99,6 +99,117 @@
       },
       "reason": "stale",
       "status": "done"
+    },
+    "review_design": {
+      "attempt": 1,
+      "correction_runs": 1,
+      "findings": [
+        {
+          "id": "review_design:1:1",
+          "impact": "A patch can release unrelated later-version changes despite meeting all current release gates.",
+          "lens": "intent",
+          "material": true,
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 4,
+          "target_fp": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7",
+          "text": "The isolation path is specified only when a later release line already exists. If a later release is planned but uncut, some of its closed goals can already be merged into integration: current target_of() routes ordinary members to integration when no release line is open, and ordinary release cut starts from the integration tip. A newly inserted 2.1 can therefore include completed release-3 work even though 3 has not yet been cut. Define how an inserted target gets its verified released baseline and isolated member branch before its work merges in this case too, and test a later uncut target with later-only work already on integration.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:2",
+          "impact": "Reusing the existing numbered release graph as described can publish unapproved patch code to integration before the finish decision and change other release cuts.",
+          "lens": "truth",
+          "material": true,
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 4,
+          "target_fp": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7",
+          "text": "The design promises patch changes are forwarded to integration only after finishing the patch, but the shipped release graph invokes git.line_sync before approve_finish and the current sync() immediately merges every release line into integration; only hotfix lines are record-only. Specify the inserted-line mode and changes to the release graph/line_sync that make pre-approval sync record the exact patch tip without integrating it, and test that neither integration nor other release branches receive the patch before the stated gate.",
+          "upheld": false
+        },
+        {
+          "id": "review_design:1:3",
+          "impact": "The design may reject exactly the old-release patch the owner expects, or an implementation that removes the guard could deliver the older baseline to the wrong production line.",
+          "lens": "experience",
+          "material": true,
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 4,
+          "target_fp": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7",
+          "text": "owner question: The owner asked that releases can always be inserted at deeper positions, but the proposed implementation refuses when production has already advanced past the desired released baseline and always finishes a patch by merging it to production. If release 3 is already in production, should an inserted 2.1 remain possible as a maintenance release on its own line (without moving the main production branch backwards), or should such targets be refused? Recommend supporting an isolated maintenance line while explicitly preventing an older patch from being merged into newer production automatically; if maintenance releases are out of scope, record that limitation as an owner decision.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-18T21:10:01Z",
+      "fp_parts": {
+        "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
+        "inputs": {
+          "doc": "v1:blob:b2be1b1bcf5a9ce1592e1a6308664cf4c97eb1cc",
+          "spec": "v1:sha256:6c504f8bbd39d0be305d7835795eeb46ee5e9d1642fbab9cc844e2c486f988a6"
+        },
+        "lenses": [
+          "intent",
+          "simplicity",
+          "truth",
+          "adversary",
+          "concurrency",
+          "rollout",
+          "experience"
+        ],
+        "policy": {
+          "intent": {
+            "not": [
+              "A general project-management suite.",
+              "A ceremony framework: every mechanism must prevent a real failure worth its cost.",
+              "A second source of truth beside Git.",
+              "An engine that invents human decisions or acts without authority.",
+              "A deploy, CI or release-publishing tool: its release support is a branching strategy.",
+              "Inherently opinionated: it ships an opinionated default graph, but every opinion (graph, lenses, prompts, policy) can be customised by the project."
+            ],
+            "principles": [
+              "Git is the store; state is visible and repairable by hand.",
+              "A small engine; the graph, prompts and policy belong to the project.",
+              "Human authority is explicit: approvals may be delegated, but decisions with big consequences go to the owner, batched.",
+              "Reviews are independent, and a finding must matter.",
+              "Guard against drift at both levels: from what a goal asked for, and from the project's original intent. A goal that departs from the project's intent is flagged when it is added, and the owner either changes the goal or amends the intent.",
+              "Prefer deleting to adding; keep prompts distilled."
+            ],
+            "purpose": "Let coding agents carry long-running repository work through durable, reviewable goals, so a developer can stop supervising without losing progress, priorities or control.",
+            "serves": "Developers who delegate project work to coding agents, and the agents doing it."
+          }
+        },
+        "subject": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7"
+      },
+      "holder": "codex:root/g1051-review-1",
+      "input_fp": "v1:sha256:4b14ba8e6d1cc2109852bc37ab453dfa384e5f4361c7a01236e081b91ad25346",
+      "ok": true,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "30d808ca9a9bfa038ddc04c8260486d7685bfe59",
+          "commit": "08c0b13e791add99dd5a16fbfcc2dc2438e73a40",
+          "path": ".zzzops/reviews/1051/review_design.md"
+        },
+        "summary": "Patch isolation needs to cover later uncut work and pre-finish sync; an owner decision is needed for insertion after production advances."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "b2be1b1bcf5a9ce1592e1a6308664cf4c97eb1cc",
+          "commit": "2788be0619b94d9df97fb339e9866bcc3bc4a42f"
+        }
+      },
+      "status": "done"
     }
   },
   "release": 1,
