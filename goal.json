@@ -224,41 +224,15 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 2,
       "findings": [
-        {
-          "follows": "review_tests:1:3",
-          "id": "review_tests:2:1",
-          "note": null,
-          "response": null,
-          "rounds": 2,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:f172fb845ea3a07f07bd9c99fb887a89c08974c9b19930b5bba6728b12502377",
-          "text": "The source-goal race test does not exercise a refreshed approval or actual later promotion/forward-port, and its finish-not-ready assertion can pass before line sync or approval for unrelated reasons. It also does not exercise actual source-verify/destination-update or unsupported-provider refusal in the strict live-provenance mode required by the approved design. Test the real end-to-end authority refresh, allowed provisional outcome and atomic/fail-closed path; if its policy/adapter is unspecified, raise a precise design finding rather than guess.",
-          "upheld": true
-        },
-        {
-          "follows": "review_tests:1:4",
-          "id": "review_tests:2:2",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:f172fb845ea3a07f07bd9c99fb887a89c08974c9b19930b5bba6728b12502377",
-          "text": "The already-completed integration member case only inspects the read-only preview and never attempts approved insertion/activation. Test that the mutating operation refuses or remains blocked pending explicit reviewed recovery, and that old history is preserved and the member is not counted as delivered to the patch.",
-          "upheld": false
-        },
         {
           "id": "review_tests:3:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 5,
           "target_fp": "v1:sha256:124bf3e05883e57da331bc65fa34bddf9f99ca0079c3b60bec5024794e09010d",
@@ -266,35 +240,35 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-18T23:21:39Z",
+      "finished_at": "2026-11-18T23:29:12Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:b4f730d036d7169afa4a2a4c7c7c814b9522fc98",
-          "tests": "v1:sha256:8289311ff2e7605ca0467cf0727d117dad2021311832a077b01967402c4d8d7f"
+          "tests": "v1:sha256:ec961e2f8f6d8c546dd4bd6af3a2e1cbc0fef5621676dc05d5597501fa3339c9"
         },
         "policy": {},
-        "subject": "v1:sha256:f1f97ad474983809919b17fbf193549037f57549f118c21a692564aa517f60a3"
+        "subject": "v1:sha256:f4d600fea37c61e52ca46d596494a4638ed0b5ed5241edd228910fbb8b853f1f"
       },
-      "holder": "codex:root/g1051-review-tests-3",
-      "input_fp": "v1:sha256:433d2807cdcd7790526175bea2a30366919dcc6e1e52ee270843c51418c9aa46",
-      "ok": false,
+      "holder": "codex:root/g1051-review-tests-4",
+      "input_fp": "v1:sha256:cd83fa5cdd1a1b42289e8b878a330bbd4222e0d6e17f2a902a770a16c551ef6e",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "b413237521ae467ab93397ccb0cec8cd7ed31f02",
-          "commit": "f6e01d2e69a7a40b2cc06c93109afe89b39dcce1",
+          "blob": "5d591ef7cee1524aea31e2bd5446ebc16a42a267",
+          "commit": "c365d8e19eb250340dc03a71369ab06fef0c5b29",
           "path": ".zzzops/reviews/1051/review_tests.md"
         },
-        "summary": "Prior source-race and completed-member concerns are addressed under the revised protected-PR contract; one expected-head assertion can match an unrelated setup merge."
+        "summary": "The finish test now checks its own target PR and approved head and rejects a changed head at the provider boundary; the exact-checkpoint run remains honestly red before implementation."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "f475913287402906ce93c25b5680ad7d9190109c",
-          "commit": "5ff7f0abe7b128c388193745d1200fe3a559835b",
-          "tree": "94e0f27935c647efdee6823e9956bd09d3fa9575"
+          "change": "cd00d6c794f4849cd139e0cb6a558df43799a785",
+          "commit": "06374cd384419075ac7d2cc160bfadf1e18f36f3",
+          "tree": "11f6b66504858824ace4e8e4ef58b443ba1b261f"
         }
       },
       "status": "done"
