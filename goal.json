@@ -10,65 +10,52 @@
   "priority": "P2",
   "records": {
     "adversary_design": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 1,
       "findings": [
         {
-          "id": "adversary_design:1:1",
-          "impact": "A release can pass its member completion gate while the isolated patch branch omits a supposedly completed fix.",
+          "follows": "adversary_design:1:2",
+          "id": "adversary_design:3:1",
+          "impact": "An inserted patch can begin work on an unverified or externally changed line despite the promised isolation gate; later promotion safeguards do not prevent wasted or misrouted member work.",
           "material": true,
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "resolved",
+          "status": "open",
           "target": "design",
-          "target_attempt": 4,
-          "target_fp": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7",
-          "text": "Enforce the requirement that an inserted patch line exists and is correctly based before any of its members can start or merge, and detect/recover members already completed on integration. Today target_of routes members without an open line to integration; merely specifying that the line should be created first does not stop a scheduler from completing a member on integration before line creation. Add a real remote fixture covering retarget/creation versus worker dispatch and completion.",
-          "upheld": false
-        },
-        {
-          "id": "adversary_design:1:2",
-          "impact": "An approved patch line can be created from an obsolete production commit after production advances, defeating the design’s baseline check and risking an incomplete or incorrectly based release.",
-          "material": true,
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 4,
-          "target_fp": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7",
-          "text": "Specify an atomic or otherwise race-safe guard binding inserted-line creation to the owner-approved production source, including direct remote production advances between preflight and branch creation; internal line leases alone do not serialize external pushes. Prevent member work from using a stale line and test the actual remote race.",
+          "target_attempt": 7,
+          "target_fp": "v1:sha256:b316ade7b6899174c8839b68ca1e2e4d38e1910ce7d3a166165d575970436231",
+          "text": "The pending-to-verified protocol rereads production and the new line, then CAS-updates only the goal record. A direct external push between those reads and that CAS is not compared by the goal CAS, so it can release members against a stale/edited line even though the design promises to leave it pending for any change before verification. Define a realizable atomic verification point or a safe explicitly weaker contract with downstream checks, and test a deterministic production and line-ref update after the final reread but before goal CAS against a real remote.",
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-18T21:16:33Z",
+      "finished_at": "2026-11-18T21:39:32Z",
       "fp_parts": {
         "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
         "inputs": {
-          "doc": "v1:blob:d3ee9ff6527f2b520df37334693d822644dfd121",
+          "doc": "v1:blob:f814d7df07ef42e2c1b96207e73870ae31393569",
           "spec": "v1:sha256:6c504f8bbd39d0be305d7835795eeb46ee5e9d1642fbab9cc844e2c486f988a6"
         },
         "policy": {},
-        "subject": "v1:sha256:f8a0bbceda2ac4f1987371f2d5785c85ba073b76c5e4db8a1c6633a7e9eff386"
+        "subject": "v1:sha256:793bfb6fed94ce321ea08d749cd2bbbbd8baf66be3bad310ddebc7364d7d993a"
       },
-      "holder": "codex:root/g1051-adversary-2",
-      "input_fp": "v1:sha256:b68df2a5641d20a23854ced1ec8ebb6710fad7e9307c5450a5427cc1e0041012",
+      "holder": "codex:root/g1051-adversary-3",
+      "input_fp": "v1:sha256:490fbc08c527052360ec7bc74de900917aa3293f4b4982cdf16cd7f8752df2f0",
       "ok": true,
       "output": {
-        "decision": "approved",
+        "decision": "changes_requested",
         "report": {
-          "blob": "e920373cd755212b31fc88adc86fe5f7483919d9",
-          "commit": "3650b20f9dc5bb0de5a8e67eaad05a44c3e412b7",
+          "blob": "4df58ea27ed05a9186cf9b91402780cb89a011c1",
+          "commit": "723fab191ea939aad93346af37e9b2fbaf1e7b81",
           "path": ".zzzops/reviews/1051/adversary_design.md"
         },
-        "summary": "Both prior release-isolation findings are resolved; no new material findings."
+        "summary": "The proposed goal-only verification CAS leaves an external-ref race before member dispatch."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "d3ee9ff6527f2b520df37334693d822644dfd121",
-          "commit": "9ed534523ebca82be21e1a9e051e17d2990ce41b"
+          "blob": "f814d7df07ef42e2c1b96207e73870ae31393569",
+          "commit": "db4b4c92b1736ce85b4a56c054930a25ec6c557f"
         }
       },
       "status": "done"
