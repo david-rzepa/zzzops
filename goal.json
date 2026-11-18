@@ -10,7 +10,7 @@
   "priority": "P2",
   "records": {
     "adversary_design": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 1,
       "findings": [
         {
@@ -21,41 +21,56 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 7,
           "target_fp": "v1:sha256:b316ade7b6899174c8839b68ca1e2e4d38e1910ce7d3a166165d575970436231",
           "text": "The pending-to-verified protocol rereads production and the new line, then CAS-updates only the goal record. A direct external push between those reads and that CAS is not compared by the goal CAS, so it can release members against a stale/edited line even though the design promises to leave it pending for any change before verification. Define a realizable atomic verification point or a safe explicitly weaker contract with downstream checks, and test a deterministic production and line-ref update after the final reread but before goal CAS against a real remote.",
           "upheld": false
+        },
+        {
+          "follows": "adversary_design:3:1",
+          "id": "adversary_design:4:1",
+          "impact": "The approved test strategy cannot pass honestly against a real Git remote as written and could encourage a false claim that a patch-line CAS also guards production; this can stall delivery or obscure the reapproval required before production changes.",
+          "material": true,
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 8,
+          "target_fp": "v1:sha256:f73598fd91c9d567fb593eb3371ca06c29a88d336843696b06452c9c5b7ad7b5",
+          "text": "Resolve the contradiction between per-destination CAS and the test claim that every destination write fails after production alone changes. If production moves after the last read but the isolated patch-line ref is unchanged, an expected-old-value CAS on that patch line can succeed; it does not compare production. Specify whether isolated patch-line writes are acceptable speculative work pending reapproval, or require an actual cross-ref guard, then make the tests assert the realizable contract. Include a real-remote race where only production changes immediately before an otherwise valid patch-line push, distinct from races that change the destination itself.",
+          "upheld": false
         }
       ],
-      "finished_at": "2026-11-18T21:39:32Z",
+      "finished_at": "2026-11-18T21:44:46Z",
       "fp_parts": {
         "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
         "inputs": {
-          "doc": "v1:blob:f814d7df07ef42e2c1b96207e73870ae31393569",
+          "doc": "v1:blob:daecf12014e1937b27e790b3235614699e370c4d",
           "spec": "v1:sha256:6c504f8bbd39d0be305d7835795eeb46ee5e9d1642fbab9cc844e2c486f988a6"
         },
         "policy": {},
-        "subject": "v1:sha256:793bfb6fed94ce321ea08d749cd2bbbbd8baf66be3bad310ddebc7364d7d993a"
+        "subject": "v1:sha256:1e3264c636f52a5d19acf106360adf06dcb4f1ccd01344daa258691967594e30"
       },
-      "holder": "codex:root/g1051-adversary-3",
-      "input_fp": "v1:sha256:490fbc08c527052360ec7bc74de900917aa3293f4b4982cdf16cd7f8752df2f0",
+      "holder": "codex:root/g1051-adversary-4",
+      "input_fp": "v1:sha256:1842551bc4ae2ec0782bb55bd989b1c89864369ac77d301e4337693d73de4c79",
       "ok": true,
       "output": {
         "decision": "changes_requested",
         "report": {
-          "blob": "4df58ea27ed05a9186cf9b91402780cb89a011c1",
-          "commit": "723fab191ea939aad93346af37e9b2fbaf1e7b81",
+          "blob": "4811fffaed7ab7a7ce1875d0a14c0ba3482829fe",
+          "commit": "f3918d9fd8f1b298a0ee89f8ab773dcdfd8cdedb",
           "path": ".zzzops/reviews/1051/adversary_design.md"
         },
-        "summary": "The proposed goal-only verification CAS leaves an external-ref race before member dispatch."
+        "summary": "The race assertions still overstate what a per-destination CAS can guarantee."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "f814d7df07ef42e2c1b96207e73870ae31393569",
-          "commit": "db4b4c92b1736ce85b4a56c054930a25ec6c557f"
+          "blob": "daecf12014e1937b27e790b3235614699e370c4d",
+          "commit": "b3ff6cb89caf3d39f1c49b7bcbf0ec71ebf0c3d5"
         }
       },
       "status": "done"
