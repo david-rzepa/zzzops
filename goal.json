@@ -10,30 +10,10 @@
   "priority": "P2",
   "records": {
     "design": {
-      "answer": {
-        "decided_at": "2026-11-18T20:27:34Z",
-        "decided_by": "David Rzepa",
-        "quote": "They should be considered equivalent",
-        "text": "Treat 2 and 2.0 as equivalent identifiers for the same target release."
-      },
-      "attempt": 2,
-      "blocked": {
-        "category": "decision",
-        "instructions": "The human answered: Treat 2 and 2.0 as equivalent identifiers for the same target release.",
-        "options": [
-          "Q1: Treat 2 and 2.0 as the same release and choose a canonical spelling.",
-          "Q1: Treat 2 and 2.0 as distinct releases ordered by numeric components.",
-          "Q1: Reject redundant trailing-zero labels such as 2.0, using 2 as the sole spelling."
-        ],
-        "question": "owner question: Q1: Under dotted numeric release identifiers, should an existing integer target such as 2 and a dotted label such as 2.0 refer to the same release, be distinct releases ordered 2 before 2.0, or should redundant trailing-zero forms such as 2.0 be rejected? The answer affects goal assignments, branch names and compatibility with existing integer releases.",
-        "reason": "owner question: Q1: Under dotted numeric release identifiers, should an existing integer target such as 2 and a dotted label such as 2.0 refer to the same release, be distinct releases ordered 2 befor",
-        "recommendation": "Q1: Reject redundant trailing-zero forms so 2 keeps its existing identity, ordering is unambiguous, and different spellings cannot target different branches accidentally; keep 2.1 and 2.10 distinct.",
-        "repeats": 1,
-        "waiting_for": "agent"
-      },
+      "attempt": 3,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-18T20:23:15Z",
+      "finished_at": "2026-11-18T20:29:36Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -42,12 +22,19 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/zzzops1051-design-2",
+      "holder": "codex:root/zzzops1051-design-3",
       "input_fp": "v1:sha256:a2a1fd06e42e5f6e31d05c555ce776d3f4a0ef09847fa3048c4b76d4df4fed19",
-      "ok": false,
-      "output": null,
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "36c8951f496e47c2daab9ac0a481b814779a8c53",
+          "commit": "89f24162ca9f8476eaa129d0b0256feb51d3a781",
+          "path": ".zzzops/reviews/1051/design.md"
+        },
+        "summary": "Use canonical dotted numeric target identifiers with trailing-zero equivalence and numeric component ordering while preserving legacy integer releases. Explicitly support a production-based inserted patch line after a later release cut, with approved exact-head promotion and propagation, capability-gated compatibility, and real Git fixtures."
+      },
       "reason": "retry",
-      "status": "blocked"
+      "status": "done"
     }
   },
   "release": 1,
