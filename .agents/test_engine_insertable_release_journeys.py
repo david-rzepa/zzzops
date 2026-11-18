@@ -245,6 +245,44 @@ class InsertedReleaseJourneys(Branching):
         self.assertEqual(advanced, self.tip("main"), "finish must not overwrite newer production")
         self.assertNotIn("src/approved_patch.py", self.w.remote_git("ls-tree", "-r", "--name-only", "refs/heads/main").splitlines())
 
+    def test_revoked_source_after_actual_finish_approval_blocks_promotion(self):
+        capability = fx.PLUGIN_CODE / "engine/capabilities/insertable_release_targets.txt"
+        self.assertTrue(capability.is_file(), "insertable release capability is not implemented")
+        source_goal, source = self.finished_source()
+        self.activate()
+        patch = self.goal(release="1.1")
+        line = self.insert(self.preview())["goal"]
+        self.done(patch, code={"src/provenance_patch.py": "fixed = True\n"})
+        self.op(line, "sync")
+        self.approve(line, "approve_finish")
+        before = {branch: self.tip(branch) for branch in ("main", "dev", "release/1.1")}
+        self.assertEqual(source, before["main"])
+
+        # An external writer reopens the exact source release after the owner
+        # approved finish. This preserves history but revokes closed provenance.
+        ref = f"refs/heads/zzzops/goal/g{source_goal}"
+        writer = self.w.add_clone("reopen-source")
+        writer.git("fetch", "-q", "origin", ref)
+        writer.git("checkout", "-q", "--detach", "FETCH_HEAD")
+        doc = json.loads(writer.git("show", "HEAD:goal.json"))
+        doc["state"], doc["closed"] = "open", None
+        msg = store.with_trailers(store.goal_message("edit", source_goal, "reopened", "open"),
+                                  doc, self.w.policy["settings"])
+        reopened = writer.commit({"goal.json": json.dumps(doc, indent=2) + "\n"}, msg)
+        writer.git("push", "-q", "origin", f"HEAD:{ref}")
+        self.assertEqual(reopened, self.goal_tip(source_goal))
+
+        # This is an actual finish attempt after a real recorded approval, not
+        # a check that a never-approved node happens to be unready.
+        rc, result = self.w.run("a", "start", str(line), "finish", "--as", "claude:aaaa/op")
+        status = self.nxt(line)
+        self.assertFalse(rc == 0 and result.get("ran", {}).get("outcome") == "done", result)
+        self.assertEqual(before, {branch: self.tip(branch) for branch in before},
+                         "revoked source must not promote or forward")
+        detail = json.dumps({"finish": result, "next": status}).lower()
+        self.assertTrue("source" in detail or "provenance" in detail, detail)
+        self.assertIn(str(source_goal), detail, "recovery must identify the revoked source")
+
     def test_external_production_move_at_actual_finish_update_is_not_overwritten(self):
         capability = fx.PLUGIN_CODE / "engine/capabilities/insertable_release_targets.txt"
         self.assertTrue(capability.is_file(), "insertable release capability is not implemented")
@@ -454,8 +492,8 @@ class InsertedReleaseJourneys(Branching):
                 writer.git("fetch", "-q", "origin", ref)
                 writer.git("checkout", "-q", "--detach", "FETCH_HEAD")
                 doc = json.loads(writer.git("show", "HEAD:goal.json"))
-                doc["spec"] += " External provenance revision."
-                msg = store.with_trailers(store.goal_message("edit", source_goal, "edited", "closed"),
+                doc["state"], doc["closed"] = "open", None
+                msg = store.with_trailers(store.goal_message("edit", source_goal, "reopened", "open"),
                                           doc, self.w.policy["settings"])
                 moved = writer.commit({"goal.json": json.dumps(doc, indent=2) + "\n"}, msg)
                 writer.git("push", "-q", "origin", f"HEAD:{ref}")
@@ -514,6 +552,8 @@ class InsertedReleaseJourneys(Branching):
         self.done(completed, code={"src/already_integrated.py": "prior = True\n"})
         prior_dev = self.tip("dev")
         self.activate()
+        patch = self.goal(release="1.1")
+        clean_preview = self.preview()
         # An older external writer/import may already have recorded a closed
         # patch-target member after delivering it to integration. Preserve the
         # real completed checkpoint and its parent history when modeling it.
@@ -531,8 +571,21 @@ class InsertedReleaseJourneys(Branching):
         self.assertIn(str(completed), json.dumps(out), "preview must identify the completed member requiring recovery")
         if rc == 0:
             self.assertIn(completed, out["insert_preview"]["already_completed_members"])
+        # If the blocked preview exposes an approval template, try that exact
+        # newly approved fingerprint. Otherwise submit the genuine previously
+        # approved preview, which became stale when the completed member arrived.
+        approval = out if rc == 0 and out.get("answer_template") else clean_preview
+        insert_rc, inserted = self.insert(approval, ok=False)
         self.assertEqual(new_tip, self.goal_tip(completed), "insertion must not rewrite completed history")
-        self.assertIsNone(self.tip("release/1.1"))
+        if insert_rc == 0:
+            # A provisional ref is permitted only while member dispatch remains
+            # blocked and the completed integration work is not mistaken for patch work.
+            self.assertFalse(any(a.get("goal") == patch for a in self.nxt(patch)["actions"]), inserted)
+            self.assertEqual(clean_preview["insert_preview"]["source_commit"], self.tip("release/1.1"))
+            tree = self.w.remote_git("ls-tree", "-r", "--name-only", "refs/heads/release/1.1").splitlines()
+            self.assertNotIn("src/already_integrated.py", tree)
+        else:
+            self.assertIsNone(self.tip("release/1.1"))
         self.assertTrue(self.is_ancestor(prior_dev, self.tip("dev")))
 
     def test_retargeted_inflight_work_cannot_integrate_into_old_patch_line(self):
