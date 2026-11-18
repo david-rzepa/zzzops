@@ -10,9 +10,16 @@
   "priority": "P2",
   "records": {
     "design": {
+      "answer": {
+        "decided_at": "2026-11-18T20:22:07Z",
+        "decided_by": "David Rzepa",
+        "quote": "Both recommended answers",
+        "text": "Use dotted numeric labels such as 2, 2.1 and 2.10, ordered by numeric components. Allow inserting a patch target even after a later release has been cut. The user-facing choice did not specify whether 2 and 2.0 are equal; do not treat that detail as an owner decision."
+      },
       "attempt": 1,
       "blocked": {
         "category": "decision",
+        "instructions": "The human answered: Use dotted numeric labels such as 2, 2.1 and 2.10, ordered by numeric components. Allow inserting a patch target even after a later release has been cut. The user-facing choice did not specify whether 2 and 2.0 are equal; do not treat that detail as an owner decision.",
         "options": [
           "Q1: Use integer and dotted numeric identifiers such as 2, 2.1 and 2.10, ordered numerically by component; make 2 and 2.0 distinct identifiers.",
           "Q1: Use full semantic versions, with an explicit compatibility mapping for existing integer releases.",
@@ -23,7 +30,7 @@
         "reason": "owner question: Q1: What release-identifier grammar and equality should ZzzOps support? In particular, should 2 and 2.0 name the same target or different targets, and should identifiers be general dot",
         "recommendation": "Q1: Use dotted numeric identifiers without floating point, treating 2 and 2.0 as distinct so existing release identifiers never silently alias. Q2: Support insertion after a later release is cut if feasible, since a patch may be needed after work on the next release starts; review branch and merge implications before choosing the delivery mechanism.",
         "repeats": 1,
-        "waiting_for": "human"
+        "waiting_for": "agent"
       },
       "correction_runs": 0,
       "findings": [],
