@@ -93,6 +93,14 @@ class GitRemoteReleaseTests(Branching):
         self.w.push_dev({".zzzops/POLICY.json": json.dumps(policy, indent=2) + "\n"},
                         "chore: opt in to insertable targets")
 
+    def test_existing_integer_cut_still_works_after_feature_opt_in(self):
+        member = self.goal(release=1)
+        self.done(member)
+        out = self.cut(1)
+        self.assertEqual(1, out["release"])
+        self.assertEqual("release/1", out["branch"])
+        self.assertIsNotNone(self.tip("release/1"))
+
     def test_new_dotted_goal_roundtrips_without_reassigning_later_goal(self):
         later = self.goal(release=3)
         patch = self.goal(release="2.0.0.1")
