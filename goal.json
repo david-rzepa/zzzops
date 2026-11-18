@@ -260,68 +260,56 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 1,
-      "findings": [
-        {
-          "id": "test_design:1:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "design",
-          "target_attempt": 6,
-          "target_fp": "v1:sha256:f8cb6cb9d4fbb505c454cd5a4c185294ce916bd9e0640ee4e13b37d9ca807e22",
-          "text": "The design requires an owner-approved insertion action before any patch member runs and a reviewed capability-gated policy activation, but explicitly leaves the insertion command, approved immutable-baseline input/preview and capability name unspecified. Existing release cut requires all members to close before cutting and accepts only integer names. Please specify the minimal actual insertion/approval and activation contracts needed to write real-CLI and remote-Git tests for isolated patch creation, completed-member refusal, production races, finish ordering and maintenance, without guessing implementation interfaces.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-18T21:34:50Z",
+      "findings": [],
+      "finished_at": "2026-11-18T22:02:51Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
           "base": "v1:sha256:7137968f0afc1e3d944fd561b2af20955f2aef16fd65a3864f6989ddd512e960",
-          "doc": "v1:blob:d3ee9ff6527f2b520df37334693d822644dfd121"
+          "doc": "v1:blob:86f7d48b3914ae499720a35f318a1ac76a835727"
         },
         "policy": {}
       },
       "frozen": [
+        ".agents/test_engine_insertable_release_journeys.py",
         ".agents/test_engine_insertable_releases.py"
       ],
-      "holder": "codex:root/g1051-test-design-1",
-      "input_fp": "v1:sha256:28aed2c498239767412de6cf0bd4c09a523199f33f30bd1d2387bae20ca4f99b",
+      "holder": "codex:root/g1051-test-design-2",
+      "input_fp": "v1:sha256:c698c2d562166d8051f40f9dccf94eb6b9bc40d56fe131f50de74d09b73b9ddd",
       "ok": true,
       "output": {
         "commands": [
-          "python3 -m unittest discover -s .agents -p test_engine_insertable_releases.py -v --durations 20"
+          "python3 -m unittest discover -s .agents -p 'test_engine_insertable_release*.py' -v --durations 30"
         ],
         "cost": {
           "changed_tests": [
             {
-              "duration_ms": 543,
-              "id_or_scope": ".agents/test_engine_insertable_releases.py (all 9 tests)",
-              "observation": "unittest reports Ran 9 tests in 0.543s; 12 failing subtests and 1 error against integer-only baseline, not green evidence"
+              "duration_ms": 44251,
+              "id_or_scope": ".agents/test_engine_insertable_release_journeys.py (8 changed real Git/CLI tests)",
+              "observation": "Sum of 8 unittest per-case durations (millisecond-rounded); pre-implementation run red at missing capability, so later feature assertions and push barrier are not yet exercised."
             }
           ],
-          "checkpoint": "1b7f8c475e3fe3b7702eeb23a99e815ae7a505a3",
+          "checkpoint": "ab1e7c1be06786db9e268943997de614a99f1c4e",
           "commands": [
             {
-              "cmd": "python3 -m unittest discover -s .agents -p test_engine_insertable_releases.py -v --durations 20",
-              "duration_ms": 602,
+              "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_insertable_release*.py' -v --durations 30",
+              "duration_ms": 44829,
               "exit": 1
             }
           ],
-          "summary": "Observed local red run against real engine and throwaway Git/CLI fixtures; wall time includes interpreter and fixture overhead. Full isolated-line, maintenance, real remote race and mixed-writer journeys remain uncovered pending testable insertion/activation contract.",
-          "total_ms": 602
+          "summary": "Local unittest ran 17 cases in 44.770s (44.829s process wall), with 18 failing subtests and 1 error from missing dotted-release support; opt-out, old-writer safety and invalid-input tests pass. Actual finished legacy release flows run against local bare Git and fake GitHub. Subsequent inserted-line, maintenance and external-interleaving assertions cannot execute until the new capability exists. Additional approved scenarios, especially actual destination CAS versus source-goal races, alias collision activation, dependencies, conflicts and partial propagation, remain to be independently reviewed; no live remote or real release was touched.",
+          "total_ms": 44829
         },
         "tests": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "d65b3ccebbc827ab01799d9f4a6b2a97cd303e76",
-          "commit": "1b7f8c475e3fe3b7702eeb23a99e815ae7a505a3",
-          "tree": "918e571b24172b96cc25c194f2683e061c1d41e3"
+          "change": "19c9a6e255f166b62e8b7622622f8aecde9d643e",
+          "commit": "ab1e7c1be06786db9e268943997de614a99f1c4e",
+          "tree": "52c5175068b62b6d9197b06d4efac5f74c9e4117"
         }
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     }
   },
