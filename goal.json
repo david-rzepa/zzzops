@@ -322,7 +322,7 @@
           "target_attempt": 3,
           "target_fp": "v1:sha256:f172fb845ea3a07f07bd9c99fb887a89c08974c9b19930b5bba6728b12502377",
           "text": "The source-goal race test does not exercise a refreshed approval or actual later promotion/forward-port, and its finish-not-ready assertion can pass before line sync or approval for unrelated reasons. It also does not exercise actual source-verify/destination-update or unsupported-provider refusal in the strict live-provenance mode required by the approved design. Test the real end-to-end authority refresh, allowed provisional outcome and atomic/fail-closed path; if its policy/adapter is unspecified, raise a precise design finding rather than guess.",
-          "upheld": false
+          "upheld": true
         },
         {
           "follows": "review_tests:1:4",
