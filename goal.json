@@ -45,35 +45,35 @@
       "status": "done"
     },
     "approve_design": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-18T21:51:31Z",
+      "finished_at": "2026-11-18T23:11:56Z",
       "fp_parts": {
         "def": "v1:sha256:d04fc5094a85157b7e25b3020caaee316324161c59b30d25d4aabb2e5c24f0ed",
         "inputs": {
-          "doc": "v1:blob:86f7d48b3914ae499720a35f318a1ac76a835727",
-          "filter": "v1:sha256:39acb7a56dd58b3978bfda10548a849e64f719996c344174a8e9f56ea46adabf",
-          "summary": "v1:sha256:256159951120571ec57cac170321c4e0eedede842b7dab66d5e723972a64f8d9"
+          "doc": "v1:blob:b4f730d036d7169afa4a2a4c7c7c814b9522fc98",
+          "filter": "v1:sha256:eb4b8b12f7ac42bbf32064c7133543bd52782563d8826d0f3ab3796b284300e1",
+          "summary": "v1:sha256:8d16c52e239a38b1c207253f66339a75b492bb32fb4c88147e872e7985345344"
         },
         "policy": {},
-        "subject": "v1:sha256:2a4600bfc11b6685bf9ce5a78cf694524246950331ededf1b133224fc48d2717"
+        "subject": "v1:sha256:5a98dd972f1d033cd1fe1b0b27228dda295abf1d9980a2996c8412356e07e5a6"
       },
       "holder": "human",
-      "input_fp": "v1:sha256:882160f65d9ba5a9d23fbd1cc6c6ae48bed61075e37f3497004b0ef1963c23e5",
+      "input_fp": "v1:sha256:30eb203dfc1e4edfad88a8c4a3619d4a1507c82315a8d1ba081d0569ea409ede",
       "ok": true,
       "output": {
-        "decided_at": "2026-11-18T21:51:31Z",
+        "decided_at": "2026-11-18T23:11:56Z",
         "decided_by": "David Rzepa",
         "decision": "approved",
         "quote": "Approved",
-        "summary": "Approved the revised G1051 design defining release insertion previews and approval, nested maintenance source provenance, and guarded promotion amid concurrent ref changes."
+        "summary": "Approved the G1051 protected GitHub PR design using an approved immutable source snapshot and documenting the independent-ref race; strict cross-ref enforcement is deferred."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "86f7d48b3914ae499720a35f318a1ac76a835727",
-          "commit": "6f078903cbb492bf0339671765d9df0b0e03d88c"
+          "blob": "b4f730d036d7169afa4a2a4c7c7c814b9522fc98",
+          "commit": "a8b3eed5959ea290e0ded9dd9f432856906eefd1"
         }
       },
       "status": "done"
