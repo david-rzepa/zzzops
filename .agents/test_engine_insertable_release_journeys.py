@@ -283,59 +283,58 @@ class InsertedReleaseJourneys(Branching):
         self.assertTrue("source" in detail or "provenance" in detail, detail)
         self.assertIn(str(source_goal), detail, "recovery must identify the revoked source")
 
-    def test_external_production_move_at_actual_finish_update_is_not_overwritten(self):
-        capability = fx.PLUGIN_CODE / "engine/capabilities/insertable_release_targets.txt"
-        self.assertTrue(capability.is_file(), "insertable release capability is not implemented")
-        self.finished_source()
-        self.activate()
-        patch = self.goal(release="1.1")
-        line = self.insert(self.preview())["goal"]
-        self.done(patch, code={"src/final_write_patch.py": "fixed = True\n"})
-        self.op(line, "sync")
-        self.approve(line, "approve_finish")
-        dev_before = self.tip("dev")
-        race_dir = Path(self.tmp) / "finish-write-race"
+    def _reopen_source(self, source_goal, clone_name):
+        ref = f"refs/heads/zzzops/goal/g{source_goal}"
+        writer = self.w.add_clone(clone_name)
+        writer.git("fetch", "-q", "origin", ref)
+        writer.git("checkout", "-q", "--detach", "FETCH_HEAD")
+        doc = json.loads(writer.git("show", "HEAD:goal.json"))
+        doc["state"], doc["closed"] = "open", None
+        msg = store.with_trailers(store.goal_message("edit", source_goal, "reopened", "open"),
+                                  doc, self.w.policy["settings"])
+        tip = writer.commit({"goal.json": json.dumps(doc, indent=2) + "\n"}, msg)
+        writer.git("push", "-q", "origin", f"HEAD:{ref}")
+        return tip
+
+    def _at_provider_merge(self, goal, node, mutate):
+        """Hold the actual provider merge call after engine prechecks.
+
+        FakeGitHub provides the local PR contract; this is not evidence of
+        real GitHub branch-protection enforcement.
+        """
+        race_dir = Path(self.tmp) / f"provider-merge-{goal}-{node}"
         race_dir.mkdir()
         ready, proceed = race_dir / "ready", race_dir / "proceed"
-        real_git = shutil.which("git")
-        self.assertIsNotNone(real_git)
-        wrapper = race_dir / "git"
+        real_gh = str(Path(self.gh.bindir) / "gh")
+        wrapper = race_dir / "gh"
         wrapper.write_text(
             f"#!{sys.executable}\n"
-            "import os, subprocess, sys, time\n"
+            "import os, sys, time\n"
             "from pathlib import Path\n"
             "args = sys.argv[1:]\n"
-            "transaction = 'update-ref' in args and '--stdin' in args\n"
-            "data = sys.stdin.buffer.read() if transaction else None\n"
-            "targeted = ('push' in args and any('refs/heads/main' in x for x in args)) or "
-            "(transaction and b'refs/heads/main' in data)\n"
-            "if targeted:\n"
+            "if args[:2] == ['pr', 'merge'] or "
+            "(args[:2] == ['api', 'graphql'] and 'mergePullRequest' in ' '.join(args)):\n"
             "    Path(os.environ['G1051_RACE_READY']).write_text('ready')\n"
             "    deadline = time.monotonic() + 20\n"
             "    while not Path(os.environ['G1051_RACE_CONTINUE']).exists():\n"
             "        if time.monotonic() >= deadline: sys.exit(124)\n"
             "        time.sleep(0.01)\n"
-            f"p = subprocess.run([{real_git!r}] + args, input=data)\n"
-            "sys.exit(p.returncode)\n", encoding="utf-8")
+            f"os.execv({real_gh!r}, [{real_gh!r}] + args)\n", encoding="utf-8")
         wrapper.chmod(0o755)
         env = self.w.cli_env(extra={"PATH": str(race_dir) + os.pathsep + self.w.extra_env["PATH"],
                                    "G1051_RACE_READY": str(ready), "G1051_RACE_CONTINUE": str(proceed)})
-        proc = subprocess.Popen([sys.executable, str(fx.PLUGIN_CODE / "zzzops.py"), "start", str(line),
-                                 "finish", "--as", "claude:aaaa/op"], cwd=self.w.clones["a"].path,
+        proc = subprocess.Popen([sys.executable, str(fx.PLUGIN_CODE / "zzzops.py"), "start", str(goal),
+                                 node, "--as", "claude:aaaa/op"], cwd=self.w.clones["a"].path,
                                 env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
             deadline = time.monotonic() + 20
             while not ready.exists() and proc.poll() is None and time.monotonic() < deadline:
                 time.sleep(0.01)
-            self.assertTrue(ready.exists(), "finish did not reach an actual guarded production update")
-            moved = self.push_branch("main", {"src/external_finish.py": "external = True\n"},
-                                     "fix: external production write during finish")
+            self.assertTrue(ready.exists(), "operation did not reach a protected provider merge")
+            changed = mutate()
             proceed.write_text("continue", encoding="utf-8")
             stdout, stderr = proc.communicate(timeout=30)
-            result = json.loads(stdout)
-            self.assertEqual(moved, self.tip("main"), (result, stderr))
-            self.assertEqual(dev_before, self.tip("dev"), "failed promotion must not forward patch")
-            self.assertFalse((result.get("closed") or {}).get("reason") == "done", result)
+            return changed, proc.returncode, json.loads(stdout), stderr
         finally:
             proceed.write_text("continue", encoding="utf-8")
             try:
@@ -344,7 +343,55 @@ class InsertedReleaseJourneys(Branching):
                 proc.kill()
                 proc.communicate(timeout=5)
 
-    def test_protected_remote_refusal_does_not_fall_back_to_unguarded_production_write(self):
+    def test_source_revoked_during_protected_finish_records_merge_and_pauses_forwarding(self):
+        capability = fx.PLUGIN_CODE / "engine/capabilities/insertable_release_targets.txt"
+        self.assertTrue(capability.is_file(), "insertable release capability is not implemented")
+        source_goal, _ = self.finished_source()
+        self.activate()
+        patch = self.goal(release="1.1")
+        line = self.insert(self.preview())["goal"]
+        self.done(patch, code={"src/source_race_patch.py": "fixed = True\n"})
+        self.op(line, "sync")
+        self.approve(line, "approve_finish")
+        main_before, dev_before = self.tip("main"), self.tip("dev")
+        existing_prs = set(self.gh.load()["prs"])
+        moved, rc, result, stderr = self._at_provider_merge(
+            line, "finish", lambda: self._reopen_source(source_goal, "finish-source-revoker"))
+        self.assertEqual(moved, self.goal_tip(source_goal))
+        self.assertEqual(dev_before, self.tip("dev"), "post-merge mismatch must pause forward-port")
+        self.assertNotEqual(main_before, self.tip("main"), "protected PR may merge before the race is detected")
+        self.assertTrue(self.is_ancestor(main_before, self.tip("main")), "do not roll production backward")
+        self.assertIn("src/source_race_patch.py", self.w.remote_git("ls-tree", "-r", "--name-only", "refs/heads/main").splitlines())
+        self.assertFalse((result.get("closed") or {}).get("reason") == "done", (result, stderr))
+        details = json.dumps({"result": result, "next": self.nxt(line)}).lower()
+        self.assertTrue("source" in details or "provenance" in details, details)
+        new_prs = [p for key, p in self.gh.load()["prs"].items() if key not in existing_prs]
+        self.assertTrue(any(p.get("baseRefName") == "main" and p.get("state") == "MERGED" for p in new_prs), new_prs)
+        self.assertTrue(any("--match-head-commit" in " ".join(call) or "expectedHeadOid" in " ".join(call)
+                            for call in self.gh.calls()), "merge must carry the provider expected-head guard")
+
+    def test_production_move_during_protected_finish_is_reported_after_merge(self):
+        capability = fx.PLUGIN_CODE / "engine/capabilities/insertable_release_targets.txt"
+        self.assertTrue(capability.is_file(), "insertable release capability is not implemented")
+        self.finished_source()
+        self.activate()
+        patch = self.goal(release="1.1")
+        line = self.insert(self.preview())["goal"]
+        self.done(patch, code={"src/base_race_patch.py": "fixed = True\n"})
+        self.op(line, "sync")
+        self.approve(line, "approve_finish")
+        dev_before = self.tip("dev")
+        moved, rc, result, stderr = self._at_provider_merge(
+            line, "finish", lambda: self.push_branch("main", {"src/external_finish.py": "external = True\n"},
+                                                      "fix: external production write during finish"))
+        self.assertTrue(self.is_ancestor(moved, self.tip("main")), (result, stderr))
+        self.assertNotEqual(moved, self.tip("main"), "the protected merge may succeed on the newer base")
+        self.assertEqual(dev_before, self.tip("dev"), "detected base race must pause forward-port")
+        self.assertFalse((result.get("closed") or {}).get("reason") == "done", result)
+        details = json.dumps({"result": result, "next": self.nxt(line)}).lower()
+        self.assertTrue("base" in details or "production" in details, details)
+
+    def test_protected_provider_refusal_does_not_bypass_pr(self):
         capability = fx.PLUGIN_CODE / "engine/capabilities/insertable_release_targets.txt"
         self.assertTrue(capability.is_file(), "insertable release capability is not implemented")
         self.finished_source()
@@ -355,15 +402,11 @@ class InsertedReleaseJourneys(Branching):
         self.op(line, "sync")
         self.approve(line, "approve_finish")
         main_before, dev_before = self.tip("main"), self.tip("dev")
-        hook = Path(self.w.remote) / "hooks/pre-receive"
-        hook.write_text("#!/bin/sh\nwhile read old new ref; do\n"
-                        "  if [ \"$ref\" = refs/heads/main ]; then\n"
-                        "    echo 'protected main: atomic update refused' >&2; exit 1\n"
-                        "  fi\ndone\nexit 0\n", encoding="utf-8")
-        hook.chmod(0o755)
+        self.gh.update(lambda state: state.setdefault("faults", {}).update(
+            merge_refuse="GraphQL: protected branch requires approving review"))
         rc, result = self.w.run("a", "start", str(line), "finish", "--as", "claude:aaaa/op")
         self.assertFalse(rc == 0 and result.get("ran", {}).get("outcome") == "done", result)
-        self.assertEqual(main_before, self.tip("main"), "protected main must not be bypassed")
+        self.assertEqual(main_before, self.tip("main"), "protected production must not be bypassed")
         self.assertEqual(dev_before, self.tip("dev"), "failed promotion must not forward patch")
 
     def test_external_production_advance_during_atomic_line_creation_stays_pending(self):
@@ -434,101 +477,26 @@ class InsertedReleaseJourneys(Branching):
                 proc.kill()
                 proc.communicate(timeout=5)
 
-    def _interleave_patch_merge(self, changed_ref):
+    def test_changed_patch_pr_head_is_refused_by_expected_head_guard(self):
         capability = fx.PLUGIN_CODE / "engine/capabilities/insertable_release_targets.txt"
         self.assertTrue(capability.is_file(), "insertable release capability is not implemented")
-        source_goal, source = self.finished_source()
+        self.finished_source()
         self.activate()
         patch = self.goal(release="1.1")
-        line = self.insert(self.preview())["goal"]
-        self.deliver(patch, code={"src/patch_race.py": "fixed = True\n"})
+        self.insert(self.preview())
+        self.deliver(patch, code={"src/approved_patch.py": "fixed = True\n"})
         self.op(patch, "integrate")
         self.approve(patch, "approve_merge")
-        dev_before = self.tip("dev")
-        main_before = self.tip("main")
-        race_dir = Path(self.tmp) / ("patch-race-" + changed_ref)
-        race_dir.mkdir()
-        ready = race_dir / "ready"
-        proceed = race_dir / "proceed"
-        real_git = shutil.which("git")
-        self.assertIsNotNone(real_git)
-        wrapper = race_dir / "git"
-        wrapper.write_text(
-            f"#!{sys.executable}\n"
-            "import os, sys, time\n"
-            "from pathlib import Path\n"
-            "args = sys.argv[1:]\n"
-            "if 'push' in args and any('release/1.1' in x for x in args):\n"
-            "    Path(os.environ['G1051_RACE_READY']).write_text('ready')\n"
-            "    deadline = time.monotonic() + 20\n"
-            "    while not Path(os.environ['G1051_RACE_CONTINUE']).exists():\n"
-            "        if time.monotonic() >= deadline: sys.exit(124)\n"
-            "        time.sleep(0.01)\n"
-            f"os.execv({real_git!r}, [{real_git!r}] + args)\n",
-            encoding="utf-8",
-        )
-        wrapper.chmod(0o755)
-        env = self.w.cli_env(extra={"PATH": str(race_dir) + os.pathsep + self.w.extra_env["PATH"],
-                                   "G1051_RACE_READY": str(ready), "G1051_RACE_CONTINUE": str(proceed)})
-        proc = subprocess.Popen([sys.executable, str(fx.PLUGIN_CODE / "zzzops.py"), "start", str(patch),
-                                 "merge", "--as", "claude:aaaa/op"], cwd=self.w.clones["a"].path,
-                                env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        try:
-            deadline = time.monotonic() + 20
-            while not ready.exists() and proc.poll() is None and time.monotonic() < deadline:
-                time.sleep(0.01)
-            self.assertTrue(ready.exists(), "patch merge never reached an actual Git destination update")
-            if changed_ref == "target":
-                moved = self.push_branch("release/1.1", {"src/external_line.py": "external = True\n"},
-                                         "fix: external target race")
-            elif changed_ref == "production":
-                moved = self.push_branch("main", {"src/external_main.py": "external = True\n"},
-                                         "fix: external production race")
-            else:
-                # A fast-forward by a separate writer changes source-goal
-                # provenance after the engine's read, before the actual push.
-                ref = f"refs/heads/zzzops/goal/g{source_goal}"
-                writer = self.w.add_clone("source-writer")
-                writer.git("fetch", "-q", "origin", ref)
-                writer.git("checkout", "-q", "--detach", "FETCH_HEAD")
-                doc = json.loads(writer.git("show", "HEAD:goal.json"))
-                doc["state"], doc["closed"] = "open", None
-                msg = store.with_trailers(store.goal_message("edit", source_goal, "reopened", "open"),
-                                          doc, self.w.policy["settings"])
-                moved = writer.commit({"goal.json": json.dumps(doc, indent=2) + "\n"}, msg)
-                writer.git("push", "-q", "origin", f"HEAD:{ref}")
-                self.assertEqual(moved, self.goal_tip(source_goal))
-            proceed.write_text("continue", encoding="utf-8")
-            stdout, stderr = proc.communicate(timeout=30)
-            result = json.loads(stdout)
-            self.assertEqual(dev_before, self.tip("dev"), (result, stderr))
-            self.assertEqual(moved if changed_ref == "production" else main_before, self.tip("main"))
-            if changed_ref == "target":
-                self.assertEqual(moved, self.tip("release/1.1"), "destination CAS must not overwrite the external tip")
-                self.assertFalse((result.get("closed") or {}).get("reason") == "done", result)
-            else:
-                # The isolated line may advance provisionally: a CAS on that
-                # destination cannot detect a different ref's concurrent move.
-                self.assertIsNotNone(self.tip("release/1.1"))
-                line_status = self.nxt(line)
-                self.assertFalse(any(a.get("goal") == line and a.get("node") == "finish"
-                                     for a in line_status.get("actions", [])), line_status)
-        finally:
-            proceed.write_text("continue", encoding="utf-8")
-            try:
-                proc.communicate(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.communicate(timeout=5)
-
-    def test_patch_destination_move_at_actual_push_is_not_overwritten(self):
-        self._interleave_patch_merge("target")
-
-    def test_only_production_move_can_leave_patch_line_provisional(self):
-        self._interleave_patch_merge("production")
-
-    def test_only_source_goal_move_can_leave_patch_line_provisional(self):
-        self._interleave_patch_merge("source")
+        patch_before = self.tip("release/1.1")
+        moved, rc, result, stderr = self._at_provider_merge(
+            patch, "merge", lambda: self.push_branch(f"zzzops/pr/g{patch}",
+                                                        {"src/unapproved_head.py": "unapproved = True\n"},
+                                                        "fix: external PR-head change"))
+        self.assertEqual(moved, self.tip(f"zzzops/pr/g{patch}"))
+        self.assertEqual(patch_before, self.tip("release/1.1"), (result, stderr))
+        self.assertFalse((result.get("closed") or {}).get("reason") == "done", result)
+        self.assertTrue(any("--match-head-commit" in " ".join(call) or "expectedHeadOid" in " ".join(call)
+                            for call in self.gh.calls()), "merge must carry the provider expected-head guard")
 
     def test_old_writer_cannot_mutate_a_capability_enabled_repository(self):
         self.activate()
