@@ -175,6 +175,24 @@ class InsertedReleaseJourneys(Branching):
         self.assertIsNone(self.tip("release/1.1"))
         self.assertEqual(advanced, self.tip("main"))
 
+    def test_production_advance_after_finish_approval_cannot_be_overwritten(self):
+        _, source = self.finished_source()
+        self.activate()
+        patch = self.goal(release="1.1")
+        preview = self.preview()
+        inserted = self.insert(preview)
+        line = inserted["goal"]
+        self.done(patch, code={"src/approved_patch.py": "fixed = True\n"})
+        self.op(line, "sync")
+        self.approve(line, "approve_finish")
+        advanced = self.push_branch("main", {"src/concurrent_production.py": "newer = True\n"},
+                                    "fix: advance production after approval")
+        self.assertNotEqual(source, advanced)
+        rc, result = self.w.run("a", "start", str(line), "finish", "--as", "claude:aaaa/op")
+        self.assertFalse(rc == 0 and result.get("ran", {}).get("outcome") == "done", result)
+        self.assertEqual(advanced, self.tip("main"), "finish must not overwrite newer production")
+        self.assertNotIn("src/approved_patch.py", self.w.remote_git("ls-tree", "-r", "--name-only", "refs/heads/main").splitlines())
+
     def test_external_production_advance_during_atomic_line_creation_stays_pending(self):
         # This precondition is itself a red observation on the unimplemented
         # baseline; it avoids starting a test-process barrier that cannot be hit.
