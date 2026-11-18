@@ -1,0 +1,18 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [],
+  "graph": "default",
+  "id": 1051,
+  "links": {
+    "issue": null
+  },
+  "priority": "P2",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Support inserting a release between existing ZzzOps target releases, so a patch release can be planned and delivered without renumbering later work. The motivating example is targeting a patch release such as 2.1; target releases must no longer be restricted to integers. This is useful for shipping a ZzzOps fix as a patch while later releases are already planned.\n\nAcceptance criteria:\n- Let an owner insert, target and work toward an appropriately ordered release such as 2.1 alongside existing integer releases. Existing goals assigned to later releases remain assigned to those releases unless explicitly changed. A patch release can use the existing release workflow and gates.\n- Define and validate release identifiers and their ordering explicitly. Avoid treating version-like identifiers as floating-point numbers: for example, 2.10 and 2.1 must not silently collapse into the same identifier. The supported identifier grammar and how it relates to actual semantic versions are design choices to surface to the owner if not already decided.\n- Integrate the identifier through the actual engine, goal schema, CLI, default workflow, release and branch handling, scheduling, display, validation, docs and compatibility boundaries wherever relevant. Do not assume a particular release-branch naming scheme without checking existing policy.\n- Preserve existing integer release data and goal histories; do not silently reorder, rewrite or repurpose existing releases or production branches. Analyze how existing repositories and in-flight goals adopt the new version; report unrelated broken migrations for a separate goal rather than expanding scope to repair them.\n- Cover identifier parsing and ordering, insertion with later targets already present, scheduling, release cutting and completion, compatibility with existing integer goals, invalid and ambiguous input, branch/CLI behavior and mixed engine versions using realistic local Git/remote fixtures. Run focused real-engine checks first, followed by appropriate integration checks.\n\nConstraints: ZzzOps release support is a branching strategy, not an automatic deployment or package-publishing service. Respect existing owner approvals and policy choices. Do not create a real release, change production branches, publish artifacts or change other goals' release assignments as part of capturing this goal.\n",
+  "state": "open",
+  "title": "Allow inserting patch target releases between planned releases"
+}
