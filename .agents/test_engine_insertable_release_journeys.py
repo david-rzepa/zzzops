@@ -296,7 +296,7 @@ class InsertedReleaseJourneys(Branching):
         writer.git("push", "-q", "origin", f"HEAD:{ref}")
         return tip
 
-    def _at_provider_merge(self, goal, node, mutate):
+    def _at_provider_merge(self, goal, node, mutate, *, approved_head, target):
         """Hold the actual provider merge call after engine prechecks.
 
         FakeGitHub provides the local PR contract; this is not evidence of
@@ -309,12 +309,15 @@ class InsertedReleaseJourneys(Branching):
         wrapper = race_dir / "gh"
         wrapper.write_text(
             f"#!{sys.executable}\n"
-            "import os, sys, time\n"
+            "import json, os, sys, time\n"
             "from pathlib import Path\n"
             "args = sys.argv[1:]\n"
             "if args[:2] == ['pr', 'merge'] or "
             "(args[:2] == ['api', 'graphql'] and 'mergePullRequest' in ' '.join(args)):\n"
-            "    Path(os.environ['G1051_RACE_READY']).write_text('ready')\n"
+            "    ready = Path(os.environ['G1051_RACE_READY'])\n"
+            "    pending = ready.with_suffix('.pending')\n"
+            "    pending.write_text(json.dumps(args))\n"
+            "    os.replace(pending, ready)\n"
             "    deadline = time.monotonic() + 20\n"
             "    while not Path(os.environ['G1051_RACE_CONTINUE']).exists():\n"
             "        if time.monotonic() >= deadline: sys.exit(124)\n"
@@ -331,7 +334,31 @@ class InsertedReleaseJourneys(Branching):
             while not ready.exists() and proc.poll() is None and time.monotonic() < deadline:
                 time.sleep(0.01)
             self.assertTrue(ready.exists(), "operation did not reach a protected provider merge")
-            changed = mutate()
+            call = json.loads(ready.read_text(encoding="utf-8"))
+            # Check the intercepted call itself, not earlier fixture PR merges.
+            # The provider's expected-head argument must bind the exact synced
+            # subject the owner approved, and this must be the target PR.
+            if call[:2] == ["pr", "merge"]:
+                pr_number = int(call[2].rstrip("/").split("/")[-1])
+                pr = self.gh.pr(pr_number)
+                self.assertEqual(target, pr["baseRefName"])
+                self.assertEqual(approved_head, self.tip(pr["headRefName"]))
+                if "--match-head-commit" in call:
+                    guard = call[call.index("--match-head-commit") + 1]
+                else:
+                    guard = next((x.split("=", 1)[1] for x in call
+                                  if x.startswith("--match-head-commit=")), None)
+                self.assertEqual(approved_head, guard, "finish PR must guard the exact approved head")
+            else:
+                payload = " ".join(call)
+                self.assertIn("expectedHeadOid", payload)
+                self.assertIn(approved_head, payload)
+                candidates = [p for p in self.gh.load()["prs"].values()
+                              if p["state"] == "OPEN" and p["baseRefName"] == target
+                              and self.tip(p["headRefName"]) == approved_head]
+                self.assertEqual(1, len(candidates), candidates)
+                pr = candidates[0]
+            changed = mutate(pr)
             proceed.write_text("continue", encoding="utf-8")
             stdout, stderr = proc.communicate(timeout=30)
             return changed, proc.returncode, json.loads(stdout), stderr
@@ -351,12 +378,14 @@ class InsertedReleaseJourneys(Branching):
         patch = self.goal(release="1.1")
         line = self.insert(self.preview())["goal"]
         self.done(patch, code={"src/source_race_patch.py": "fixed = True\n"})
-        self.op(line, "sync")
+        synced = self.op(line, "sync")["ran"]["output"]["merged"]
+        self.assertEqual(self.tip("release/1.1"), synced)
         self.approve(line, "approve_finish")
         main_before, dev_before = self.tip("main"), self.tip("dev")
         existing_prs = set(self.gh.load()["prs"])
         moved, rc, result, stderr = self._at_provider_merge(
-            line, "finish", lambda: self._reopen_source(source_goal, "finish-source-revoker"))
+            line, "finish", lambda pr: self._reopen_source(source_goal, "finish-source-revoker"),
+            approved_head=synced, target="main")
         self.assertEqual(moved, self.goal_tip(source_goal))
         self.assertEqual(dev_before, self.tip("dev"), "post-merge mismatch must pause forward-port")
         self.assertNotEqual(main_before, self.tip("main"), "protected PR may merge before the race is detected")
@@ -367,8 +396,6 @@ class InsertedReleaseJourneys(Branching):
         self.assertTrue("source" in details or "provenance" in details, details)
         new_prs = [p for key, p in self.gh.load()["prs"].items() if key not in existing_prs]
         self.assertTrue(any(p.get("baseRefName") == "main" and p.get("state") == "MERGED" for p in new_prs), new_prs)
-        self.assertTrue(any("--match-head-commit" in " ".join(call) or "expectedHeadOid" in " ".join(call)
-                            for call in self.gh.calls()), "merge must carry the provider expected-head guard")
 
     def test_production_move_during_protected_finish_is_reported_after_merge(self):
         capability = fx.PLUGIN_CODE / "engine/capabilities/insertable_release_targets.txt"
@@ -378,18 +405,49 @@ class InsertedReleaseJourneys(Branching):
         patch = self.goal(release="1.1")
         line = self.insert(self.preview())["goal"]
         self.done(patch, code={"src/base_race_patch.py": "fixed = True\n"})
-        self.op(line, "sync")
+        synced = self.op(line, "sync")["ran"]["output"]["merged"]
+        self.assertEqual(self.tip("release/1.1"), synced)
         self.approve(line, "approve_finish")
         dev_before = self.tip("dev")
         moved, rc, result, stderr = self._at_provider_merge(
-            line, "finish", lambda: self.push_branch("main", {"src/external_finish.py": "external = True\n"},
-                                                      "fix: external production write during finish"))
+            line, "finish", lambda pr: self.push_branch("main", {"src/external_finish.py": "external = True\n"},
+                                                        "fix: external production write during finish"),
+            approved_head=synced, target="main")
         self.assertTrue(self.is_ancestor(moved, self.tip("main")), (result, stderr))
         self.assertNotEqual(moved, self.tip("main"), "the protected merge may succeed on the newer base")
         self.assertEqual(dev_before, self.tip("dev"), "detected base race must pause forward-port")
         self.assertFalse((result.get("closed") or {}).get("reason") == "done", result)
         details = json.dumps({"result": result, "next": self.nxt(line)}).lower()
         self.assertTrue("base" in details or "production" in details, details)
+
+    def test_changed_finish_pr_head_is_refused_at_provider_boundary(self):
+        capability = fx.PLUGIN_CODE / "engine/capabilities/insertable_release_targets.txt"
+        self.assertTrue(capability.is_file(), "insertable release capability is not implemented")
+        self.finished_source()
+        self.activate()
+        patch = self.goal(release="1.1")
+        line = self.insert(self.preview())["goal"]
+        self.done(patch, code={"src/approved_finish.py": "fixed = True\n"})
+        approved_head = self.op(line, "sync")["ran"]["output"]["merged"]
+        self.assertEqual(self.tip("release/1.1"), approved_head)
+        self.approve(line, "approve_finish")
+        main_before, dev_before = self.tip("main"), self.tip("dev")
+        selected = {}
+
+        def change_pr_head(pr):
+            selected["number"] = pr["number"]
+            return self.push_branch(pr["headRefName"], {"src/unapproved_finish.py": "unapproved = True\n"},
+                                    "fix: external finish PR head change")
+
+        moved, rc, result, stderr = self._at_provider_merge(
+            line, "finish", change_pr_head, approved_head=approved_head, target="main")
+        self.assertNotEqual(approved_head, moved)
+        self.assertEqual(main_before, self.tip("main"), (result, stderr))
+        self.assertEqual(dev_before, self.tip("dev"), "unapproved finish must not forward")
+        self.assertFalse((result.get("closed") or {}).get("reason") == "done", result)
+        pr = self.gh.pr(selected["number"])
+        self.assertEqual("OPEN", pr["state"], "the provider must refuse the changed finish PR head")
+        self.assertEqual(moved, self.tip(pr["headRefName"]))
 
     def test_protected_provider_refusal_does_not_bypass_pr(self):
         capability = fx.PLUGIN_CODE / "engine/capabilities/insertable_release_targets.txt"
@@ -488,15 +546,15 @@ class InsertedReleaseJourneys(Branching):
         self.op(patch, "integrate")
         self.approve(patch, "approve_merge")
         patch_before = self.tip("release/1.1")
+        approved_head = self.tip(f"zzzops/pr/g{patch}")
         moved, rc, result, stderr = self._at_provider_merge(
-            patch, "merge", lambda: self.push_branch(f"zzzops/pr/g{patch}",
+            patch, "merge", lambda pr: self.push_branch(pr["headRefName"],
                                                         {"src/unapproved_head.py": "unapproved = True\n"},
-                                                        "fix: external PR-head change"))
+                                                        "fix: external PR-head change"),
+            approved_head=approved_head, target="release/1.1")
         self.assertEqual(moved, self.tip(f"zzzops/pr/g{patch}"))
         self.assertEqual(patch_before, self.tip("release/1.1"), (result, stderr))
         self.assertFalse((result.get("closed") or {}).get("reason") == "done", result)
-        self.assertTrue(any("--match-head-commit" in " ".join(call) or "expectedHeadOid" in " ".join(call)
-                            for call in self.gh.calls()), "merge must carry the provider expected-head guard")
 
     def test_old_writer_cannot_mutate_a_capability_enabled_repository(self):
         self.activate()
