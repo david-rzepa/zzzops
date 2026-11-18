@@ -10,7 +10,7 @@
   "priority": "P2",
   "records": {
     "adversary_design": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 1,
       "findings": [
         {
@@ -20,7 +20,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 4,
           "target_fp": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7",
@@ -34,7 +34,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 4,
           "target_fp": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7",
@@ -42,33 +42,33 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-18T21:09:45Z",
+      "finished_at": "2026-11-18T21:16:33Z",
       "fp_parts": {
         "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
         "inputs": {
-          "doc": "v1:blob:b2be1b1bcf5a9ce1592e1a6308664cf4c97eb1cc",
+          "doc": "v1:blob:d3ee9ff6527f2b520df37334693d822644dfd121",
           "spec": "v1:sha256:6c504f8bbd39d0be305d7835795eeb46ee5e9d1642fbab9cc844e2c486f988a6"
         },
         "policy": {},
-        "subject": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7"
+        "subject": "v1:sha256:f8a0bbceda2ac4f1987371f2d5785c85ba073b76c5e4db8a1c6633a7e9eff386"
       },
-      "holder": "codex:root/g1051-adversary-1",
-      "input_fp": "v1:sha256:01e066cfaaae06d8585c231307d7d2dda33b9f04a145ae23f1c503e8cc9249d4",
+      "holder": "codex:root/g1051-adversary-2",
+      "input_fp": "v1:sha256:b68df2a5641d20a23854ced1ec8ebb6710fad7e9307c5450a5427cc1e0041012",
       "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "5810d212f86c11288a7f0c4526058cee220d27d2",
-          "commit": "b52e393da1b5f827bf9293e9780afa8d0d5aa906",
+          "blob": "e920373cd755212b31fc88adc86fe5f7483919d9",
+          "commit": "3650b20f9dc5bb0de5a8e67eaad05a44c3e412b7",
           "path": ".zzzops/reviews/1051/adversary_design.md"
         },
-        "summary": "Two release-isolation races need enforced routing and production-ref guards."
+        "summary": "Both prior release-isolation findings are resolved; no new material findings."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "b2be1b1bcf5a9ce1592e1a6308664cf4c97eb1cc",
-          "commit": "2788be0619b94d9df97fb339e9866bcc3bc4a42f"
+          "blob": "d3ee9ff6527f2b520df37334693d822644dfd121",
+          "commit": "9ed534523ebca82be21e1a9e051e17d2990ce41b"
         }
       },
       "status": "done"
