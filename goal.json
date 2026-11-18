@@ -133,26 +133,26 @@
       "status": "done"
     },
     "filter_design": {
-      "attempt": 5,
+      "attempt": 6,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-18T21:50:12Z",
+      "finished_at": "2026-11-18T23:09:10Z",
       "fp_parts": {
         "candidates": [],
         "def": "v1:sha256:c83a5e0ec02bc9504ff118f774138ad5517f6b3a5885d1c28444982e78d23a9f",
         "inputs": {
-          "adversary": "v1:sha256:46b9afad0c8d8c64115440b7653fc686533675af1e6328dc64d1489f78e9ec6a",
-          "doc": "v1:blob:86f7d48b3914ae499720a35f318a1ac76a835727",
-          "review": "v1:sha256:490048e3ce824bd114ea803192cc40ed70ada377d3842f8cd96a7ccc1fc1dbe8",
-          "spec": "v1:sha256:6c504f8bbd39d0be305d7835795eeb46ee5e9d1642fbab9cc844e2c486f988a6"
+          "adversary": "v1:sha256:adcdf5e4ddb672b5887c67aa2cb2498242f1d60b75c1879001c8a47369d11ad1",
+          "doc": "v1:blob:b4f730d036d7169afa4a2a4c7c7c814b9522fc98",
+          "review": "v1:sha256:858c876ca5f80d97aeb053582ec35f51bc3ff229e02bcfcbde59f23be41c6477",
+          "spec": "v1:sha256:36d23dbf43af22b9cc7117bb206dfaccc678b6f1574bc36a6de214fab025777e"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1051-filter-5",
-      "input_fp": "v1:sha256:7e9c762b139c414bc13ccfd73e9bd223df4066e10d8204175d9cd8fb0fbf4b60",
+      "holder": "codex:root/g1051-filter-6",
+      "input_fp": "v1:sha256:55030124360e706ac050b72036a97a9dbdbe46a183761b983832d70f09bd1c75",
       "ok": true,
       "output": {
-        "summary": "Both independent re-reviews accepted the revised concurrency contract: patch-line updates remain provisional when production or source provenance changes, and promotion requires fresh authorization with destination guards. All prior findings are resolved; there are no open findings or notes to filter.",
+        "summary": "Both independent reviewers accepted the owner-directed immutable snapshot and protected PR approach, including the explicitly disclosed remaining independent-ref race. No findings or notes remain to filter.",
         "verdicts": {}
       },
       "reason": "stale",
