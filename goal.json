@@ -135,10 +135,10 @@
       "status": "done"
     },
     "design": {
-      "attempt": 6,
+      "attempt": 7,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-18T21:14:51Z",
+      "finished_at": "2026-11-18T21:37:13Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -147,25 +147,21 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/zzzops1051-design-6",
+      "holder": "codex:root/zzzops1051-design-7",
       "input_fp": "v1:sha256:b2183dcebbd678d284b0c97de1c24a29f65c688dc5969715ee7398f6464d3cfd",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "d3ee9ff6527f2b520df37334693d822644dfd121",
-          "commit": "9ed534523ebca82be21e1a9e051e17d2990ce41b",
+          "blob": "f814d7df07ef42e2c1b96207e73870ae31393569",
+          "commit": "db4b4c92b1736ce85b4a56c054930a25ec6c557f",
           "path": ".zzzops/reviews/1051/design.md"
         },
         "responses": {
-          "adversary_design:1:1": "fixed: require verified isolated line and gate member dispatch, base and integration; detect already-completed members and preserve them for explicit reviewed backport.",
-          "adversary_design:1:2": "fixed: bind the line to an approved immutable source, recheck after conditional ref creation before member work, and enforce atomic expected-target checks at production promotion with explicit stale-source handling.",
-          "review_design:1:1": "fixed: require isolated baseline and member routing also when later work is uncut but has reached integration.",
-          "review_design:1:2": "fixed: define inserted-line graph mode with record-only pre-approval line_sync and authorized post-finish propagation.",
-          "review_design:1:3": "fixed: recorded as owner decision Q1"
+          "test_design:1:1": "fixed: specified release insert preview/action and approval schema, source-goal and Git provenance, race-safe pending verification, idempotence, capability name and rollout, plus real-CLI/remote test cases."
         },
-        "summary": "Use canonical arbitrarily nested release IDs and explicitly isolated patch lines that are verified before member work, including when later work is only planned. Bind creation to approved immutable source provenance, protect production promotion with atomic target checks, and keep older maintenance releases separate from newer production."
+        "summary": "Define an explicit, reviewable release insert preview and answer-file action tied to immutable released source and production SHAs, with a pending-verification gate and fresh approval on external races. Gate dotted target state on a named capability after every writer is upgraded, preserving integer behavior until activation."
       },
-      "reason": "retry",
+      "reason": "reopened",
       "status": "done"
     },
     "filter_design": {
