@@ -336,15 +336,15 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 3,
+      "attempt": 5,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-18T22:21:53Z",
+      "finished_at": "2026-11-18T23:17:31Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
           "base": "v1:sha256:7137968f0afc1e3d944fd561b2af20955f2aef16fd65a3864f6989ddd512e960",
-          "doc": "v1:blob:86f7d48b3914ae499720a35f318a1ac76a835727"
+          "doc": "v1:blob:b4f730d036d7169afa4a2a4c7c7c814b9522fc98"
         },
         "policy": {}
       },
@@ -352,8 +352,8 @@
         ".agents/test_engine_insertable_release_journeys.py",
         ".agents/test_engine_insertable_releases.py"
       ],
-      "holder": "codex:root/g1051-test-design-3",
-      "input_fp": "v1:sha256:c698c2d562166d8051f40f9dccf94eb6b9bc40d56fe131f50de74d09b73b9ddd",
+      "holder": "codex:root/g1051-test-design-5",
+      "input_fp": "v1:sha256:6d00447a3a1a0c432548bdfe534e57fff9d4e8bbcdc5e77c6a154730a85f9fb8",
       "ok": true,
       "output": {
         "commands": [
@@ -362,33 +362,31 @@
         "cost": {
           "changed_tests": [
             {
-              "duration_ms": 72779,
-              "id_or_scope": "both .agents/test_engine_insertable_release*.py files, 30 cases",
-              "observation": "unittest reported 30 cases in 72.779s; 31 failing subtests and one mixed-type sorting error on the unimplemented baseline. Feature-dependent race cases stop on the missing capability before reaching their barriers."
+              "duration_ms": 72601,
+              "id_or_scope": ".agents/test_engine_insertable_release*.py, 30 cases",
+              "observation": "unittest reports 30 cases in 72.601s; 31 failing subtests and one mixed-type ordering error against the unimplemented baseline. Feature-specific protected-PR, source-revocation and insertion assertions stop at the missing capability."
             }
           ],
-          "checkpoint": "6248216c29a71ba31b1fd9c4bb36c1898a0c9356",
+          "checkpoint": "5ff7f0abe7b128c388193745d1200fe3a559835b",
           "commands": [
             {
               "cmd": "python3 -m unittest discover -s .agents -p 'test_engine_insertable_release*.py' -v --durations 50",
-              "duration_ms": 72842,
+              "duration_ms": 72663,
               "exit": 1
             }
           ],
-          "summary": "Exact-checkpoint focused run used actual engine and throwaway bare Git remotes (fake GitHub API). Three baseline safety/invalid-input cases pass; feature cases are red. Integer source-release setup executes, but feature-dependent isolated delivery, exact write barriers and supported-provider checks cannot reach their assertions before the capability exists. The specific live-source cross-ref transaction policy selector/adapter is not specified in the approved contract and remains uncovered rather than guessed; real hosted-provider behavior also remains unverified.",
-          "total_ms": 72842
+          "summary": "Exact-checkpoint focused run against the real engine, isolated bare Git remotes and fake GitHub API. Red on missing feature; actual source integer-release journeys run. Revised cases model expected-PR-head checks and report base/source changes detected after protected-PR merge without requiring unavailable cross-ref atomicity. Fake GitHub does not prove actual hosted branch protection, and source-dependent new assertions cannot be exercised before implementation; real staging protection/required-check behavior remains a later integration gate.",
+          "total_ms": 72663
         },
         "responses": {
-          "review_tests:1:1": "fixed: positive CLI fixtures explicitly require insertable_release_targets, with a separate pre-opt-in rejection test.",
-          "review_tests:1:2": "fixed: added actual bare-remote production patch finish and guarded propagation to main/dev/later line plus a conflict/partial-state preservation journey. These are pre-implementation red at capability activation.",
-          "review_tests:1:3": "disputed: added deterministic real-Git push barriers for production, source-goal and patch destination changes, a production move at the actual finish update, a protected bare-remote refusal case and stale preview checks. The separate mode requiring a live source-provenance cross-ref transaction cannot be truthfully selected or tested because the approved design names no policy selector or adapter interface; it remains an explicit coverage gap for review, and the baseline cannot reach the new feature barriers.",
-          "review_tests:1:4": "fixed: added alias collision activation refusal, imported completed integration member, retargeted in-flight work, visible later dependency, no-branch policy, and existing integer cut after opt-in."
+          "review_tests:2:1": "fixed: source revocation is injected at the real provider merge boundary after an actual finish approval. The test drives the protected PR merge, permits it to occur, verifies main contains the patch without rollback, then requires source-mismatch reporting and paused dev forwarding; the fake provider call must include the expected-head guard. A separate real finish attempt checks a source reopened before preflight. No strict cross-ref atomicity is asserted; actual hosted branch-protection evidence remains a documented later staging gate.",
+          "review_tests:2:2": "fixed: obtain a genuine approved preview before importing the already-completed integration member, then attempt the mutating insertion with its fresh fingerprint if supplied or the genuine previously valid stale approval otherwise. Require rejection or blocked isolated provisional state, preservation of the old completed goal and integration history, and absence of the completed member from the patch branch."
         },
         "tests": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "ccb7ee36b1d285693738fe0cb5deb31ffa830397",
-          "commit": "6248216c29a71ba31b1fd9c4bb36c1898a0c9356",
-          "tree": "57c6454cb76152f227d58870af7d15f4b21ab0b1"
+          "change": "f475913287402906ce93c25b5680ad7d9190109c",
+          "commit": "5ff7f0abe7b128c388193745d1200fe3a559835b",
+          "tree": "94e0f27935c647efdee6823e9956bd09d3fa9575"
         }
       },
       "reason": "reopened",
