@@ -100,6 +100,53 @@
       "reason": "stale",
       "status": "done"
     },
+    "filter_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-18T21:11:06Z",
+      "fp_parts": {
+        "candidates": [
+          [
+            "adversary_design:1:1",
+            true
+          ],
+          [
+            "adversary_design:1:2",
+            true
+          ],
+          [
+            "review_design:1:1",
+            true
+          ],
+          [
+            "review_design:1:2",
+            true
+          ],
+          [
+            "review_design:1:3",
+            true
+          ]
+        ],
+        "def": "v1:sha256:c83a5e0ec02bc9504ff118f774138ad5517f6b3a5885d1c28444982e78d23a9f",
+        "inputs": {
+          "adversary": "v1:sha256:0db6d658415a196191d1b7a96eb4b9c38f021e153b3440bc3ddd9a0582625e3d",
+          "doc": "v1:blob:b2be1b1bcf5a9ce1592e1a6308664cf4c97eb1cc",
+          "review": "v1:sha256:5347c421e2ae1c5bf5f824197d4a0885acdc356998e21ff8b72ab9331d80e5d7",
+          "spec": "v1:sha256:6c504f8bbd39d0be305d7835795eeb46ee5e9d1642fbab9cc844e2c486f988a6"
+        },
+        "policy": {}
+      },
+      "holder": "codex:root/g1051-filter-1",
+      "input_fp": "v1:sha256:442a674dd1316e45d3252f41af888b0e863cf21e53c34d65935cae86a897848b",
+      "ok": true,
+      "output": {
+        "summary": "Both independent reviews raised five material findings: patch members must wait for their isolated line; line creation must guard production-ref races; patch isolation must cover later work already on integration; the release forwarding lifecycle must match its actual graph; and the owner must decide how to handle an earlier patch after newer production. All five reopen design. There are no non-material notes to filter.",
+        "verdicts": {}
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 1,
       "correction_runs": 1,
