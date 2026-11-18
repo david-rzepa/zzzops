@@ -191,60 +191,30 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 2,
-      "correction_runs": 1,
+      "attempt": 3,
+      "correction_runs": 2,
       "findings": [
         {
-          "id": "review_design:1:1",
-          "impact": "A patch can release unrelated later-version changes despite meeting all current release gates.",
-          "lens": "intent",
-          "material": true,
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 4,
-          "target_fp": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7",
-          "text": "The isolation path is specified only when a later release line already exists. If a later release is planned but uncut, some of its closed goals can already be merged into integration: current target_of() routes ordinary members to integration when no release line is open, and ordinary release cut starts from the integration tip. A newly inserted 2.1 can therefore include completed release-3 work even though 3 has not yet been cut. Define how an inserted target gets its verified released baseline and isolated member branch before its work merges in this case too, and test a later uncut target with later-only work already on integration.",
-          "upheld": false
-        },
-        {
-          "id": "review_design:1:2",
-          "impact": "Reusing the existing numbered release graph as described can publish unapproved patch code to integration before the finish decision and change other release cuts.",
+          "id": "review_design:3:1",
+          "impact": "A supported maintenance release cannot itself receive a follow-up nested patch: release insertion refuses because maintenance has no production_merge result.",
           "lens": "truth",
           "material": true,
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "resolved",
+          "status": "open",
           "target": "design",
-          "target_attempt": 4,
-          "target_fp": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7",
-          "text": "The design promises patch changes are forwarded to integration only after finishing the patch, but the shipped release graph invokes git.line_sync before approve_finish and the current sync() immediately merges every release line into integration; only hotfix lines are record-only. Specify the inserted-line mode and changes to the release graph/line_sync that make pre-approval sync record the exact patch tip without integrating it, and test that neither integration nor other release branches receive the patch before the stated gate.",
-          "upheld": false
-        },
-        {
-          "id": "review_design:1:3",
-          "impact": "The design may reject exactly the old-release patch the owner expects, or an implementation that removes the guard could deliver the older baseline to the wrong production line.",
-          "lens": "experience",
-          "material": true,
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 4,
-          "target_fp": "v1:sha256:524c26cff3a1f45b594a6cd7b06e7ed5b3d08f17bb0150e9c84e5881ab858ae7",
-          "text": "owner question: The owner asked that releases can always be inserted at deeper positions, but the proposed implementation refuses when production has already advanced past the desired released baseline and always finishes a patch by merging it to production. If release 3 is already in production, should an inserted 2.1 remain possible as a maintenance release on its own line (without moving the main production branch backwards), or should such targets be refused? Recommend supporting an isolated maintenance line while explicitly preventing an older patch from being merged into newer production automatically; if maintenance releases are out of scope, record that limitation as an owner decision.",
+          "target_attempt": 7,
+          "target_fp": "v1:sha256:b316ade7b6899174c8839b68ca1e2e4d38e1910ce7d3a166165d575970436231",
+          "text": "The new source contract accepts only a completed source release with a successful finished `production_merge` record, but the approved maintenance mode deliberately finishes an older maintenance line without changing production. Therefore, after 3 is in production and 2.1 is finished as an isolated maintenance release, inserting a further 2.1.1 maintenance release from 2.1 cannot establish any acceptable source even though the owner requires arbitrarily nested insertions. Define and verify immutable released-source provenance for finished maintenance lines as well as production-merged lines, without treating an unapproved or unfinished line as released; extend the real remote tests to finish 2.1 as maintenance and insert/deliver a nested target from it.",
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-18T21:16:17Z",
+      "finished_at": "2026-11-18T21:38:17Z",
       "fp_parts": {
         "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
         "inputs": {
-          "doc": "v1:blob:d3ee9ff6527f2b520df37334693d822644dfd121",
+          "doc": "v1:blob:f814d7df07ef42e2c1b96207e73870ae31393569",
           "spec": "v1:sha256:6c504f8bbd39d0be305d7835795eeb46ee5e9d1642fbab9cc844e2c486f988a6"
         },
         "lenses": [
@@ -278,25 +248,25 @@
             "serves": "Developers who delegate project work to coding agents, and the agents doing it."
           }
         },
-        "subject": "v1:sha256:f8a0bbceda2ac4f1987371f2d5785c85ba073b76c5e4db8a1c6633a7e9eff386"
+        "subject": "v1:sha256:793bfb6fed94ce321ea08d749cd2bbbbd8baf66be3bad310ddebc7364d7d993a"
       },
-      "holder": "codex:root/g1051-review-2",
-      "input_fp": "v1:sha256:84bcb5e21e82a0f31cb983688817266a9fbe8875b4a432839203e1f116fddfaa",
+      "holder": "codex:root/g1051-review-3",
+      "input_fp": "v1:sha256:87c519585d797d897a63d1c9f3e9944f084a7680e1b420e3f3df69184abd707e",
       "ok": true,
       "output": {
-        "decision": "approved",
+        "decision": "changes_requested",
         "report": {
-          "blob": "67f22bdd1b34b57631b1a83c6b6ec55efff6727c",
-          "commit": "48c4acfdea718d8553c66f30531f3fd2ffdfa692",
+          "blob": "cb466172c27d59af3899173512e4edd88490d197",
+          "commit": "ec370b6884876afc48b4df7083a1190398cdd9bd",
           "path": ".zzzops/reviews/1051/review_design.md"
         },
-        "summary": "The revised design resolves all prior findings: it isolates inserted work before member dispatch, records patch heads without pre-approval forwarding, and implements the owner’s maintenance-release decision."
+        "summary": "The preview contract excludes finished maintenance releases as sources, blocking follow-up patches on a maintenance line."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "d3ee9ff6527f2b520df37334693d822644dfd121",
-          "commit": "9ed534523ebca82be21e1a9e051e17d2990ce41b"
+          "blob": "f814d7df07ef42e2c1b96207e73870ae31393569",
+          "commit": "db4b4c92b1736ce85b4a56c054930a25ec6c557f"
         }
       },
       "status": "done"
