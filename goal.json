@@ -10,7 +10,7 @@
   "priority": "P2",
   "records": {
     "design": {
-      "attempt": 1,
+      "attempt": 2,
       "blocked": {
         "category": "decision",
         "options": [
@@ -19,26 +19,26 @@
         ],
         "question": "owner question: Q1: How should an optional scaffold stage be selected for a goal? The current engine has explicit per-goal skips, but no conditional graph routing; a merely optional dependency would leave a scaffold node runnable on every goal. Should the approved design automatically select whether scaffolding runs, or should the coordinator record an explicit per-goal skip/opt-in decision using existing workflow mechanisms?",
         "reason": "owner question: Q1: How should an optional scaffold stage be selected for a goal? The current engine has explicit per-goal skips, but no conditional graph routing; a merely optional dependency would l",
-        "recommendation": "Q1: Automatically select from the approved design, because goals that do not need scaffolding should proceed without a separate worker or repeated human decision; protect existing goals with capability-gated, reviewed migration.",
-        "repeats": 1,
+        "recommendation": "Q1: Automatically select based on design review so goals that do not need scaffolding proceed without unnecessary work; protect existing goals with reviewed migration.",
+        "repeats": 2,
         "waiting_for": "human"
       },
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-18T18:41:55Z",
+      "finished_at": "2026-11-18T18:50:39Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
           "dep_designs": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
-          "spec": "v1:sha256:0566311e3961b6dfbc7913f4e87101c56f77dfc91c46bc40df29e5929d9d8397"
+          "spec": "v1:sha256:014dd47b89f4500ebe37fe1115934cf99ce5e5928862020735efad9984e42177"
         },
         "policy": {}
       },
-      "holder": "codex:root/zzzops1050-design-1",
-      "input_fp": "v1:sha256:0fcec231777e56591bc755b16b28b591c8af34c0528902d5ddc63ae88e6603bf",
+      "holder": "codex:root/zzzops1050-design-2",
+      "input_fp": "v1:sha256:86803b65893a92790a5288c0bb60b80202829a5ada21643523747c9be19e6f3d",
       "ok": false,
       "output": null,
-      "reason": "new",
+      "reason": "stale",
       "status": "blocked"
     }
   },
