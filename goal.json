@@ -8,7 +8,35 @@
     "issue": null
   },
   "priority": "P2",
-  "records": {},
+  "records": {
+    "design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-18T18:34:57Z",
+      "fp_parts": {
+        "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
+        "inputs": {
+          "dep_designs": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "spec": "v1:sha256:4a8cbbd6281ed2930a25aaeeab28d289c69eab99320d3a8dca44789c357b3dae"
+        },
+        "policy": {}
+      },
+      "holder": "codex:root/zzzops1049-design-1",
+      "input_fp": "v1:sha256:66037f9e6a03e6b47cc13989a77c66f91ff9b2379287946442f0d56d000b533d",
+      "ok": true,
+      "output": {
+        "doc": {
+          "blob": "78edeec1d293bebb785dc457dff049df68d7bef7",
+          "commit": "d9278a51a1c11c48fc757586716f625266bb1ef3",
+          "path": ".zzzops/reviews/1049/design.md"
+        },
+        "summary": "Retain a preserved producer's frozen paths through blocked and repeated retry records, then union newly accepted test paths using the existing ancestry rules. Add a read-only provenance-backed recovery proposal applied through the existing CAS-protected edit workflow, with capability-gated mixed-version safety and independent re-review. The design covers the actual Project Base G12 loss without changing its tests or rewriting checkpoint history."
+      },
+      "reason": "new",
+      "status": "done"
+    }
+  },
   "release": 1,
   "schema": 1,
   "skip": {},
