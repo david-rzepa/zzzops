@@ -188,8 +188,8 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 3,
-      "correction_runs": 2,
+      "attempt": 4,
+      "correction_runs": 3,
       "findings": [
         {
           "id": "review_design:3:1",
@@ -199,19 +199,34 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 7,
           "target_fp": "v1:sha256:b316ade7b6899174c8839b68ca1e2e4d38e1910ce7d3a166165d575970436231",
           "text": "The new source contract accepts only a completed source release with a successful finished `production_merge` record, but the approved maintenance mode deliberately finishes an older maintenance line without changing production. Therefore, after 3 is in production and 2.1 is finished as an isolated maintenance release, inserting a further 2.1.1 maintenance release from 2.1 cannot establish any acceptable source even though the owner requires arbitrarily nested insertions. Define and verify immutable released-source provenance for finished maintenance lines as well as production-merged lines, without treating an unapproved or unfinished line as released; extend the real remote tests to finish 2.1 as maintenance and insert/deliver a nested target from it.",
           "upheld": false
+        },
+        {
+          "id": "review_design:4:1",
+          "impact": "The engine can advance a patch line against stale production or revoked source provenance while reporting that the safety guard would have refused it.",
+          "lens": "concurrency",
+          "material": true,
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 8,
+          "target_fp": "v1:sha256:f73598fd91c9d567fb593eb3371ca06c29a88d336843696b06452c9c5b7ad7b5",
+          "text": "The revised race contract claims an external production move after a dispatch pre-read can result at worst in disposable speculative work, and that a stale patch-line update will fail its destination expected-SHA guard. That does not follow: if production advances after the last read but the patch-line ref itself remains unchanged, a CAS update of the patch-line ref against its expected old SHA succeeds. The same cross-ref gap applies if source goal approval/provenance changes while the patch-line destination stays put. Define what patch-line mutations remain authorized in that window, and do not claim a destination-only CAS detects changes to a separate production or goal ref. Either supply a genuinely atomic authorization mechanism across those refs or explicitly allow the isolated patch-line update and require a fresh, exact production/source approval and destination CAS before any production/forward-port action. Test the distinct-ref scenario, including a production move and a source-provenance revocation immediately before a patch-line update.",
+          "upheld": false
         }
       ],
-      "finished_at": "2026-11-18T21:38:17Z",
+      "finished_at": "2026-11-18T21:44:18Z",
       "fp_parts": {
         "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
         "inputs": {
-          "doc": "v1:blob:f814d7df07ef42e2c1b96207e73870ae31393569",
+          "doc": "v1:blob:daecf12014e1937b27e790b3235614699e370c4d",
           "spec": "v1:sha256:6c504f8bbd39d0be305d7835795eeb46ee5e9d1642fbab9cc844e2c486f988a6"
         },
         "lenses": [
@@ -245,25 +260,25 @@
             "serves": "Developers who delegate project work to coding agents, and the agents doing it."
           }
         },
-        "subject": "v1:sha256:793bfb6fed94ce321ea08d749cd2bbbbd8baf66be3bad310ddebc7364d7d993a"
+        "subject": "v1:sha256:1e3264c636f52a5d19acf106360adf06dcb4f1ccd01344daa258691967594e30"
       },
-      "holder": "codex:root/g1051-review-3",
-      "input_fp": "v1:sha256:87c519585d797d897a63d1c9f3e9944f084a7680e1b420e3f3df69184abd707e",
+      "holder": "codex:root/g1051-review-4",
+      "input_fp": "v1:sha256:62a2230f22089d4291c81f19a2ae4b202d00e193106b7c13519176a107b1ed60",
       "ok": true,
       "output": {
         "decision": "changes_requested",
         "report": {
-          "blob": "cb466172c27d59af3899173512e4edd88490d197",
-          "commit": "ec370b6884876afc48b4df7083a1190398cdd9bd",
+          "blob": "deba178e8b5e71624d15516a7b4a54fb838028ad",
+          "commit": "8c6cb92e7ded5e6c3ed820f14df0e9c56d5ee27f",
           "path": ".zzzops/reviews/1051/review_design.md"
         },
-        "summary": "The preview contract excludes finished maintenance releases as sources, blocking follow-up patches on a maintenance line."
+        "summary": "Maintenance provenance is fixed, but per-destination CAS cannot detect an independent production change when updating the patch-line ref."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "f814d7df07ef42e2c1b96207e73870ae31393569",
-          "commit": "db4b4c92b1736ce85b4a56c054930a25ec6c557f"
+          "blob": "daecf12014e1937b27e790b3235614699e370c4d",
+          "commit": "b3ff6cb89caf3d39f1c49b7bcbf0ec71ebf0c3d5"
         }
       },
       "status": "done"
