@@ -1,0 +1,18 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [],
+  "graph": "default",
+  "id": 1050,
+  "links": {
+    "issue": null
+  },
+  "priority": "P2",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Improve the shipped default ZzzOps DAG so test authors can work against the real interfaces and wiring they need before the behavior is implemented, without forcing this step on goals that already have suitable interfaces.\n\nContext: Project Base G12 exposed substantial friction in test design because the approved behavior required runtime-config, deployment, player configuration and bootstrap interfaces that did not exist. Tests either had to guess production APIs, exercise an unrelated helper rather than real composition, or send the design back through approval for routine testability details. The goal also spans package repositories and a superproject with Git submodules; test checkpoints must not freeze a package gitlink prematurely and prevent the implementation from updating it.\n\nAcceptance criteria:\n- Design and add an optional, appropriately reviewed contract/scaffold stage before test authoring in the shipped default DAG. Where useful, it establishes the minimal real interfaces, composition/wiring or test seams required to write meaningful tests; goals with existing interfaces should avoid unnecessary work and ceremony.\n- Clearly define the boundary between contract/scaffold work and implementing the behavior under test. Tests must still independently verify real behavior, and implementation must not be able to weaken accepted tests unnoticed. Allow routine internal test seam choices without unnecessary owner approval while preserving owner decisions on externally consequential contracts.\n- Support work that spans packages and Git submodules: preserve reviewable changes in their owning repositories and ensure the superproject's checkpoint/protection rules permit updating gitlinks when package implementations change, without silently weakening test protection.\n- Design and validate migration of existing repositories and in-flight goals when the default DAG changes. Preserve goal history, accepted work, findings, approvals, checkpoint/test protections and lease safety; surface any required human review of shipped policy changes. Exercise old and new workflow versions, already-running or blocked stages, and realistic goal transitions using local Git/remote fixtures. Document exactly what must be reviewed and migrated.\n- Test the resulting graph and migration using the real engine and workflow templates. Evaluate whether the added node actually reduces rework and remains optional for simple goals; do not introduce a mandatory ceremony stage.\n\nThe project intent prioritizes a small engine and configurable, independently reviewed workflows. Prefer changes in the shipped workflow/prompts over engine changes where feasible; retain compatibility and avoid unrelated workflow redesign. Do not deploy or publish changes without authorization.\n",
+  "state": "open",
+  "title": "Add optional pre-test contract scaffolding to the default DAG"
+}
