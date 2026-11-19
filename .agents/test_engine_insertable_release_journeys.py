@@ -1011,3 +1011,68 @@ class MaintenanceForwardPortJourneys(Branching):
         self.assertTrue(self.is_ancestor(source, self.tip("dev")))
         self.assertEqual(production, self.tip("main"))
         self.assertEqual(closed, self.goal_tip(line))
+
+    def test_previously_squash_merged_pr_is_proof_but_not_a_new_merge(self):
+        line, source, production = self.finished_maintenance()
+        closed = self.goal_tip(line)
+        self.w.remote_git("update-ref", "refs/heads/manual-port", source)
+        env = self.w.cli_env()
+        cwd = self.w.clones["a"].path
+        subprocess.run(["gh", "pr", "create", "--head", "manual-port", "--base", "dev",
+                        "--title", "Prior reviewed port", "--body", "reviewed"],
+                       cwd=cwd, env=env, check=True, capture_output=True, text=True)
+        pr = next(p for p in self.gh.load()["prs"].values() if p["headRefName"] == "manual-port")
+        subprocess.run(["gh", "pr", "merge", str(pr["number"]), "--squash"],
+                       cwd=cwd, env=env, check=True, capture_output=True, text=True)
+        recorded = self.gh.pr(pr["number"])
+        merge = recorded["mergeCommit"]
+        observed = self.tip("dev")
+        self.assertEqual("MERGED", recorded["state"])
+        self.assertEqual(source, recorded["headRefOid"])
+        self.assertTrue(self.is_ancestor(merge, observed))
+        self.assertFalse(self.is_ancestor(source, observed))
+        count = len(self.gh.load()["prs"])
+        port = self.request_port()
+        item = self.port_until_human(port)
+        evidence = json.dumps(item)
+        for value in ("previously_merged", str(pr["number"]), source, merge, observed):
+            self.assertIn(value, evidence)
+        self.answer_port(port, item)
+        self.drive_port(port)
+        self.assertIn("previously_merged", json.dumps(self.show(port)))
+        self.assertEqual(count, len(self.gh.load()["prs"]))
+        self.assertEqual(observed, self.tip("dev"))
+        self.assertEqual(production, self.tip("main"))
+        self.assertEqual(closed, self.goal_tip(line))
+
+    def test_retry_after_lost_successful_merge_response_records_one_merge(self):
+        line, source, production = self.finished_maintenance()
+        closed = self.goal_tip(line)
+        port = self.request_port()
+        item = self.port_until_human(port)
+        prs = [p for p in self.gh.load()["prs"].values()
+               if p["state"] == "OPEN" and p["baseRefName"] == "dev"]
+        self.assertEqual(1, len(prs))
+        self.answer_port(port, item)
+        gh = Path(self.gh.bindir) / "gh"
+        real = Path(self.gh.bindir) / "gh-real"
+        gh.rename(real)
+        gh.write_text('#!/bin/sh\nif [ "$1" = pr ] && [ "$2" = merge ]; then\n'
+                      '  "$(dirname "$0")/gh-real" "$@" || exit $?\n'
+                      '  echo "connection lost after merge" >&2; exit 1\nfi\n'
+                      'exec "$(dirname "$0")/gh-real" "$@"\n')
+        gh.chmod(0o755)
+        self.drive_port(port)
+        actual = self.gh.pr(prs[0]["number"])
+        self.assertEqual("MERGED", actual["state"])
+        merged_tip = self.tip("dev")
+        gh.unlink()
+        real.rename(gh)
+        self.assertEqual(port, self.request_port())
+        self.drive_port(port)
+        self.assertEqual(merged_tip, self.tip("dev"))
+        self.assertEqual(1, len([p for p in self.gh.load()["prs"].values()
+                                 if p["baseRefName"] == "dev" and p["headRefName"] == prs[0]["headRefName"]]))
+        self.assertIn(actual["mergeCommit"], json.dumps(self.show(port)))
+        self.assertEqual(production, self.tip("main"))
+        self.assertEqual(closed, self.goal_tip(line))
