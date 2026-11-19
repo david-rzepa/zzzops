@@ -369,10 +369,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T04:25:52Z",
+      "finished_at": "2026-11-19T04:30:00Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
@@ -385,48 +385,46 @@
         ".agents/fixtures/scaffold-route-migration/workflow.json",
         ".agents/test_engine_scaffold_routes.py"
       ],
-      "holder": "codex:root/g1050-test-design-2",
+      "holder": "codex:root/g1050-test-design-3",
       "input_fp": "v1:sha256:cdb0db4b691ad0c3e227234e3b89e974f37f37c39d7526d02aff59941a93e84a",
       "ok": true,
       "output": {
         "commands": [
           "PYTHONPATH=plugins/zzzops/zzzops:.agents python3 -m unittest -v test_engine_scaffold_routes",
-          "PYTHONPATH=plugins/zzzops/zzzops:.agents python3 -m unittest -v test_engine_scaffold_routes.SubmoduleTestPreservation.test_final_integration_tree_contains_verified_child_implementation_pointer"
+          "PYTHONPATH=plugins/zzzops/zzzops:.agents python3 -m unittest -v test_engine_scaffold_routes.SubmoduleTestPreservation.test_non_descendant_identical_child_tree_is_not_accepted_as_implementation"
         ],
         "cost": {
           "changed_tests": [
             {
               "duration_ms": 1269,
-              "id_or_scope": "test_engine_scaffold_routes.SubmoduleTestPreservation.test_final_integration_tree_contains_verified_child_implementation_pointer",
-              "observation": "Measured real Git and CLI journey fails at pre-implementation whole-gitlink freeze before reaching integration."
+              "id_or_scope": "test_engine_scaffold_routes.SubmoduleTestPreservation.test_non_descendant_identical_child_tree_is_not_accepted_as_implementation",
+              "observation": "Measured real Git same-tree non-descendant rewrite is currently rejected only by whole-gitlink freeze, not provenance checking."
             }
           ],
-          "checkpoint": "9ec46f7272cede2fd4b79e7112f8a2ed5617dbbd",
+          "checkpoint": "14207c3b2df79f5ae746894151a8128d37c9f7f1",
           "commands": [
             {
               "cmd": "PYTHONPATH=plugins/zzzops/zzzops:.agents python3 -m unittest -v test_engine_scaffold_routes",
-              "duration_ms": 38000,
+              "duration_ms": 42718,
               "exit": 1
             },
             {
-              "cmd": "PYTHONPATH=plugins/zzzops/zzzops:.agents python3 -m unittest -v test_engine_scaffold_routes.SubmoduleTestPreservation.test_final_integration_tree_contains_verified_child_implementation_pointer",
+              "cmd": "PYTHONPATH=plugins/zzzops/zzzops:.agents python3 -m unittest -v test_engine_scaffold_routes.SubmoduleTestPreservation.test_non_descendant_identical_child_tree_is_not_accepted_as_implementation",
               "duration_ms": 1269,
               "exit": 1
             }
           ],
-          "summary": "Measured pre-implementation red runs: route output and updated graph are absent; whole-gitlink freezing blocks integration of a verified child implementation. The unavailable-object scenario currently ends in an unhandled Git traceback, and must become an actionable blocker.",
-          "total_ms": 39269
+          "summary": "Measured red pre-implementation runs. Route feature missing and old implementation freezes entire gitlinks; expanded cases check accepted child deletion, both rename paths and independent provenance.",
+          "total_ms": 43987
         },
         "responses": {
-          "review_tests:1:1": "fixed: Added real CLI tests for live scaffold lease, waived unreviewed checkpoint, independently approved checkpoint, reviewed removal, route approval and a real callable contract followed by red behavior test and separate implementation.",
-          "review_tests:1:2": "fixed: Added real child Git tests for helper deletion, changed config, rename, prior accepted retry and blocked-retry restoration, missing child object database, mapping mismatch, pointer rewind, base sync, and final integration PR gitlink; existing tests check allowed implementation descendants and changed child entries.",
-          "review_tests:1:3": "fixed: Added a preserved pre-change workflow fixture and real local-remote policy preview tests for pre-delivery approval, accepted tests, implementation lease, open finding and live lease, plus an actual adoption case; compare persisted records, checkpoints and approvals before and after."
+          "review_tests:2:1": "fixed: Added real Git tests that accept child deletion and rename, allow a verified implementation descendant, then reject reintroduction of either absent old path and mutation of the renamed path. A separate identical-tree orphan-commit rewrite verifies non-descendant rejection independently of content."
         },
         "tests": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "e4dbd4dd5c6f631801f0f740d33b88b315a95004",
-          "commit": "9ec46f7272cede2fd4b79e7112f8a2ed5617dbbd",
-          "tree": "a190de3bea4128de4217aec85fc353b342b24db0"
+          "change": "974a75d81a1f437ba45f80736270611e11ddd66b",
+          "commit": "14207c3b2df79f5ae746894151a8128d37c9f7f1",
+          "tree": "c0925f2b5712cf136d65a8ab36c3b901059a93f9"
         }
       },
       "reason": "reopened",
