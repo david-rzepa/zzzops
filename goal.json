@@ -45,35 +45,35 @@
       "status": "done"
     },
     "approve_design": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-18T23:11:56Z",
+      "finished_at": "2026-11-19T00:50:37Z",
       "fp_parts": {
         "def": "v1:sha256:d04fc5094a85157b7e25b3020caaee316324161c59b30d25d4aabb2e5c24f0ed",
         "inputs": {
-          "doc": "v1:blob:b4f730d036d7169afa4a2a4c7c7c814b9522fc98",
-          "filter": "v1:sha256:eb4b8b12f7ac42bbf32064c7133543bd52782563d8826d0f3ab3796b284300e1",
-          "summary": "v1:sha256:8d16c52e239a38b1c207253f66339a75b492bb32fb4c88147e872e7985345344"
+          "doc": "v1:blob:5b199f7a7f94e75dfbec83fa682e91d088f0edec",
+          "filter": "v1:sha256:b60c921fe9ca981e966d9cbda85288c38ac0a6d881b1e4435692d95255c47e80",
+          "summary": "v1:sha256:c23fb08578b510a0061d4137684c6c38e7e2c0db00c032972240d889e8ed99e4"
         },
         "policy": {},
-        "subject": "v1:sha256:5a98dd972f1d033cd1fe1b0b27228dda295abf1d9980a2996c8412356e07e5a6"
+        "subject": "v1:sha256:c60733bb1db215443c1ecadee8a858652e39e652d7e7ad9e8394690f678cacaa"
       },
       "holder": "human",
-      "input_fp": "v1:sha256:30eb203dfc1e4edfad88a8c4a3619d4a1507c82315a8d1ba081d0569ea409ede",
+      "input_fp": "v1:sha256:58f58bf1e6d8341cfdbae32ead684944e0ff7c9762974b964931bd00b9aa46be",
       "ok": true,
       "output": {
-        "decided_at": "2026-11-18T23:11:56Z",
+        "decided_at": "2026-11-19T00:50:37Z",
         "decided_by": "David Rzepa",
         "decision": "approved",
         "quote": "Approved",
-        "summary": "Approved the G1051 protected GitHub PR design using an approved immutable source snapshot and documenting the independent-ref race; strict cross-ref enforcement is deferred."
+        "summary": "Approved the G1051 maintenance-release forward-port design: separate approved operations per downstream destination, evidence-backed already-applied outcomes, and no production rewind."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "b4f730d036d7169afa4a2a4c7c7c814b9522fc98",
-          "commit": "a8b3eed5959ea290e0ded9dd9f432856906eefd1"
+          "blob": "5b199f7a7f94e75dfbec83fa682e91d088f0edec",
+          "commit": "0e0aa4a5025a803bff52ee39e7cce3ce238a0218"
         }
       },
       "status": "done"
