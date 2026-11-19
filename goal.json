@@ -347,6 +347,118 @@
       },
       "status": "done"
     },
+    "run_tests": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-19T05:48:00Z",
+      "fp_parts": {
+        "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
+        "inputs": {
+          "code": "v1:sha256:c7cfc07688b89b651d96d29034055857cf2124ef16c98445e87b6acdc7fd6edc",
+          "commands": "v1:sha256:65b49a55b88b8c23d445fb4332b67d1b396c82a462b2fe3d5679523f71a77573"
+        },
+        "policy": {
+          "verification": {
+            "ci_timeout_minutes": 120,
+            "commands": [
+              "python3 .github/scripts/run_product_validation.py --platform linux --local"
+            ],
+            "required_ci": [
+              "dev-required-tests"
+            ],
+            "timeout_minutes": 60
+          },
+          "verification.commands": [
+            "python3 .github/scripts/run_product_validation.py --platform linux --local"
+          ]
+        }
+      },
+      "holder": "codex:root/g1050-run-tests",
+      "input_fp": "v1:sha256:dd4d861c689ea1c3b23ce4fcaec219afef08c78b6965e9eac58ca4d334abcb69",
+      "ok": true,
+      "output": {
+        "result": {
+          "details": [
+            {
+              "cmd": "PYTHONPATH=plugins/zzzops/zzzops:.agents python3 -m unittest -v test_engine_scaffold_routes",
+              "exit": 0,
+              "milliseconds": 71495,
+              "seconds": 71,
+              "source": "goal",
+              "tail": "test_engine_scaffold_routes.SubmoduleTestPreservation.test_implementation_cannot_rename_accepted_child_helper) ... ok\ntest_implementation_pointer_advances_with_accepted_child_tests_unchanged (test_engine_scaffold_routes.SubmoduleTestPreservation.test_implementation_pointer_advances_with_accepted_child_tests_unchanged) ... ok\ntest_mismatched_child_repository_mapping_fails_closed (test_engine_scaffold_routes.SubmoduleTestPreservation.test_mismatched_child_repository_mapping_fails_closed) ... ok\ntest_missing_child_object_database_fails_closed_with_provenance_diagnostic (test_engine_scaffold_routes.SubmoduleTestPreservation.test_missing_child_object_database_fails_closed_with_provenance_diagnostic) ... ok\ntest_non_descendant_identical_child_tree_is_not_accepted_as_implementation (test_engine_scaffold_routes.SubmoduleTestPreservation.test_non_descendant_identical_child_tree_is_not_accepted_as_implementation) ... ok\n\n----------------------------------------------------------------------\nRan 34 tests in 71.436s\n\nOK\n"
+            },
+            {
+              "cmd": "PYTHONPATH=plugins/zzzops/zzzops:.agents python3 -m unittest -v test_engine_scaffold_routes.SubmoduleTestPreservation.test_implementation_pointer_advances_with_accepted_child_tests_unchanged",
+              "exit": 0,
+              "milliseconds": 1445,
+              "seconds": 1,
+              "source": "goal",
+              "tail": "test_implementation_pointer_advances_with_accepted_child_tests_unchanged (test_engine_scaffold_routes.SubmoduleTestPreservation.test_implementation_pointer_advances_with_accepted_child_tests_unchanged) ... ok\n\n----------------------------------------------------------------------\nRan 1 test in 1.390s\n\nOK\n"
+            },
+            {
+              "cmd": "python3 .github/scripts/run_product_validation.py --platform linux --local",
+              "exit": 0,
+              "milliseconds": 238221,
+              "seconds": 238,
+              "source": "verification",
+              "tail": "er block from .gitignore\nDry run only. Re-run with --apply after reviewing this exact preview.\n.............................................................\n.............................................................\n............................................................\n.............................................................\n.............................................................\n............................................................\n............................................................\n.............................................................\n{\"status\": \"success\", \"inventory_count\": 1209, \"inventory_sha256\": \"eedc5ebbb9efaf69ca9251434472e2cd60e5db6edd80c8b7f901a7f6e9580f4d\", \"workers\": 20, \"wall_seconds\": 238.15824847802287, \"aggregate_test_seconds\": 3582.0852168081037, \"slowest_tests\": [[\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_changed_forward_port_pr_head_invalidates_previous_approval\", 45.48091460901196], [\"test_engine_journeys.JourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 45.45839160200558], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_older_maintenance_finishes_without_rewinding_production\", 44.556435303995386], [\"test_engine_journeys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 43.871474633022444], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_approved_patch_reaches_production_and_later_line_only_after_approval\", 43.83792133000679]], \"executed_count\": 1209, \"completed_count\": 1209, \"worker_seconds\": [236.3453605530085, 238.09211328299716, 232.51944453298347, 222.1052217039978, 225.29103526100516, 216.1769663330051, 215.97632328001782, 203.39975126701756, 200.685729749006, 191.09733745499398, 205.53944591298932, 195.54009006498381, 182.1443167529942, 212.61794304399518, 224.53980306300218, 184.77177414202015, 213.31326236997847, 228.28753525199136, 199.51879796400317, 191.44607355899643], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
+            }
+          ],
+          "passed": true,
+          "timing": {
+            "baseline": {
+              "reason": "changed_commands_or_allocation",
+              "source": {
+                "finished_at": "2026-11-19T02:54:19Z",
+                "goal": 1051,
+                "goal_commit": "4acdec907a0f729d6dd16158455ff679d96b9b39",
+                "merge_commit": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
+                "node": "run_tests",
+                "target": "dev",
+                "tree": "95ff86ada529489f05ab28330062d2b38c63ca56"
+              },
+              "status": "unavailable",
+              "verification": {
+                "caveat": "informational; machine load and concurrent goal-command workload may differ",
+                "delta_ms": 23764,
+                "source": {
+                  "finished_at": "2026-11-19T02:54:19Z",
+                  "goal": 1051,
+                  "goal_commit": "4acdec907a0f729d6dd16158455ff679d96b9b39",
+                  "merge_commit": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
+                  "node": "run_tests",
+                  "target": "dev",
+                  "tree": "95ff86ada529489f05ab28330062d2b38c63ca56"
+                },
+                "status": "available",
+                "verification_ms": 214457,
+                "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1"
+              }
+            },
+            "cpu_budget": 20,
+            "environment": {
+              "cpus": 20,
+              "platform": "linux",
+              "python": "3.14"
+            },
+            "goal_ms": 72940,
+            "parallel_commands": false,
+            "plan_sha256": "689e653701d925a9047af6214699858406c7b1f064d26cca762778b8fa767571",
+            "total_ms": 311162,
+            "verification_ms": 238221,
+            "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1",
+            "workers": {
+              "goal": 20,
+              "verification": 20
+            }
+          },
+          "tree": "2b9fca79afc4929b9dbb56904e2c36ce596d2cab"
+        }
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "test_design": {
       "attempt": 6,
       "correction_runs": 0,
