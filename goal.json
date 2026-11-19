@@ -1,6 +1,11 @@
 {
   "budget": null,
-  "closed": null,
+  "closed": {
+    "at": "2026-11-19T14:42:21Z",
+    "by": "zzzops",
+    "note": "every terminal node is current",
+    "reason": "done"
+  },
   "depends_on": [],
   "graph": "default",
   "id": 1050,
@@ -320,21 +325,10 @@
       "status": "done"
     },
     "merge": {
-      "attempt": 1,
-      "blocked": {
-        "category": "external",
-        "op_state": {
-          "pending_since": 1795097484,
-          "polls": 1
-        },
-        "reason": "GitHub blocks the merge (required reviews, checks, signatures or queue); satisfy it on GitHub or merge there",
-        "repeats": 1,
-        "retry_after": "2026-11-19T14:41:24Z",
-        "waiting_for": "time"
-      },
+      "attempt": 2,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T14:11:24Z",
+      "finished_at": "2026-11-19T14:42:21Z",
       "fp_parts": {
         "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
         "inputs": {
@@ -342,12 +336,15 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/g1050-merge",
+      "holder": "codex:root/g1050-merge-reconcile",
       "input_fp": "v1:sha256:02777c88376c240b5153140f9989c10a6323a7d608a6a499a71b39986fa7a92c",
-      "ok": false,
-      "output": null,
-      "reason": "new",
-      "status": "blocked"
+      "ok": true,
+      "output": {
+        "merge_commit": "a8a2e7855f2dc0a4ca27331a94b930e4df222387",
+        "merged_at": "2026-11-19T14:11:40Z"
+      },
+      "reason": "retry",
+      "status": "done"
     },
     "review_design": {
       "attempt": 2,
@@ -738,6 +735,6 @@
   "schema": 1,
   "skip": {},
   "spec": "Improve the shipped default ZzzOps DAG so test authors can work against the real interfaces and wiring they need before the behavior is implemented, without forcing this step on goals that already have suitable interfaces.\n\nContext: Project Base G12 exposed substantial friction in test design because the approved behavior required runtime-config, deployment, player configuration and bootstrap interfaces that did not exist. Tests either had to guess production APIs, exercise an unrelated helper rather than real composition, or send the design back through approval for routine testability details. The goal also spans package repositories and a superproject with Git submodules; test checkpoints must not freeze a package gitlink prematurely and prevent the implementation from updating it.\n\nAcceptance criteria:\n- Design and add an optional, appropriately reviewed contract/scaffold stage before test authoring in the shipped default DAG. Where useful, it establishes the minimal real interfaces, composition/wiring or test seams required to write meaningful tests; goals with existing interfaces should avoid unnecessary work and ceremony.\n- Clearly define the boundary between contract/scaffold work and implementing the behavior under test. Tests must still independently verify real behavior, and implementation must not be able to weaken accepted tests unnoticed. Allow routine internal test seam choices without unnecessary owner approval while preserving owner decisions on externally consequential contracts.\n- Support work that spans packages and Git submodules: preserve reviewable changes in their owning repositories and ensure the superproject's checkpoint/protection rules permit updating gitlinks when package implementations change, without silently weakening test protection.\n- Check and document how existing repositories and in-flight goals adopt the changed default DAG, including the expected treatment of history, accepted work, findings, approvals, checkpoint/test protections, leases and policy review. Exercise migration behavior with realistic local fixtures and report failures. If migration does not work properly, address its repair in a separate goal; do not expand this goal to fix unrelated migration defects.\n- Test the resulting graph and migration using the real engine and workflow templates. Evaluate whether the added node actually reduces rework and remains optional for simple goals; do not introduce a mandatory ceremony stage.\n\nThe project intent prioritizes a small engine and configurable, independently reviewed workflows. Prefer changes in the shipped workflow/prompts over engine changes where feasible; retain compatibility and avoid unrelated workflow redesign. Do not deploy or publish changes without authorization.\n",
-  "state": "open",
+  "state": "closed",
   "title": "Add optional pre-test contract scaffolding to the default DAG"
 }
