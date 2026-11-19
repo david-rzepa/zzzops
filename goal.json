@@ -234,42 +234,16 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 1,
       "findings": [
-        {
-          "follows": "review_tests:1:1",
-          "id": "review_tests:2:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:bca5dba16a69644adefef9bc54a37fe7ec80530698c98559d2d634572bcaf54a",
-          "text": "Add real CLI/Git coverage for capability-enabled verified sync/rebase between blocked producer segments and fail-closed unverifiable provenance, explicit source/gitlink exclusion, and a successful-consumer submission against an already-published modified test tip while the producer is blocked. Exercise an older writer refusing the enabled capability. The present direct preserve_check probe cannot establish that all submit paths enforce the guard.",
-          "upheld": false
-        },
-        {
-          "follows": "review_tests:1:2",
-          "id": "review_tests:2:2",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:bca5dba16a69644adefef9bc54a37fe7ec80530698c98559d2d634572bcaf54a",
-          "text": "The 13/2 recovery fixture currently copies the original accepted checkpoint unchanged, so it cannot show a distinct later partial checkpoint survives recovery. Create a later real checkpoint representing the 2-path subset, preserve and assert its base/commit/change identity through proposal, CAS, producer retry, and independent review, and add a no-proposal case for ambiguous or rewritten history.",
-          "upheld": false
-        },
         {
           "follows": "review_tests:2:1",
           "id": "review_tests:3:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 4,
           "target_fp": "v1:sha256:e0992f759e3c63dccc63f6834f21c0d886e8faf0e7b3884d290862ba19ffb70d",
@@ -277,35 +251,35 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-19T04:42:48Z",
+      "finished_at": "2026-11-19T04:45:36Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:b0a79141fe1b4c4ad3c03ac7f911f36d48919512",
-          "tests": "v1:sha256:e07b3e639311787c18073f1b25d23790e6fb81775cc8f76024cc418e8443ffb1"
+          "tests": "v1:sha256:0402a0d7c66a5a3c43ec4de9a1f5ce5707ae6c5fd81a7a4caad45794866f1b64"
         },
         "policy": {},
-        "subject": "v1:sha256:2a3c99b4bdbeabebbe3d52c176f269824affe2b92338c55400dd9a8033564fed"
+        "subject": "v1:sha256:6e7fdbfbd61c421c9f718f6b8862dffbc58a3ed6c25b0f1152c377d3070b02fb"
       },
-      "holder": "codex:root/g1049-review-tests-3",
-      "input_fp": "v1:sha256:c11303a85636f76fc1b0406aa9c992396887a2601092f380b168b30598f7ea8c",
-      "ok": false,
+      "holder": "codex:root/g1049-review-tests-4",
+      "input_fp": "v1:sha256:f10d81cbf493478bcf99713bb0b51f6d738114cd8013ae59cf64e63f7badb905",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "3e976781cddaa201cc7907780fba18b96d0a5ea9",
-          "commit": "0dfc897a86daf0725b301d659910d66273ada0d1",
+          "blob": "c467d0938487d6cc11c9fda480b864586f59cacc",
+          "commit": "8f47aa1123e20ea7b6174948e7b2403a3fd7bde6",
           "path": ".zzzops/reviews/1049/review_tests.md"
         },
-        "summary": "Confirmed the real published-consumer bypass and distinct recovery checkpoint. One safety-critical provenance refusal after blocked work remains untested."
+        "summary": "The added real Git/CLI rewritten pending-segment case resolves the remaining safety test gap; post-implementation execution must reach and pass the refusal."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "591fae92b22c06218f059682cc47a775987bcc1f",
-          "commit": "8dcf9c1af5795c0394fa078ff117a0db733aafcf",
-          "tree": "ef550db055da5757d30d2dcf624fe12899244dab"
+          "change": "213df1d5e79ee89f900c79fd07f0ca5263394b93",
+          "commit": "fef02842f81e2df692257ce0101df8f1994d3cc5",
+          "tree": "17e746f0dbcd5468849a55147b0acf05538fe11a"
         }
       },
       "status": "done"
