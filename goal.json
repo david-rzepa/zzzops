@@ -281,15 +281,15 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 6,
-      "correction_runs": 3,
+      "attempt": 7,
+      "correction_runs": 4,
       "findings": [
         {
           "id": "review_tests:6:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 8,
           "target_fp": "v1:sha256:df239fab8155901b4264b9df78cdd6033b4bf449860ac3a9442e92c3cdee60af",
@@ -301,7 +301,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 8,
           "target_fp": "v1:sha256:df239fab8155901b4264b9df78cdd6033b4bf449860ac3a9442e92c3cdee60af",
@@ -313,43 +313,55 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 8,
           "target_fp": "v1:sha256:df239fab8155901b4264b9df78cdd6033b4bf449860ac3a9442e92c3cdee60af",
           "text": "Each of the nine maintenance cases repeats the identical genuine two-release setup before reaching the missing CLI (17.410–17.560 s apiece; more than 156 s per run before feature assertions). Reduce this redundant cost via a real-engine-created reusable seed and isolated per-case Git/provider copies, or equivalent, retaining meaningful real-stack and independent assertions.",
           "upheld": false
+        },
+        {
+          "id": "review_tests:7:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 9,
+          "target_fp": "v1:sha256:0de2d8265c4f9260e5fa1d0fc27f994002f4b2f592df73d6063078d802358861",
+          "text": "The no-diff test named equal-trees does not create equal Git trees: the target retains src/newer.py absent from the maintenance source, and the fake provider always emits no-diff. An implementation that mistakes truly equal trees without lineage for integration proof can pass. Construct genuinely equal source/destination trees with divergent ancestry, assert both preconditions, and verify no_diff_unproven without fabricated merge or target change.",
+          "upheld": false
         }
       ],
-      "finished_at": "2026-11-19T01:08:21Z",
+      "finished_at": "2026-11-19T01:14:10Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:5b199f7a7f94e75dfbec83fa682e91d088f0edec",
-          "tests": "v1:sha256:7df49b35fa0cac121640a690bbeaa2c6ba237999243593cb02e51092f3a7f13f"
+          "tests": "v1:sha256:69e9b270f20a65610c7de7c4c10bcd5e9f51898063a82efdbbfd41e26cefdf46"
         },
         "policy": {},
-        "subject": "v1:sha256:8916f0a2edae09f5bcb0509e8bb145d13262917baf2e2abbbde7f7a3479febcc"
+        "subject": "v1:sha256:3116f2bcf259cb8c2c1951dc2254d872f48154780579f89ff1e3fc03e4380aa6"
       },
-      "holder": "codex:root/g1051-review-tests-6",
-      "input_fp": "v1:sha256:824436388b1d855fb48023048b2399a94cda119f188a833f1c2d9ff8702fc103",
+      "holder": "codex:root/g1051-review-tests-7",
+      "input_fp": "v1:sha256:7da6dfeef71ada50da02d2352b5c7c73e6e9df1452ec52719cd78cb3066cd4b6",
       "ok": false,
       "output": {
         "decision": "changes_requested",
         "report": {
-          "blob": "675b27bafbbd1c0a6e4369080890a9b7c9c8087a",
-          "commit": "1a1ddbbe5308da62fdc6e98171ff742f8443849b",
+          "blob": "27b1c16bf5ab0aa610ec5a23eed3b93b867534fd",
+          "commit": "66bdd7caf9797b87c07a38e6825aa3c51d5d81f9",
           "path": ".zzzops/reviews/1051/review_tests.md"
         },
-        "summary": "Maintenance coverage is broad, but independent stale-approval guards, provider-boundary divergence and repeated expensive setup need correction."
+        "summary": "Independent stale guards, provider-boundary races and shared seed are fixed; the equal-tree no-diff fixture does not actually contain equal Git trees."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "88b7d6725eb1de2b40b12821cb27f3e9e02a77c8",
-          "commit": "b620f93806557b5211eeb85e6e6e5061975fbe84",
-          "tree": "b0e3cf6d7fb058d55b6a0c9f4c0571cae7acbcb0"
+          "change": "1043145381525bd72fd02c530989d1e1138a5b01",
+          "commit": "e55d6edba65dea68d7b433636b38e51c9d4cb204",
+          "tree": "398fcb0c490bc7a36a6385c0fd82920a4a70d13c"
         }
       },
       "status": "done"
