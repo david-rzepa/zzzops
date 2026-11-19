@@ -28,6 +28,7 @@ class RecoveryJourney(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.w = fx.World(self.tmp)
+        self.gh = fx.FakeGitHub(self.w)
         workflow = checkpoint_workflow()
         artifact = copy.deepcopy(fx.load_template("workflow.json")["graphs"]["default"]["nodes"]["design"])
         artifact["inputs"] = {}
