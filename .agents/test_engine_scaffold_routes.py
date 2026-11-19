@@ -265,7 +265,8 @@ class SubmoduleTestPreservation(unittest.TestCase):
         self.w.seed.git('commit', '-q', '-m', 'chore: add package')
         self.w.seed.git('push', '-q', 'origin', 'HEAD:dev')
         policy = fx.load_template('POLICY.json')
-        if 'conditional_review_routes' in CAPABILITIES:
+        if ('conditional_review_routes' in CAPABILITIES
+                and 'conditional_review_routes' not in policy['settings']['engine']['requires']):
             policy['settings']['engine']['requires'].append('conditional_review_routes')
         workflow = checkpoint_workflow()
         integrate = copy.deepcopy(fx.load_template('workflow.json')['graphs']['default']['nodes']['integrate'])
