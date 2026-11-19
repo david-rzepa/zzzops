@@ -525,10 +525,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 11,
+      "attempt": 12,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-19T01:28:06Z",
+      "finished_at": "2026-11-19T02:30:37Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
@@ -541,51 +541,55 @@
         ".agents/test_engine_insertable_release_journeys.py",
         ".agents/test_engine_insertable_releases.py"
       ],
-      "holder": "codex:root/g1051-test-design-11",
+      "holder": "codex:root/g1051-test-design-12",
       "input_fp": "v1:sha256:3ce6c7f02de3e84a43a88d0eff381bee7670709ac5c1114464b2481b92491374",
       "ok": true,
       "output": {
         "commands": [
-          "PYTHONPATH=.agents python3 -m unittest -v test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_equal_trees_without_lineage_or_matching_pr_are_not_proof test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_separate_destinations_approve_and_resume_without_rewinding_production test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_refusal_and_moved_destination_require_fresh_approval --durations 10"
+          "PYTHONPATH=.agents python3 -m unittest -v test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_provider_view_is_recorded test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_recovery_is_recorded test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_nested_maintenance_forward_port_uses_verified_older_released_ancestor test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_invalid_historical_source_snapshots_never_fall_back_to_common_git_history --durations 10"
         ],
         "cost": {
           "changed_tests": [
             {
-              "duration_ms": 868,
-              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_equal_trees_without_lineage_or_matching_pr_are_not_proof",
-              "observation": "Passed equal trees, divergent ancestry, capability policy on both commits, and no_diff_unproven against the partial implementation."
+              "duration_ms": 5877,
+              "id_or_scope": "test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_provider_view_is_recorded",
+              "observation": "Passed: externally changed and merged production PR is detected at actual provider view, merge evidence retained, forwarding paused."
             },
             {
-              "duration_ms": 3050,
-              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_separate_destinations_approve_and_resume_without_rewinding_production",
-              "observation": "Passed distinct approvals and real local provider merges with the established human answer schema."
+              "duration_ms": 5820,
+              "id_or_scope": "test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_recovery_is_recorded",
+              "observation": "Passed: already-merged recovery observes different PR head and preserves merge evidence without forwarding."
             },
             {
-              "duration_ms": 1372,
-              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_refusal_and_moved_destination_require_fresh_approval",
-              "observation": "Passed changes_requested refusal without merging."
+              "duration_ms": 7198,
+              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_nested_maintenance_forward_port_uses_verified_older_released_ancestor",
+              "observation": "Passed real nested maintenance forward-port with multiple unpublished intermediate commits and independently verified older released ancestor."
+            },
+            {
+              "duration_ms": 235,
+              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_invalid_historical_source_snapshots_never_fall_back_to_common_git_history",
+              "observation": "Failed: missing and contradictory stored snapshots were rejected, but a logical source-goal cycle through an older snapshot was accepted."
             }
           ],
-          "checkpoint": "025b1cb948b148e770fb2502276cffb0113d89cd",
+          "checkpoint": "da22933c41ee66880f101e38417258aa220d2a37",
           "commands": [
             {
-              "cmd": "PYTHONPATH=.agents python3 -m unittest -v test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_equal_trees_without_lineage_or_matching_pr_are_not_proof test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_separate_destinations_approve_and_resume_without_rewinding_production test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_refusal_and_moved_destination_require_fresh_approval --durations 10",
-              "duration_ms": 23010,
-              "exit": 0
+              "cmd": "PYTHONPATH=.agents python3 -m unittest -v test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_provider_view_is_recorded test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_recovery_is_recorded test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_nested_maintenance_forward_port_uses_verified_older_released_ancestor test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_invalid_historical_source_snapshots_never_fall_back_to_common_git_history --durations 10",
+              "duration_ms": 36877,
+              "exit": 1
             }
           ],
-          "summary": "Three focused tests passed in 22.946 seconds including real-engine seed creation and fake GitHub; hosted protected-branch behavior not exercised.",
-          "total_ms": 23010
+          "summary": "Four local real Git/fake provider tests, 36.815 seconds including shared real-engine seed. Three pass; cyclic source-goal lineage is an implementation defect. Git batch cleanup emits an existing ResourceWarning; hosted provider behavior is not exercised.",
+          "total_ms": 36877
         },
         "responses": {
-          "implement:3:1": "fixed: Activate the capability before creating the released source, and explicitly assert the source and destination policies contain it while preserving identical Git trees, divergent ancestry and no matching provider proof.",
-          "implement:3:2": "fixed: Human approval answers now use decision, summary, quote and decided_by; refusal uses the engine-supported changes_requested decision. Both approval and refusal journeys pass against the current real engine."
+          "implement:6:1": "fixed: Added independent real-Git/provider tests for a changed head merged immediately at PR view and for already-merged recovery, asserting actual merge evidence and halted forwarding. Added a finished nested maintenance line whose intermediate source contains multiple commits absent from dev/production, then forward-ports via a verified older released ancestor. Added actual stored-object probes for missing, contradictory, and cyclic historical source-goal snapshots; the cyclic case currently fails because the implementation accepts a self-referential logical goal lineage."
         },
         "tests": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "8c1a3d0357153613dc741559bc852732cf6b37d3",
-          "commit": "025b1cb948b148e770fb2502276cffb0113d89cd",
-          "tree": "0136d58a9bb276d3235057362feed0b4bf96925b"
+          "change": "9dc78d5a5551b3d62aa37ddebbf50f1c08df2c05",
+          "commit": "da22933c41ee66880f101e38417258aa220d2a37",
+          "tree": "cc95f8c334edcb10687e3a13cddf3345f4dc50b3"
         }
       },
       "reason": "reopened",
