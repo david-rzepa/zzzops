@@ -258,6 +258,83 @@
       },
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 1,
+      "findings": [
+        {
+          "id": "review_impl:1:1",
+          "impact": "Unapproved code can reach production and be propagated as though the owner approved it.",
+          "lens": "correctness",
+          "material": true,
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "implement",
+          "target_attempt": 5,
+          "target_fp": "v1:sha256:61622de376b0ca0252805417bf97d81611020980f423aabf61a0f41e381e181e",
+          "text": "plugins/zzzops/zzzops/engine/ops/lines.py:167-177 and 283-284: an already-merged PR is accepted before its head is compared to the approved T, and merged-PR recovery accepts any head descending from T. The subsequent checks verify the merge base and source but not that the merged head was T. In a real-Git/fake-provider local reproduction I approved T, paused finish immediately before provider pr view, pushed H on the release branch, externally merged that PR, and resumed finish. Production contained H and finish proceeded to request forward-port approval instead of reporting divergence. This defeats the design’s exact-head approval binding and permits automatic propagation after an unapproved head is merged. Verify merged PR head/merge parent against T on both already-merged and recovery paths, and stop for human review on mismatch; cover this race with a provider fixture.",
+          "upheld": false
+        },
+        {
+          "id": "review_impl:1:2",
+          "impact": "Valid nested maintenance releases cannot be forward-ported to their intended downstream branches.",
+          "lens": "correctness",
+          "material": true,
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "implement",
+          "target_attempt": 5,
+          "target_fp": "v1:sha256:61622de376b0ca0252805417bf97d81611020980f423aabf61a0f41e381e181e",
+          "text": "plugins/zzzops/zzzops/engine/forward_port.py:91-95: common ancestry checks only the maintenance line’s immediate source commit and its direct parents. For a legitimate nested maintenance 2.1.1 based on a finished 2.1 whose own work includes multiple commits, production/dev can share the verified released 2 baseline while neither the 2.1 tip nor its immediate parent is an ancestor of the destination. Forward-port is then incorrectly refused as lacking verifiable common released ancestry. Follow recorded release provenance to a verified common released ancestor rather than stopping at one Git parent; add an end-to-end nested-maintenance forward-port case.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-19T02:14:19Z",
+      "fp_parts": {
+        "def": "v1:sha256:ba0e80cd449a16330f3e62cea7fab93aad71b666081fd28f1c0386cf4f3d2d24",
+        "inputs": {
+          "base": "v1:sha256:7137968f0afc1e3d944fd561b2af20955f2aef16fd65a3864f6989ddd512e960",
+          "code": "v1:sha256:3a6d56b75d44b454441c04b7b04065d5d09424bd36b47fee8bb4b141f5f997ec",
+          "doc": "v1:blob:5b199f7a7f94e75dfbec83fa682e91d088f0edec",
+          "tests": "v1:sha256:0ce2b5e1230dc659f4eb530eb5e30e34443c3832dbc7178bdd86df1e0131a33a"
+        },
+        "lenses": [
+          "compliance",
+          "correctness",
+          "missing",
+          "tests",
+          "craft"
+        ],
+        "policy": {},
+        "subject": "v1:sha256:34384749cbef28835c2d9ab009169c9b5377cd53856b4cd9f71fcc03054639c9"
+      },
+      "holder": "codex:root/g1051-review-impl-1",
+      "input_fp": "v1:sha256:b83f8a3c45c293a83352eb26fdee889b64c8ce31b5da342a457bf71e750aa12a",
+      "ok": true,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "36864546dab2c604b21d3a1b075100f30feb1928",
+          "commit": "6c4207915f27684f7fc342e1fd0859584375d6fc",
+          "path": ".zzzops/reviews/1051/review_impl.md"
+        },
+        "summary": "The implementation covers the main release identity and isolation flows, but permits an unapproved release PR head to be treated as approved after a provider race, and cannot forward-port legitimate nested maintenance releases whose released ancestor is further back in history."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
+          "change": "acf5ae1a02a635b0674c0314fc8ef47dabf98b69",
+          "commit": "12b1237dd5e0ae45f99847632787c22d078ff287",
+          "tree": "bba78499c3736231bd8f1379c49406cf18062762"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 9,
       "correction_runs": 4,
