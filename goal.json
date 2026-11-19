@@ -288,52 +288,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 4,
+      "attempt": 5,
       "correction_runs": 1,
-      "findings": [
-        {
-          "follows": "review_tests:2:1",
-          "id": "review_tests:3:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 4,
-          "target_fp": "v1:sha256:e0992f759e3c63dccc63f6834f21c0d886e8faf0e7b3884d290862ba19ffb70d",
-          "text": "Add one real Git/CLI regression where a pending blocked producer attempt segment cannot be verified after a history rewrite or invalid sync mapping, while its retry is runnable. The successful producer submission must fail closed without publishing a success or silently using a broad diff. The recovery-only rewritten checkpoint test exercises a different path.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-19T04:45:36Z",
+      "findings": [],
+      "finished_at": "2026-11-19T04:54:56Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:b0a79141fe1b4c4ad3c03ac7f911f36d48919512",
-          "tests": "v1:sha256:0402a0d7c66a5a3c43ec4de9a1f5ce5707ae6c5fd81a7a4caad45794866f1b64"
+          "tests": "v1:sha256:e1c14e14fbf006fa471be929b1ec7c98fb1240d31e653133e95448b9edf9ba1d"
         },
         "policy": {},
-        "subject": "v1:sha256:6e7fdbfbd61c421c9f718f6b8862dffbc58a3ed6c25b0f1152c377d3070b02fb"
+        "subject": "v1:sha256:9d25a2e14bef4bac2e48cd0442469460efe71d9933e72b015c3185fa14e382b8"
       },
-      "holder": "codex:root/g1049-review-tests-4",
-      "input_fp": "v1:sha256:f10d81cbf493478bcf99713bb0b51f6d738114cd8013ae59cf64e63f7badb905",
+      "holder": "codex:root/g1049-review-tests-5",
+      "input_fp": "v1:sha256:aced9d846c0c5ee527b560e3c69ae2ceb7c5c06ca4ad4994d84ae12708b8e632",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "c467d0938487d6cc11c9fda480b864586f59cacc",
-          "commit": "8f47aa1123e20ea7b6174948e7b2403a3fd7bde6",
+          "blob": "08d7d5a0ac5ca95f922ee20f4b788329f95fce07",
+          "commit": "2d488649718cd974cbd309181c72e47728a9c0fe",
           "path": ".zzzops/reviews/1049/review_tests.md"
         },
-        "summary": "The added real Git/CLI rewritten pending-segment case resolves the remaining safety test gap; post-implementation execution must reach and pass the refusal."
+        "summary": "The real submodule fixture and unchanged-review identity assertions are appropriate; independently confirmed the existing scope-loss regression remains red."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "213df1d5e79ee89f900c79fd07f0ca5263394b93",
-          "commit": "fef02842f81e2df692257ce0101df8f1994d3cc5",
-          "tree": "17e746f0dbcd5468849a55147b0acf05538fe11a"
+          "change": "d00a2baeea05c70cb076838495b7e387f22cd402",
+          "commit": "e5a3749104b1ae6aa811f14faaf1b6b95471aca9",
+          "tree": "23d0e5106881aa9a02e028ed93783c8767e3b174"
         }
       },
       "status": "done"
