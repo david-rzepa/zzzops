@@ -627,11 +627,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 10,
-      "carried_by": "base",
+      "attempt": 11,
       "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-19T05:46:26Z",
+      "finished_at": "2026-11-19T14:24:13Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
@@ -644,43 +643,46 @@
         ".agents/test_engine_blocked_scope.py",
         ".agents/test_engine_scope_recovery.py"
       ],
-      "holder": "codex:root/g1049-test-unlisted",
+      "holder": "codex:root/g1049-test-submodule",
       "input_fp": "v1:sha256:c0fb63aeeeacd6b9ffa2fd4ee3fdcba46cc187144105228119e56b5b7515c09a",
       "ok": true,
       "output": {
         "commands": [
           "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope test_engine_scope_recovery",
-          "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_scope_recovery.RecoveryJourney.test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal test_engine_scope_recovery.RecoveryJourney.test_registered_base_operation_advances_work_with_its_valid_gate"
+          "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope.BlockedScopeJourney.test_ambiguous_blocked_source_and_gitlink_are_not_silently_frozen"
         ],
         "cost": {
           "changed_tests": [
             {
-              "duration_ms": 2204,
-              "id_or_scope": "unlisted transaction and registered base operation",
-              "observation": "Preimplementation red: both scenarios reach the missing required capability before the new transaction guard can execute."
+              "duration_ms": 1993,
+              "id_or_scope": "mixed source/test/gitlink candidate regression",
+              "observation": "Measured focused actual Git/CLI run with a declared, initialized baseline submodule and a later child gitlink update; passed."
             }
           ],
-          "checkpoint": "bfe4f6a2d289a6989610177d5dea8ffb790f799d",
+          "checkpoint": "96f3ff203378cb94a446c0192fb9677827b3210a",
           "commands": [
             {
               "cmd": "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope test_engine_scope_recovery",
-              "duration_ms": 158122,
-              "exit": 1
+              "duration_ms": 145678,
+              "exit": 0
             },
             {
-              "cmd": "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_scope_recovery.RecoveryJourney.test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal test_engine_scope_recovery.RecoveryJourney.test_registered_base_operation_advances_work_with_its_valid_gate",
-              "duration_ms": 2204,
-              "exit": 1
+              "cmd": "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope.BlockedScopeJourney.test_ambiguous_blocked_source_and_gitlink_are_not_silently_frozen",
+              "duration_ms": 1993,
+              "exit": 0
             }
           ],
-          "summary": "Local Git/CLI red runs at exact checkpoint; new gate capability has not yet been implemented.",
-          "total_ms": 160326
+          "summary": "Full 31-test focused suite and changed regression both passed against the current implementation.",
+          "total_ms": 147671
+        },
+        "responses": {
+          "implement:6:1": "fixed: create and declare the real dependency in the initial dev baseline, initialize it in the goal worktree, verify its origin, and advance the child commit and parent gitlink alongside test and source candidates; provenance checks remain enabled."
         },
         "tests": {
           "base": "a8a2e7855f2dc0a4ca27331a94b930e4df222387",
-          "change": "1a89053b91df26cf6e39b54943e7e8458201033e",
-          "commit": "f68a46d77e2557d912c12c9d39d2ce14c4b3082c",
-          "tree": "42ffe76a689c3ac95aee34298a530402e1374ace"
+          "change": "d8727256d153393363a83c5ca96f019b252c79cd",
+          "commit": "96f3ff203378cb94a446c0192fb9677827b3210a",
+          "tree": "fdd58feaf6bd51f29ecca45e5b6b4b121f1ea191"
         }
       },
       "reason": "reopened",
