@@ -93,6 +93,40 @@
       },
       "status": "done"
     },
+    "base": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-19T04:10:48Z",
+      "fp_parts": {
+        "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
+        "inputs": {
+          "heads": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "merges": "v1:sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "policy": {}
+      },
+      "holder": "codex:root/g1050-base",
+      "input_fp": "v1:sha256:a63dd4f9b663828d20c7af5969db386d8dca78d1dc6caa436946320590be78d6",
+      "ok": true,
+      "output": {
+        "base_commit": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
+        "branch": "zzzops/work/g1050",
+        "replay_map": {},
+        "replay_pos": {},
+        "stack": [],
+        "synced": {
+          "merge": "f2be41a778d01d4a7e384041bc6b0d4aa77e6beb",
+          "old": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
+          "onto": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
+          "resolved": [],
+          "tip": "f2be41a778d01d4a7e384041bc6b0d4aa77e6beb",
+          "work": "b472fec10f70c72dd4af3a9c85d8cdd6a60039da"
+        }
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "design": {
       "attempt": 4,
       "correction_runs": 0,
