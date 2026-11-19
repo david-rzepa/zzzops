@@ -92,42 +92,29 @@
       "status": "done"
     },
     "filter_design": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T04:06:22Z",
+      "finished_at": "2026-11-19T04:09:16Z",
       "fp_parts": {
-        "candidates": [
-          [
-            "adversary_design:1:1",
-            true
-          ],
-          [
-            "review_design:1:1",
-            true
-          ],
-          [
-            "review_design:1:2",
-            true
-          ]
-        ],
+        "candidates": [],
         "def": "v1:sha256:c83a5e0ec02bc9504ff118f774138ad5517f6b3a5885d1c28444982e78d23a9f",
         "inputs": {
-          "adversary": "v1:sha256:0d45ab793c2ad4822f8871d26b919ab6ea4ddd73bd312a9139b81dfd3bb4f261",
-          "doc": "v1:blob:6e65cc4166ced0eb308e9005e159540200dea7dc",
-          "review": "v1:sha256:9e20f8551507569d747e3a2d69b71ffa74ab36a2b52a40d9766384ea797487d8",
+          "adversary": "v1:sha256:7275c646c9012d6658636f24f7da70db7518e939abf43cbe6d6b57c65345208f",
+          "doc": "v1:blob:2a8f10ac60632611baa7b55985abcb60f4650b1d",
+          "review": "v1:sha256:922e48435cd30337c7d4f9df8e87a0bcb74846498ef7fa93d48d48c70e3dfe0a",
           "spec": "v1:sha256:014dd47b89f4500ebe37fe1115934cf99ce5e5928862020735efad9984e42177"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1050-filter",
-      "input_fp": "v1:sha256:b962697cd5712943ac62ad16a3cbb45697279782488d0669f82a2b94e1388cf9",
+      "holder": "codex:root/g1050-filter-2",
+      "input_fp": "v1:sha256:2a5698f420381241b7e3d2059aee492677fedef92a31462c2c0ffe6b2f3b00b4",
       "ok": true,
       "output": {
-        "summary": "Both independent reviews found three material issues that reopen design: child checkpoint scope must include all changed test-helper paths; false-route transitions must not bypass unresolved scaffold findings; and route changes must stale filter and approval context. No non-material notes require verdicts.",
+        "summary": "Both independent reviewers approve the revised design; prior material findings have been resolved and no candidates remain. The design is ready for owner approval.",
         "verdicts": {}
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "review_design": {
