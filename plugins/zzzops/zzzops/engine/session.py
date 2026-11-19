@@ -104,6 +104,7 @@ class Session:
         if self.policy_ref:
             self.snap.preview = resolve_policy_ref(self.git, self.snap, self.policy_ref)
         self.state = read_state(self.git, self.snap, all_goals=all_goals, wanted=goals)
+        self.git.workspace_gate_required = "preserved_test_provenance" in schemas.required_caps(self.state.settings)
         self._portfolio = None
         self._goals = list(goals)
         self.fetch_lines()
@@ -115,6 +116,7 @@ class Session:
         if self.policy_ref:
             self.snap.preview = resolve_policy_ref(self.git, self.snap, self.policy_ref)
         self.state = read_state(self.git, self.snap, all_goals=all_goals, wanted=goals)
+        self.git.workspace_gate_required = "preserved_test_provenance" in schemas.required_caps(self.state.settings)
         self._portfolio = None
         self.fetch_lines()
         self.check_release_aliases()
@@ -416,6 +418,9 @@ class Session:
     def warnings(self, p) -> list:
         st = self.state
         out = list(st.warnings) + schemas.intent_warnings(st.settings)
+        if st.settings and "preserved_test_provenance" not in schemas.required_caps(st.settings) and any(
+                any(n.get("preserve") for n in graph.nodes.values()) for graph in st.graphs.values()):
+            out.append({"kind": "preserved_test_provenance_inactive", "message": "Older writers can lose preserved test paths across blocked retries. Upgrade all writers, then require `preserved_test_provenance` through a reviewed policy change."})
         for (g, node) in orphan_leases(st.docs, st.graphs, st.leases):
             out.append({"kind": "orphan_lease", "message": f"lease zzzops/lease/g{g}/{node} is not valid for this goal "
                                                            "(see REPAIR.md to delete it)"})
@@ -487,7 +492,7 @@ class Session:
             if g in st.newer:
                 raise Refused("engine_too_old", f"G{g} has a newer goal schema than this engine", hint="upgrade the plugin")
 
-    def write_goals(self, verb, ids, mutate, extra=None, retry=True, message=None, fetch_goals=None):
+    def write_goals(self, verb, ids, mutate, extra=None, retry=True, message=None, fetch_goals=None, gate_goal=None):
         """mutate(session, docs) -> {id: new doc}; extra(session, new) -> [(ref, expected, new)];
         message(g, old, new) -> commit message. Returns ("ok"|"applied", updates, closed ids)."""
         deadline = time.monotonic() + WRITE_DEADLINE
@@ -524,8 +529,11 @@ class Session:
             updates = merged
             if not updates:
                 return "noop", [], closed
+            from engine import workspace_gate
+            updates, gate_advances = workspace_gate.decorate(self, updates, force_goal=gate_goal)
             r, stderr = push_atomic(self.git, self.R, updates)
             if r == "ok":
+                workspace_gate.confirm(self, gate_advances)
                 self.snap.advance(updates)
                 for ref, _, nv in updates:
                     m = re.match(r"^refs/heads/zzzops/lease/g(\d+)/(.+)$", ref)
@@ -539,6 +547,10 @@ class Session:
                 return "ok", updates, closed
             if r == "remote":
                 raise Refused("remote", f"push to `{self.R}` failed: {first_line(stderr)}")
+            for gated_goal in gate_advances:
+                observed, _ = workspace_gate.read(self, gated_goal)
+                if observed != self.workspace_gates[gated_goal]["oid"]:
+                    raise Refused("claim_lost", f"G{gated_goal} workspace gate was reclaimed")
             try:
                 self.refetch(fetch_goals)
             except RemoteError as exc:

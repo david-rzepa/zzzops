@@ -614,13 +614,32 @@ def _unlock(fh):
 
 # --------------------------------------------------------------------------------------------- writes (§4.4)
 
-ENGINE_REFS = ("refs/heads/zzzops/goal/", "refs/heads/zzzops/lease/", "refs/heads/zzzops/stack/", "refs/heads/zzzops/sync/")
+ENGINE_REFS = ("refs/heads/zzzops/goal/", "refs/heads/zzzops/lease/", "refs/heads/zzzops/stack/", "refs/heads/zzzops/sync/",
+               "refs/heads/zzzops/gate/", "refs/heads/zzzops/provenance/")
 
 
 def push_atomic(git: Git, R: str, updates, report_up_to_date: bool = False) -> tuple:
     """('ok'|'rejected'|'remote', stderr). updates: [(ref, expected or None, new or None)].
     With report_up_to_date, a push that changed no ref (every ref already held its new value) is 'up_to_date'."""
     updates = [(ref, exp, new) for ref, exp, new in updates if (exp or None) != (new or None)]
+    work_writes = any(re.fullmatch(r"refs/heads/zzzops/work/g(\d+)", ref) for ref, _, _ in updates)
+    required = getattr(git, "workspace_gate_required", None)
+    if work_writes and required is None:
+        raise Refused("validation", "work-ref push requires an initialized policy context")
+    if required:
+        for work_ref, _, _ in updates:
+            match = re.fullmatch(r"refs/heads/zzzops/work/g(\d+)", work_ref)
+            if not match:
+                continue
+            goal = int(match.group(1))
+            held = getattr(git, "workspace_gate_holds", {}).get(goal)
+            fence_ref = f"refs/heads/zzzops/gate/g{goal}"
+            if not held or not any(ref == fence_ref and old == held["oid"] and new and new != old
+                                   for ref, old, new in updates):
+                raise Refused("validation", f"G{goal} work-ref push requires its current workspace gate")
+            from engine.canon import read_now
+            if read_now() >= held["doc"]["expires_at"]:
+                raise Refused("superseded", f"G{goal} workspace gate expired before pushing")
     if not updates:
         return "ok", ""
     engine_only = all(ref.startswith(ENGINE_REFS) for ref, _, _ in updates)

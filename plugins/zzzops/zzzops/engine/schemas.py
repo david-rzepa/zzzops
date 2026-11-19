@@ -1159,7 +1159,8 @@ def largest_paths(doc, k=5):
 # ----------------------------------------------------------------------------------------------- record (§3.4–§3.7)
 
 RECORD_KEYS = {"status", "ok", "attempt", "holder", "reason", "correction_runs", "input_fp", "fp_parts", "output",
-               "findings", "blocked", "answer", "reviewed", "frozen", "child_scope", "carried_by", "prompt", "finished_at", "last_output"}
+               "findings", "blocked", "answer", "reviewed", "frozen", "child_scope", "pending_segments", "recovery_work",
+               "carried_by", "prompt", "finished_at", "last_output"}
 
 
 def validate_record(r) -> list:
@@ -1218,6 +1219,13 @@ def validate_record(r) -> list:
         a = r["answer"]
         if not isinstance(a, dict) or not {"text", "quote", "decided_by", "decided_at"} >= set(a) or "text" not in a:
             e.add("record.answer", "must be {text, quote, decided_by, decided_at}")
+    if "recovery_work" in r and (not isinstance(r["recovery_work"], str) or not SHA.fullmatch(r["recovery_work"])):
+        e.add("record.recovery_work", "must be a full observed work commit")
+    if "pending_segments" in r:
+        segments = r["pending_segments"]
+        keys = {"start", "end", "lease", "goal", "node", "attempt", "holder"}
+        if not isinstance(segments, list) or any(not isinstance(x, dict) or set(x) != keys or not all(isinstance(x[k], str) and x[k] for k in ("start", "end", "lease", "node", "holder")) or not _is_int(x["goal"]) or not _is_int(x["attempt"]) for x in segments):
+            e.add("record.pending_segments", "must be an array of fenced producer segments")
     if "frozen" in r and not _strings(r["frozen"]):
         e.add("record.frozen", "must be an array of paths")
     if "child_scope" in r:
