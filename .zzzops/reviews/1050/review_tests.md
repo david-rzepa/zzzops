@@ -1,7 +1,5 @@
-# G1050 test re-review
+# G1050 test review
 
-The corrected checkpoint adds real CLI cases for live leases, waived/unreviewed and independently reviewed scaffold transitions, a real red-to-green behavior journey, child retry/restoration and unavailable objects, and policy-preview/adoption scenarios. Those materially address the earlier findings. The reported full red suite took 38 seconds, proportionate to its isolated Git/CLI scenarios; it does not yet prove green behavior.
+Approved. The new tests accept child test deletion and rename, verify a normal implementation descendant, then reject restoring either absent old path or mutating the renamed path. A separate orphan commit has an identical Git tree but is not a descendant, so it isolates the provenance guard from content comparison. These address the residual finding.
 
-I independently ran the unavailable child object database and old-review preview cases. Both fail on current code as expected: the first emits an unhandled Git traceback rather than an actionable provenance error, and the second has no shipped scaffold node to preview. Focused run: 2.881 seconds.
-
-One preservation contract still lacks a discriminating assertion. A test-authoring rename/deletion must freeze absence at the former name as well as content at the new name; implementation-time rename of an existing test does not exercise that baseline. The ancestor-rewind test also changes protected contents, so it cannot distinguish a provenance check from ordinary entry equality. Cover those with real child repos before implementing.
+I independently ran the identical-tree rewrite and accepted-deletion cases with real child repositories: both fail on current behavior because the complete gitlink is frozen, as expected before implementation. The two focused tests took 2.424 seconds. The author's full red suite took 42.718 seconds; the end-to-end Git/CLI cost is justified by the distinct contracts. Green behavior and full migration observations remain to be verified after implementation.
