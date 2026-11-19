@@ -282,52 +282,16 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 1,
       "findings": [
-        {
-          "id": "review_tests:1:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:2eb7a42138801aab23013d1990a1e972a508f032d8b44d04c35fe27edd330439",
-          "text": "Complete the real CLI transition regressions: the existing true-to-false test covers only an open finding. Test a live scaffold lease, waiver with an unreviewed retained checkpoint (still blocked), the independently approved exact retained checkpoint, and separately reviewed removal; verify route-dependent owner approval and gates before either positive transition. Include an actual minimal callable scaffold -> red behavior test -> separate implementation journey, as required by the design.",
-          "upheld": false
-        },
-        {
-          "id": "review_tests:1:2",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:2eb7a42138801aab23013d1990a1e972a508f032d8b44d04c35fe27edd330439",
-          "text": "Expand real child-submodule preservation tests beyond four final gitlink checks. Exercise protected helper deletion and changed fixture/config, additions/deletions and both rename paths, earlier accepted and blocked-attempt retry changes including restoration, unavailable or mismatched child provenance/repository/commit and pointer rewrite, and verify protection on base sync and final integration tree. Fail closed when scope or provenance cannot be established, while allowing a verified implementation descendant.",
-          "upheld": false
-        },
-        {
-          "id": "review_tests:1:3",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:2eb7a42138801aab23013d1990a1e972a508f032d8b44d04c35fe27edd330439",
-          "text": "Add the approved realistic local-remote policy adoption and migration observations: preview and adoption of old in-flight goals (unstarted delivery, accepted tests, ongoing implementation, open finding, live lease and a review without the new output), and assert truthful current/stale/blocked states, preserved checkpoint/findings and no automatic approval. Report actual migration defects separately; the tests need not fix migration machinery.",
-          "upheld": false
-        },
         {
           "follows": "review_tests:1:2",
           "id": "review_tests:2:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 2,
           "target_fp": "v1:sha256:fe3ce424e709f6abada1dfe7a6971366ccc2f1fed3d7bf065e2bd4c7c30a53b9",
@@ -335,35 +299,35 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-19T04:27:58Z",
+      "finished_at": "2026-11-19T04:30:40Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:2a8f10ac60632611baa7b55985abcb60f4650b1d",
-          "tests": "v1:sha256:7c7e3b3ddbb06985c317dc1d0d8d783ca263948d0466b8f7ecf180df6031e7f2"
+          "tests": "v1:sha256:2f6d469780e2afa99dea55d4ded596663237c33567e8491e597416ef0869efe9"
         },
         "policy": {},
-        "subject": "v1:sha256:407ad9c5b832140bb783ee8be81b85310c577a1db89076632a7ab6fd3be6f334"
+        "subject": "v1:sha256:4a0b0e2fab469caef2c8cd1cec985ce397c9af32546a8fd6471fc6ced8630d69"
       },
-      "holder": "codex:root/g1050-review-tests-2",
-      "input_fp": "v1:sha256:455c749cb73346de625af2840444018bc5207258664618dad5b9c0845e450ccb",
-      "ok": false,
+      "holder": "codex:root/g1050-review-tests-3",
+      "input_fp": "v1:sha256:e5c25f7bd73b7d827882a419081cd8d46a24e67eddfa9a1ccb64fb151e743c3f",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "75686ab8f3d13edfb380b9620073905a4942c7fc",
-          "commit": "115f5694764daf66969c4c521dc297ce9c3254eb",
+          "blob": "3f07988e77f0fb8db9b4a14d11d2a38fd929d4cf",
+          "commit": "b721ffc2a46b748e453afa6181c1d4039d5b9d82",
           "path": ".zzzops/reviews/1050/review_tests.md"
         },
-        "summary": "The expanded tests cover the reviewed scaffold transitions and migration observations, but child scope still lacks essential deletion, rename and same-content rewrite cases."
+        "summary": "The additional real-Git cases cover accepted deletion and both rename paths plus an identical-tree non-descendant rewrite; the remaining finding is resolved."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "e4dbd4dd5c6f631801f0f740d33b88b315a95004",
-          "commit": "9ec46f7272cede2fd4b79e7112f8a2ed5617dbbd",
-          "tree": "a190de3bea4128de4217aec85fc353b342b24db0"
+          "change": "974a75d81a1f437ba45f80736270611e11ddd66b",
+          "commit": "14207c3b2df79f5ae746894151a8128d37c9f7f1",
+          "tree": "c0925f2b5712cf136d65a8ab36c3b901059a93f9"
         }
       },
       "status": "done"
