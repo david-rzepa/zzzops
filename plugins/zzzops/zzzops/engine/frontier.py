@@ -287,10 +287,27 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
                     checkpoint = (output.get(key) or {}).get("commit")
                     if not checkpoint:
                         continue
-                    reviews = [records.get(y) or {} for y in members if graph.subject(y) == x]
-                    if not any(r.get("status") == "done" and r.get("ok") and
-                               ((r.get("reviewed") or {}).get(key) or {}).get("commit") == checkpoint
-                               for r in reviews):
+                    def reviewed_current(y):
+                        r = records.get(y) or {}
+                        if (r.get("status") != "done" or not r.get("ok") or
+                                ((r.get("reviewed") or {}).get(key) or {}).get("commit") != checkpoint):
+                            return False
+                        def review_input(p):
+                            return held_recorded(p) if p == x else current_out(p)
+                        review_vals, review_missing = resolve(graph, doc, y, review_input, dep_view)
+                        if review_missing:
+                            return False
+                        expected = fp_parts(graph, y, review_vals, R.get(x), settings, R, skip)
+                        observed = r.get("fp_parts") or {}
+                        # Only the route decision may change without invalidating
+                        # the exact checkpoint's prior independent review.
+                        expected_inputs = {k: v for k, v in expected.get("inputs", {}).items()
+                                           if k != N[y].get("when")}
+                        observed_inputs = {k: v for k, v in observed.get("inputs", {}).items()
+                                           if k != N[y].get("when")}
+                        return (expected_inputs == observed_inputs and
+                                all(expected.get(k) == observed.get(k) for k in ("def", "policy", "subject")))
+                    if not any(reviewed_current(y) for y in members if graph.subject(y) == x):
                         safe = False
             if safe:
                 st[n] = {"name": "skipped", "reason": f"{route} is false"}
