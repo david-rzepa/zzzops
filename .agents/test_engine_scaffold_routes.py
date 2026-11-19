@@ -214,6 +214,38 @@ class ScaffoldRouteJourneys(unittest.TestCase):
         self.p.run(self.g, 'review_scaffold', avoid=(repair.label,))
         self.assertIn('test_design', {a['node'] for a in self.next()['actions']}, self.next())
 
+    def test_real_minimal_scaffold_then_red_behavior_then_separate_implementation(self):
+        self.submit_review(True)
+        self.approve_and_base()
+        author, card = self.p.start(self.g, 'scaffold')
+        wt = author.worktree(self.g)
+        scaffold = wt.commit({'src/value.py':'def value():\n    raise NotImplementedError()\n'},
+                             'feat: add unfinished callable contract')
+        author.submit(self.g, 'scaffold', card, self.p.output('scaffold', card))
+        self.p.run(self.g, 'review_scaffold', avoid=(author.label,))
+        tester, card = self.p.start(self.g, 'test_design')
+        wt = tester.worktree(self.g)
+        test_commit = wt.commit({'tests/check_value.py': 'import sys\nsys.path.insert(0, ".")\nfrom src.value import value\nassert value() == 1\n'}, 'test: value behavior')
+        cmd = 'python3 tests/check_value.py'
+        start = time.monotonic_ns()
+        red = subprocess.run(cmd, shell=True, cwd=wt.path, env=self.w.env, capture_output=True)
+        duration = (time.monotonic_ns() - start) // 1000000
+        self.assertNotEqual(0, red.returncode)
+        self.assertIn(b'NotImplementedError', red.stderr)
+        cost = {'checkpoint':test_commit, 'commands':[{'cmd':cmd,'duration_ms':duration,'exit':red.returncode}],
+                'total_ms':duration, 'changed_tests':[{'id_or_scope':'tests/check_value.py','duration_ms':duration,
+                'observation':'actual behavior test fails on unfinished scaffold'}], 'summary':'Measured red behavior test'}
+        tester.submit(self.g, 'test_design', card, {'commands':[cmd], 'cost':cost})
+        self.p.run(self.g, 'review_tests', avoid=(tester.label,))
+        implementer, card = self.p.start(self.g, 'implement')
+        wt = implementer.worktree(self.g)
+        implementation = wt.commit({'src/value.py':'def value():\n    return 1\n'}, 'feat: implement behavior')
+        implementer.submit(self.g, 'implement', card, self.p.output('implement', card))
+        green = subprocess.run(cmd, shell=True, cwd=wt.path, env=self.w.env, capture_output=True)
+        self.assertEqual(0, green.returncode, green.stderr)
+        self.assertNotEqual(scaffold, implementation)
+        self.assertNotEqual(test_commit, implementation)
+
 
 class SubmoduleTestPreservation(unittest.TestCase):
     """Actual child repos and gitlinks, not simulated Git or a path named like a package."""
@@ -234,7 +266,13 @@ class SubmoduleTestPreservation(unittest.TestCase):
         policy = fx.load_template('POLICY.json')
         if 'conditional_review_routes' in CAPABILITIES:
             policy['settings']['engine']['requires'].append('conditional_review_routes')
-        self.w.bootstrap(policy=policy, workflow=checkpoint_workflow())
+        workflow = checkpoint_workflow()
+        integrate = copy.deepcopy(fx.load_template('workflow.json')['graphs']['default']['nodes']['integrate'])
+        integrate['inputs'] = {'base':{'from':'base.base_commit'}, 'code':{'from':'implement.code.tree'},
+                               'review':{'from':'review_impl.summary','context':True}}
+        workflow['graphs']['default']['nodes']['integrate'] = integrate
+        self.gh = fx.FakeGitHub(self.w)
+        self.w.bootstrap(policy=policy, workflow=workflow, settings={'verification.required_ci': []})
         self.writer = fx.Agent(self.w, 'a', 'codex:aaaa/writer')
         self.reviewer = fx.Agent(self.w, 'b', 'codex:bbbb/reviewer')
         self.g = self.w.new(title='Package test protection')['created']['id']
@@ -393,6 +431,44 @@ class SubmoduleTestPreservation(unittest.TestCase):
         self.assertNotEqual(0, rc, out)
         self.assertTrue(any(x in json.dumps(out).lower() for x in ('mapping','identity','repository','provenance')), out)
 
+    def test_base_sync_preserves_child_tests_and_allows_implementation_advance(self):
+        self.accepted_tests()
+        before = self.w.ok('a', 'show', str(self.g), '--json')['goal']['records']['test_design']
+        self.w.push_dev({'unrelated.txt':'upstream change\n'}, 'fix: unrelated upstream change')
+        self.w.ok('a', 'reopen', str(self.g), 'base', '--note', 'sync upstream')
+        self.w.ok('a', 'start', str(self.g), 'base', '--as', 'codex:aaaa/base-sync')
+        after = self.w.ok('a', 'show', str(self.g), '--json')['goal']['records']['test_design']
+        self.assertTrue(after['output']['tests']['commit'])
+        self.assertTrue(before['output']['tests']['commit'])
+        # The new pointer is allowed only if all child test entries still match.
+        state = self.w.ok('a', 'show', str(self.g), '--json')['states']['review_tests']
+        if state.startswith('ready'):
+            card = self.reviewer.start(self.g, 'review_tests')
+            prior = [{'id':f['id'],'status':'resolved'} for f in (card.get('previous') or {}).get('findings', []) if f['status']=='open']
+            self.reviewer.submit(self.g, 'review_tests', card, {'decision':'approved','summary':'Reviewed','findings':prior}, artifact='Reviewed\n')
+        card = self.writer.start(self.g, 'implement')
+        self.child.commit({'Runtime/value.py':'value = 1\n'}, 'feat: implement')
+        self.parent.commit({}, 'feat: advance child implementation')
+        self.writer.submit(self.g, 'implement', card, {'summary':'Implemented'})
+
+    def test_final_integration_tree_contains_verified_child_implementation_pointer(self):
+        self.accepted_tests()
+        card = self.writer.start(self.g, 'implement')
+        child_tip = self.child.commit({'Runtime/value.py':'value = 1\n'}, 'feat: implement')
+        self.parent.commit({}, 'feat: advance child implementation')
+        self.writer.submit(self.g, 'implement', card, {'summary':'Implemented'})
+        review = self.reviewer.start(self.g, 'review_impl')
+        self.reviewer.submit(self.g, 'review_impl', review,
+                             {'decision':'approved','summary':'Reviewed','findings':[]}, artifact='Reviewed\n')
+        result = self.w.ok('a', 'start', str(self.g), 'integrate', '--as', 'codex:aaaa/integrate')
+        self.assertTrue(result['ran']['ok'], result)
+        pr = result['ran']['output']['pr']
+        head = pr['head']
+        entry = self.parent.git('ls-tree', head, 'Packages/example')
+        self.assertIn(child_tip, entry)
+        self.assertIn('160000 commit', entry)
+        self.assertEqual('def expected(): return 1', self.child.git('show', child_tip + ':Tests/helper.py'))
+
 
 class PolicyAdoptionJourneys(unittest.TestCase):
     """Preview a copied old graph on the actual Git remote before adopting new defaults."""
@@ -498,6 +574,16 @@ class PolicyAdoptionJourneys(unittest.TestCase):
         self.assertEqual(before['goal']['records']['test_design'], after['goal']['records']['test_design'])
         self.assertEqual('running', self.p.show(self.g)['states']['implement'])
         self.assertNotEqual('current', after['states']['approve_design'], after)
+
+    def test_adopting_preview_does_not_auto_approve_old_review(self):
+        before = self.p.show(self.g)
+        preview = self.preview()
+        self.assertNotEqual('current', preview['states']['approve_design'], preview)
+        self.w.seed.git('push', '-q', 'origin', 'HEAD:dev')
+        after = self.p.show(self.g)
+        self.assertNotEqual('current', after['states']['approve_design'], after)
+        self.assertEqual(before['goal']['records']['review_design'], after['goal']['records']['review_design'])
+        self.assertEqual(before['goal_commit'], after['goal_commit'])
 
 
 if __name__ == '__main__':
