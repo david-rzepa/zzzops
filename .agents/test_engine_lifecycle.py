@@ -62,6 +62,8 @@ class Journey(unittest.TestCase):
                 finding.setdefault("impact", "The requested behavior is incorrect.")
                 finding.setdefault("material", True)
         out = {"decision": decision, "summary": "review", "findings": prior + new}
+        if "scaffold_needed" in c["output_schema"]:
+            out["scaffold_needed"] = False
         result = agent.submit(g, self.n(node), c, out, artifact="# review\n")
         return self.finish_review_join(agent, g, node) or result
 
@@ -88,9 +90,10 @@ class Journey(unittest.TestCase):
                 card = agent.start(g, sibling)
                 previous = [{"id": f["id"], "status": "resolved"}
                             for f in (card.get("previous") or {}).get("findings", []) if f["status"] == "open"]
-                result = agent.submit(g, sibling, card,
-                                      {"decision": "approved", "summary": "review", "findings": previous},
-                                      artifact="# independent review\n")
+                output = {"decision": "approved", "summary": "review", "findings": previous}
+                if "scaffold_needed" in card["output_schema"]:
+                    output["scaffold_needed"] = False
+                result = agent.submit(g, sibling, card, output, artifact="# independent review\n")
         states = self.show(g)["states"]
         if states[flt] != "current":
             self.assertTrue(states[flt].startswith("ready"), (flt, states))
