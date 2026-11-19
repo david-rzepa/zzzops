@@ -43,7 +43,7 @@ class ScaffoldRouteJourneys(unittest.TestCase):
         ag, card = self.reviewer()
         output = self.p.output('review_design', card, summary='unchanged design summary')
         output['scaffold_needed'] = needed
-        ag.submit(self.g, 'review_design', card, output)
+        ag.submit(self.g, 'review_design', card, output, artifact='# Design review\n')
 
     def approve_and_base(self):
         self.p.run(self.g, 'adversary_design', summary='unchanged adversary summary')
@@ -57,13 +57,13 @@ class ScaffoldRouteJourneys(unittest.TestCase):
     def test_review_requires_a_boolean_decision(self):
         ag, card = self.reviewer()
         output = self.p.output('review_design', card)
-        rc, result = ag.submit(self.g, 'review_design', card, output, ok=False)
+        rc, result = ag.submit(self.g, 'review_design', card, output, artifact='# Design review\n', ok=False)
         self.assertNotEqual(0, rc, result)
         output['scaffold_needed'] = 'false'
-        rc, result = ag.submit(self.g, 'review_design', card, output, ok=False)
+        rc, result = ag.submit(self.g, 'review_design', card, output, artifact='# Design review\n', ok=False)
         self.assertNotEqual(0, rc, result)
         output['scaffold_needed'] = False
-        ag.submit(self.g, 'review_design', card, output)
+        ag.submit(self.g, 'review_design', card, output, artifact='# Design review\n')
 
     def test_false_path_dispatches_no_scaffold_worker_and_offers_test_design(self):
         self.submit_review(False)
@@ -107,7 +107,7 @@ class ScaffoldRouteJourneys(unittest.TestCase):
         ag, card = self.reviewer()
         output = self.p.output('review_design', card, summary='unchanged design summary')
         output['scaffold_needed'] = True
-        ag.submit(self.g, 'review_design', card, output)
+        ag.submit(self.g, 'review_design', card, output, artifact='# Design review\n')
         states = self.p.states(self.g)
         for node in ('adversary_design', 'filter_design', 'approve_design'):
             self.assertNotEqual('current', states[node], (node, states))
@@ -126,7 +126,7 @@ class ScaffoldRouteJourneys(unittest.TestCase):
         ag, card = self.reviewer()
         output = self.p.output('review_design', card, summary='unchanged design summary')
         output['scaffold_needed'] = False
-        ag.submit(self.g, 'review_design', card, output)
+        ag.submit(self.g, 'review_design', card, output, artifact='# Design review\n')
         self.p.run(self.g, 'adversary_design', summary='unchanged adversary summary')
         self.p.run(self.g, 'filter_design', summary='unchanged filter summary')
         self.p.answer(self.g, 'approve_design')
@@ -156,7 +156,7 @@ class ScaffoldRouteJourneys(unittest.TestCase):
         ag, card = self.reviewer()
         output = self.p.output('review_design', card, summary='unchanged design summary')
         output['scaffold_needed'] = False
-        ag.submit(self.g, 'review_design', card, output)
+        ag.submit(self.g, 'review_design', card, output, artifact='# Design review\n')
         self.p.run(self.g, 'adversary_design', summary='unchanged adversary summary')
         self.p.run(self.g, 'filter_design', summary='unchanged filter summary')
         self.p.answer(self.g, 'approve_design')
@@ -226,7 +226,7 @@ class ScaffoldRouteJourneys(unittest.TestCase):
         tester, card = self.p.start(self.g, 'test_design')
         wt = tester.worktree(self.g)
         test_commit = wt.commit({'tests/check_value.py': 'import sys\nsys.path.insert(0, ".")\nfrom src.value import value\nassert value() == 1\n'}, 'test: value behavior')
-        cmd = 'python3 tests/check_value.py'
+        cmd = 'python3 -B tests/check_value.py'
         start = time.monotonic_ns()
         red = subprocess.run(cmd, shell=True, cwd=wt.path, env=self.w.env, capture_output=True)
         duration = (time.monotonic_ns() - start) // 1000000
