@@ -535,10 +535,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 12,
+      "attempt": 13,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-19T02:30:37Z",
+      "finished_at": "2026-11-19T02:50:09Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
@@ -551,55 +551,55 @@
         ".agents/test_engine_insertable_release_journeys.py",
         ".agents/test_engine_insertable_releases.py"
       ],
-      "holder": "codex:root/g1051-test-design-12",
+      "holder": "codex:root/g1051-test-design-13",
       "input_fp": "v1:sha256:3ce6c7f02de3e84a43a88d0eff381bee7670709ac5c1114464b2481b92491374",
       "ok": true,
       "output": {
         "commands": [
-          "PYTHONPATH=.agents python3 -m unittest -v test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_provider_view_is_recorded test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_recovery_is_recorded test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_nested_maintenance_forward_port_uses_verified_older_released_ancestor test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_invalid_historical_source_snapshots_never_fall_back_to_common_git_history --durations 10"
+          "PYTHONPATH=.agents python3 -m unittest -v test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_release_finish_ignores_earlier_merged_pr_and_merges_approved_descendant test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_release_finish_recovers_exact_merged_head_when_older_pr_listed_first test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_provider_view_is_recorded test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_recovery_is_recorded --durations 10"
         ],
         "cost": {
           "changed_tests": [
             {
-              "duration_ms": 5877,
+              "duration_ms": 6045,
+              "id_or_scope": "test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_release_finish_ignores_earlier_merged_pr_and_merges_approved_descendant",
+              "observation": "Passed real Git/provider merge of newly approved descendant while ignoring older merged PR."
+            },
+            {
+              "duration_ms": 6197,
+              "id_or_scope": "test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_release_finish_recovers_exact_merged_head_when_older_pr_listed_first",
+              "observation": "Passed exact-head merged-PR recovery after provider list is deliberately ordered older first."
+            },
+            {
+              "duration_ms": 5901,
               "id_or_scope": "test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_provider_view_is_recorded",
-              "observation": "Passed: externally changed and merged production PR is detected at actual provider view, merge evidence retained, forwarding paused."
+              "observation": "Passed existing externally merged unapproved head at provider-view boundary."
             },
             {
-              "duration_ms": 5820,
+              "duration_ms": 5818,
               "id_or_scope": "test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_recovery_is_recorded",
-              "observation": "Passed: already-merged recovery observes different PR head and preserves merge evidence without forwarding."
-            },
-            {
-              "duration_ms": 7198,
-              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_nested_maintenance_forward_port_uses_verified_older_released_ancestor",
-              "observation": "Passed real nested maintenance forward-port with multiple unpublished intermediate commits and independently verified older released ancestor."
-            },
-            {
-              "duration_ms": 235,
-              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_invalid_historical_source_snapshots_never_fall_back_to_common_git_history",
-              "observation": "Failed: missing and contradictory stored snapshots were rejected, but a logical source-goal cycle through an older snapshot was accepted."
+              "observation": "Passed existing externally merged unapproved head recovery."
             }
           ],
-          "checkpoint": "da22933c41ee66880f101e38417258aa220d2a37",
+          "checkpoint": "1053e5f23c3040b55684dbf30810fb07408595bc",
           "commands": [
             {
-              "cmd": "PYTHONPATH=.agents python3 -m unittest -v test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_provider_view_is_recorded test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_recovery_is_recorded test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_nested_maintenance_forward_port_uses_verified_older_released_ancestor test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_invalid_historical_source_snapshots_never_fall_back_to_common_git_history --durations 10",
-              "duration_ms": 36877,
-              "exit": 1
+              "cmd": "PYTHONPATH=.agents python3 -m unittest -v test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_release_finish_ignores_earlier_merged_pr_and_merges_approved_descendant test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_release_finish_recovers_exact_merged_head_when_older_pr_listed_first test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_provider_view_is_recorded test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_recovery_is_recorded --durations 10",
+              "duration_ms": 24022,
+              "exit": 0
             }
           ],
-          "summary": "Four local real Git/fake provider tests, 36.815 seconds including shared real-engine seed. Three pass; cyclic source-goal lineage is an implementation defect. Git batch cleanup emits an existing ResourceWarning; hosted provider behavior is not exercised.",
-          "total_ms": 36877
+          "summary": "Four focused local Git/fake GitHub journeys passed in 23.961 seconds. Hosted protected-branch staging not exercised.",
+          "total_ms": 24022
         },
         "responses": {
-          "implement:6:1": "fixed: Added independent real-Git/provider tests for a changed head merged immediately at PR view and for already-merged recovery, asserting actual merge evidence and halted forwarding. Added a finished nested maintenance line whose intermediate source contains multiple commits absent from dev/production, then forward-ports via a verified older released ancestor. Added actual stored-object probes for missing, contradictory, and cyclic historical source-goal snapshots; the cyclic case currently fails because the implementation accepts a self-referential logical goal lineage."
+          "implement:8:1": "fixed: Added an older merged head H followed by a newly approved descendant T and asserted finish creates and merges the correct new PR. Added an already-merged exact-T recovery test that explicitly forces the provider to list the older PR first and proves no extra production merge. Existing changed-unapproved-head safety regressions also pass."
         },
         "tests": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "9dc78d5a5551b3d62aa37ddebbf50f1c08df2c05",
-          "commit": "da22933c41ee66880f101e38417258aa220d2a37",
-          "tree": "cc95f8c334edcb10687e3a13cddf3345f4dc50b3"
+          "change": "3e79080e4a1218b2ffee78e35df4e78c6d3a2ab1",
+          "commit": "1053e5f23c3040b55684dbf30810fb07408595bc",
+          "tree": "95ff86ada529489f05ab28330062d2b38c63ca56"
         }
       },
       "reason": "reopened",
