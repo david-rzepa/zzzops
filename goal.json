@@ -296,72 +296,56 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 1,
-      "findings": [
-        {
-          "id": "test_design:2:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:2437013d0cf31e16bba5f5d4d963da294240d9c4f0b56169f066825a1bf42ebf",
-          "text": "Define the observable contracts needed to independently test the approved capability-enabled and recovery behavior: how a caller identifies the required capability without guessing its name, and the stable machine-readable validate diagnostic fields for per-path provenance, observed goal base and an exact edit proposal that can be applied through the existing CLI. The current design explicitly leaves the capability identifier unspecified and only describes the recovery output narratively, so tests cannot reliably enable the capability, inspect the proposal or apply it without inventing an implementation-specific API. Preserve the distinction between approved contracts and internal representation.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-19T04:17:01Z",
+      "findings": [],
+      "finished_at": "2026-11-19T04:36:59Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
           "base": "v1:sha256:1eee7b2e3964a69facb766f50195fd0750184506761869cf1d3140667ff55a3a",
-          "doc": "v1:blob:e9fc7a9db4ca6f297f27853c3ce3671519784d2c"
+          "doc": "v1:blob:b0a79141fe1b4c4ad3c03ac7f911f36d48919512"
         },
         "policy": {}
       },
       "frozen": [
-        ".agents/test_engine_blocked_scope.py"
+        ".agents/test_engine_blocked_scope.py",
+        ".agents/test_engine_scope_recovery.py"
       ],
-      "holder": "codex:root/g1049-test-correction",
-      "input_fp": "v1:sha256:ea3806046c7e975808c428589c1bcdc39adaabf92652d754da8269d6c2ee77c4",
+      "holder": "codex:root/g1049-test-contract",
+      "input_fp": "v1:sha256:dca0a827e846224eb024a71650baa5188d24382ed046cdee0a34a4dde85e9f96",
       "ok": true,
       "output": {
         "commands": [
-          "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope"
+          "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope test_engine_scope_recovery"
         ],
         "cost": {
           "changed_tests": [
             {
-              "duration_ms": 2821,
-              "id_or_scope": ".agents/test_engine_blocked_scope.py",
-              "observation": "Measured entire new test module; four expected failures before implementation, including two local Git and CLI journeys."
+              "duration_ms": 45198,
+              "id_or_scope": "test_engine_blocked_scope and test_engine_scope_recovery",
+              "observation": "Measured full changed-test suite: 13 red tests; recovery-dependent checks stop at the missing diagnostic and capability-dependent checks at the unimplemented capability."
             }
           ],
-          "checkpoint": "2558fcaea727dbf29a7066aa59bbe16af27a8f39",
+          "checkpoint": "0bde0450a160755037136d0ebc16c91fbb692244",
           "commands": [
             {
-              "cmd": "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope",
-              "duration_ms": 2821,
+              "cmd": "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope test_engine_scope_recovery",
+              "duration_ms": 45198,
               "exit": 1
             }
           ],
-          "summary": "Pre-implementation red run; all four tests executed and exposed the intended failures.",
-          "total_ms": 2821
-        },
-        "responses": {
-          "review_tests:1:1": "disputed: capability-enabled testing requires the design to specify a stable capability discovery contract; the existing tests cover the capability-off and preservation cases.",
-          "review_tests:1:2": "disputed: recovery testing requires a specified machine-readable validate proposal, provenance and edit interface; the design does not define how those values are obtained."
+          "summary": "Pre-implementation red run. Historical fixture uses actual Git commits, and CLI diagnostics currently lack the specified recovery fields.",
+          "total_ms": 45198
         },
         "tests": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "ff537920e58f9cf2465651658ebf18e0516b4ac3",
-          "commit": "37d1704a5fca704d6a7693b5db9e87e19cc58ce5",
-          "tree": "a84a90adf3096dc30743999ecc706f6b926cbe90"
+          "change": "0fa935419bf97436c8f1798c199eca6f0d7be986",
+          "commit": "0bde0450a160755037136d0ebc16c91fbb692244",
+          "tree": "ef4c05263ef4b4f99309daabd83378bfdd0733a0"
         }
       },
-      "reason": "reopened",
+      "reason": "stale",
       "status": "done"
     }
   },
