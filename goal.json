@@ -266,51 +266,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 4,
+      "attempt": 5,
       "correction_runs": 2,
-      "findings": [
-        {
-          "id": "review_tests:3:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 5,
-          "target_fp": "v1:sha256:124bf3e05883e57da331bc65fa34bddf9f99ca0079c3b60bec5024794e09010d",
-          "text": "The release-finish expected-PR-head assertion scans every fake-GitHub call, including earlier finished_source and member merges that already use --match-head-commit. A finish implementation can omit its own guard while that assertion still passes. Restrict inspection to the actual finish PR call, assert the approved head value, and exercise a changed finish PR head at the provider boundary so no unapproved head can merge.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-18T23:29:12Z",
+      "findings": [],
+      "finished_at": "2026-11-19T00:08:20Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:b4f730d036d7169afa4a2a4c7c7c814b9522fc98",
-          "tests": "v1:sha256:ec961e2f8f6d8c546dd4bd6af3a2e1cbc0fef5621676dc05d5597501fa3339c9"
+          "tests": "v1:sha256:9a78e952bbf82e6c1cfcdad2d71a775bc1e59e2f08fa9a0062eed8876bd27d53"
         },
         "policy": {},
-        "subject": "v1:sha256:f4d600fea37c61e52ca46d596494a4638ed0b5ed5241edd228910fbb8b853f1f"
+        "subject": "v1:sha256:2d31065f8c1b800eb7420966996924e970af9e3248ef9cf8121cb587d75125a3"
       },
-      "holder": "codex:root/g1051-review-tests-4",
-      "input_fp": "v1:sha256:cd83fa5cdd1a1b42289e8b878a330bbd4222e0d6e17f2a902a770a16c551ef6e",
+      "holder": "codex:root/g1051-review-tests-5",
+      "input_fp": "v1:sha256:b709150a57938e75237808a1d4958346d2b95af5e5080ccf577bb3cc4db8c657",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "5d591ef7cee1524aea31e2bd5446ebc16a42a267",
-          "commit": "c365d8e19eb250340dc03a71369ab06fef0c5b29",
+          "blob": "ad91b080a3822c13e98d4965ab7f1f6b382f3bad",
+          "commit": "cdd6d42e8ee1e3fa53038ef3e3df6a1b7b4218d6",
           "path": ".zzzops/reviews/1051/review_tests.md"
         },
-        "summary": "The finish test now checks its own target PR and approved head and rejects a changed head at the provider boundary; the exact-checkpoint run remains honestly red before implementation."
+        "summary": "The new cases test separate forward-port approval, changed PR heads and refusal; the measured negative-answer regression remains red and hosted protections remain a staging gate."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "cd00d6c794f4849cd139e0cb6a558df43799a785",
-          "commit": "06374cd384419075ac7d2cc160bfadf1e18f36f3",
-          "tree": "11f6b66504858824ace4e8e4ef58b443ba1b261f"
+          "change": "4d0089d228767f8b7ee2ce3d725e8146a1132bef",
+          "commit": "c495b116b2fea7cfff71020be59f232ad16f33a9",
+          "tree": "623191d3690f45c81c631dc128a45edd8007514d"
         }
       },
       "status": "done"
