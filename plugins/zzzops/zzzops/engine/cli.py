@@ -166,8 +166,10 @@ def cmd_show(argv):
         emit(out)
         return 0
     if a.get("json"):
+        from engine import workspace_gate
         out = {"ok": True, "coordinator": st.coordinator, "goal": doc, "goal_commit": s.snap.goals[g], "states": states,
-               "leases": leases, "history": f"git log -p refs/zzzops/goal/{s.R}/g{g}"}
+               "leases": leases, "history": f"git log -p refs/zzzops/goal/{s.R}/g{g}",
+               "workspace_gate": workspace_gate.describe(s, g) if workspace_gate.enabled(s) else None}
         if g in s.snap.rewritten:
             out["rewritten"] = {"accepted": s.snap.goals[g], "remote": s.snap.rewritten[g]}
         emit(out)
@@ -200,7 +202,7 @@ def cmd_validate(argv):
     from engine.gitrun import check_environment
     env = check_environment(s.git)
     from engine.gh import gh_problems, head_branch_auto_delete
-    st = s.open(readonly=True, all_goals=True)
+    st = s.open(goals=[goal_id(x) for x in a.pos], readonly=True, all_goals=True)
     gh_env = gh_problems(s)
     env += gh_env
     package = package_check()
@@ -237,6 +239,9 @@ def cmd_validate(argv):
     warnings += schemas.engine_warnings(st.policy_raw.get("settings") if isinstance(st.policy_raw, dict) else None)
     out = {"ok": ok, "coordinator": st.coordinator, "goals": goals, "policy": policy, "environment": env,
            "warnings": warnings, "engine": engine_info()}
+    if a.pos:
+        from engine import scope_recovery
+        out["scope_recovery"] = {str(g): scope_recovery.diagnostics(s, g) for g in wanted if g in st.docs}
     from engine import defaults, legacy
     out["warnings"] += defaults.warnings(session=s)
     update = defaults.status(s, full=True)

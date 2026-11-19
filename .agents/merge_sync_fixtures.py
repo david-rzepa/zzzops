@@ -42,6 +42,7 @@ class OpFixture(unittest.TestCase):
         self.git.run("push", "-q", "origin", f"{self.base}:refs/heads/zzzops/work/g1000")
         self.settings = copy.deepcopy(self.w.policy["settings"])
         self.settings["engine"] = {"requires": ["merge_sync"]}
+        self.git.workspace_gate_required = False  # This fixture models the legacy policy without workspace gates.
         self.session = SimpleNamespace(git=self.git, R="origin", settings=self.settings)
 
     def ctx(self, node="base", inputs=None, record=None):

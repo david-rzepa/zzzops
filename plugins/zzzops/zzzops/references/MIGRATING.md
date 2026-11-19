@@ -111,3 +111,8 @@ After explicit review or decline, `record.reviewed` contains exactly the current
 ## Adopting conditional review routes
 
 Upgrade every writer before adding `conditional_review_routes` to `settings.engine.requires` through the reviewed policy procedure. Review the shipped workflow and prompts rather than replacing local customizations. `review_design` supplies a required boolean decision; scaffold and independent review run only when selected. Preview in-flight goals with `validate --policy-ref` and `next --policy-ref`: old records lack the new output and must be re-reviewed. Do not fabricate a decision, discard findings or change running leases. Keep the prior graph or wait for active work to finish where the preview cannot preserve it. Once child-test evidence is written, keep the capability requirement until all affected goals are completed; older engines cannot safely interpret it. The initial child scope supports locally available, explicitly declared submodules whose origin matches the recorded mapping and fails closed on missing or rewritten histories and nested submodules.
+
+
+## Adopt preserved test provenance
+
+Upgrade every writer before requiring `preserved_test_provenance` through the reviewed capability upgrade in REPAIR.md. Before activation, new writers preserve existing frozen scope and refuse publishing blocked producer work that cannot be recorded safely; older writers can still lose scope, so activation is necessary to exclude them. Keep this capability required while provenance records exist. For a suspected historical loss, use the read-only `validate G` recovery diagnostic and reviewed, guarded edit described in REPAIR.md.

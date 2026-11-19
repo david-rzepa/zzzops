@@ -1,0 +1,1 @@
+Preserve accepted test scope and verified producer attempt provenance across blocked retries; enable through a reviewed policy upgrade.

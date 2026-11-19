@@ -49,3 +49,6 @@ Require `blocked_findings` alongside or after the revised design step 4; see the
 **Round budgets:** `round_budget` gates per-stage limits on new material-finding rounds (default 10); see [adoption](MIGRATING.md#clean-sync-reviews-and-round-budgets).
 
 [Defaults](MIGRATING.md#shipped-default-updates).
+
+
+**Preserved test scope recovery.** `validate G` reports read-only `scope_recovery` diagnostics for the explicitly requested goal. A proposal identifies each path's accepted-history sources and includes an edit file and observed base; review and preview that file before applying it with `edit --file FILE --base BASE`. Uncertain evidence offers no edit. A producer with mixed pending test and non-test candidates supplies `scope_selection` in its output; independent review sees the selected and excluded candidate paths. See REPAIR.md for capability activation and recovery steps.
