@@ -10,7 +10,7 @@
   "priority": "P2",
   "records": {
     "adversary_design": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 1,
       "findings": [
         {
@@ -20,7 +20,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:d820d99b43a6fb0a478511beb918f6b0a385468e2642542dc83dcdd2ace91bf0",
@@ -28,33 +28,33 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-19T04:05:37Z",
+      "finished_at": "2026-11-19T04:08:39Z",
       "fp_parts": {
         "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
         "inputs": {
-          "doc": "v1:blob:78edeec1d293bebb785dc457dff049df68d7bef7",
+          "doc": "v1:blob:e9fc7a9db4ca6f297f27853c3ce3671519784d2c",
           "spec": "v1:sha256:4a8cbbd6281ed2930a25aaeeab28d289c69eab99320d3a8dca44789c357b3dae"
         },
         "policy": {},
-        "subject": "v1:sha256:d820d99b43a6fb0a478511beb918f6b0a385468e2642542dc83dcdd2ace91bf0"
+        "subject": "v1:sha256:86a774a331dc6a49b0da66cceac76865e0c15a92023c3054af74e4cbc20e1505"
       },
-      "holder": "codex:root/g1049-adversary",
-      "input_fp": "v1:sha256:5c41af39df19f2b8e71506d9c6cfaa7bdceadcef58d81ca04b7081860bac0024",
+      "holder": "codex:root/g1049-adversary-2",
+      "input_fp": "v1:sha256:3ad32de29248a87c60cb57f6a69d1dc61ba04ad5d110e53cb99de551236050dd",
       "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "8e3cea49a3d5709c0411166b7b171075dcfe6fac",
-          "commit": "df213c4543189b2f0693553aa9a7ef0066a54f2e",
+          "blob": "fe8b23ca9a58c698a5042fdf2cfbf70b3ea4e2ed",
+          "commit": "d015abd2078686fb34af32d96c693b6a1c072d17",
           "path": ".zzzops/reviews/1049/adversary_design.md"
         },
-        "summary": "Blocked producer records lose final-tree test protection unless the accepted checkpoint is retained or implementation is refused."
+        "summary": "Blocked-producer submissions are refused and attempt provenance is retained for safe retry."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "78edeec1d293bebb785dc457dff049df68d7bef7",
-          "commit": "d9278a51a1c11c48fc757586716f625266bb1ef3"
+          "blob": "e9fc7a9db4ca6f297f27853c3ce3671519784d2c",
+          "commit": "e9e29aaa75c06db5842a7f8ead5cc8c6be3b3157"
         }
       },
       "status": "done"
