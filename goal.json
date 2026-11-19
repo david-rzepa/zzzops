@@ -10,36 +10,36 @@
   "priority": "P2",
   "records": {
     "adversary_design": {
-      "attempt": 6,
+      "attempt": 7,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-18T23:08:22Z",
+      "finished_at": "2026-11-19T00:42:00Z",
       "fp_parts": {
         "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
         "inputs": {
-          "doc": "v1:blob:b4f730d036d7169afa4a2a4c7c7c814b9522fc98",
+          "doc": "v1:blob:9cb29051a0a95acfc44450b98dd9a7c4098bc907",
           "spec": "v1:sha256:36d23dbf43af22b9cc7117bb206dfaccc678b6f1574bc36a6de214fab025777e"
         },
         "policy": {},
-        "subject": "v1:sha256:5a98dd972f1d033cd1fe1b0b27228dda295abf1d9980a2996c8412356e07e5a6"
+        "subject": "v1:sha256:76b2cd6ab8c4878803120faffd4610be67101f99733aba43e565e83935096c84"
       },
-      "holder": "codex:root/g1051-adversary-6",
-      "input_fp": "v1:sha256:52603afe84bb20bc084c11194bc31a409f2f80718c68b40e2b289e066b3c30b2",
+      "holder": "codex:root/g1051-adversary-7",
+      "input_fp": "v1:sha256:950ba78dc130b8e26f9c8c74df265daa60062d93afe68760678430e1db707e5c",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "74b7354e86600eb797aa95b9b98c25f7552f5f24",
-          "commit": "7660e4d1b97ec4ac17992ebeadd135541f63c014",
+          "blob": "6e1d7500a709bedb9768dd448432e62b0e92657d",
+          "commit": "698f7440aef6891585ba77ee0e77b9ef8de842ae",
           "path": ".zzzops/reviews/1051/adversary_design.md"
         },
-        "summary": "Protected PR and snapshot semantics match the owner clarification; the remaining race is disclosed and reviewed."
+        "summary": "The separate forward-port workflow preserves approvals, source provenance, PR protections and resumable outcomes."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "b4f730d036d7169afa4a2a4c7c7c814b9522fc98",
-          "commit": "a8b3eed5959ea290e0ded9dd9f432856906eefd1"
+          "blob": "9cb29051a0a95acfc44450b98dd9a7c4098bc907",
+          "commit": "26244b595d5c7b0d6a9fb02f2d9630d2a453e00e"
         }
       },
       "status": "done"
