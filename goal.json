@@ -113,10 +113,37 @@
       "status": "done"
     },
     "base": {
-      "attempt": 1,
+      "attempt": 2,
+      "blocked": {
+        "category": "conflict",
+        "commands": {
+          "resume": [
+            "start",
+            "1049",
+            "base",
+            "--as",
+            "<LABEL>"
+          ]
+        },
+        "instructions": "In /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1049: edit only plugins/zzzops/zzzops/engine/schemas.py, plugins/zzzops/zzzops/engine/verbs.py, plugins/zzzops/zzzops/references/MIGRATING.md to the intended goal on top of a8a2e7855f2dc0a4ca27331a94b930e4df222387. For modify/delete keep or delete the file. Do not commit or touch other paths; resume.",
+        "op_state": {
+          "files": [
+            "plugins/zzzops/zzzops/engine/schemas.py",
+            "plugins/zzzops/zzzops/engine/verbs.py",
+            "plugins/zzzops/zzzops/references/MIGRATING.md"
+          ],
+          "old": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
+          "onto": "a8a2e7855f2dc0a4ca27331a94b930e4df222387",
+          "tree": "e91eb37f1e70f99a877f4d22bd0a3fbd7a0894ff",
+          "work": "fa9f1de0a3e1edc42895141c78035df6e762c898"
+        },
+        "reason": "merge conflict in plugins/zzzops/zzzops/engine/schemas.py, plugins/zzzops/zzzops/engine/verbs.py, plugins/zzzops/zzzops/references/MIGRATING.md",
+        "repeats": 1,
+        "waiting_for": "agent"
+      },
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T04:10:48Z",
+      "finished_at": "2026-11-19T14:12:02Z",
       "fp_parts": {
         "def": "v1:sha256:9b5973f3342b82689a1174525e34920af8ec08a54db6f4e643b2844a436917fe",
         "inputs": {
@@ -125,26 +152,12 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/g1049-base",
+      "holder": "codex:root/g1049-base-resync",
       "input_fp": "v1:sha256:a63dd4f9b663828d20c7af5969db386d8dca78d1dc6caa436946320590be78d6",
-      "ok": true,
-      "output": {
-        "base_commit": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-        "branch": "zzzops/work/g1049",
-        "replay_map": {},
-        "replay_pos": {},
-        "stack": [],
-        "synced": {
-          "merge": "9b0e51a7343f08362c1cb6eb8face96cef7fafc9",
-          "old": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "onto": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "resolved": [],
-          "tip": "9b0e51a7343f08362c1cb6eb8face96cef7fafc9",
-          "work": "d015abd2078686fb34af32d96c693b6a1c072d17"
-        }
-      },
-      "reason": "new",
-      "status": "done"
+      "ok": false,
+      "output": null,
+      "reason": "reopened",
+      "status": "blocked"
     },
     "design": {
       "attempt": 6,
