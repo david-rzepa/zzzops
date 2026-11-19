@@ -464,52 +464,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 8,
+      "attempt": 9,
       "correction_runs": 2,
-      "findings": [
-        {
-          "follows": "review_tests:6:2",
-          "id": "review_tests:7:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 9,
-          "target_fp": "v1:sha256:da1707449282a08d6ed4e4afe0b7695c435f2452681c27bed8075a0338e1b19f",
-          "text": "Add the approved lower-level transaction guard regression that attempts an otherwise-unlisted engine atomic work-ref update without a valid gate and proves a structured refusal with no ref updates; then prove a valid gate permits it. Define a narrow executable transaction-guard test seam or dummy operation if needed, rather than merely checking a list of known public routes. Cover operation completion that updates work and verify successful gated command routes where not already exercised.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-19T05:47:36Z",
+      "findings": [],
+      "finished_at": "2026-11-19T14:25:02Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:fbac244685db79270e91c498ab400c3f5bd862c4",
-          "tests": "v1:sha256:41660b716d5fb268bf432e4f99fb58ec7f4f9c4a31f5fed9516138c4b2c1a03b"
+          "tests": "v1:sha256:aa9881cac9a3e433b901e7d1a2c819f963299ee5c361019beefd58a2282f2d8b"
         },
         "policy": {},
-        "subject": "v1:sha256:15f1b4b51c0d0f9e75642cabeb862aeb799b3ce60d0ae385e2b3360fa5437174"
+        "subject": "v1:sha256:fb85b44248c0e7983e383418d3039df984e5800cff0584a41082367725efa6a5"
       },
-      "holder": "codex:root/g1049-review-tests-8",
-      "input_fp": "v1:sha256:0dd08eeca7616a63c89b3bc966ae2b634c91af7b620918e64c444b1f11393964",
+      "holder": "codex:root/g1049-review-tests-9",
+      "input_fp": "v1:sha256:ba5b947e4b8142f5e0666bdd096d439156372e78dc88199c63996b56f729e855",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "2d4f57393e307201fb119d9b33294a00f86c32a2",
-          "commit": "8ae410a30becd6413e52deecd6f12c4b50533d2b",
+          "blob": "89db0bf7179f579a24b3412847af36bed8ff56ce",
+          "commit": "335c617edf9310c01d20596bd4d8c63b1301f517",
           "path": ".zzzops/reviews/1049/review_tests.md"
         },
-        "summary": "The unlisted real transaction and successful registered base control cover the shared gate guard; later validation must reach the new assertions."
+        "summary": "Real declared-submodule fixture preserves the mixed-candidate assertion and passes independently after sync."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
-          "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "1a89053b91df26cf6e39b54943e7e8458201033e",
-          "commit": "bfe4f6a2d289a6989610177d5dea8ffb790f799d",
-          "tree": "7edf0160fb11900bd146d1a8d97b54c270588703"
+          "base": "a8a2e7855f2dc0a4ca27331a94b930e4df222387",
+          "change": "d8727256d153393363a83c5ca96f019b252c79cd",
+          "commit": "96f3ff203378cb94a446c0192fb9677827b3210a",
+          "tree": "fdd58feaf6bd51f29ecca45e5b6b4b121f1ea191"
         }
       },
       "status": "done"
