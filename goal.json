@@ -143,26 +143,26 @@
       "status": "done"
     },
     "filter_design": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T04:19:19Z",
+      "finished_at": "2026-11-19T05:12:04Z",
       "fp_parts": {
         "candidates": [],
         "def": "v1:sha256:c83a5e0ec02bc9504ff118f774138ad5517f6b3a5885d1c28444982e78d23a9f",
         "inputs": {
-          "adversary": "v1:sha256:63accbe300c4b5e345d68ab38b52c47543d66cedc80bf390e8d81190920e2fcd",
-          "doc": "v1:blob:b0a79141fe1b4c4ad3c03ac7f911f36d48919512",
-          "review": "v1:sha256:a197eb2312d2fd90443cc9eabb55b007f7f67b8d126e80bff503e642282659ed",
+          "adversary": "v1:sha256:79af7710b478a8b4a798b6e7ea8fe8f2120d2b2c58701e72ef6ab8d1a6549e37",
+          "doc": "v1:blob:a3ac387cd2f38ff9ee0f04e627ebb2d7657176b0",
+          "review": "v1:sha256:b4948e2f9382c72acafc951f1fc1877b22ae189b0bb852415f1884d435d21f74",
           "spec": "v1:sha256:4a8cbbd6281ed2930a25aaeeab28d289c69eab99320d3a8dca44789c357b3dae"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1049-filter-3",
-      "input_fp": "v1:sha256:2122a937311bd6f7f74768f6b11078caec9f3c38b809622d25fa29c82dcdce10",
+      "holder": "codex:root/g1049-filter-4",
+      "input_fp": "v1:sha256:a0f2d139325efeb7e4b04be7fbaf91333cc7ad1201ec704f465cd42a933dc828",
       "ok": true,
       "output": {
-        "summary": "Both independent re-reviews accept the clarified recovery contract, with no open candidates. The added specification fixes the capability name and machine-readable validation and guarded edit interface while retaining the prior provenance and review protections. Implementation review must check concurrent history and lease fencing.",
+        "summary": "Both independent re-reviews accept the owner-directed cooperating-writer fencing and explicitly disclosed direct-push race. The updated design calls for a changed CAS gate, expiry and reclaim fencing, and local remote race coverage; no candidates or notes remain.",
         "verdicts": {}
       },
       "reason": "stale",
