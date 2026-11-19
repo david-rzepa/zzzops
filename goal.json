@@ -282,7 +282,7 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 1,
       "findings": [
         {
@@ -290,7 +290,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:2eb7a42138801aab23013d1990a1e972a508f032d8b44d04c35fe27edd330439",
@@ -302,7 +302,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:2eb7a42138801aab23013d1990a1e972a508f032d8b44d04c35fe27edd330439",
@@ -314,43 +314,56 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 1,
           "target_fp": "v1:sha256:2eb7a42138801aab23013d1990a1e972a508f032d8b44d04c35fe27edd330439",
           "text": "Add the approved realistic local-remote policy adoption and migration observations: preview and adoption of old in-flight goals (unstarted delivery, accepted tests, ongoing implementation, open finding, live lease and a review without the new output), and assert truthful current/stale/blocked states, preserved checkpoint/findings and no automatic approval. Report actual migration defects separately; the tests need not fix migration machinery.",
           "upheld": false
+        },
+        {
+          "follows": "review_tests:1:2",
+          "id": "review_tests:2:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 2,
+          "target_fp": "v1:sha256:fe3ce424e709f6abada1dfe7a6971366ccc2f1fed3d7bf065e2bd4c7c30a53b9",
+          "text": "The child scope cases still do not test acceptance of a test-authoring deletion or rename, whose old path must retain an explicit absent marker and whose new path must be protected. Add real child-repo tests that accept the deletion/rename, permit an implementation descendant with unchanged accepted entries, then reject reintroducing the deleted/old name and mutating the new name. Also test a non-descendant child rewrite that preserves all protected entry contents: the existing HEAD~1 rewind deletes the accepted tests, so ordinary content comparison alone would reject it and does not prove the distinct descendant/provenance guard.",
+          "upheld": false
         }
       ],
-      "finished_at": "2026-11-19T04:16:37Z",
+      "finished_at": "2026-11-19T04:27:58Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:2a8f10ac60632611baa7b55985abcb60f4650b1d",
-          "tests": "v1:sha256:f8db174254feedf0a979b493d061e38054a74a2446106d9bfcdb4f9a593f6167"
+          "tests": "v1:sha256:7c7e3b3ddbb06985c317dc1d0d8d783ca263948d0466b8f7ecf180df6031e7f2"
         },
         "policy": {},
-        "subject": "v1:sha256:2eb7a42138801aab23013d1990a1e972a508f032d8b44d04c35fe27edd330439"
+        "subject": "v1:sha256:407ad9c5b832140bb783ee8be81b85310c577a1db89076632a7ab6fd3be6f334"
       },
-      "holder": "codex:root/g1050-review-tests",
-      "input_fp": "v1:sha256:770e4d6a8f1c24709d30228bdb1ec0ae5691860a08654a6b1cbca1b8d9ec0cef",
+      "holder": "codex:root/g1050-review-tests-2",
+      "input_fp": "v1:sha256:455c749cb73346de625af2840444018bc5207258664618dad5b9c0845e450ccb",
       "ok": false,
       "output": {
         "decision": "changes_requested",
         "report": {
-          "blob": "e062737989c3297333644c5af799285e3930d014",
-          "commit": "a684e7bfb3f7ab48fc84f4a4c3dd1c7c955a9e24",
+          "blob": "75686ab8f3d13edfb380b9620073905a4942c7fc",
+          "commit": "115f5694764daf66969c4c521dc297ce9c3254eb",
           "path": ".zzzops/reviews/1050/review_tests.md"
         },
-        "summary": "Two focused real-CLI/Git cases reproduce the advertised red failures. The checkpoint does not yet cover several approved safety and adoption contracts."
+        "summary": "The expanded tests cover the reviewed scaffold transitions and migration observations, but child scope still lacks essential deletion, rename and same-content rewrite cases."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "7e4cf23836fb2c1194c41400324fc4f6855f8813",
-          "commit": "f8f4398e38b4616226e6a209747ca39a671d4233",
-          "tree": "54bdb2224e7c8745a485312de266f13e313e90c4"
+          "change": "e4dbd4dd5c6f631801f0f740d33b88b315a95004",
+          "commit": "9ec46f7272cede2fd4b79e7112f8a2ed5617dbbd",
+          "tree": "a190de3bea4128de4217aec85fc353b342b24db0"
         }
       },
       "status": "done"
