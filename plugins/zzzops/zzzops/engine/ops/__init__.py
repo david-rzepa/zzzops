@@ -61,5 +61,10 @@ OPS = {
     "git.line_finish": OpSpec("git.line_finish", 1, gh=True, self_sync=True, module="engine.ops.lines",
                               required_inputs=("approval", "sync"),
                               outputs={"production_merge": "sha", "back_merges": "object"}, workspace=True),
+    "git.forward_prepare": OpSpec("git.forward_prepare", 1, gh=True, self_sync=True,
+                                  module="engine.ops.forward_port", outputs={"evidence": "object"}),
+    "git.forward_finish": OpSpec("git.forward_finish", 1, gh=True, self_sync=True,
+                                 module="engine.ops.forward_port", required_inputs=("evidence", "approval"),
+                                 outputs={"result": "object"}),
 }
 LINE_OPS = ("git.line_sync", "git.line_finish")

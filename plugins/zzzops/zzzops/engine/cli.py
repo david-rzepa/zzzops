@@ -359,6 +359,8 @@ def cmd_new(argv):
     errs = schemas.validate_new_file(spec)
     if errs:
         raise Refused("validation", "; ".join(errs), details={"errors": list(errs)})
+    if spec.get("graph") == "forward_port":
+        raise Refused("validation", "forward-port goals are created by `release forward-port`")
     key = request_key_of(spec)
     s = session(a)                                   # refuses --policy-ref before any scan (G1001 §4)
     st = s.open()
@@ -367,6 +369,8 @@ def cmd_new(argv):
         if hits:
             return recover_new(s, spec, key, hits)  # recovering writes nothing, so it precedes require_writable
     s.require_writable()
+    if isinstance(spec.get("release"), str) and "insertable_release_targets" not in schemas.required_caps(s.state.settings):
+        raise Refused("validation", "string release targets require capability `insertable_release_targets`")
     retry_hint = "rerun the same `new`: it is safe to retry"
     deadline = time.monotonic() + 30
     while True:
@@ -380,6 +384,11 @@ def cmd_new(argv):
                "priority": spec.get("priority", "P2"), "release": spec.get("release", effective),
                "depends_on": spec.get("depends_on", []), "skip": spec.get("skip", {}),
                "links": spec.get("links", {"issue": None}), "budget": None, "records": {}}
+        from engine import release_id
+        try:
+            doc["release"] = release_id.canonical(doc["release"])
+        except ValueError:
+            pass  # goal validation supplies the user-facing diagnostic
         if "flow" in spec:
             doc["schema"], doc["flow"] = 2, spec["flow"]
         all_docs = dict(st.docs)
@@ -455,7 +464,9 @@ def new_differences(spec: dict, root: dict) -> list:
     out = [k for k in ("title", "spec") if spec[k] != root.get(k)]
     if norm_depends_on(spec.get("depends_on", [])) != norm_depends_on(root.get("depends_on", [])):
         out.append("depends_on")
-    return out + [k for k in NEW_COMPARED if k in spec and spec[k] != root.get(k)]
+    from engine import release_id
+    return out + [k for k in NEW_COMPARED if k in spec and spec[k] != root.get(k)
+                  and not (k == "release" and release_id.equal(spec[k], root.get(k)))]
 
 
 def scan_request_key(s, key: str) -> list:
@@ -608,7 +619,18 @@ def cmd_edit(argv):
 @verb("release")
 def cmd_release(argv):
     from engine import lineverbs
-    a = Args(argv, dict(GLOBAL, answer="value"))
+    a = Args(argv, dict(GLOBAL, answer="value", **{"from": "value", "to": "value"}))
+    if len(a.pos) == 2 and a.pos[0] == "forward-port" and a.get("to"):
+        from engine import forward_port
+        emit(forward_port.start(session(a), a.pos[1], a.get("to")))
+        return 0
+    if len(a.pos) == 2 and a.pos[0] == "insert" and a.get("from"):
+        from engine import insertion
+        if a.get("answer"):
+            emit(insertion.insert(session(a), a.pos[1], a.get("from"), load_json_file(a.get("answer"), "answer")))
+            return 0
+        emit(insertion.preview(session(a), a.pos[1], a.get("from")))
+        return 0
     if len(a.pos) != 2 or a.pos[0] != "cut" or not a.get("answer"):
         raise Refused("usage", "release cut N --answer F")
     emit(lineverbs.run(session(a), "release", a.pos[1], load_json_file(a.get("answer"), "answer")))

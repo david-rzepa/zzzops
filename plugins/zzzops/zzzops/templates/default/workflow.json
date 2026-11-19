@@ -588,6 +588,54 @@
           }
         }
       }
+    },
+    "forward_port": {
+      "terminal": [
+        "finish"
+      ],
+      "nodes": {
+        "prepare": {
+          "description": "Inspect the source and destination and prepare a forward-port PR or evidence.",
+          "kind": "op",
+          "op": "git.forward_prepare",
+          "stage": "delivery",
+          "outputs": {
+            "evidence": "object"
+          },
+          "schedule": "upstream"
+        },
+        "approve": {
+          "description": "Approve this exact forward-port or evidence.",
+          "kind": "human",
+          "prompt": "approve_forward_port.md",
+          "stage": "delivery",
+          "review": {
+            "subject": "prepare"
+          },
+          "inputs": {
+            "evidence": {
+              "from": "prepare.evidence"
+            }
+          }
+        },
+        "finish": {
+          "description": "Complete the approved forward-port.",
+          "kind": "op",
+          "op": "git.forward_finish",
+          "stage": "delivery",
+          "inputs": {
+            "evidence": {
+              "from": "prepare.evidence"
+            },
+            "approval": {
+              "from": "approve.summary"
+            }
+          },
+          "outputs": {
+            "result": "object"
+          }
+        }
+      }
     }
   }
 }

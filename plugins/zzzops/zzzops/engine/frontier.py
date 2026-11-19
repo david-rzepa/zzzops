@@ -253,6 +253,14 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
         if n in skip:
             st[n] = {"name": "skipped", "reason": skip[n]}
             continue
+        if lx.get("insert_waiting"):
+            st[n] = {"name": "waiting", "until": f"release {lx['insert_waiting']} inserted",
+                     "reason": "release_insert"}
+            continue
+        if (lx.get("upstream") or {}).get("insert_invalid"):
+            st[n] = {"name": "waiting", "until": "inserted release provenance reviewed",
+                     "reason": "release_insert_provenance_changed"}
+            continue
         r = R.get(n)
         L = leases.get(n)
         if L and r and r["attempt"] >= L.attempt:
@@ -278,7 +286,8 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
         if missing:
             st[n] = {"name": "blocked", "missing": missing}
             continue
-        if node.get("release_gate") and not hotfix_member and doc["release"] > effective:
+        from engine import release_id
+        if node.get("release_gate") and not hotfix_member and release_id.components(doc["release"]) > release_id.components(effective):
             st[n] = {"name": "waiting", "until": f"release {doc['release']}", "reason": "release"}
             continue
         parts = fp_parts(graph, n, vals, R.get(subj), settings, R, skip)
@@ -519,10 +528,18 @@ def portfolio(docs: dict, graphs: dict, leases: dict, settings: dict, now: int, 
     invalid: id -> errors; newer: ids whose schema is newer than this engine. G1025, with settings.branching only:
     `ledger` (id -> trailer entry, §3.1) and `upstream` (id -> {"target", "tip", "behind", "merged_in_target"})."""
     from engine import lines as ln
+    from engine import release_id
     b = ln.branching(settings)
     L = ln.merged_ledger(ledger, docs) if b else {}
     lns = ln.lines_of(L, settings) if b else []
     effective = ln.effective_release(settings, lns) if b else None
+    if b and "insertable_release_targets" in required_caps(settings):
+        targets = [entry.get("release") for entry in L.values()
+                   if entry.get("state") in ("open", "held") and ln.is_member(entry)
+                   and entry.get("release") is not None]
+        targets.extend(x.name for x in lns if x.kind == "release" and x.open)
+        if any(isinstance(release_id.canonical(target), str) for target in targets):
+            effective = release_id.canonical(min(targets, key=release_id.components))
     upstream = upstream or {}
     invalid = dict(invalid or {})
     newer = set(newer or ())
@@ -549,12 +566,21 @@ def portfolio(docs: dict, graphs: dict, leases: dict, settings: dict, now: int, 
             target = ln.target_of(d, settings, lns)
             lctx = {"target": target["branch"], "integration": settings["integration_branch"], "effective": effective,
                     "hotfix_waiting": target.get("name") if target["kind"] == "hotfix" and not target["branch"] else None,
+                    "insert_waiting": target.get("name") if target["kind"] == "inserted" and not target["branch"] else None,
                     "upstream": upstream.get(g) or {}}
             flow = d.get("flow") or {}
+            if d.get("graph") == "forward_port":
+                lctx["line_behind"] = bool((upstream.get(g) or {}).get("behind"))
             if flow.get("line"):
+                if (isinstance(flow.get("inserted"), dict) and not flow["inserted"].get("verified")
+                        and d.get("records")):
+                    lctx["insert_waiting"] = flow["name"]
                 me = next((x for x in lns if x.goal == g), None)
                 lctx["members_open"] = ln.open_members(L, me) if me else []
                 lctx["line_behind"] = bool((upstream.get(g) or {}).get("behind"))
+        else:
+            if isinstance(release_id.canonical(d["release"]), str) and not (d.get("flow") or {}):
+                lctx = {"insert_waiting": release_id.label(d["release"]), "effective": effective}
         st, cur, live, notes, stale = frontier(graph, d, dep_view, goal_leases, settings, now, lctx)
         res = GoalResult(g, d, graph, st, cur, live, notes, stale=stale, target=target)
         finish_goal(res, goal_leases, now, settings)
@@ -732,6 +758,7 @@ PRI = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 
 
 def order_key(settings: dict, doc: dict, graph: Graph, node: str) -> tuple:
+    from engine import release_id
     stage = graph.nodes[node]["stage"] if node in graph.nodes else "delivery"
     s = (0 if stage == "discovery" else 1) if settings["scheduling"]["order"] == "stage_first" else 0
-    return (s, doc["release"], PRI[doc["priority"]], doc["id"], graph.topo.index(node) if node in graph.topo else 0)
+    return (s, release_id.components(doc["release"]), PRI[doc["priority"]], doc["id"], graph.topo.index(node) if node in graph.topo else 0)
