@@ -143,26 +143,26 @@
       "status": "done"
     },
     "filter_design": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T04:09:15Z",
+      "finished_at": "2026-11-19T04:19:19Z",
       "fp_parts": {
         "candidates": [],
         "def": "v1:sha256:c83a5e0ec02bc9504ff118f774138ad5517f6b3a5885d1c28444982e78d23a9f",
         "inputs": {
-          "adversary": "v1:sha256:67f78e784cf33f9f054d3b554167561497ec5005690ecf29163e1bef33424c0d",
-          "doc": "v1:blob:e9fc7a9db4ca6f297f27853c3ce3671519784d2c",
-          "review": "v1:sha256:22865c10afff9a8ae2bb8811a200afeb374a01af5b6bbd11ec41cb98a2d74306",
+          "adversary": "v1:sha256:63accbe300c4b5e345d68ab38b52c47543d66cedc80bf390e8d81190920e2fcd",
+          "doc": "v1:blob:b0a79141fe1b4c4ad3c03ac7f911f36d48919512",
+          "review": "v1:sha256:a197eb2312d2fd90443cc9eabb55b007f7f67b8d126e80bff503e642282659ed",
           "spec": "v1:sha256:4a8cbbd6281ed2930a25aaeeab28d289c69eab99320d3a8dca44789c357b3dae"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1049-filter-2",
-      "input_fp": "v1:sha256:525ce169b08b2a9189e79a6159676ebbc276f771be9799f1d04db02f31403122",
+      "holder": "codex:root/g1049-filter-3",
+      "input_fp": "v1:sha256:2122a937311bd6f7f74768f6b11078caec9f3c38b809622d25fa29c82dcdce10",
       "ok": true,
       "output": {
-        "summary": "Both independent re-reviews approve the corrected design and report no remaining candidates. The design now captures verified producer-attempt provenance and refuses consumer submission while the producer is blocked, with explicit end-to-end regressions. No notes remain.",
+        "summary": "Both independent re-reviews accept the clarified recovery contract, with no open candidates. The added specification fixes the capability name and machine-readable validation and guarded edit interface while retaining the prior provenance and review protections. Implementation review must check concurrent history and lease fencing.",
         "verdicts": {}
       },
       "reason": "stale",
