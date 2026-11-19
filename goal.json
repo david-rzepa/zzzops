@@ -196,49 +196,32 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 6,
+      "attempt": 7,
       "correction_runs": 4,
-      "findings": [
-        {
-          "id": "implement:6:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "test_design",
-          "target_attempt": 11,
-          "target_fp": "v1:sha256:2c59884ec591ee685fb26107d4759726c65c61965e08bf8035c4b1660c607acf",
-          "text": "Add durable real-Git/provider regression coverage for both implementation-review defects: (1) after finish approval of T, externally advance and merge the release PR at H before the engine observes the merged PR, exercise both the already-merged PR view and merged-PR recovery paths, and assert the actual merge is recorded while forward-propagation pauses; (2) finish a nested maintenance release whose intermediate approved source contains multiple commits absent from production/dev, then start its forward-port using the independently verified older released ancestor. Include missing, cyclic and contradictory historical source-goal snapshots to ensure no fallback to arbitrary common Git history. Existing frozen tests do not cover either reported case.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-19T02:22:52Z",
+      "findings": [],
+      "finished_at": "2026-11-19T02:35:48Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
           "base": "v1:sha256:7137968f0afc1e3d944fd561b2af20955f2aef16fd65a3864f6989ddd512e960",
           "doc": "v1:blob:5b199f7a7f94e75dfbec83fa682e91d088f0edec",
-          "tests": "v1:sha256:0ce2b5e1230dc659f4eb530eb5e30e34443c3832dbc7178bdd86df1e0131a33a"
+          "tests": "v1:sha256:5b3d2b2935c6c0f2161877f15e91423daf5301fa0f3b8e31d4946bb53aec7596"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1051-implement-6",
-      "input_fp": "v1:sha256:35bcefc8fed9697df5a6e73bad2edf442d6746662e9c3e0ae7bd15173c8a315a",
+      "holder": "codex:root/g1051-implement-7",
+      "input_fp": "v1:sha256:3a0cd67624f2118de53d3c98db8780d8ca0aa78c9882a71325bbeabd7bbdc14d",
       "ok": true,
       "output": {
         "code": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "9da3d2e52193f115702af0d9df2e950fd4429c74",
-          "commit": "b6d98506f586097d637e234f0be1ee16501a4a03",
-          "tree": "7b2a144f2190ced3138b29b6944c54be5b2cb7e7"
+          "change": "31c243367bde1467441dbf6c3b385e26e571d100",
+          "commit": "4223972b644696fe9895682000ae78cc7e199615",
+          "tree": "ef3026c840bbbb508b843508a0ac76c754880ee2"
         },
-        "responses": {
-          "review_impl:1:1": "fixed: both already-merged recovery paths verify the provider head, destination and actual merge parent against the approved head, recording mismatched merge evidence and pausing propagation.",
-          "review_impl:1:2": "fixed: traverse recorded immutable maintenance source-goal snapshots, validate each successful approval and sync, and find a verified released ancestor of both the source and destination."
-        },
-        "summary": "Require evidence that an observed protected PR merged the exact approved head, including the actual merge parent, before any propagation. Resolve nested maintenance forward-ports through immutable, approved historical source-goal records to a released ancestor rather than relying on immediate Git parents. Focused local checks and the required command pass; durable regression coverage is requested below."
+        "summary": "Reject repeated logical source-goal IDs while traversing immutable maintenance lineage, in addition to the existing repeated-snapshot check. The focused cycle regression and all four required real-Git tests pass, including valid nested ancestry and both already-merged approved-head races."
       },
-      "reason": "reopened",
+      "reason": "stale",
       "status": "done"
     },
     "review_design": {
