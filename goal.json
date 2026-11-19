@@ -317,29 +317,14 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 0,
-      "findings": [
-        {
-          "carrier_fp": "v1:sha256:74759aaf5d0e547affbf5fad5b1d97a3408b6f92e5a2c5e5cc78c3d905f49a6b",
-          "id": "run_tests:failed",
-          "note": null,
-          "repeats": 1,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "implement",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:aa2c248ca391ab192f8835be4aca83a92eb8c9eedfbb7f818395485e7fceb453",
-          "text": "`python3 .github/scripts/run_product_validation.py --platform linux --local` exited 1:\ns.test_conflicting_forward_port_preserves_later_line_and_exposes_partial_state\", 46.636496310005896], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_older_maintenance_finishes_without_rewinding_production\", 46.30486412299797]], \"executed_count\": 1209, \"completed_count\": 1209, \"worker_seconds\": [207.25654398900224, 280.24037979499553, 250.71558382199146, 277.79732559999684, 290.5307007369993, 303.5483558459964, 315.2251155449776, 187.5466433900001, 320.8077344519843, 241.84024715199484, 322.07098496099934, 284.95082680199994, 267.49858092400245, 260.9433892010129, 251.45062054001028, 239.28655236400664, 263.16347588799545, 317.6444608249876, 259.1656264339981, 257.0182946189889], \"failures\": 2, \"errors\": 0, \"failure_ids\": [\"test_engine_review_fixes.ClosingSubmitTests.test_resubmit_after_a_closing_submit_is_applied\", \"test_engine_github.CostBudgetTests.test_per_verb_round_trips\"], \"error_ids\": [], \"error\": \"Command '['/usr/bin/python3', 'local-tests']' returned non-zero exit status 1.\"}\n",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-19T06:04:07Z",
+      "findings": [],
+      "finished_at": "2026-11-19T06:17:35Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:5bee88fa747c3507226580011153938a1957319fb8ab3e56cc1a07394b9f536f",
+          "code": "v1:sha256:99aa9e749d67f34fbeec86facc7939772ebac89307192bf7d2e9d84a70c00abc",
           "commands": "v1:sha256:a6b166a7e28461ab499dd5333a832ba511f7cbb0235edfe1fdfe33c068de0f95"
         },
         "policy": {
@@ -358,38 +343,38 @@
           ]
         }
       },
-      "holder": "codex:root/g1049-run-tests",
-      "input_fp": "v1:sha256:74759aaf5d0e547affbf5fad5b1d97a3408b6f92e5a2c5e5cc78c3d905f49a6b",
-      "ok": false,
+      "holder": "codex:root/g1049-run-tests-2",
+      "input_fp": "v1:sha256:040f9e4e80065680650ade250bd9f05c54844a0098632a8db5ef5d83a1c2613e",
+      "ok": true,
       "output": {
         "result": {
           "details": [
             {
               "cmd": "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope test_engine_scope_recovery",
               "exit": 0,
-              "milliseconds": 148871,
-              "seconds": 148,
+              "milliseconds": 145444,
+              "seconds": 145,
               "source": "goal",
-              "tail": "est_unavailable_checkpoint_in_history_is_uncertain (test_engine_scope_recovery.RecoveryJourney.test_unavailable_checkpoint_in_history_is_uncertain) ... ok\ntest_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal (test_engine_scope_recovery.RecoveryJourney.test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal) ... /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1049/plugins/zzzops/zzzops/engine/gitrun.py:191: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n  self._batch = None\nResourceWarning: Enable tracemalloc to get the object allocation traceback\nok\ntest_unrelated_paths_in_modified_proposal_are_refused (test_engine_scope_recovery.RecoveryJourney.test_unrelated_paths_in_modified_proposal_are_refused) ... ok\ntest_workspace_claim_cannot_race_past_recovery_gate (test_engine_scope_recovery.RecoveryJourney.test_workspace_claim_cannot_race_past_recovery_gate) ... ok\n\n----------------------------------------------------------------------\nRan 31 tests in 148.724s\n\nOK\n"
+              "tail": "est_unavailable_checkpoint_in_history_is_uncertain (test_engine_scope_recovery.RecoveryJourney.test_unavailable_checkpoint_in_history_is_uncertain) ... ok\ntest_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal (test_engine_scope_recovery.RecoveryJourney.test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal) ... /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1049/plugins/zzzops/zzzops/engine/gitrun.py:191: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n  self._batch = None\nResourceWarning: Enable tracemalloc to get the object allocation traceback\nok\ntest_unrelated_paths_in_modified_proposal_are_refused (test_engine_scope_recovery.RecoveryJourney.test_unrelated_paths_in_modified_proposal_are_refused) ... ok\ntest_workspace_claim_cannot_race_past_recovery_gate (test_engine_scope_recovery.RecoveryJourney.test_workspace_claim_cannot_race_past_recovery_gate) ... ok\n\n----------------------------------------------------------------------\nRan 31 tests in 145.376s\n\nOK\n"
             },
             {
               "cmd": "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_scope_recovery.RecoveryJourney.test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal test_engine_scope_recovery.RecoveryJourney.test_registered_base_operation_advances_work_with_its_valid_gate",
               "exit": 0,
-              "milliseconds": 2531,
+              "milliseconds": 2502,
               "seconds": 2,
               "source": "goal",
-              "tail": "test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal (test_engine_scope_recovery.RecoveryJourney.test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal) ... /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1049/plugins/zzzops/zzzops/engine/gitrun.py:191: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n  self._batch = None\nResourceWarning: Enable tracemalloc to get the object allocation traceback\nok\ntest_registered_base_operation_advances_work_with_its_valid_gate (test_engine_scope_recovery.RecoveryJourney.test_registered_base_operation_advances_work_with_its_valid_gate) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 2.458s\n\nOK\n"
+              "tail": "test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal (test_engine_scope_recovery.RecoveryJourney.test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal) ... /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1049/plugins/zzzops/zzzops/engine/gitrun.py:191: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n  self._batch = None\nResourceWarning: Enable tracemalloc to get the object allocation traceback\nok\ntest_registered_base_operation_advances_work_with_its_valid_gate (test_engine_scope_recovery.RecoveryJourney.test_registered_base_operation_advances_work_with_its_valid_gate) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 2.432s\n\nOK\n"
             },
             {
               "cmd": "python3 .github/scripts/run_product_validation.py --platform linux --local",
-              "exit": 1,
-              "milliseconds": 322390,
-              "seconds": 322,
+              "exit": 0,
+              "milliseconds": 232135,
+              "seconds": 232,
               "source": "verification",
-              "tail": "s.test_conflicting_forward_port_preserves_later_line_and_exposes_partial_state\", 46.636496310005896], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_older_maintenance_finishes_without_rewinding_production\", 46.30486412299797]], \"executed_count\": 1209, \"completed_count\": 1209, \"worker_seconds\": [207.25654398900224, 280.24037979499553, 250.71558382199146, 277.79732559999684, 290.5307007369993, 303.5483558459964, 315.2251155449776, 187.5466433900001, 320.8077344519843, 241.84024715199484, 322.07098496099934, 284.95082680199994, 267.49858092400245, 260.9433892010129, 251.45062054001028, 239.28655236400664, 263.16347588799545, 317.6444608249876, 259.1656264339981, 257.0182946189889], \"failures\": 2, \"errors\": 0, \"failure_ids\": [\"test_engine_review_fixes.ClosingSubmitTests.test_resubmit_after_a_closing_submit_is_applied\", \"test_engine_github.CostBudgetTests.test_per_verb_round_trips\"], \"error_ids\": [], \"error\": \"Command '['/usr/bin/python3', 'local-tests']' returned non-zero exit status 1.\"}\n"
+              "tail": "ved_patch_reaches_production_and_later_line_only_after_approval\", 43.98052494399599], [\"test_engine_journeys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 42.803559649997624], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_changed_forward_port_pr_head_invalidates_previous_approval\", 41.69855900600669], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_older_maintenance_finishes_without_rewinding_production\", 40.55048244900536]], \"executed_count\": 1209, \"completed_count\": 1209, \"worker_seconds\": [181.6114949870098, 212.67881744299666, 198.97883457000717, 210.28022472100565, 220.882091668027, 219.85445467499085, 224.83596802898683, 170.5688520760159, 225.7896875340084, 197.09945809000055, 231.9999016399961, 214.22951919600018, 206.91495466799824, 203.7435989890073, 197.6910836349998, 193.47266512099304, 204.65652768401196, 225.31699921700056, 202.6558799110062, 208.0654384919908], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
             }
           ],
-          "passed": false,
+          "passed": true,
           "timing": {
             "baseline": {
               "reason": "changed_commands_or_allocation",
@@ -405,7 +390,7 @@
               "status": "unavailable",
               "verification": {
                 "caveat": "informational; machine load and concurrent goal-command workload may differ",
-                "delta_ms": 107933,
+                "delta_ms": 17678,
                 "source": {
                   "finished_at": "2026-11-19T02:54:19Z",
                   "goal": 1051,
@@ -426,21 +411,21 @@
               "platform": "linux",
               "python": "3.14"
             },
-            "goal_ms": 151402,
+            "goal_ms": 147946,
             "parallel_commands": false,
             "plan_sha256": "5417d9a6055749cbc34fc5a8a18ac761b8f74f060fdb5343dea4e2435c9f537c",
-            "total_ms": 473793,
-            "verification_ms": 322390,
+            "total_ms": 380080,
+            "verification_ms": 232135,
             "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1",
             "workers": {
               "goal": 20,
               "verification": 20
             }
           },
-          "tree": "e413e1e30091e7a8b41e7000ce2a2ee011e6d375"
+          "tree": "4c27873e9f1753e9eefd652ca354ea1227cd0c4b"
         }
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "test_design": {
