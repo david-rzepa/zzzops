@@ -159,45 +159,57 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 1,
-      "correction_runs": 1,
+      "attempt": 2,
+      "correction_runs": 2,
       "findings": [
         {
-          "id": "implement:1:1",
+          "id": "implement:2:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 10,
+          "target_fp": "v1:sha256:5a98dd972f1d033cd1fe1b0b27228dda295abf1d9980a2996c8412356e07e5a6",
+          "text": "The approved design requires isolated maintenance to finish without moving production, then allow independently approved forward-ports, but does not define how a user starts or resumes those forward-ports after the maintenance line has finished. The frozen maintenance journey requires `finish` to complete immediately and then uses that closed line as a nested source. Define the separate entry point, lifecycle, persisted source/head/base and partial-merge state, destination eligibility, and independent approval and race checks without moving production or weakening the existing finish contract.",
+          "upheld": false
+        },
+        {
+          "id": "implement:2:2",
           "note": null,
           "response": null,
           "rounds": 1,
           "status": "open",
           "target": "test_design",
-          "target_attempt": 6,
-          "target_fp": "v1:sha256:70de76520ca897548d6a63aaba7cfaeeebcad12e4afc896ce966922c7c6a8de7",
-          "text": "The approved design requires each forward-port PR to receive its own approval bound to the exact source and head. `test_approved_patch_reaches_production_and_later_line_only_after_approval` calls `approve_finish` once and then requires `finish` to close immediately, without answering the per-forward-port approval. A real local Git/CLI run correctly pauses on `forward-port to dev needs approval` showing the exact PR/head/base/source, but the test fails with KeyError on `finished[\"closed\"]`. Update the accepted release-finish journeys to approve each forward-port and test stale/refused forward-port approval; do not auto-merge those PRs to satisfy this test.",
+          "target_attempt": 7,
+          "target_fp": "v1:sha256:97b1012d15091945a13bdee24919723eca186ff40bf6e59a3d11fb4c509a6d5b",
+          "text": "The frozen maintenance journey verifies isolated finish and nested lineage but has no invocation or assertions for the approved separately reviewed maintenance forward-port. Once the entry point is clarified, exercise an actual local remote through separate destination approvals, refusal, changed head/base/source, partial state and unchanged production. Also cover re-verification of a pending line after a fresh approved preview and source/production changes before member dispatch.",
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-18T23:56:22Z",
+      "finished_at": "2026-11-19T00:37:26Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
           "base": "v1:sha256:7137968f0afc1e3d944fd561b2af20955f2aef16fd65a3864f6989ddd512e960",
           "doc": "v1:blob:b4f730d036d7169afa4a2a4c7c7c814b9522fc98",
-          "tests": "v1:sha256:ec961e2f8f6d8c546dd4bd6af3a2e1cbc0fef5621676dc05d5597501fa3339c9"
+          "tests": "v1:sha256:9a78e952bbf82e6c1cfcdad2d71a775bc1e59e2f08fa9a0062eed8876bd27d53"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1051-implement-1",
-      "input_fp": "v1:sha256:8d5b6bc92edda60814b60d8b6facd42a7c13a599cf9d70adb2f595f8490128aa",
+      "holder": "codex:root/g1051-implement-2",
+      "input_fp": "v1:sha256:7af49f286e68ef8be8451328a03c59be4a52e875971fff255e2d2a71c82a410a",
       "ok": true,
       "output": {
         "code": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "28f161f490b75a050972a2ce0f4ed7667afaf43e",
-          "commit": "40cbbbc2dc64d1783cd0f77e1a3458a47771087d",
-          "tree": "5af90b53da343fd1f0ceac3ee2d7574226be5661"
+          "change": "95130078bff0e645436a27ff17c228e31fa8d6e4",
+          "commit": "b12528215b40e1ec599505f7640f89cdb5bbf426",
+          "tree": "cc6c294d7565f09f1aff85606f59006c2f83e0c6"
         },
-        "summary": "Implemented an initial, incomplete checkpoint for canonical dotted release identities, opt-in writes, release preview and atomic isolated-line creation, and record-only pre-approval sync with separately approved forward-port PRs. The reviewed 31-case suite remains red (11 failures and one error), including unfinished alias collision, lifecycle/race and maintenance behavior; the implementation must resume after test correction."
+        "summary": "Incomplete implementation checkpoint 31685645: canonical aliases, opt-in policy values, ordered dotted targets, isolated line creation and recovery, provenance gates, approval checks and documentation were updated. The required 33-test local suite passes, but the approved separate maintenance forward-port remains unspecified and unimplemented; hosted GitHub protection remains a staging check."
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "review_design": {
