@@ -1,5 +1,5 @@
 # G1050 test review
 
-Approved. The only test change avoids adding a duplicate capability requirement. Existing child-history, scaffold-route and adoption assertions are unchanged.
+Approved. The change supplies required independent review artifacts on every direct design-review submission and runs the behavior test with Python `-B` to keep the worktree clean. Previously accepted safety assertions remain unchanged.
 
-I independently copied the engine and tests to an isolated directory, advertised `conditional_review_routes`, and added it to the shipped policy. The real local-Git implementation-advancement test passed setup without duplicate policy validation and failed at the expected pre-implementation whole-gitlink freeze. The targeted test took 1.183 seconds; the author's full pre-implementation suite took 42.692 seconds. Green behavior remains to be verified with implementation.
+I independently ran a real local-remote CLI fixture: a review with the supplied artifact was accepted as current, and a Python `-B` red invocation left the fixture Git worktree clean. The author's full current pre-implementation suite took 42.687 seconds and remained red because the feature is not implemented; final green behavior remains for implementation verification.
