@@ -136,39 +136,26 @@
       "status": "done"
     },
     "filter_design": {
-      "attempt": 7,
+      "attempt": 8,
       "correction_runs": 1,
-      "findings": [
-        {
-          "id": "filter_design:7:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "design",
-          "target_attempt": 11,
-          "target_fp": "v1:sha256:08be0587b537ec048424942982ba93f8de47a3a50c357f44310c05e5d5280591",
-          "text": "Define and test the forward-port outcome when the destination already contains the source changes and GitHub cannot create a no-diff PR. Reliably inspect actual Git and existing PR state, then report a truthful already-applied outcome or clear resumable block according to verifiable evidence; do not loop on PR creation, silently claim a merge, or modify the closed maintenance goal.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-19T00:43:46Z",
+      "findings": [],
+      "finished_at": "2026-11-19T00:47:48Z",
       "fp_parts": {
         "candidates": [],
         "def": "v1:sha256:c83a5e0ec02bc9504ff118f774138ad5517f6b3a5885d1c28444982e78d23a9f",
         "inputs": {
-          "adversary": "v1:sha256:47053b33d2c34b540407c834af9105d121858aa306168245489f9b5366690d47",
-          "doc": "v1:blob:9cb29051a0a95acfc44450b98dd9a7c4098bc907",
-          "review": "v1:sha256:3c62306261514659eef7f035e2bbf759d26227cde048392368bdb750d1dabcc9",
+          "adversary": "v1:sha256:97a20a1d2f723a4d32cbc9bd12ac47631c349af263eb2dcf0813bb61f07998a0",
+          "doc": "v1:blob:5b199f7a7f94e75dfbec83fa682e91d088f0edec",
+          "review": "v1:sha256:23195d4879159e953a19668a8d89e48337c647bd9921fab1fbcd56b57824a28b",
           "spec": "v1:sha256:36d23dbf43af22b9cc7117bb206dfaccc678b6f1574bc36a6de214fab025777e"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1051-filter-7",
-      "input_fp": "v1:sha256:2f9f1901c8d496984b05f95708f18d75e01d06fc2cd62485f16478fcb6abae21",
+      "holder": "codex:root/g1051-filter-8",
+      "input_fp": "v1:sha256:b8eebecd967912f92f523e701dc34c2d3fe98e943a2df6edc72d1996687f9fa0",
       "ok": true,
       "output": {
-        "summary": "Both reviewers approved the maintenance forward-port design and there are no candidate findings or notes. Independent filter assessment found that the design omits the already-applied/no-diff case: GitHub may reject PR creation when the destination already contains the source, so that case needs an explicit observable outcome and proof before a forward-port goal can complete or report a block. This reopens design.",
+        "summary": "Both independent re-reviews accepted the evidence-backed no-diff forward-port handling, including separately reviewed non-mutating outcomes and a clear block where equivalence is unproven. No open findings or notes remain to filter.",
         "verdicts": {}
       },
       "reason": "stale",
