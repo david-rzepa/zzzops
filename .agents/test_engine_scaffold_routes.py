@@ -595,7 +595,7 @@ class PolicyAdoptionJourneys(unittest.TestCase):
         self.assertEqual(before['goal']['records'], after['goal']['records'])
         actual = self.p.show(self.g)
         self.assertEqual('running', actual['states']['test_design'])
-        self.assertEqual(card['lease']['attempt'], actual['leases'][0]['attempt'])
+        self.assertEqual(card['lease']['attempt'], actual['leases']['test_design']['attempt'])
 
     def accept_old_tests(self, with_finding=False):
         self.w.ok('a', 'start', str(self.g), 'base', '--as', 'claude:aaaa/base')
