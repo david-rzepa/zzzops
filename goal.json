@@ -461,15 +461,15 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 4,
+      "attempt": 5,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T14:28:17Z",
+      "finished_at": "2026-11-19T14:51:12Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:f85a2900ff80b8d14a1917f1d5908fe3d58e32caed7608f5da51dc9cbca07945",
-          "commands": "v1:sha256:70071361ad3e7d3bc75dcea192b6dd2a93848c577239948eb68c2ff74b27ffd7"
+          "code": "v1:sha256:2b5fff5a92d4bea10979708f5b2136917e5b39fa78b2da2e84874333f9185392",
+          "commands": "v1:sha256:2b4b66ffab88f1630d0d7993e8eebec7278863a6422b544c036dbd3ec2e69097"
         },
         "policy": {
           "verification": {
@@ -487,35 +487,35 @@
           ]
         }
       },
-      "holder": "codex:root/g1049-run-post-sync",
-      "input_fp": "v1:sha256:9b7df83d2b18d19a7ef92cf68b17d5f882cf6ee63b7f50372a9b98058b13ab52",
+      "holder": "codex:root/g1049-run-ci-fix",
+      "input_fp": "v1:sha256:08a3932808664bd625168010b489e3ff2c6ffaa110f3913b89fb5956043d85d5",
       "ok": true,
       "output": {
         "result": {
           "details": [
             {
-              "cmd": "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope test_engine_scope_recovery",
+              "cmd": "XDG_CONFIG_HOME=/tmp/zzzops-g1049-empty-xdg PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope test_engine_scope_recovery",
               "exit": 0,
-              "milliseconds": 145493,
-              "seconds": 145,
+              "milliseconds": 61278,
+              "seconds": 61,
               "source": "goal",
-              "tail": "est_unavailable_checkpoint_in_history_is_uncertain (test_engine_scope_recovery.RecoveryJourney.test_unavailable_checkpoint_in_history_is_uncertain) ... ok\ntest_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal (test_engine_scope_recovery.RecoveryJourney.test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal) ... /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1049/plugins/zzzops/zzzops/engine/gitrun.py:191: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n  self._batch = None\nResourceWarning: Enable tracemalloc to get the object allocation traceback\nok\ntest_unrelated_paths_in_modified_proposal_are_refused (test_engine_scope_recovery.RecoveryJourney.test_unrelated_paths_in_modified_proposal_are_refused) ... ok\ntest_workspace_claim_cannot_race_past_recovery_gate (test_engine_scope_recovery.RecoveryJourney.test_workspace_claim_cannot_race_past_recovery_gate) ... ok\n\n----------------------------------------------------------------------\nRan 31 tests in 145.426s\n\nOK\n"
+              "tail": "test_unavailable_checkpoint_in_history_is_uncertain (test_engine_scope_recovery.RecoveryJourney.test_unavailable_checkpoint_in_history_is_uncertain) ... ok\ntest_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal (test_engine_scope_recovery.RecoveryJourney.test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal) ... /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1049/plugins/zzzops/zzzops/engine/gitrun.py:191: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n  self._batch = None\nResourceWarning: Enable tracemalloc to get the object allocation traceback\nok\ntest_unrelated_paths_in_modified_proposal_are_refused (test_engine_scope_recovery.RecoveryJourney.test_unrelated_paths_in_modified_proposal_are_refused) ... ok\ntest_workspace_claim_cannot_race_past_recovery_gate (test_engine_scope_recovery.RecoveryJourney.test_workspace_claim_cannot_race_past_recovery_gate) ... ok\n\n----------------------------------------------------------------------\nRan 31 tests in 61.213s\n\nOK\n"
             },
             {
-              "cmd": "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope.BlockedScopeJourney.test_ambiguous_blocked_source_and_gitlink_are_not_silently_frozen",
+              "cmd": "XDG_CONFIG_HOME=/tmp/zzzops-g1049-empty-xdg PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_scope_recovery",
               "exit": 0,
-              "milliseconds": 1975,
-              "seconds": 1,
+              "milliseconds": 47136,
+              "seconds": 47,
               "source": "goal",
-              "tail": "test_ambiguous_blocked_source_and_gitlink_are_not_silently_frozen (test_engine_blocked_scope.BlockedScopeJourney.test_ambiguous_blocked_source_and_gitlink_are_not_silently_frozen) ... ok\n\n----------------------------------------------------------------------\nRan 1 test in 1.910s\n\nOK\n"
+              "tail": "test_unavailable_checkpoint_in_history_is_uncertain (test_engine_scope_recovery.RecoveryJourney.test_unavailable_checkpoint_in_history_is_uncertain) ... ok\ntest_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal (test_engine_scope_recovery.RecoveryJourney.test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal) ... /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1049/plugins/zzzops/zzzops/engine/gitrun.py:191: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n  self._batch = None\nResourceWarning: Enable tracemalloc to get the object allocation traceback\nok\ntest_unrelated_paths_in_modified_proposal_are_refused (test_engine_scope_recovery.RecoveryJourney.test_unrelated_paths_in_modified_proposal_are_refused) ... ok\ntest_workspace_claim_cannot_race_past_recovery_gate (test_engine_scope_recovery.RecoveryJourney.test_workspace_claim_cannot_race_past_recovery_gate) ... ok\n\n----------------------------------------------------------------------\nRan 22 tests in 47.072s\n\nOK\n"
             },
             {
               "cmd": "python3 .github/scripts/run_product_validation.py --platform linux --local",
               "exit": 0,
-              "milliseconds": 236425,
-              "seconds": 236,
+              "milliseconds": 232214,
+              "seconds": 232,
               "source": "verification",
-              "tail": "s.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 41.19268120199558], [\"test_engine_journeys.JourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 40.37256057601189], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_changed_forward_port_pr_head_invalidates_previous_approval\", 40.27993885698379], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_older_maintenance_finishes_without_rewinding_production\", 39.446419710991904]], \"executed_count\": 1253, \"completed_count\": 1253, \"worker_seconds\": [198.83202140798676, 229.85396766199847, 205.320472773019, 216.42536280298373, 212.47659854000085, 222.05035999999382, 232.9590712270001, 194.73845169201377, 233.74510643500253, 205.7116250859981, 236.21475829198607, 220.06938774400624, 205.33457068999996, 207.01659392000875, 213.56250479799928, 199.3092490839772, 209.6971426020027, 233.028505691007, 203.60886713699438, 221.15485925599933], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
+              "tail": " [\"test_engine_journeys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 41.61813496297691], [\"test_engine_journeys.JourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 40.61474657501094], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_changed_forward_port_pr_head_invalidates_previous_approval\", 40.51111906499136], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_declined_forward_port_is_not_merged\", 39.65552616698551]], \"executed_count\": 1253, \"completed_count\": 1253, \"worker_seconds\": [195.8354341259983, 222.9671722179919, 203.63272505201166, 216.59067390000564, 212.4986612389912, 214.07691566299764, 224.63192702198285, 193.3398724689905, 223.8515467280231, 203.45169384297333, 232.07192613001098, 216.4549539689906, 203.02066168299643, 204.059583010996, 209.59228258099756, 197.26373167801648, 207.3783930639911, 227.95537917799084, 201.41489613702288, 220.78812466398813], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
             }
           ],
           "passed": true,
@@ -523,29 +523,29 @@
             "baseline": {
               "reason": "changed_commands_or_allocation",
               "source": {
-                "finished_at": "2026-11-19T02:54:19Z",
-                "goal": 1051,
-                "goal_commit": "4acdec907a0f729d6dd16158455ff679d96b9b39",
-                "merge_commit": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
+                "finished_at": "2026-11-19T06:06:50Z",
+                "goal": 1050,
+                "goal_commit": "8b94114b547f60be5bb158aeb6fe4e950e526a93",
+                "merge_commit": "a8a2e7855f2dc0a4ca27331a94b930e4df222387",
                 "node": "run_tests",
                 "target": "dev",
-                "tree": "95ff86ada529489f05ab28330062d2b38c63ca56"
+                "tree": "cec7a9e255d742af17652bb89c4a4adf97da0bba"
               },
               "status": "unavailable",
               "verification": {
                 "caveat": "informational; machine load and concurrent goal-command workload may differ",
-                "delta_ms": 21968,
+                "delta_ms": -70235,
                 "source": {
-                  "finished_at": "2026-11-19T02:54:19Z",
-                  "goal": 1051,
-                  "goal_commit": "4acdec907a0f729d6dd16158455ff679d96b9b39",
-                  "merge_commit": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
+                  "finished_at": "2026-11-19T06:06:50Z",
+                  "goal": 1050,
+                  "goal_commit": "8b94114b547f60be5bb158aeb6fe4e950e526a93",
+                  "merge_commit": "a8a2e7855f2dc0a4ca27331a94b930e4df222387",
                   "node": "run_tests",
                   "target": "dev",
-                  "tree": "95ff86ada529489f05ab28330062d2b38c63ca56"
+                  "tree": "cec7a9e255d742af17652bb89c4a4adf97da0bba"
                 },
                 "status": "available",
-                "verification_ms": 214457,
+                "verification_ms": 302449,
                 "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1"
               }
             },
@@ -555,18 +555,18 @@
               "platform": "linux",
               "python": "3.14"
             },
-            "goal_ms": 147468,
+            "goal_ms": 108414,
             "parallel_commands": false,
-            "plan_sha256": "89ed7c9d7c7f6649ccb352c6964b72115ef35161aa819a896c4435c7074261ce",
-            "total_ms": 383893,
-            "verification_ms": 236425,
+            "plan_sha256": "ccace1a3a3aba3f58f29500d6c85b4111cc792ffa3edf74262c076621dd7eb9a",
+            "total_ms": 340629,
+            "verification_ms": 232214,
             "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1",
             "workers": {
               "goal": 20,
               "verification": 20
             }
           },
-          "tree": "fdd58feaf6bd51f29ecca45e5b6b4b121f1ea191"
+          "tree": "42d8135e3aaf6d925871d49bdb34a5985087c5fa"
         }
       },
       "reason": "stale",
