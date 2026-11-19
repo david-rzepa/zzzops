@@ -113,9 +113,16 @@
       "status": "done"
     },
     "design": {
+      "answer": {
+        "decided_at": "2026-11-19T05:09:58Z",
+        "decided_by": "David Rzepa",
+        "quote": "Protect ZzzOps writers (Recommended)",
+        "text": "Use cooperating-writer fencing on GitHub and disclose the remaining direct-push race."
+      },
       "attempt": 4,
       "blocked": {
         "category": "decision",
+        "instructions": "The human answered: Use cooperating-writer fencing on GitHub and disclose the remaining direct-push race.",
         "options": [
           "Q1: Use cooperating-writer fencing on GitHub and disclose the remaining direct-push race",
           "Q1: Require strict atomic cross-ref guarding and refuse recovery on unsupported hosts"
@@ -124,7 +131,7 @@
         "reason": "owner question: Q1 (implement:2:1): Recovery must guard the recorded test scope against a work-branch or lease change while the goal record is updated. GitHub does not provide an atomic check of an un",
         "recommendation": "Q1: Use cooperating-writer fencing and disclose the race. GitHub is the intended host and Project Base G12 needs recovery; direct pushes are outside the normal engine workflow. Preserve the goal-ref CAS, reject observed changes and conflicting leases, and test and document the limitation explicitly.",
         "repeats": 1,
-        "waiting_for": "human"
+        "waiting_for": "agent"
       },
       "correction_runs": 0,
       "findings": [],
