@@ -278,8 +278,13 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
                        ((nd.get("inputs") or {}).get(nd["when"]) or {}).get("from") == selector]
             active = any(leases.get(x) and leases[x].live(now) for x in members)
             findings_open = any(f.get("status") == "open" and is_material(f)
-                                for x in members for f in (records.get(x) or {}).get("findings") or [])
-            safe = not active and not findings_open
+                                and (carrier in members or f.get("target") in members)
+                                for carrier, record in records.items() for f in record.get("findings") or [])
+            # A blocked attempt may have published work without a checkpoint.
+            # Keep its normal repair/review path available until it completes.
+            blocked_work = any((records.get(x) or {}).get("status") == "blocked"
+                               and graph.checkpoint_outputs(x) for x in members)
+            safe = not active and not findings_open and not blocked_work
             for x in members:
                 producer = records.get(x) or {}
                 output = producer.get("output") or producer.get("last_output") or {}
