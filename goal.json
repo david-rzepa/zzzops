@@ -265,6 +265,83 @@
       },
       "status": "done"
     },
+    "review_impl": {
+      "attempt": 1,
+      "correction_runs": 1,
+      "findings": [
+        {
+          "id": "review_impl:1:1",
+          "impact": "Unrelated production source can be silently frozen, blocking legitimate implementation changes without informed test review.",
+          "lens": "compliance",
+          "material": true,
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "implement",
+          "target_attempt": 4,
+          "target_fp": "v1:sha256:d775c7970661d8a1a7ca5630814135f10e7f8e86f8f8cbb8acd33fc33bfb2329",
+          "text": "Material: frozen_paths only adds final candidates to all_candidates when blocked segments exist. With preserved_test_provenance enabled and no blocked segment, a real local Git producer commit containing runtime.py and test_feature.py returns both as frozen without scope_selection or independent candidate review. This silently protects implementation/source files and violates the approved explicit ambiguity-selection contract; inspect all final candidates in every producer attempt and add a non-blocked mixed-source regression.",
+          "upheld": false
+        },
+        {
+          "id": "review_impl:1:2",
+          "impact": "A second agent can displace a live worker without authorization, corrupting coordination and risking loss of work.",
+          "lens": "correctness",
+          "material": true,
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "implement",
+          "target_attempt": 4,
+          "target_fp": "v1:sha256:d775c7970661d8a1a7ca5630814135f10e7f8e86f8f8cbb8acd33fc33bfb2329",
+          "text": "Material: workspace start validates readiness and conflicting leases before acquiring the gate; after the gate it refetches then _claim can replace a newly live same-node lease without --force and does not recheck other workspace leases. Reproduced with two local Git clones and a deterministic pre-gate interception: reviewer acquired attempt 1, stale starter acquired attempt 2, and remote holder changed. Revalidate same-node readiness, reclaim/force, and other live workspace leases under the acquired gate and add a concurrent stale-observation regression.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-19T06:27:56Z",
+      "fp_parts": {
+        "def": "v1:sha256:ba0e80cd449a16330f3e62cea7fab93aad71b666081fd28f1c0386cf4f3d2d24",
+        "inputs": {
+          "base": "v1:sha256:1eee7b2e3964a69facb766f50195fd0750184506761869cf1d3140667ff55a3a",
+          "code": "v1:sha256:8958c8b43680f663443b3eba9cd0df2bcf48bdbc6b69c6f4021221005a1fa6d5",
+          "doc": "v1:blob:fbac244685db79270e91c498ab400c3f5bd862c4",
+          "tests": "v1:sha256:41660b716d5fb268bf432e4f99fb58ec7f4f9c4a31f5fed9516138c4b2c1a03b"
+        },
+        "lenses": [
+          "compliance",
+          "correctness",
+          "missing",
+          "tests",
+          "craft"
+        ],
+        "policy": {},
+        "subject": "v1:sha256:4a6ad8ab8b7b38c8159b63028713a04420ea0b1c8f2b2efc4e67fcd2b9045748"
+      },
+      "holder": "codex:root/g1049-review-impl",
+      "input_fp": "v1:sha256:2d4c43d81e99e208f17f60e925981ba5c4aacd6eab39f0cc362e29cd607e4e71",
+      "ok": true,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "24fa31dd786448ad685fdaf2f5934eff0ab42b49",
+          "commit": "573244881275ed18c8755e843b4c1789ba48e14c",
+          "path": ".zzzops/reviews/1049/review_impl.md"
+        },
+        "summary": "Two reproduced material defects: first-attempt ambiguous files are silently frozen and a stale concurrent start can replace a live workspace lease."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
+          "change": "903193ac046daed996eb75043d54f3e4792b4d99",
+          "commit": "e4b0edcadfb1c50797a6fb6fef2b4bd9b63cfb70",
+          "tree": "4c27873e9f1753e9eefd652ca354ea1227cd0c4b"
+        }
+      },
+      "status": "done"
+    },
     "review_tests": {
       "attempt": 8,
       "correction_runs": 2,
