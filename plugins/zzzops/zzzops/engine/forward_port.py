@@ -15,6 +15,7 @@ def released_lineage(s, doc):
     """Follow immutable approved source records to the released production base."""
     commits = []
     seen = set()
+    seen_goals = {doc.get("id")}
     while True:
         graph = s.state.graphs.get(doc.get("graph"))
         finish = next((n for n in graph.topo if graph.nodes[n].get("op") == "git.line_finish"), None) if graph else None
@@ -41,7 +42,7 @@ def released_lineage(s, doc):
         metadata = (doc.get("flow") or {}).get("inserted") or {}
         goal, snapshot = metadata.get("source_goal"), metadata.get("source_goal_commit")
         source_tip = maintenance.get("source_commit")
-        if (not isinstance(goal, int) or not snapshot or snapshot in seen or not s.git.exists(snapshot)
+        if (not isinstance(goal, int) or goal in seen_goals or not snapshot or snapshot in seen or not s.git.exists(snapshot)
                 or maintenance.get("source_goal") != goal or metadata.get("source_commit") != source_tip
                 or (sync.get("output") or {}).get("merged") != maintenance.get("approved_tip")):
             raise Refused("not_ready", "maintenance lineage has missing or contradictory provenance")
@@ -56,6 +57,7 @@ def released_lineage(s, doc):
             raise Refused("not_ready", "maintenance source snapshot does not match its recorded base")
         commits.append(source_tip)
         seen.add(snapshot)
+        seen_goals.add(goal)
         doc = parent
 
 
