@@ -258,6 +258,8 @@ class RecoveryJourney(unittest.TestCase):
         lock = Path(self.tmp) / "recovery-goal-push-lock"
         hook = Path(self.w.remote) / "hooks" / "pre-receive"
         payload_path = Path(self.tmp) / "guarded-push-payload"
+        contender_ready = Path(self.tmp) / "contender-push-ready"
+        contender_payload = Path(self.tmp) / "contender-push-payload"
         script = f"""#!/bin/sh
 payload=$(cat)
 case "$payload" in
@@ -271,6 +273,14 @@ case "$payload" in
         [ "$i" -lt 300 ] || exit 1
         sleep 0.1
       done
+    else
+      printf '%s\n' "$payload" > {shlex.quote(str(contender_payload))}
+      touch {shlex.quote(str(contender_ready))}
+    fi ;;
+  *refs/heads/zzzops/*)
+    if [ -d {shlex.quote(str(lock))} ]; then
+      printf '%s\n' "$payload" > {shlex.quote(str(contender_payload))}
+      touch {shlex.quote(str(contender_ready))}
     fi ;;
 esac
 exit 0
@@ -319,6 +329,19 @@ exit 0
         self.assertNotEqual(0, rc, out)
         self.assertEqual(before, self.tip())
 
+    def test_already_claimed_publisher_cannot_race_recovery(self):
+        self.damaged_history()
+        proposal = self.diagnostic()["proposal"]
+        self.activate_capability()
+        publisher = self.a.start(self.g, "test_design")
+        self.wt.commit({"tests/publisher.py": "assert True\n"}, "test: claimed publisher")
+        before = self.tip()
+        rc, out = self.w.run("b", "edit", str(self.g), "--file", self.w.file(proposal["edit"]),
+                             "--base", proposal["base"])
+        self.assertNotEqual(0, rc, out)
+        self.assertEqual(before, self.tip())
+        self.assertTrue(any(word in str(out).lower() for word in ("lease", "gate", "workspace", "busy")), out)
+
     def test_workspace_claim_cannot_race_past_recovery_gate(self):
         diag, proposal, proc, release = self.start_guarded_recovery()
         before = self.tip()
@@ -334,7 +357,7 @@ exit 0
         self.assertTrue(recovery.get("applied"), recovery)
         payload = (Path(self.tmp) / "guarded-push-payload").read_text().splitlines()
         refs = [line.split() for line in payload]
-        excluded = ("refs/heads/zzzops/goal/", "refs/heads/zzzops/work/", "refs/heads/zzzops/lease/")
+        excluded = ("refs/heads/zzzops/goal/", "refs/heads/zzzops/work/")
         changed_gate = [parts for parts in refs if len(parts) == 3 and parts[0] != parts[1]
                         and not parts[2].startswith(excluded)]
         self.assertTrue(changed_gate, "recovery goal update must atomically advance a real gate ref")
@@ -346,9 +369,22 @@ exit 0
         second = subprocess.Popen(argv, cwd=self.w.clones["b"].path, env=self.w.cli_env(),
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.addCleanup(lambda: second.kill() if second.poll() is None else None)
-        # Give the contender time to try acquiring the shared gate while the
-        # first writer is held at its final ref transaction.
-        time.sleep(0.5)
+        # Wait for a real second push attempt or an explicit gate refusal
+        # while the first writer is still held at its server-side barrier.
+        marker = Path(self.tmp) / "contender-push-ready"
+        deadline = time.monotonic() + 25
+        while not marker.exists() and second.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(marker.exists() or second.poll() is not None,
+                        "contender did not reach its gate attempt while recovery was held")
+        if marker.exists():
+            first_payload = (Path(self.tmp) / "guarded-push-payload").read_text().splitlines()
+            second_payload = (Path(self.tmp) / "contender-push-payload").read_text().splitlines()
+            def changed_refs(lines):
+                return {p[2] for line in lines if len(p := line.split()) == 3 and p[0] != p[1]
+                        and not p[2].startswith(("refs/heads/zzzops/goal/", "refs/heads/zzzops/work/"))}
+            self.assertTrue(changed_refs(first_payload) & changed_refs(second_payload),
+                            "the contender must actually attempt the same changed gate ref")
         first_rc, first_result = self.finish_recovery(first, release)
         second_stdout, second_stderr = second.communicate(timeout=30)
         try:
@@ -356,6 +392,9 @@ exit 0
         except ValueError:
             second_result = {"stdout": second_stdout, "stderr": second_stderr}
         self.assertEqual(1, (first_rc == 0) + (second.returncode == 0), (first_result, second_result))
+        if not marker.exists():
+            self.assertNotEqual(0, second.returncode)
+            self.assertTrue(any(word in str(second_result).lower() for word in ("gate", "lease", "busy", "claim")), second_result)
         winner = first_result if first_rc == 0 else second_result
         self.assertTrue(winner.get("applied"), winner)
 
