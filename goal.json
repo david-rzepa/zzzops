@@ -232,30 +232,30 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 7,
+      "attempt": 8,
       "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-19T14:28:02Z",
+      "finished_at": "2026-11-19T14:50:53Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
           "base": "v1:sha256:b99e32e47003f2ce6d216be0b56eb57c6f6b37d1c7b18c742ee3bfb0e2475354",
           "doc": "v1:blob:fbac244685db79270e91c498ab400c3f5bd862c4",
-          "tests": "v1:sha256:aa9881cac9a3e433b901e7d1a2c819f963299ee5c361019beefd58a2282f2d8b"
+          "tests": "v1:sha256:7212efc379030e8539f8d34376a389eb91e2270b7b88b63b91aa5e38e98d9d09"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1049-implement-final",
-      "input_fp": "v1:sha256:ac9cf39094c616d8a7e8f2cd0efa8c23aff4f4b6b77df8ed206e7673177cd5d7",
+      "holder": "codex:root/g1049-implement-gh",
+      "input_fp": "v1:sha256:54217bf9bd32291bde7e2b3e235bfc546e34962b8a36b5808acc73ede4f7e5b4",
       "ok": true,
       "output": {
         "code": {
           "base": "a8a2e7855f2dc0a4ca27331a94b930e4df222387",
-          "change": "bf6a1ffe18619172871dcc3add11ef9fb39bd0e5",
-          "commit": "335c617edf9310c01d20596bd4d8c63b1301f517",
-          "tree": "fdd58feaf6bd51f29ecca45e5b6b4b121f1ea191"
+          "change": "b21019ac382c862359bf6fd7465566602100b35d",
+          "commit": "717d25d3c01b6cd4e8ba830b5228824950458020",
+          "tree": "42d8135e3aaf6d925871d49bdb34a5985087c5fa"
         },
-        "summary": "Verified the synced implementation against the corrected declared-submodule fixture. All 31 recovery and blocked-scope tests, the individually requested mixed-gitlink case, and three real-submodule cross-capability checks pass locally; no additional code changes were needed."
+        "summary": "Verified the approved isolated fake-GitHub fixture without local gh credentials. Both requested suites passed using an empty XDG config: 31 blocked-scope/recovery tests and 22 recovery tests, including both previously failing CI races; no production changes were needed."
       },
       "reason": "stale",
       "status": "done"
