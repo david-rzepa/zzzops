@@ -10,7 +10,7 @@
   "priority": "P2",
   "records": {
     "adversary_design": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 1,
       "findings": [
         {
@@ -20,7 +20,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 3,
           "target_fp": "v1:sha256:cd19a6bfa9f285e9d1936f0cbd1f34fabaca319d3147ddb0ae785573c8c291a1",
@@ -28,33 +28,33 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-19T04:05:19Z",
+      "finished_at": "2026-11-19T04:08:41Z",
       "fp_parts": {
         "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
         "inputs": {
-          "doc": "v1:blob:6e65cc4166ced0eb308e9005e159540200dea7dc",
+          "doc": "v1:blob:2a8f10ac60632611baa7b55985abcb60f4650b1d",
           "spec": "v1:sha256:014dd47b89f4500ebe37fe1115934cf99ce5e5928862020735efad9984e42177"
         },
         "policy": {},
-        "subject": "v1:sha256:cd19a6bfa9f285e9d1936f0cbd1f34fabaca319d3147ddb0ae785573c8c291a1"
+        "subject": "v1:sha256:44e6fea84a9de44fed09f189358f01261cd30ba7aa2261de827cc7dac5229892"
       },
-      "holder": "codex:root/g1050-adversary",
-      "input_fp": "v1:sha256:194b2bf9b15497c748f2980234e19db1f19f76aa53c7781ede132cf2a4b8a134",
+      "holder": "codex:root/g1050-adversary-2",
+      "input_fp": "v1:sha256:cfd64a32a6da2bbc7126648eb91f758be9cfc53a46bf61e9da8d546f617188f6",
       "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "6034e673ab81ef00a6804084207bc829c41c26bd",
-          "commit": "5d02947cb3a90cb7b7b122a5df06a1de9082e2ea",
+          "blob": "b2d27c9debcdf9f5d4fd3b44ba9c5e633cc564fb",
+          "commit": "b472fec10f70c72dd4af3a9c85d8cdd6a60039da",
           "path": ".zzzops/reviews/1050/adversary_design.md"
         },
-        "summary": "Child checkpoint protection needs a complete, deterministic protected-path scope; otherwise a helper changed with accepted tests can be omitted and silently weakened."
+        "summary": "The revision closes the child test-protection gap and includes fail-closed route-transition checks."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "6e65cc4166ced0eb308e9005e159540200dea7dc",
-          "commit": "5e63f550368a5ff1b1d377f492fbee9929436e87"
+          "blob": "2a8f10ac60632611baa7b55985abcb60f4650b1d",
+          "commit": "c37315832627c8a5bd9759beea0aba5d4b9e3a2f"
         }
       },
       "status": "done"
