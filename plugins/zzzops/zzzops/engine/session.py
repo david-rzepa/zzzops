@@ -256,6 +256,26 @@ class Session:
             u = {"target": tg["branch"], "tip": tip, "behind": False, "merged_in_target": {}}
             records = d.get("records") or {}
             flow = d.get("flow") or {}
+            if d.get("graph") == "forward_port":
+                import json
+                try:
+                    details = json.loads(d["spec"])
+                    prior = ((records.get("prepare") or {}).get("output") or {}).get("evidence") or {}
+                    current = self.fetch_branches([details["destination"], details["carrier"]])
+                    finish = records.get("finish") or {}
+                    # A blocked merge can have succeeded despite a lost response;
+                    # let the finish operation inspect that PR before refreshing.
+                    retrying_merge = (finish.get("status") == "done" or
+                                      (finish.get("status") == "blocked" and
+                                       (finish.get("blocked") or {}).get("reason") in
+                                       ("provider_retry", "post_merge_divergence")))
+                    if prior and not retrying_merge:
+                        u["behind"] = (current.get(details["destination"]) != prior.get("destination_tip")
+                                       or current.get(details["carrier"]) != prior.get("head"))
+                except (KeyError, TypeError, ValueError):
+                    u["behind"] = False
+                out[g] = u
+                continue
             line = next((x for x in lns if x.open and x.branch == tg["branch"]), None)
             inserted = (ledger.get(line.goal) or {}).get("inserted") if line else None
             if isinstance(inserted, dict) and not flow.get("line"):
@@ -306,6 +326,13 @@ class Session:
         if isinstance(target, str) and "insertable_release_targets" not in schemas.required_caps(self.state.settings):
             return ["goal.release: dotted targets need capability `insertable_release_targets` in settings.engine.requires"]
         prev = self.state.docs.get(g)
+        if prev and prev.get("graph") == "forward_port" and d.get("graph") != "forward_port":
+            return ["forward-port graph is immutable; create a new request"]
+        if d.get("graph") == "forward_port":
+            if "insertable_release_targets" not in schemas.required_caps(self.state.settings):
+                return ["forward-port goals require capability `insertable_release_targets`"]
+            if prev and (prev.get("graph") != "forward_port" or prev.get("spec") != d.get("spec")):
+                return ["forward-port source and destination are immutable; create a new request"]
         flow, pflow = d.get("flow"), (prev or {}).get("flow")
         if flow != pflow:
             if isinstance(pflow, dict) and "line" in pflow:

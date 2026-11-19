@@ -535,8 +535,8 @@ def portfolio(docs: dict, graphs: dict, leases: dict, settings: dict, now: int, 
     effective = ln.effective_release(settings, lns) if b else None
     if b and "insertable_release_targets" in required_caps(settings):
         targets = [entry.get("release") for entry in L.values()
-                   if entry.get("state") in ("open", "held") and not entry.get("line")
-                   and not entry.get("hotfix") and entry.get("release") is not None]
+                   if entry.get("state") in ("open", "held") and ln.is_member(entry)
+                   and entry.get("release") is not None]
         targets.extend(x.name for x in lns if x.kind == "release" and x.open)
         if any(isinstance(release_id.canonical(target), str) for target in targets):
             effective = release_id.canonical(min(targets, key=release_id.components))
@@ -569,6 +569,8 @@ def portfolio(docs: dict, graphs: dict, leases: dict, settings: dict, now: int, 
                     "insert_waiting": target.get("name") if target["kind"] == "inserted" and not target["branch"] else None,
                     "upstream": upstream.get(g) or {}}
             flow = d.get("flow") or {}
+            if d.get("graph") == "forward_port":
+                lctx["line_behind"] = bool((upstream.get(g) or {}).get("behind"))
             if flow.get("line"):
                 if (isinstance(flow.get("inserted"), dict) and not flow["inserted"].get("verified")
                         and d.get("records")):

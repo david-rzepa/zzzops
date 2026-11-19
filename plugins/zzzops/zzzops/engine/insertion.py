@@ -6,7 +6,7 @@ import copy
 
 from engine import canon, release_id, schemas
 from engine.errors import Refused
-from engine.lines import branching, line_branch
+from engine.lines import branching, is_member, line_branch
 
 CAPABILITY = "insertable_release_targets"
 
@@ -67,7 +67,7 @@ def preview(s, target, source):
     branch = line_branch(b, "release", target)
     ledger = s.portfolio().ledger
     completed = sorted(g for g, entry in ledger.items()
-                       if not entry.get("line") and not entry.get("hotfix")
+                       if is_member(entry)
                        and release_id.equal(entry.get("release"), target)
                        and entry.get("state") == "closed" and entry.get("closed") == "done")
     details = {"target": target, "source_release": source, "source_goal": line.goal,

@@ -359,6 +359,8 @@ def cmd_new(argv):
     errs = schemas.validate_new_file(spec)
     if errs:
         raise Refused("validation", "; ".join(errs), details={"errors": list(errs)})
+    if spec.get("graph") == "forward_port":
+        raise Refused("validation", "forward-port goals are created by `release forward-port`")
     key = request_key_of(spec)
     s = session(a)                                   # refuses --policy-ref before any scan (G1001 §4)
     st = s.open()

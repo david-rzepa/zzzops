@@ -2,12 +2,35 @@
 
 from __future__ import annotations
 
+import copy
 import json
 
 from engine import canon, release_id, schemas, store
 from engine.cli import scan_request_key
 from engine.errors import Refused
 from engine.lines import branching
+
+
+def recover_unavailable_source(s, source, destination):
+    """Keep an existing operation discoverable when its source was revoked."""
+    matches = []
+    for gid, doc in s.state.docs.items():
+        if doc.get("graph") != "forward_port":
+            continue
+        try:
+            details = json.loads(doc["spec"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if (release_id.equal(details.get("source_release"), source)
+                and details.get("destination") == destination):
+            matches.append(gid)
+    if len(matches) == 1:
+        gid = matches[0]
+        return {"ok": True, "goal": gid, "created": {"id": gid, "recovered": True},
+                "next": s.render_next(scope=[gid]),
+                "warnings": [{"kind": "source_provenance_changed",
+                              "message": "The original operation remains available for review; its source is no longer verified."}]}
+    return None
 
 
 def start(s, source, destination):
@@ -25,6 +48,9 @@ def start(s, source, destination):
     lines = s.portfolio().lines
     candidates = [line for line in lines if line.kind == "release" and release_id.equal(line.name, source)]
     if len(candidates) != 1:
+        recovered = recover_unavailable_source(s, source, destination)
+        if recovered:
+            return recovered
         raise Refused("not_ready", "source must identify one finished maintenance release")
     line = candidates[0]
     doc = s.state.docs.get(line.goal) or {}
@@ -39,7 +65,23 @@ def start(s, source, destination):
             or record.get("status") != "done" or not record.get("ok")
             or approval.get("status") != "done" or not approval.get("ok")
             or (sync.get("output") or {}).get("merged") != tip or not tip):
+        recovered = recover_unavailable_source(s, source, destination)
+        if recovered:
+            return recovered
         raise Refused("not_ready", "source has no approved finished maintenance provenance")
+    # Re-evaluate the closed record's graph without consulting the mutable
+    # release branch: only the recorded approved finish is the source.
+    from engine.frontier import portfolio
+    docs = dict(s.state.docs)
+    docs[line.goal] = dict(doc, state="open", closed=None)
+    view = portfolio(docs, s.state.graphs, {}, settings, s.now, s.state.invalid, s.state.newer,
+                     ledger=s.state.ledger, upstream={})
+    source_result = view.goals.get(line.goal)
+    if not source_result or source_result.st.get(finish, {}).get("name") != "current":
+        recovered = recover_unavailable_source(s, source, destination)
+        if recovered:
+            return recovered
+        raise Refused("not_ready", "source maintenance finish or approval is stale")
     allowed = {s.snap.I, b["production"]} | {x.branch for x in lines if x.kind == "release" and x.open}
     if (not isinstance(destination, str) or not schemas.ref_ok(destination)
             or destination.startswith("zzzops/") or destination == line.branch or destination not in allowed):
@@ -52,10 +94,27 @@ def start(s, source, destination):
     if not target_tip or not s.git.exists(tip) or not common:
         raise Refused("not_ready", "source and destination lack verifiable common released ancestry")
     source_commit = s.snap.goals[line.goal]
-    key = "forward:" + canon.H({"source_goal": line.goal, "tip": tip, "destination": destination})
+    key = "forward:" + canon.H({"source_goal": line.goal, "source_goal_commit": source_commit,
+                                 "tip": tip, "destination": destination})
     hits = scan_request_key(s, key) if s.snap.current else []
     if hits:
-        return {"ok": True, "goal": hits[0][0], "created": {"id": hits[0][0], "recovered": True}}
+        gid, _, root = hits[0]
+        prior = s.state.docs.get(gid) or root
+        finish = (prior.get("records") or {}).get("finish") or {}
+        if (finish.get("status") == "blocked" and
+                (finish.get("blocked") or {}).get("reason") == "provider_retry"):
+            s.require_writable([gid])
+            retry = copy.deepcopy(prior)
+            retry["records"]["finish"]["blocked"]["retry_after"] = canon.iso(s.now)
+            old = s.snap.goals[gid]
+            msg = store.with_trailers(store.goal_message("edit", gid, "retry forward-port", "open"), retry, settings)
+            new = store.goal_commit(s.git, retry, old, msg)
+            result, _ = store.push_atomic(s.git, s.R, [(f"refs/heads/zzzops/goal/g{gid}", old, new)])
+            if result != "ok":
+                raise Refused("conflict", "forward-port changed while preparing retry; try again")
+            s.refetch(all_goals=True)
+        return {"ok": True, "goal": gid, "created": {"id": gid, "recovered": True},
+                "next": s.render_next(scope=[gid])}
     s.require_writable()
     known = set(s.snap.known) | set(s.snap.goals) | set(s.snap.deleted) | set(s.snap.rewritten)
     gid = max(known | {settings["goals"]["first_id"] - 1}) + 1
@@ -78,6 +137,9 @@ def start(s, source, destination):
         s.refetch(all_goals=True)
         hits = scan_request_key(s, key)
         if hits:
-            return {"ok": True, "goal": hits[0][0], "created": {"id": hits[0][0], "recovered": True}}
+            return {"ok": True, "goal": hits[0][0], "created": {"id": hits[0][0], "recovered": True},
+                    "next": s.render_next(scope=[hits[0][0]])}
         raise Refused("conflict", "could not atomically create forward-port", details={"reason": error[:500]})
-    return {"ok": True, "goal": gid, "created": {"id": gid, "recovered": False}}
+    s.refetch(all_goals=True)
+    return {"ok": True, "goal": gid, "created": {"id": gid, "recovered": False},
+            "next": s.render_next(scope=[gid])}

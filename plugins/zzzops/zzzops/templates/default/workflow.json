@@ -601,7 +601,8 @@
           "stage": "delivery",
           "outputs": {
             "evidence": "object"
-          }
+          },
+          "schedule": "upstream"
         },
         "approve": {
           "description": "Approve this exact forward-port or evidence.",

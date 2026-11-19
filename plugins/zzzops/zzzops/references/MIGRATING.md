@@ -65,6 +65,8 @@ Before landing a policy with `settings.branching`, require `release_lines` throu
 
 Upgrade every writer first, then use the reviewed capability upgrade procedure in REPAIR.md to require `insertable_release_targets` before writing dotted releases. Inspect release refs and line records for aliases such as `release/2` and `release/2.0`; resolve collisions explicitly before activation. Keep the capability requirement after any dotted state has been written: removing it can let older writers misinterpret that state. Custom workflows must retain isolated release-line routing, the source snapshot checks, and the separate approval gates. A dotted label is an ordering identity, not proof of a Git ancestor; use `release insert` and review its recorded released source.
 
+For post-finish maintenance forward-ports, add the shipped `forward_port` graph and its `approve_forward_port.md` prompt to the reviewed repository workflow. Each `release forward-port SOURCE --to BRANCH` creates a separate operation; retrying the command resumes the same source snapshot and destination. History-only evidence needs its own approval and cannot prove the change remains effective after a later revert. When a source or destination changes, inspect the refreshed evidence before approving it.
+
 
 ## Adopting measured test cost (capability `test_cost`)
 

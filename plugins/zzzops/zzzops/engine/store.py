@@ -465,6 +465,8 @@ def build_ledger(git: Git, snap: Snapshot, commits: dict, st: State) -> dict:
             line = c.trailer("Line")
             out[g] = {"release": target, "state": c.trailer("State") or "open", "closed": c.trailer("Closed"),
                       "line": line, "hotfix": c.trailer("Hotfix")}
+            if c.trailer("Coordination") == "forward_port":
+                out[g]["coordination"] = True
             if line and (g in st.invalid or g in st.newer):
                 # A trailer alone cannot prove an invalid or unreadable line's
                 # isolation metadata. Never route members onto it as verified.
@@ -485,6 +487,8 @@ def ledger_trailers(doc: dict, settings: dict | None) -> str:
     if not settings or settings.get("branching") is None or not isinstance(doc, dict):
         return ""
     lines = [f"Release: {doc.get('release')}"]
+    if doc.get("graph") == "forward_port":
+        lines.append("Coordination: forward_port")
     if doc.get("state") == "closed" and isinstance(doc.get("closed"), dict):
         lines.append(f"Closed: {doc['closed'].get('reason')}")
     flow = doc.get("flow") or {}

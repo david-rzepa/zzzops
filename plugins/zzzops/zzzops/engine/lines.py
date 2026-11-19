@@ -22,6 +22,8 @@ def entry_of(doc: dict) -> dict:
              "line": f"{flow['line']}:{flow['name']}" if flow.get("line") else None, "hotfix": flow.get("hotfix")}
     if "inserted" in flow:
         entry["inserted"] = flow["inserted"]
+    if doc.get("graph") == "forward_port":
+        entry["coordination"] = True
     return entry
 
 
@@ -92,7 +94,7 @@ def open_line(lines: list, kind: str, name) -> Line | None:
 
 def is_member(e: dict) -> bool:
     """A goal that belongs to its release (not a line goal, not a hotfix member)."""
-    return not e.get("line") and not e.get("hotfix")
+    return not e.get("line") and not e.get("hotfix") and not e.get("coordination")
 
 
 def members(ledger: dict, line: Line) -> list:
@@ -115,6 +117,8 @@ def target_of(doc: dict, settings: dict, lines: list) -> dict:
     """{"branch", "kind"} of a goal: its open line's branch, else the integration branch. A hotfix member with no
     open line has branch None (its `base` waits for `hotfix start`)."""
     I = settings["integration_branch"]
+    if doc.get("graph") == "forward_port":
+        return {"branch": I, "kind": "integration"}
     b = branching(settings)
     flow = doc.get("flow") or {}
     try:
