@@ -799,7 +799,37 @@ class MaintenanceForwardPortJourneys(Branching):
     answer = InsertedReleaseJourneys.answer
     insert = InsertedReleaseJourneys.insert
 
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        # Build real release history once through the engine, then give every
+        # test its own physical remote and provider state (no shared refs).
+        seed = cls(methodName="runTest")
+        Branching.setUp(seed)
+        cls.addClassCleanup(seed.doCleanups)
+        cls._seed = seed
+        cls._finished = seed._build_finished_maintenance()
+        cls._seed_refs = seed.w.remote_git("for-each-ref", "--format=%(refname):%(objectname)", "refs/heads")
+        cls._seed_pr_count = len(seed.gh.load()["prs"])
+
+    def setUp(self):
+        super().setUp()
+        shutil.rmtree(self.w.remote)
+        shutil.copytree(self._seed.w.remote, self.w.remote)
+        state = self._seed.gh.load()
+        state["remote"] = self.w.remote
+        self.gh.save(state)
+        self.w.now = self._seed.w.now
+        self.w.news = self._seed.w.news
+        self.assertEqual(self._seed_refs, self.w.remote_git(
+            "for-each-ref", "--format=%(refname):%(objectname)", "refs/heads"))
+        self.assertEqual(self._seed_pr_count, len(self.gh.load()["prs"]))
+        self.assertNotEqual(self._seed.w.remote, self.w.remote)
+
     def finished_maintenance(self):
+        return self._finished
+
+    def _build_finished_maintenance(self):
         self.finished_source()
         later = self.goal(release=2)
         self.done(later, code={"src/newer.py": "newer = True\n"})
@@ -958,7 +988,7 @@ class MaintenanceForwardPortJourneys(Branching):
         self.assertEqual(production, self.tip("main"))
         self.assertEqual(closed, self.goal_tip(line))
 
-    def test_changed_carrier_head_and_destination_invalidate_approval(self):
+    def assert_independent_approval_invalidation(self, move_head):
         line, source, production = self.finished_maintenance()
         closed = self.goal_tip(line)
         port = self.request_port()
@@ -967,18 +997,29 @@ class MaintenanceForwardPortJourneys(Branching):
                if p["state"] == "OPEN" and p["baseRefName"] == "dev"]
         self.assertEqual(1, len(prs))
         pr = prs[0]
+        head_before = self.tip(pr["headRefName"])
+        base_before = self.tip("dev")
         self.answer_port(port, item)
-        moved_head = self.push_branch(pr["headRefName"], {"src/unapproved.py": "bad = True\n"})
-        advanced_dev = self.push_branch("dev", {"src/new_base.py": "new = True\n"})
+        if move_head:
+            changed = self.push_branch(pr["headRefName"], {"src/unapproved.py": "bad = True\n"})
+            self.assertEqual(base_before, self.tip("dev"))
+        else:
+            changed = self.push_branch("dev", {"src/new_base.py": "new = True\n"})
+            self.assertEqual(head_before, self.tip(pr["headRefName"]))
         self.drive_port(port)
-        self.assertEqual(advanced_dev, self.tip("dev"))
+        self.assertEqual(base_before if move_head else changed, self.tip("dev"))
         self.assertEqual("OPEN", self.gh.pr(pr["number"])["state"])
         fresh = self.port_until_human(port)
         self.assertNotEqual(item["fp"], fresh["fp"])
-        self.assertIn(moved_head, json.dumps(fresh))
-        self.assertIn(advanced_dev, json.dumps(fresh))
+        self.assertIn(changed, json.dumps(fresh))
         self.assertEqual(closed, self.goal_tip(line))
         self.assertEqual(production, self.tip("main"))
+
+    def test_head_change_alone_invalidates_approval(self):
+        self.assert_independent_approval_invalidation(move_head=True)
+
+    def test_base_change_alone_invalidates_approval(self):
+        self.assert_independent_approval_invalidation(move_head=False)
 
     def test_source_revocation_after_port_approval_blocks_the_merge(self):
         line, source, production = self.finished_maintenance()
@@ -1083,3 +1124,50 @@ class MaintenanceForwardPortJourneys(Branching):
         self.assertIn(actual["mergeCommit"], json.dumps(self.show(port)))
         self.assertEqual(production, self.tip("main"))
         self.assertEqual(closed, self.goal_tip(line))
+
+    def assert_post_merge_race_is_recorded_and_paused(self, change_source):
+        line, source, production = self.finished_maintenance()
+        port = self.request_port()
+        item = self.port_until_human(port)
+        prs = [p for p in self.gh.load()["prs"].values()
+               if p["state"] == "OPEN" and p["baseRefName"] == "dev"]
+        self.assertEqual(1, len(prs))
+        pr = prs[0]
+        approved_head = self.tip(pr["headRefName"])
+        base_before = self.tip("dev")
+        source_before = self.goal_tip(line)
+        self.answer_port(port, item)
+        actions = [a for a in self.nxt(port)["actions"] if a.get("goal") == port]
+        self.assertEqual(1, len(actions), actions)
+
+        def mutate(_pr):
+            if change_source:
+                changed = InsertedReleaseJourneys._reopen_source(self, line, "race-source")
+                self.assertEqual(base_before, self.tip("dev"))
+                return changed
+            changed = self.push_branch("dev", {"src/base_race.py": "raced = True\n"})
+            self.assertEqual(source_before, self.goal_tip(line))
+            return changed
+
+        changed, rc, result, stderr = InsertedReleaseJourneys._at_provider_merge(
+            self, port, actions[0]["node"], mutate, approved_head=approved_head, target="dev")
+        actual = self.gh.pr(pr["number"])
+        self.assertEqual("MERGED", actual["state"], (rc, result, stderr))
+        merge = actual["mergeCommit"]
+        self.assertTrue(self.is_ancestor(merge, self.tip("dev")), "the observed merge must not be rolled back")
+        self.assertTrue(self.is_ancestor(source, self.tip("dev")))
+        if not change_source:
+            self.assertTrue(self.is_ancestor(changed, self.tip("dev")))
+        self.assertEqual(production, self.tip("main"))
+        status = self.nxt(port)
+        evidence = json.dumps({"goal": self.show(port), "status": status, "result": result}).lower()
+        self.assertIn(merge.lower(), evidence)
+        self.assertTrue("divergen" in evidence or "changed" in evidence or "race" in evidence, evidence)
+        self.assertTrue(status.get("needs_human") or status.get("blockers"), status)
+        self.assertFalse(any(a.get("goal") == port for a in status.get("actions", [])), status)
+
+    def test_source_move_at_provider_merge_is_recorded_and_pauses(self):
+        self.assert_post_merge_race_is_recorded_and_paused(change_source=True)
+
+    def test_base_move_at_provider_merge_is_recorded_and_pauses(self):
+        self.assert_post_merge_race_is_recorded_and_paused(change_source=False)
