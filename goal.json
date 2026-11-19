@@ -186,55 +186,43 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 2,
-      "correction_runs": 2,
+      "attempt": 3,
+      "correction_runs": 3,
       "findings": [
         {
-          "id": "implement:2:1",
+          "id": "implement:3:1",
           "note": null,
           "response": null,
           "rounds": 1,
           "status": "open",
           "target": "test_design",
-          "target_attempt": 4,
-          "target_fp": "v1:sha256:d605ca65dfcd1cb2d6633d6e27693f36c5306bcb4629a1fe6af7f81c019c28f5",
-          "text": "ScaffoldRouteJourneys.reviewer submits review_design directly through Agent.submit without passing the mandatory --artifact report (submit_review, test_review_requires_a_boolean_decision and route flip callers). The real CLI refuses valid review outputs with review_design needs --artifact, so the test cannot distinguish correct routing from a missing review artifact. Provide a real review artifact for each valid review submission; preserve the independent review report requirement.",
-          "upheld": false
-        },
-        {
-          "id": "implement:2:2",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "test_design",
-          "target_attempt": 4,
-          "target_fp": "v1:sha256:d605ca65dfcd1cb2d6633d6e27693f36c5306bcb4629a1fe6af7f81c019c28f5",
-          "text": "The real-minimal-scaffold journey executes Python before submitting test_design. Importing src.value writes untracked __pycache__ into the real Git worktree, and the CLI correctly rejects submission with dirty_worktree before the behavior checkpoint can be accepted. Disable bytecode writes for those subprocesses, or clean the generated cache, so the intended red/green journey exercises the normal clean-worktree requirement.",
+          "target_attempt": 5,
+          "target_fp": "v1:sha256:67e2892c29ebf43726ef7aa2d74104273d5ea9e05aacb78929a3d5e452045b85",
+          "text": "PolicyAdoptionJourneys.test_preview_preserves_live_lease_and_never_starts_new_workers indexes actual[\"leases\"][0], but the existing real show --json API returns leases as an object keyed by node name (engine/cli.py builds leases[node]). The required suite runs 33/34 with this case raising KeyError: 0 before checking the lease. Read actual[\"leases\"][\"test_design\"] and retain the exact attempt assertion; do not change the CLI shape.",
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-19T04:41:21Z",
+      "finished_at": "2026-11-19T05:12:07Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
           "base": "v1:sha256:1eee7b2e3964a69facb766f50195fd0750184506761869cf1d3140667ff55a3a",
           "doc": "v1:blob:2a8f10ac60632611baa7b55985abcb60f4650b1d",
-          "tests": "v1:sha256:ac5009b83138cdfc83367c8c1e6e99e2b1e20490f0cf0e53275932b88bce35fb"
+          "tests": "v1:sha256:a17edd796f68292ebab1d21b05fc6b9f2effb70ed9cce30b2b511530c9def2f8"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1050-implement-2",
-      "input_fp": "v1:sha256:bb34103fcea0ec63d879c0053d36f3676d3d07d95f51902c1a86be6311c978e9",
+      "holder": "codex:root/g1050-implement-3",
+      "input_fp": "v1:sha256:82bad039f0e05df8f4bb9a421421f27d8538eb3bcd76c7a9cdc23e6f36859af6",
       "ok": true,
       "output": {
         "code": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "1fb8883b3fc28cbb80fdd7a373021ea3385394f3",
-          "commit": "8c622c854b120e7e0ca0d2417737ada389c6c6e1",
-          "tree": "c292540e24e085c0e1e7a3a2f3decc8953962aba"
+          "change": "cd080fba91dd3f630915622b59d48af0ef591ce2",
+          "commit": "f0bbc199588a184ade9dd1d642fd1f40e5e9e7b5",
+          "tree": "7103df92f5bf38bd10b64431d9ff65134ae36a0f"
         },
-        "summary": "Reproduced two additional fixture failures that prevent review-route journeys from reaching their assertions."
+        "summary": "Implemented capability-gated conditional scaffold routing and child Git test preservation, with local base/integration checks and migration guidance. The focused routing and child journeys pass, but full product validation still reports legacy fixture and review-order failures that need further investigation; this checkpoint is not ready to merge. The accepted migration-preview test also has a confirmed lease-shape fixture error."
       },
       "reason": "stale",
       "status": "done"
