@@ -87,9 +87,13 @@ def _entry(repo, commit, path):
 def capture(s, lease, end, prior):
     """Return frozen parent paths and immutable evidence for child paths."""
     start = (prior or {}).get('parent_start') or lease.work
+    prior_children = (prior or {}).get('children', {})
+    # Rebased ordinary repositories need no child provenance. Do not impose a
+    # submodule ancestry requirement where no child gitlinks are involved.
+    if not prior_children and not _links(s.git, end) and (not start or not _links(s.git, start)):
+        return {'parent_start': end, 'children': {}}
     if not start or not s.git.is_ancestor(start, end):
         raise Refused('validation', 'submodule test checkpoint provenance is unavailable')
-    prior_children = (prior or {}).get('children', {})
     commits = s.git.out('rev-list', '--reverse', f'{start}..{end}').split()
     parents = [start, *commits]
     mapping = _mapping(s.git, start)

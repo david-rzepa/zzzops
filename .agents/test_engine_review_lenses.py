@@ -434,7 +434,7 @@ class ContractDocsTests(unittest.TestCase):
 
 
 class ReviewWorld(unittest.TestCase):
-    """A World bootstrapped with the shipped 15-node template and a real intent."""
+    """A World bootstrapped with the shipped template and a real intent."""
 
     renamed = False
 
@@ -447,6 +447,7 @@ class ReviewWorld(unittest.TestCase):
         self.lm = LENS_RENAME if self.renamed else {}
         self.bootstrap()
         self.p = Pilot(self.w, self.m)
+        self.p.auto_route = True
 
     def bootstrap(self):
         wf = renamed_shipped() if self.renamed else shipped("workflow.json")
