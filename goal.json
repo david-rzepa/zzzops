@@ -113,10 +113,10 @@
       "status": "done"
     },
     "design": {
-      "attempt": 5,
+      "attempt": 6,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T05:11:00Z",
+      "finished_at": "2026-11-19T05:29:36Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -125,21 +125,21 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/g1049-design-fenced",
+      "holder": "codex:root/g1049-design-gate-contract",
       "input_fp": "v1:sha256:66037f9e6a03e6b47cc13989a77c66f91ff9b2379287946442f0d56d000b533d",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "a3ac387cd2f38ff9ee0f04e627ebb2d7657176b0",
-          "commit": "8975028b3e43dc85fd7e151c7759f2d8e03be891",
+          "blob": "fbac244685db79270e91c498ab400c3f5bd862c4",
+          "commit": "b6fe3d3e95529b818a0f089bb2b84743da086f1a",
           "path": ".zzzops/reviews/1049/design.md"
         },
         "responses": {
-          "implement:2:1": "fixed: recorded as owner decision Q1"
+          "test_design:8:1": "fixed: Defined the configured expiry, show and workspace_busy details, automatic expired-gate CAS reclaim, success and stale-holder outcomes, and public writer routes plus a shared fail-closed work-ref update guard with realistic tests."
         },
-        "summary": "Fence recovery against cooperating ZzzOps writers using an actually updated, CAS-protected goal-wide workspace gate; verify the observed work tip and disclose that direct Git pushes remain outside this guarantee. Retain the existing provenance and independent review requirements."
+        "summary": "Define a short-lived goal-wide workspace gate using the existing lease TTL, observable held/expired state, automatic CAS reclaim and stale-holder refusal. Enumerate public workspace writers and enforce a shared fail-closed transaction guard while retaining the approved direct-push limitation."
       },
-      "reason": "retry",
+      "reason": "reopened",
       "status": "done"
     },
     "filter_design": {
