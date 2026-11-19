@@ -24,6 +24,14 @@ class BlockedScopeJourney(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.w = fx.World(self.tmp)
+        if self._testMethodName == "test_ambiguous_blocked_source_and_gitlink_are_not_silently_frozen":
+            self.w.env["GIT_ALLOW_PROTOCOL"] = "file:https"
+            self.dependency = fx.make_repo(self.tmp, name="dependency", env=self.w.env)
+            self.dependency.commit({"README.md": "dependency\n"}, "test: dependency")
+            self.w.seed.git("-c", "protocol.file.allow=always", "submodule", "add", "-q",
+                            self.dependency.path, "vendor/dependency")
+            self.w.seed.git("commit", "-q", "-m", "chore: add declared dependency")
+            self.w.seed.git("push", "-q", "origin", "HEAD:dev")
         self.w.bootstrap(workflow=checkpoint_workflow())
         self.a = fx.Agent(self.w, "a", "codex:aaaa/tester")
         self.b = fx.Agent(self.w, "b", "codex:bbbb/reviewer")
@@ -172,11 +180,12 @@ class BlockedScopeJourney(unittest.TestCase):
         self.enable_capability()
         self.w.ok("a", "reopen", str(self.g), "test_design", "--note", "mixed pending work")
         c = self.a.start(self.g, "test_design")
-        child = fx.make_repo(str(Path(self.tmp) / "dependency"))
-        child.commit({"README.md": "dependency\n"}, "test: dependency")
-        self.wt.git("-c", "protocol.file.allow=always", "submodule", "add", "-q", child.path, "vendor/dependency")
+        self.wt.git("-c", "protocol.file.allow=always", "submodule", "update", "--init", "vendor/dependency")
+        child = fx.GitDir(str(Path(self.wt.path) / "vendor/dependency"), self.w.env)
+        self.assertEqual(self.dependency.path, child.git("config", "--get", "remote.origin.url"))
+        child.commit({"Tests/child.py": "assert True\n"}, "test: child candidate")
         self.wt.write({"tests/new.py": "assert 3\n", "src/unclear.py": "source = 1\n"})
-        self.wt.git("add", "tests/new.py", "src/unclear.py")
+        self.wt.git("add", "tests/new.py", "src/unclear.py", "vendor/dependency")
         self.wt.git("commit", "-q", "-m", "test: mixed pending work")
         self.assertEqual("", self.wt.git("status", "--porcelain"), "submodule fixture must be clean")
         self.a.submit(self.g, "test_design", c,
