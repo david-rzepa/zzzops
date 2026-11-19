@@ -192,48 +192,32 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 8,
+      "attempt": 9,
       "correction_runs": 5,
-      "findings": [
-        {
-          "id": "implement:8:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "test_design",
-          "target_attempt": 12,
-          "target_fp": "v1:sha256:5d272b156e48f3650d1da112c681235cbb15797400e9cc2d45f4c3c51827c54f",
-          "text": "Add a real-Git/provider regression for release PR recovery with an earlier PR from the same branch already merged at H, subsequent approved release tip T descending from H, and a later finish. Assert the old PR is ignored and a new PR at T merges successfully. Also cover exact-head recovery when an older unrelated PR is listed first, while retaining the current tests that an unapproved descendant merged after T is recorded and blocks propagation.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-19T02:47:26Z",
+      "findings": [],
+      "finished_at": "2026-11-19T02:53:52Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
           "base": "v1:sha256:7137968f0afc1e3d944fd561b2af20955f2aef16fd65a3864f6989ddd512e960",
           "doc": "v1:blob:5b199f7a7f94e75dfbec83fa682e91d088f0edec",
-          "tests": "v1:sha256:5b3d2b2935c6c0f2161877f15e91423daf5301fa0f3b8e31d4946bb53aec7596"
+          "tests": "v1:sha256:622da7ee43de8a07d85bdec887523172be48194a446942e4d28b89e3dbe701e4"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1051-implement-8",
-      "input_fp": "v1:sha256:3a0cd67624f2118de53d3c98db8780d8ca0aa78c9882a71325bbeabd7bbdc14d",
+      "holder": "codex:root/g1051-implement-9",
+      "input_fp": "v1:sha256:f765f38dbac5bf828d522b2f0a79b88374357ed911003c2877289cb937545310",
       "ok": true,
       "output": {
         "code": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "5db9293e3622a37f5fb174e54c50f79de2d26895",
-          "commit": "5b44cb7941ab250bd8d1af61f98f966307c98b4f",
-          "tree": "a059e2b307f74e615055347ddf5ecd37d6b24083"
+          "change": "fe6aa4f12ae3075b34fd6feaee4ecf0e482e6641",
+          "commit": "1a453a9b739d2356c58e15ed5fcee87246d7d2f9",
+          "tree": "95ff86ada529489f05ab28330062d2b38c63ca56"
         },
-        "responses": {
-          "review_impl:2:1": "fixed: select an exact-head merged PR first, ignore historical heads that do not descend from the approved tip, and preserve the mismatch block for merged descendants."
-        },
-        "summary": "Recovery now prefers a merged PR at the exact approved tip and only considers a different head when it descends from that tip; older unrelated merged PRs no longer prevent a new delivery. A real local Git/provider reproduction now completes the later approved release, and all four required head-race and nested-lineage tests pass."
+        "summary": "Verified release recovery selects the exact approved merged head ahead of older unrelated PRs while still pausing when an unapproved descendant was merged. The four reviewed real-Git regression cases pass; hosted GitHub protected-branch staging remains unverified."
       },
-      "reason": "reopened",
+      "reason": "stale",
       "status": "done"
     },
     "review_design": {
