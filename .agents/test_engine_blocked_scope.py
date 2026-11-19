@@ -7,6 +7,9 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
+import sys
+from pathlib import Path
 import tempfile
 import unittest
 
@@ -107,6 +110,68 @@ class BlockedScopeJourney(unittest.TestCase):
             self.wt.git("reset", "--hard", "HEAD^")
         self.wt.commit({"src/good.py": "value = 1\n"}, "feat: permitted implementation")
         self.a.submit(self.g, "implement", c, {"summary": "Non-test implementation"})
+
+    def enable_capability(self):
+        policy = json.loads(json.dumps(self.w.policy))
+        policy["settings"]["engine"]["requires"].append("preserved_test_provenance")
+        self.w.push_dev({".zzzops/POLICY.json": json.dumps(policy, indent=2) + "\n"})
+
+    def test_blocked_segment_survives_a_real_base_sync(self):
+        self.accept_tests()
+        self.enable_capability()
+        self.w.ok("a", "reopen", str(self.g), "test_design", "--note", "new test")
+        c = self.a.start(self.g, "test_design")
+        self.wt.commit({"tests/before_sync.py": "assert 3\n"}, "test: before blocked sync")
+        self.a.submit(self.g, "test_design", c,
+                      blocked={"waiting_for": "agent", "instructions": "retry"})
+        self.w.push_dev({"unrelated.txt": "upstream\n"})
+        self.w.ok("a", "reopen", str(self.g), "base", "--note", "integration moved")
+        synced = self.w.ok("a", "start", str(self.g), "base", "--as", "codex:aaaa/op")
+        self.assertEqual("done", synced["ran"]["outcome"])
+        self.assertIn("synced", synced["ran"]["output"])
+        retry = self.a.start(self.g, "test_design")
+        responses = {f["id"]: "fixed: retained blocked test" for f in retry.get("corrections", [])}
+        self.a.submit(self.g, "test_design", retry, {"commands": ["true"], "responses": responses})
+        self.assertIn("tests/before_sync.py", self.record()["frozen"])
+        self.assertNotIn("unrelated.txt", self.record()["frozen"])
+        self.review()
+
+    def test_ambiguous_blocked_source_and_gitlink_are_not_silently_frozen(self):
+        self.accept_tests()
+        self.enable_capability()
+        self.w.ok("a", "reopen", str(self.g), "test_design", "--note", "mixed pending work")
+        c = self.a.start(self.g, "test_design")
+        base = self.wt.git("rev-parse", "HEAD")
+        self.wt.write({"tests/new.py": "assert 3\n", "src/unclear.py": "source = 1\n"})
+        self.wt.git("add", "tests/new.py", "src/unclear.py")
+        self.wt.git("update-index", "--add", "--cacheinfo", f"160000,{base},vendor/dependency")
+        self.wt.git("commit", "-q", "-m", "test: mixed pending work")
+        self.a.submit(self.g, "test_design", c,
+                      blocked={"waiting_for": "agent", "instructions": "retry"})
+        retry = self.a.start(self.g, "test_design")
+        responses = {f["id"]: "fixed: test under review" for f in retry.get("corrections", [])}
+        rc, out = self.a.submit(self.g, "test_design", retry,
+                                {"commands": ["true"], "responses": responses}, ok=False)
+        if rc == 0:
+            scope = self.record()["frozen"]
+            self.assertNotIn("src/unclear.py", scope)
+            self.assertNotIn("vendor/dependency", scope)
+            self.assertIn("tests/new.py", scope)
+            review = self.review()
+            self.assertIn("src/unclear.py", str(review), "review must see candidate exclusions")
+        else:
+            self.assertTrue(any(w in str(out).lower() for w in ("scope", "select", "candidate")), out)
+
+    def test_older_writer_rejects_policy_requiring_capability(self):
+        self.enable_capability()
+        old = Path(self.tmp) / "old-plugin"
+        shutil.copytree(fx.PLUGIN_CODE, old)
+        (old / "engine" / "capabilities" / "preserved_test_provenance.txt").unlink(missing_ok=True)
+        p = subprocess.run([sys.executable, str(old / "zzzops.py"), "next"],
+                           cwd=self.w.clones["a"].path, env=self.w.cli_env(), capture_output=True, text=True)
+        out = json.loads(p.stdout)
+        self.assertTrue(any(item.get("kind") in ("policy_invalid", "engine_too_old")
+                            for item in out.get("blockers", [])), out)
 
     def test_before_capability_pending_blocked_work_is_not_published(self):
         self.accept_tests()

@@ -71,7 +71,15 @@ class RecoveryJourney(unittest.TestCase):
         subset["attempt"] = current["attempt"] + 1
         subset["frozen"] = self.paths[:2]
         cp = subset["output"]["tests"]
-        cp["change"] = identity.Identity(fx.engine_git(self.wt)).change(cp["base"], cp["commit"], paths=subset["frozen"])
+        later = self.wt.commit({p: f"assert {i} == {i}  # corrected\n" for i, p in enumerate(self.paths[:2])},
+                               "test: later partial correction")
+        self.wt.git("push", "-q", "origin", f"{later}:refs/heads/zzzops/work/g{self.g}")
+        ident = identity.Identity(fx.engine_git(self.wt))
+        cp["commit"] = later
+        cp["tree"] = ident.code_tree(later)
+        cp["change"] = ident.change(cp["base"], later, paths=subset["frozen"])
+        self.later_cp = copy.deepcopy(cp)
+        self.assertNotEqual(self.accepted["output"]["tests"]["commit"], later)
         partial_done = self.synthesize_legacy_record(first_block, subset)
         if final_status == "done":
             return partial_done
@@ -146,7 +154,14 @@ class RecoveryJourney(unittest.TestCase):
         card = self.a.start(self.g, "test_design")
         responses = {f["id"]: "disputed: preserved accepted tests" for f in card.get("corrections", [])}
         self.a.submit(self.g, "test_design", card, {"commands": ["true"], "responses": responses})
-        self.assertEqual(self.paths, self.show()["goal"]["records"]["test_design"]["frozen"])
+        record = self.show()["goal"]["records"]["test_design"]
+        self.assertEqual(self.paths, record["frozen"])
+        self.assertEqual(self.later_cp["base"], record["output"]["tests"]["base"])
+        self.assertEqual(self.later_cp["commit"], record["output"]["tests"]["commit"])
+        self.assertEqual(self.later_cp["tree"], record["output"]["tests"]["tree"])
+        ident = identity.Identity(fx.engine_git(self.wt))
+        self.assertEqual(ident.change(self.later_cp["base"], self.later_cp["commit"], paths=self.paths),
+                         record["output"]["tests"]["change"])
         states = self.show()["states"]
         self.assertTrue(states["review_tests"].startswith("ready"), states)
         review = self.b.start(self.g, "review_tests")
@@ -191,6 +206,39 @@ class RecoveryJourney(unittest.TestCase):
         bad["attempt"] += 5
         bad["frozen"] = self.paths[:2]
         bad["output"]["tests"]["commit"] = "f" * 40
+        self.synthesize_legacy_record(self.tip(), bad)
+        diag = self.diagnostic()
+        self.assertEqual("uncertain", diag["status"])
+        self.assertIsNone(diag["proposal"])
+        self.assertTrue(diag["issues"])
+
+    def test_already_published_consumer_cannot_submit_while_producer_blocked(self):
+        card = self.a.start(self.g, "implement")
+        bad = self.wt.commit({self.paths[0]: "assert False\n"}, "fix: weaken accepted test")
+        self.wt.git("push", "-q", "origin", f"{bad}:refs/heads/zzzops/work/g{self.g}")
+        blocked = copy.deepcopy(self.accepted)
+        blocked.update({"status": "blocked", "ok": False, "output": None,
+                        "blocked": {"category": "decision", "waiting_for": "agent", "reason": "retry",
+                                    "instructions": "repair tests", "repeats": 1}})
+        self.synthesize_legacy_record(self.tip(), blocked)
+        before = self.tip()
+        rc, out = self.a.submit(self.g, "implement", card, {"summary": "Published early"}, ok=False)
+        self.assertNotEqual(0, rc, out)
+        self.assertTrue(any(word in str(out).lower() for word in ("block", "test_design", "producer")), out)
+        self.assertEqual(before, self.tip())
+
+    def test_rewritten_checkpoint_history_offers_no_recovery(self):
+        self.damaged_history()
+        repo = self.w.clones["b"]
+        repo.git("checkout", "--orphan", "rewritten-source")
+        repo.git("rm", "-rf", ".", check=False)
+        unrelated = repo.commit({"tests/unrelated.py": "assert True\n"}, "test: unrelated history")
+        repo.git("push", "-q", "origin", f"{unrelated}:refs/heads/fixture-unrelated")
+        bad = copy.deepcopy(self.accepted)
+        bad["attempt"] += 5
+        bad["frozen"] = self.paths[:2]
+        bad["output"]["tests"]["commit"] = unrelated
+        bad["output"]["tests"]["tree"] = identity.Identity(fx.engine_git(repo)).code_tree(unrelated)
         self.synthesize_legacy_record(self.tip(), bad)
         diag = self.diagnostic()
         self.assertEqual("uncertain", diag["status"])
