@@ -93,6 +93,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-19T14:11:15Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:b840137f940fef72278ca3a7c6a249bc6d4018de5e4c81b46189ad90441a0938"
+        },
+        "policy": {},
+        "subject": "v1:sha256:4b73753505f131656d05896ed2bcde348276b4af94bd59e115d512717488b4b7"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:a2821e4af9db595d43fda0823ce701c8c26d700ce399932a1c83a004088402c7",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-19T14:11:15Z",
+        "decided_by": "David Rzepa",
+        "decision": "approved",
+        "quote": "Lgtm",
+        "summary": "Approved merging the optional pre-test scaffolding implementation after required checks pass."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
+          "change": "04890ac25e0432a6973b00e1ad111e047d15aeea",
+          "commit": "022a43939169c7a9b87d39e15dfe7646a14108fb",
+          "tree": "cec7a9e255d742af17652bb89c4a4adf97da0bba"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 1,
       "correction_runs": 0,
