@@ -78,6 +78,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-19T14:11:12Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:1800757cb83982b9992e1ace7a5c0466a3beefe6008ebc3c1d6cfa38cf9aad0e"
+        },
+        "policy": {},
+        "subject": "v1:sha256:3ef40c02073ddc306c7f189a21c4349d87913de55d7a4d2aeeb90bc1f0cb2ec1"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:5dd93296162fd9c3d7b5cdc27ff8e47309bfb72742123c31b1a1feed72c1f1f8",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-19T14:11:12Z",
+        "decided_by": "David Rzepa",
+        "decision": "approved",
+        "quote": "Lgtm",
+        "summary": "Approved merging the test-scope recovery implementation after required checks pass."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
+          "change": "e282096beca6fc5d08bd3c0caea254877d0a29c3",
+          "commit": "3bd4f62a1f90c83f83213b96559c35b201c24088",
+          "tree": "e45f5bd2dfc19a8c452abc76456f1e9b99fc5112"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 1,
       "correction_runs": 0,
