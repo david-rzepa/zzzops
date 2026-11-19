@@ -1,9 +1,5 @@
-# Adversarial design review
+# Adversarial design re-review
 
-Changes requested. Conditional routing fails closed on stale, missing and invalid producer outputs; no separate bypass was evidenced in the design. The Git submodule proposal, however, does not yet define how to capture the complete test checkpoint scope.
+Approved. The revised design defines the child baseline, takes the full union of changed paths (including retry and blocked-attempt history), records exact accepted entries including absence, and fails closed on missing provenance. It also requires a real submodule regression that alters only an accepted helper. This resolves the prior finding.
 
-## Material finding: accepted child helpers can escape protection
-
-The proposed phrase “test-scoped paths” does not require all child changes made by the test-writing phase to be included. The existing `frozen_paths` implementation at the pinned integration tip unions all paths changed since the previous work or base tree, and preserves previous frozen paths on retry. Restricting the child set to paths that look like tests, or taking an agent-declared list as complete, lets a worker change a helper, fixture or configuration that was committed with the accepted tests while leaving the named test file unchanged. This silently changes what accepted tests verify.
-
-Define the child-repository baseline and full deterministic changed-path union, including previous accepted paths on retry and added, deleted or renamed entries. Fail closed if either child provenance or the full diff is unavailable. Add a real submodule scenario where the accepted test uses a changed child helper and later modifying or deleting only that helper is rejected. This preserves the current rule without freezing the entire parent gitlink.
+The newly specified route-change checks retain unresolved findings and require independent review of retained code or a separately reviewed removal before a true-to-false transition may unlock tests. The route decision is fingerprinted into the challenge, filter, and approval chain, closing the obvious stale-approval bypass.
