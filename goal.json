@@ -322,10 +322,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-19T04:36:59Z",
+      "finished_at": "2026-11-19T04:41:46Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
@@ -338,7 +338,7 @@
         ".agents/test_engine_blocked_scope.py",
         ".agents/test_engine_scope_recovery.py"
       ],
-      "holder": "codex:root/g1049-test-contract",
+      "holder": "codex:root/g1049-test-final",
       "input_fp": "v1:sha256:dca0a827e846224eb024a71650baa5188d24382ed046cdee0a34a4dde85e9f96",
       "ok": true,
       "output": {
@@ -348,30 +348,34 @@
         "cost": {
           "changed_tests": [
             {
-              "duration_ms": 45198,
+              "duration_ms": 59426,
               "id_or_scope": "test_engine_blocked_scope and test_engine_scope_recovery",
-              "observation": "Measured full changed-test suite: 13 red tests; recovery-dependent checks stop at the missing diagnostic and capability-dependent checks at the unimplemented capability."
+              "observation": "Measured all 18 changed tests; preimplementation red, including a real accepted blocked-consumer bypass. Capability and diagnostic-dependent assertions stop at those absent features."
             }
           ],
-          "checkpoint": "0bde0450a160755037136d0ebc16c91fbb692244",
+          "checkpoint": "8dcf9c1af5795c0394fa078ff117a0db733aafcf",
           "commands": [
             {
               "cmd": "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope test_engine_scope_recovery",
-              "duration_ms": 45198,
+              "duration_ms": 59426,
               "exit": 1
             }
           ],
-          "summary": "Pre-implementation red run. Historical fixture uses actual Git commits, and CLI diagnostics currently lack the specified recovery fields.",
-          "total_ms": 45198
+          "summary": "Actual local Git/CLI red run; the older-writer compatibility test passed.",
+          "total_ms": 59426
+        },
+        "responses": {
+          "review_tests:2:1": "fixed: added real CLI/Git coverage for blocked-segment base sync, mixed source and gitlink candidates, already-published blocked consumer submission, and an old writer rejecting the capability.",
+          "review_tests:2:2": "fixed: fixture now creates and publishes a distinct real later test checkpoint; verifies its base, commit, tree and widened change after repair and retry; added rewritten ancestry uncertainty coverage."
         },
         "tests": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "0fa935419bf97436c8f1798c199eca6f0d7be986",
-          "commit": "0bde0450a160755037136d0ebc16c91fbb692244",
-          "tree": "ef4c05263ef4b4f99309daabd83378bfdd0733a0"
+          "change": "591fae92b22c06218f059682cc47a775987bcc1f",
+          "commit": "8dcf9c1af5795c0394fa078ff117a0db733aafcf",
+          "tree": "ef550db055da5757d30d2dcf624fe12899244dab"
         }
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     }
   },
