@@ -336,38 +336,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 4,
+      "attempt": 5,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-19T04:37:04Z",
+      "finished_at": "2026-11-19T04:43:58Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:2a8f10ac60632611baa7b55985abcb60f4650b1d",
-          "tests": "v1:sha256:ac5009b83138cdfc83367c8c1e6e99e2b1e20490f0cf0e53275932b88bce35fb"
+          "tests": "v1:sha256:a17edd796f68292ebab1d21b05fc6b9f2effb70ed9cce30b2b511530c9def2f8"
         },
         "policy": {},
-        "subject": "v1:sha256:96dfc995c14572f5d9e4750e9fcce4c1263bc6f5cd4d4bf1db397cca2ff27015"
+        "subject": "v1:sha256:0fc230a56446db5563c8f90ebd1ca6353143ff4eaa0d479c349cde9118e842ef"
       },
-      "holder": "codex:root/g1050-review-tests-4",
-      "input_fp": "v1:sha256:fb59a046a9a01a91f546633216e4a79b6d714ac4ef1ce70f491f8ef7a5f4e1cd",
+      "holder": "codex:root/g1050-review-tests-5",
+      "input_fp": "v1:sha256:08d023422f718e81a08a4b9acf925e633ba00e04b556a2247e454e29f50e7e55",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "42bcc86155d257f863acb41c4ffc709565f74e2c",
-          "commit": "8c622c854b120e7e0ca0d2417737ada389c6c6e1",
+          "blob": "d5329e751cbf4e82fd58ba74bf53c08c6cc52dce",
+          "commit": "fcadccaefd3576e5ee3edd5a1ba1aff52b90eb29",
           "path": ".zzzops/reviews/1050/review_tests.md"
         },
-        "summary": "Fixture adds the routing capability only if absent; accepted safety tests remain intact."
+        "summary": "The test fixture supplies real review artifacts and suppresses bytecode writes while preserving all prior behavior assertions."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "1fb8883b3fc28cbb80fdd7a373021ea3385394f3",
-          "commit": "f5fccc01b5cdd75993de3187d596e15411a5ca78",
-          "tree": "c292540e24e085c0e1e7a3a2f3decc8953962aba"
+          "change": "38aeabcd2344563b388fe11f94692106905da884",
+          "commit": "e824f256566663d3faac1369fadca33cca791fd6",
+          "tree": "12a5555c0e86fc19ea5f88c3520832ed81829761"
         }
       },
       "status": "done"
