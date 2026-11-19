@@ -575,7 +575,20 @@
     "test_design": {
       "attempt": 11,
       "correction_runs": 2,
-      "findings": [],
+      "findings": [
+        {
+          "id": "test_design:reopen:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 11,
+          "target_fp": "v1:sha256:e4496e0797e3e1048f501a12a6e97244e1142cbf6755c77ba2155acefe3478ba",
+          "text": "GitHub CI reproduced two recovery tests failing when gh is unauthenticated: RecoveryJourney leaks the host gh configuration; use the local fake GitHub fixture while retaining real Git.",
+          "upheld": false
+        }
+      ],
       "finished_at": "2026-11-19T14:24:13Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
