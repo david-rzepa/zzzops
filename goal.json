@@ -276,38 +276,63 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 5,
-      "correction_runs": 1,
-      "findings": [],
-      "finished_at": "2026-11-19T04:54:56Z",
+      "attempt": 6,
+      "correction_runs": 2,
+      "findings": [
+        {
+          "id": "review_tests:6:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 7,
+          "target_fp": "v1:sha256:3ea1d6cc99bf0d774fa9dd124fb1a84768a9e5f31e7e6437aa41f5e4157eb9b3",
+          "text": "Make the competing-recovery race deterministic: add a contender-ready barrier at the actual gate claim/push boundary and prove overlap before releasing the first recovery. A 0.5-second sleep can allow sequential execution, where ordinary goal CAS alone makes the test pass. Verify the changed CAS ref without assuming it cannot be under zzzops/lease/.",
+          "upheld": false
+        },
+        {
+          "id": "review_tests:6:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 7,
+          "target_fp": "v1:sha256:3ea1d6cc99bf0d774fa9dd124fb1a84768a9e5f31e7e6437aa41f5e4157eb9b3",
+          "text": "Add the owner-approved crash/expiry/reclaim and cooperating work-writer fencing cases using the smallest realistic local Git/CLI tests: a reclaimed expired holder cannot publish, a crashed gate can be recovered, and an already-claimed publisher or sync cannot race recovery. Audit and exercise or safely refuse all remaining work-ref mutation/claim paths, as required by the design.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-19T05:22:20Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
-          "doc": "v1:blob:b0a79141fe1b4c4ad3c03ac7f911f36d48919512",
-          "tests": "v1:sha256:e1c14e14fbf006fa471be929b1ec7c98fb1240d31e653133e95448b9edf9ba1d"
+          "doc": "v1:blob:a3ac387cd2f38ff9ee0f04e627ebb2d7657176b0",
+          "tests": "v1:sha256:f25fb71f3b4b250fd40cd704eb52d742141d1cb712b79de4bce819f7171a16d1"
         },
         "policy": {},
-        "subject": "v1:sha256:9d25a2e14bef4bac2e48cd0442469460efe71d9933e72b015c3185fa14e382b8"
+        "subject": "v1:sha256:3ea1d6cc99bf0d774fa9dd124fb1a84768a9e5f31e7e6437aa41f5e4157eb9b3"
       },
-      "holder": "codex:root/g1049-review-tests-5",
-      "input_fp": "v1:sha256:aced9d846c0c5ee527b560e3c69ae2ceb7c5c06ca4ad4994d84ae12708b8e632",
-      "ok": true,
+      "holder": "codex:root/g1049-review-tests-6",
+      "input_fp": "v1:sha256:45b1f4e9369ac5fc59aa64c0942ea49b6e2e5c345d1e6d5f392035da335cd371",
+      "ok": false,
       "output": {
-        "decision": "approved",
+        "decision": "changes_requested",
         "report": {
-          "blob": "08d7d5a0ac5ca95f922ee20f4b788329f95fce07",
-          "commit": "2d488649718cd974cbd309181c72e47728a9c0fe",
+          "blob": "6bb3ba536ac2d58cd5d6249caaefb90a87276fde",
+          "commit": "8399dd2c0f5d4998ed18c4820995e74eeeee736c",
           "path": ".zzzops/reviews/1049/review_tests.md"
         },
-        "summary": "The real submodule fixture and unchanged-review identity assertions are appropriate; independently confirmed the existing scope-loss regression remains red."
+        "summary": "Fencing tests cover key paths, but one race is nondeterministic and approved expiry/reclaim and existing work-writer cases are not exercised."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "d00a2baeea05c70cb076838495b7e387f22cd402",
-          "commit": "e5a3749104b1ae6aa811f14faaf1b6b95471aca9",
-          "tree": "23d0e5106881aa9a02e028ed93783c8767e3b174"
+          "change": "72402e3295763873faa1f043d69f095a70987dcb",
+          "commit": "9b22b5314c74bc6450cc67db151b49ceb7c6206f",
+          "tree": "a4f0764cd90585b9fcee93c3061a9955c3cdea90"
         }
       },
       "status": "done"
