@@ -1,5 +1,5 @@
-# G1049 test review after sync
+# G1049 isolated GitHub fixture review
 
-Approved. The mixed-candidate fixture now declares and commits a real submodule before the goal starts, initializes it in the worktree, creates a real child commit, and advances the gitlink alongside test and source changes. Its original safety assertion remains: ambiguous source and gitlink candidates must not silently become protected test paths, and accepted exclusions must be visible to review or submission must refuse.
+Approved. The recovery fixture initializes the existing fake GitHub provider, which installs a temporary `gh` executable and state for that test world. This isolates optional host GitHub discovery without replacing the real local Git remote and CLI operations. The change does not remove or weaken prior assertions.
 
-I independently ran the changed focused local Git/CLI case; it passed in 1.930 seconds. The writer reports the full 31-test focused suite passed in 145.678 seconds and the changed test in 1.993 seconds. The sync merge's displayed conflict resolution changed engine and migration files, not the reviewed tests; broader implementation and integration review remains necessary.
+I independently ran the published-consumer and already-claimed-publisher Git/CLI cases with a newly created empty `XDG_CONFIG_HOME`; both passed in 3.387 seconds. The writer measured the full 31 focused tests at 61.415 seconds and the 22 recovery cases at 47.177 seconds with empty XDG configuration, all passing.
