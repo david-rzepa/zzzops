@@ -259,7 +259,8 @@ class SubmoduleTestPreservation(unittest.TestCase):
         self.w.env['GIT_ALLOW_PROTOCOL'] = 'file:https'
         child_path = self.tmp + '/package'
         child = fx.make_repo(self.tmp, name='package', env=self.w.env)
-        child.commit({'Runtime/value.py': 'value = 0\n'}, 'chore: base')
+        child.commit({'Runtime/value.py': 'value = 0\n', 'Tests/legacy.py':'assert True\n',
+                      'Tests/rename_me.py':'assert 1 == 1\n'}, 'chore: base')
         self.w.seed.git('-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', child_path, 'Packages/example')
         self.w.seed.git('commit', '-q', '-m', 'chore: add package')
         self.w.seed.git('push', '-q', 'origin', 'HEAD:dev')
@@ -468,6 +469,73 @@ class SubmoduleTestPreservation(unittest.TestCase):
         self.assertIn(child_tip, entry)
         self.assertIn('160000 commit', entry)
         self.assertEqual('def expected(): return 1', self.child.git('show', child_tip + ':Tests/helper.py'))
+
+    def accept_child_deletion_and_rename(self):
+        card = self.writer.start(self.g, 'test_design')
+        self.child.git('mv', 'Tests/rename_me.py', 'Tests/renamed.py')
+        self.child.commit({'Tests/legacy.py':None}, 'test: delete and rename tests')
+        self.parent.commit({}, 'test: update child test suite')
+        self.writer.submit(self.g, 'test_design', card, {'commands':['true']})
+        card = self.reviewer.start(self.g, 'review_tests')
+        self.reviewer.submit(self.g, 'review_tests', card,
+                             {'decision':'approved','summary':'Reviewed','findings':[]}, artifact='Reviewed\n')
+
+    def valid_descendant_then_reopen(self):
+        card = self.writer.start(self.g, 'implement')
+        self.child.commit({'Runtime/value.py':'value = 1\n'}, 'feat: implement')
+        self.parent.commit({}, 'feat: advance child')
+        self.writer.submit(self.g, 'implement', card, {'summary':'Implemented'})
+        self.w.ok('a', 'reopen', str(self.g), 'implement', '--note', 'additional implementation')
+        card = self.writer.start(self.g, 'implement')
+        responses = {c['id']:'fixed: further work' for c in card.get('corrections', [])}
+        return card, responses
+
+    def test_accepted_deletion_stays_absent_after_valid_child_implementation(self):
+        self.accept_child_deletion_and_rename()
+        card, responses = self.valid_descendant_then_reopen()
+        self.child.commit({'Tests/legacy.py':'assert True\n'}, 'fix: reintroduce deleted test')
+        self.parent.commit({}, 'fix: advance child')
+        rc, out = self.writer.submit(self.g, 'implement', card,
+                                     {'summary':'Changed','responses':responses}, ok=False)
+        self.assertNotEqual(0, rc, out)
+        self.assertIn('legacy.py', json.dumps(out), out)
+
+    def test_accepted_rename_old_path_stays_absent_after_valid_child_implementation(self):
+        self.accept_child_deletion_and_rename()
+        card, responses = self.valid_descendant_then_reopen()
+        self.child.commit({'Tests/rename_me.py':'assert 1 == 1\n'}, 'fix: restore old name')
+        self.parent.commit({}, 'fix: advance child')
+        rc, out = self.writer.submit(self.g, 'implement', card,
+                                     {'summary':'Changed','responses':responses}, ok=False)
+        self.assertNotEqual(0, rc, out)
+        self.assertIn('rename_me.py', json.dumps(out), out)
+
+    def test_accepted_rename_new_path_stays_unchanged_after_valid_child_implementation(self):
+        self.accept_child_deletion_and_rename()
+        card, responses = self.valid_descendant_then_reopen()
+        self.child.commit({'Tests/renamed.py':'assert True\n'}, 'fix: change renamed test')
+        self.parent.commit({}, 'fix: advance child')
+        rc, out = self.writer.submit(self.g, 'implement', card,
+                                     {'summary':'Changed','responses':responses}, ok=False)
+        self.assertNotEqual(0, rc, out)
+        self.assertIn('renamed.py', json.dumps(out), out)
+
+    def test_non_descendant_identical_child_tree_is_not_accepted_as_implementation(self):
+        self.accepted_tests()
+        accepted = self.child.git('rev-parse', 'HEAD')
+        accepted_tree = self.child.git('rev-parse', 'HEAD^{tree}')
+        card = self.writer.start(self.g, 'implement')
+        self.child.git('checkout', '-q', '--orphan', 'unrelated-history')
+        self.child.git('commit', '-q', '--allow-empty', '-m', 'feat: unrelated history')
+        rewritten = self.child.git('rev-parse', 'HEAD')
+        self.assertEqual(accepted_tree, self.child.git('rev-parse', 'HEAD^{tree}'))
+        ancestry = subprocess.run(['git','-C',self.child.path,'merge-base','--is-ancestor',accepted,rewritten],
+                                  env=self.w.env, capture_output=True)
+        self.assertEqual(1, ancestry.returncode)
+        self.parent.commit({}, 'feat: rewrite child history')
+        rc, out = self.writer.submit(self.g, 'implement', card, {'summary':'Changed'}, ok=False)
+        self.assertNotEqual(0, rc, out)
+        self.assertTrue(any(x in json.dumps(out).lower() for x in ('ancestor','rewrite','descendant','provenance')), out)
 
 
 class PolicyAdoptionJourneys(unittest.TestCase):
