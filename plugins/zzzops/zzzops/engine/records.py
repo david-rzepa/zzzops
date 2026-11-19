@@ -288,4 +288,7 @@ def reviewed(graph: Graph, doc: dict, X: str, fresh: bool = True) -> dict | None
 
 def checkpoint_scope(graph, node: str, record: dict) -> list[str] | None:
     """Only a preserved producer's frozen paths scope its change; legacy records remain unscoped."""
-    return sorted(record["frozen"]) if "frozen" in record and any(n.get("preserve") == node for n in graph.nodes.values()) else None
+    if "frozen" in record and any(n.get("preserve") == node for n in graph.nodes.values()):
+        children = (record.get("child_scope") or {}).get("children") or {}
+        return sorted(set(record["frozen"]) | set(children))
+    return None

@@ -132,7 +132,7 @@ class MarketplaceBundleTests(unittest.TestCase):
         files = self.builder.plugin_files(ROOT, "2.0.0")
         workflow = json.loads(files["zzzops/templates/default/workflow.json"])
         nodes = workflow["graphs"]["default"]["nodes"]
-        self.assertEqual(15, len(nodes))                         # the consolidated review graph (G1022)
+        self.assertEqual(17, len(nodes))  # includes the conditional scaffold and independent review
         for node in nodes.values():
             if node["kind"] != "op":
                 self.assertIn(f"zzzops/templates/default/prompts/{node['prompt']}", files)

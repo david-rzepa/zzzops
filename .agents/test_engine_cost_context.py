@@ -100,7 +100,7 @@ class CostMeasurementLauncherTests(unittest.TestCase):
 class CostPolicyTemplateTests(unittest.TestCase):
     def policy(self, value=True):
         policy = fx.load_template("POLICY.json")
-        policy["settings"]["engine"] = {"requires": ["test_cost"]}
+        policy["settings"]["engine"] = {"requires": ["conditional_review_routes", "test_cost"]}
         policy["settings"]["verification"]["parallel_commands"] = value
         return policy
 

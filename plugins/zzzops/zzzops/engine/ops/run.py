@@ -207,6 +207,20 @@ def start_op(s, res, X, label, state, reclaim, force) -> dict:
 
 
 def finish(s, g, X, label, lease, result, spec, ctx, retry=True) -> dict:
+    from engine import workspace_gate
+    work_ref = f"refs/heads/zzzops/work/g{g}"
+    updates_work = isinstance(result, Done) and any(ref == work_ref for ref, _, _ in result.ref_updates)
+    if updates_work and workspace_gate.enabled(s):
+        with workspace_gate.hold(s, g, f"{X} completion") as gate:
+            s.refetch([g])
+            output = _finish(s, g, X, label, lease, result, spec, ctx, retry)
+            if gate["reclaimed"]:
+                output["workspace_gate_reclaimed"] = True
+            return output
+    return _finish(s, g, X, label, lease, result, spec, ctx, retry)
+
+
+def _finish(s, g, X, label, lease, result, spec, ctx, retry=True) -> dict:
     from engine import verbs
     from engine.carry import carry_forward
     N = lease["attempt"]
@@ -286,6 +300,8 @@ def finish(s, g, X, label, lease, result, spec, ctx, retry=True) -> dict:
     else:
         ran["blocked"] = r["blocked"]
     extra_out = {"ran": ran}
+    if lease.get("workspace_gate_reclaimed"):
+        extra_out["workspace_gate_reclaimed"] = True
     if info.get("carried"):
         extra_out["carried"] = info["carried"]
     if warnings:
