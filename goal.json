@@ -169,10 +169,10 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-19T06:03:54Z",
+      "finished_at": "2026-11-19T06:17:22Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -182,19 +182,22 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/g1049-implement-3",
+      "holder": "codex:root/g1049-implement-4",
       "input_fp": "v1:sha256:6aae2182d928dfd431297ce0588cef6083254b46b5bda0e5ecd14b42ce18ff9b",
       "ok": true,
       "output": {
         "code": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "bd35bf461a9b459dbfcc7350ed4ede4a519c6d49",
-          "commit": "096f1a7d5603423b81931ed1ec25a2b2defb57c9",
-          "tree": "e413e1e30091e7a8b41e7000ce2a2ee011e6d375"
+          "change": "903193ac046daed996eb75043d54f3e4792b4d99",
+          "commit": "e4b0edcadfb1c50797a6fb6fef2b4bd9b63cfb70",
+          "tree": "4c27873e9f1753e9eefd652ca354ea1227cd0c4b"
         },
-        "summary": "Preserve accepted tests across blocked producer attempts using capability-gated, retained lease/work provenance and reviewed scope selection; provide read-only history recovery proposals with guarded edits. A CAS workspace gate fences cooperating engine writers, supports expiry/reclaim, and explicitly discloses the remaining out-of-band direct-push race. The accepted 31-test real-Git/CLI suite, both named gate checks, four extra safety tests and legacy merge-sync regressions passed locally. A host stalled past a gate expiry without a competing reclaim cannot enforce wall-clock expiry server-side; review should assess this platform boundary."
+        "responses": {
+          "run_tests:failed": "fixed: reused the initial coordinator snapshot for ungated submits and edits, and preserved the existing already-applied path for closed goals; both reproduced failing tests pass locally."
+        },
+        "summary": "Restored idempotent resubmission after goal closure and the existing single-fetch behavior for ungated submits and edits. Both previously failing product tests, the complete 31-test recovery suite and the two specified gate-guard tests pass locally; the live coordinator reports no clock-skew warning."
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
