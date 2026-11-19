@@ -7,8 +7,12 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+from pathlib import Path
 import shutil
 import tempfile
+import subprocess
+import time
 import unittest
 
 import engine_fixtures as fx
@@ -147,6 +151,69 @@ class ScaffoldRouteJourneys(unittest.TestCase):
         self.assertNotIn('test_design', actions, next_)
         self.assertNotIn('scaffold', actions, next_)
 
+    def flip_to_false(self):
+        self.w.ok('a', 'reopen', str(self.g), 'review_design', '--note', 'reconsider scaffold')
+        ag, card = self.reviewer()
+        output = self.p.output('review_design', card, summary='unchanged design summary')
+        output['scaffold_needed'] = False
+        ag.submit(self.g, 'review_design', card, output)
+        self.p.run(self.g, 'adversary_design', summary='unchanged adversary summary')
+        self.p.run(self.g, 'filter_design', summary='unchanged filter summary')
+        self.p.answer(self.g, 'approve_design')
+
+    def test_live_scaffold_lease_prevents_switching_to_false(self):
+        self.submit_review(True)
+        self.approve_and_base()
+        worker, card = self.p.start(self.g, 'scaffold')
+        self.flip_to_false()
+        next_ = self.next()
+        self.assertNotIn('test_design', {a['node'] for a in next_['actions']}, next_)
+        self.assertTrue(any(x['node'] == 'scaffold' for x in next_['running']), next_)
+
+    def test_false_route_accepts_an_independently_reviewed_exact_scaffold(self):
+        self.submit_review(True)
+        self.approve_and_base()
+        author, card = self.p.start(self.g, 'scaffold')
+        output = self.p.output('scaffold', card)
+        author.submit(self.g, 'scaffold', card, output)
+        self.p.run(self.g, 'review_scaffold', avoid=(author.label,))
+        self.flip_to_false()
+        self.assertIn('test_design', {a['node'] for a in self.next()['actions']}, self.next())
+
+    def test_waiving_scaffold_finding_does_not_approve_unreviewed_checkpoint(self):
+        self.submit_review(True)
+        self.approve_and_base()
+        self.p.run(self.g, 'scaffold')
+        self.p.run(self.g, 'review_scaffold', findings=[{'text': 'Contract is incomplete'}])
+        doc = self.p.show(self.g)
+        finding = next(f['id'] for f in doc['goal']['records']['review_scaffold']['findings'] if f['status'] == 'open')
+        self.w.ok('a', 'edit', str(self.g),
+                  '--set', f'records.review_scaffold.findings[{finding}].status="waived"',
+                  '--set', f'records.review_scaffold.findings[{finding}].note="waived by owner"',
+                  '--base', doc['goal_commit'])
+        self.flip_to_false()
+        next_ = self.next()
+        self.assertNotIn('test_design', {a['node'] for a in next_['actions']}, next_)
+
+    def test_false_route_requires_review_of_scaffold_removal(self):
+        self.submit_review(True)
+        self.approve_and_base()
+        author, card = self.p.start(self.g, 'scaffold')
+        output = self.p.output('scaffold', card)
+        author.submit(self.g, 'scaffold', card, output)
+        self.p.run(self.g, 'review_scaffold', findings=[{'text':'Remove unnecessary contract'}], avoid=(author.label,))
+        self.flip_to_false()
+        next_ = self.next()
+        self.assertNotIn('test_design', {a['node'] for a in next_['actions']}, next_)
+        repair, card = self.p.start(self.g, 'scaffold')
+        wt = repair.worktree(self.g)
+        wt.commit({'work/scaffold.txt': None}, 'refactor: remove scaffold')
+        output = {'summary':'Removed scaffold', 'responses':{c['id']:'fixed: removed' for c in card.get('corrections', [])}}
+        repair.submit(self.g, 'scaffold', card, output)
+        self.assertNotIn('test_design', {a['node'] for a in self.next()['actions']}, self.next())
+        self.p.run(self.g, 'review_scaffold', avoid=(repair.label,))
+        self.assertIn('test_design', {a['node'] for a in self.next()['actions']}, self.next())
+
 
 class SubmoduleTestPreservation(unittest.TestCase):
     """Actual child repos and gitlinks, not simulated Git or a path named like a package."""
@@ -224,6 +291,213 @@ class SubmoduleTestPreservation(unittest.TestCase):
         rc, out = self.writer.submit(self.g, 'implement', card, {'summary': 'Changed'}, ok=False)
         self.assertNotEqual(0, rc, out)
         self.assertIn('helper.py', json.dumps(out), out)
+
+    def test_implementation_cannot_delete_accepted_child_helper(self):
+        self.accepted_tests()
+        card = self.writer.start(self.g, 'implement')
+        self.child.commit({'Tests/helper.py': None}, 'fix: delete helper')
+        self.parent.commit({}, 'fix: update package pointer')
+        rc, out = self.writer.submit(self.g, 'implement', card, {'summary': 'Changed'}, ok=False)
+        self.assertNotEqual(0, rc, out)
+        self.assertIn('helper.py', json.dumps(out), out)
+
+    def test_implementation_cannot_change_a_newly_accepted_config(self):
+        self.accepted_tests()
+        self.w.ok('a', 'reopen', str(self.g), 'test_design', '--note', 'include configuration')
+        card = self.writer.start(self.g, 'test_design')
+        self.child.commit({'Tests/config.json': '{"mode":"safe"}'}, 'test: add configuration')
+        self.parent.commit({}, 'test: add package test configuration')
+        responses = {f['id']: 'fixed: included' for f in card['corrections']}
+        self.writer.submit(self.g, 'test_design', card, {'commands': ['true'], 'responses': responses})
+        card = self.reviewer.start(self.g, 'review_tests')
+        previous = [{'id': f['id'], 'status': 'resolved'} for f in (card.get('previous') or {}).get('findings', []) if f['status'] == 'open']
+        self.reviewer.submit(self.g, 'review_tests', card, {'decision':'approved','summary':'Reviewed','findings':previous}, artifact='Reviewed\n')
+        card = self.writer.start(self.g, 'implement')
+        self.child.commit({'Tests/config.json': '{"mode":"unsafe"}'}, 'fix: weaken configuration')
+        self.parent.commit({}, 'fix: update package pointer')
+        rc, out = self.writer.submit(self.g, 'implement', card, {'summary':'Changed'}, ok=False)
+        self.assertNotEqual(0, rc, out)
+        self.assertIn('config.json', json.dumps(out), out)
+
+
+    def test_earlier_child_test_stays_protected_after_noop_test_retry(self):
+        self.accepted_tests()
+        self.w.ok('a', 'reopen', str(self.g), 'test_design', '--note', 'reconsider tests')
+        card = self.writer.start(self.g, 'test_design')
+        responses = {f['id']: 'disputed: unchanged tests remain valid' for f in card['corrections']}
+        self.writer.submit(self.g, 'test_design', card, {'commands': ['true'], 'responses': responses})
+        state = self.w.ok('a', 'show', str(self.g), '--json')['states']['review_tests']
+        if state.startswith('ready'):
+            card = self.reviewer.start(self.g, 'review_tests')
+            prior = [{'id': f['id'], 'status': 'resolved'} for f in (card.get('previous') or {}).get('findings', []) if f['status'] == 'open']
+            self.reviewer.submit(self.g, 'review_tests', card, {'decision': 'approved', 'summary':'Reviewed', 'findings':prior}, artifact='Reviewed\n')
+        card = self.writer.start(self.g, 'implement')
+        self.child.commit({'Tests/helper.py': 'def expected(): return 0\n'}, 'fix: weaken old helper')
+        self.parent.commit({}, 'fix: advance package pointer')
+        rc, out = self.writer.submit(self.g, 'implement', card, {'summary':'Changed'}, ok=False)
+        self.assertNotEqual(0, rc, out)
+        self.assertIn('helper.py', json.dumps(out), out)
+
+    def test_missing_child_object_database_fails_closed_with_provenance_diagnostic(self):
+        self.accepted_tests()
+        card = self.writer.start(self.g, 'implement')
+        self.child.commit({'Runtime/value.py': 'value = 1\n'}, 'feat: implement')
+        self.parent.commit({}, 'feat: advance package pointer')
+        gitdir = self.child.git('rev-parse', '--absolute-git-dir')
+        shutil.move(gitdir, gitdir + '.unavailable')
+        rc, out = self.writer.submit(self.g, 'implement', card, {'summary':'Changed'}, ok=False)
+        self.assertNotEqual(0, rc, out)
+        self.assertTrue(any(word in json.dumps(out).lower() for word in ('provenance', 'submodule', 'child', 'object')), out)
+
+    def test_blocked_retry_preserves_child_path_even_after_it_is_restored_absent(self):
+        self.accepted_tests()
+        self.w.ok('a', 'reopen', str(self.g), 'test_design', '--note', 'extend tests')
+        card = self.writer.start(self.g, 'test_design')
+        self.child.commit({'Tests/transient.py':'assert True\n'}, 'test: temporary child test')
+        self.parent.commit({}, 'test: add child test')
+        blocked = {'category':'decision','waiting_for':'agent','reason':'retry','instructions':'Complete the test change'}
+        self.writer.submit(self.g, 'test_design', card, blocked=blocked)
+        card = self.writer.start(self.g, 'test_design')
+        self.child.commit({'Tests/transient.py':None}, 'test: remove transient test')
+        self.parent.commit({}, 'test: update package tests')
+        responses = {f['id']:'fixed: reconsidered' for f in card.get('corrections', [])}
+        self.writer.submit(self.g, 'test_design', card, {'commands':['true'], 'responses':responses})
+        states = self.w.ok('a', 'show', str(self.g), '--json')['states']
+        if states['review_tests'].startswith('ready'):
+            card = self.reviewer.start(self.g, 'review_tests')
+            prior = [{'id': f['id'], 'status':'resolved'} for f in (card.get('previous') or {}).get('findings', []) if f['status'] == 'open']
+            self.reviewer.submit(self.g, 'review_tests', card, {'decision':'approved','summary':'Reviewed','findings':prior}, artifact='Reviewed\n')
+        card = self.writer.start(self.g, 'implement')
+        self.child.commit({'Tests/transient.py':'assert False\n'}, 'fix: reintroduce transient file')
+        self.parent.commit({}, 'fix: advance package pointer')
+        rc, out = self.writer.submit(self.g, 'implement', card, {'summary':'Changed'}, ok=False)
+        self.assertNotEqual(0, rc, out)
+        self.assertIn('transient.py', json.dumps(out), out)
+
+    def test_child_pointer_rewrite_to_an_ancestor_fails_closed(self):
+        self.accepted_tests()
+        card = self.writer.start(self.g, 'implement')
+        self.child.git('checkout', '-q', 'HEAD~1')
+        self.parent.commit({}, 'fix: rewind package pointer')
+        rc, out = self.writer.submit(self.g, 'implement', card, {'summary':'Rewound'}, ok=False)
+        self.assertNotEqual(0, rc, out)
+        self.assertTrue(any(x in json.dumps(out).lower() for x in ('ancestor','rewrite','descendant','provenance')), out)
+
+    def test_mismatched_child_repository_mapping_fails_closed(self):
+        self.accepted_tests()
+        card = self.writer.start(self.g, 'implement')
+        self.child.commit({'Runtime/value.py':'value = 1\n'}, 'feat: implementation')
+        self.parent.git('config', '-f', '.gitmodules', 'submodule.Packages/example.url', '/untrusted/different-repo')
+        self.parent.commit({}, 'feat: change package mapping')
+        rc, out = self.writer.submit(self.g, 'implement', card, {'summary':'Changed'}, ok=False)
+        self.assertNotEqual(0, rc, out)
+        self.assertTrue(any(x in json.dumps(out).lower() for x in ('mapping','identity','repository','provenance')), out)
+
+
+class PolicyAdoptionJourneys(unittest.TestCase):
+    """Preview a copied old graph on the actual Git remote before adopting new defaults."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.w = fx.World(self.tmp)
+        self.gh = fx.FakeGitHub(self.w)
+        self.old = json.loads((Path(__file__).parent / 'fixtures/scaffold-route-migration/workflow.json').read_text())
+        self.new = fx.load_template('workflow.json')
+        policy = fx.load_template('POLICY.json')
+        policy['settings']['intent'] = copy.deepcopy(INTENT)
+        policy['settings']['engine']['requires'] = [c for c in policy['settings']['engine']['requires']
+                                                     if c != 'conditional_review_routes']
+        self.w.bootstrap(policy=policy, workflow=self.old)
+        self.p = Pilot(self.w, {})
+        self.g = self.w.new(title='Previously reviewed goal')['created']['id']
+        self.p.run(self.g, 'design')
+        self.p.run(self.g, 'review_design')
+        self.p.run(self.g, 'adversary_design')
+        self.p.run(self.g, 'filter_design')
+        self.p.answer(self.g, 'approve_design')
+
+    def preview(self):
+        nodes = self.new['graphs']['default']['nodes']
+        self.assertIn('scaffold', nodes, 'shipped new graph must contain an optional scaffold node')
+        policy = fx.load_template('POLICY.json')
+        policy['settings']['intent'] = copy.deepcopy(INTENT)
+        files = {'.zzzops/workflow.json': json.dumps(self.new), '.zzzops/POLICY.json': json.dumps(policy)}
+        for prompt in (fx.TEMPLATES / 'prompts').iterdir():
+            files[f'.zzzops/prompts/{prompt.name}'] = prompt.read_text()
+        self.w.seed.commit(files, 'chore: preview new workflow')
+        tip = self.w.seed.git('rev-parse', 'HEAD')
+        return self.w.ok('a', 'show', str(self.g), '--json', '--policy-ref', tip, cwd=self.w.seed.path)
+
+    def test_preview_does_not_invent_a_route_for_an_old_approved_review(self):
+        before = self.p.show(self.g)
+        old_review = before['goal']['records']['review_design']
+        self.assertNotIn('scaffold_needed', old_review['output'])
+        after = self.preview()
+        self.assertNotEqual('current', after['states']['approve_design'], after)
+        self.assertFalse(after['states']['base'].startswith('ready'), after)
+        self.assertEqual(old_review, after['goal']['records']['review_design'])
+        actual = self.p.show(self.g)
+        self.assertEqual(before['goal_commit'], actual['goal_commit'])
+        self.assertEqual(before['goal']['records'], actual['goal']['records'])
+
+    def test_preview_preserves_live_lease_and_never_starts_new_workers(self):
+        self.w.ok('a', 'start', str(self.g), 'base', '--as', 'claude:aaaa/base')
+        agent, card = self.p.start(self.g, 'test_design')
+        before = self.p.show(self.g)
+        after = self.preview()
+        self.assertEqual(before['goal_commit'], after['goal_commit'])
+        self.assertEqual(before['goal']['records'], after['goal']['records'])
+        actual = self.p.show(self.g)
+        self.assertEqual('running', actual['states']['test_design'])
+        self.assertEqual(card['lease']['attempt'], actual['leases'][0]['attempt'])
+
+    def accept_old_tests(self, with_finding=False):
+        self.w.ok('a', 'start', str(self.g), 'base', '--as', 'claude:aaaa/base')
+        agent, card = self.p.start(self.g, 'test_design')
+        wt = agent.worktree(self.g)
+        checkpoint = wt.commit({'tests/old_probe.py': 'assert 1 + 1 == 2\n'}, 'test: old accepted test')
+        command = 'python3 tests/old_probe.py'
+        started = time.monotonic_ns()
+        completed = subprocess.run(command, shell=True, cwd=wt.path, env=self.w.env, capture_output=True)
+        duration = (time.monotonic_ns() - started) // 1000000
+        self.assertEqual(0, completed.returncode)
+        cost = {'checkpoint': checkpoint, 'commands': [{'cmd':command,'duration_ms':duration,'exit':0}],
+                'total_ms':duration, 'changed_tests':[{'id_or_scope':'tests/old_probe.py', 'duration_ms':duration,
+                'observation':'measured fixture test'}], 'summary':'Measured old fixture test'}
+        agent.submit(self.g, 'test_design', card, {'commands':[command], 'cost':cost})
+        reviewer, card = self.p.start(self.g, 'review_tests')
+        findings = [{'text':'Fixture needs correction'}] if with_finding else []
+        reviewer.submit(self.g, 'review_tests', card,
+                        {'decision':'changes_requested' if findings else 'approved', 'summary':'Reviewed',
+                         'findings':findings}, artifact='Reviewed\n')
+
+    def test_preview_preserves_accepted_test_checkpoint_without_auto_approval(self):
+        self.accept_old_tests()
+        before = self.p.show(self.g)
+        after = self.preview()
+        self.assertEqual(before['goal']['records']['test_design'], after['goal']['records']['test_design'])
+        self.assertNotEqual('current', after['states']['approve_design'], after)
+        self.assertNotEqual('current', after['states']['review_tests'], after)
+        self.assertEqual(before['goal_commit'], self.p.show(self.g)['goal_commit'])
+
+    def test_preview_preserves_existing_open_finding(self):
+        self.accept_old_tests(with_finding=True)
+        before = self.p.show(self.g)
+        old = before['goal']['records']['review_tests']['findings']
+        self.assertTrue(any(f['status'] == 'open' for f in old), old)
+        after = self.preview()
+        self.assertEqual(old, after['goal']['records']['review_tests']['findings'])
+        self.assertFalse(after['states']['implement'].startswith('ready'), after)
+
+    def test_preview_preserves_implementation_lease_and_old_checkpoint(self):
+        self.accept_old_tests()
+        agent, card = self.p.start(self.g, 'implement')
+        before = self.p.show(self.g)
+        after = self.preview()
+        self.assertEqual(before['goal']['records']['test_design'], after['goal']['records']['test_design'])
+        self.assertEqual('running', self.p.show(self.g)['states']['implement'])
+        self.assertNotEqual('current', after['states']['approve_design'], after)
 
 
 if __name__ == '__main__':
