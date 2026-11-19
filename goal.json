@@ -232,43 +232,30 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 6,
+      "attempt": 7,
       "correction_runs": 3,
-      "findings": [
-        {
-          "id": "implement:6:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "test_design",
-          "target_attempt": 10,
-          "target_fp": "v1:sha256:15f1b4b51c0d0f9e75642cabeb862aeb799b3ce60d0ae385e2b3360fa5437174",
-          "text": "After the upstream conditional_review_routes merge, test_ambiguous_blocked_source_and_gitlink_are_not_silently_frozen creates vendor/dependency as a Git link and initializes a child working tree but does not declare its origin in .gitmodules. The independently approved child-scope engine correctly fails closed at the blocked producer submission with validation: submodule mapping changed or is missing, before this test can reach its scope assertion. Update this fixture to declare a real supported submodule mapping (or explicitly test that fail-closed outcome separately), preserving its mixed source/test/gitlink coverage. Do not weaken child provenance validation.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-19T14:19:41Z",
+      "findings": [],
+      "finished_at": "2026-11-19T14:28:02Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
           "base": "v1:sha256:b99e32e47003f2ce6d216be0b56eb57c6f6b37d1c7b18c742ee3bfb0e2475354",
           "doc": "v1:blob:fbac244685db79270e91c498ab400c3f5bd862c4",
-          "tests": "v1:sha256:41660b716d5fb268bf432e4f99fb58ec7f4f9c4a31f5fed9516138c4b2c1a03b"
+          "tests": "v1:sha256:aa9881cac9a3e433b901e7d1a2c819f963299ee5c361019beefd58a2282f2d8b"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1049-implement-sync",
-      "input_fp": "v1:sha256:7b6f60056947afbf0d2c262ef2d27e7ac9e1d1cd9d628f315ef3e1369ba2ef9f",
+      "holder": "codex:root/g1049-implement-final",
+      "input_fp": "v1:sha256:ac9cf39094c616d8a7e8f2cd0efa8c23aff4f4b6b77df8ed206e7673177cd5d7",
       "ok": true,
       "output": {
         "code": {
           "base": "a8a2e7855f2dc0a4ca27331a94b930e4df222387",
-          "change": "0181b2e2d8ec7e0e93ae44287789d64a10715a56",
-          "commit": "7a505595b5b9e963cd06ec6e5b936646a688cf29",
-          "tree": "6a14c5d9d490373195e4013a455b0f058916f1a2"
+          "change": "bf6a1ffe18619172871dcc3add11ef9fb39bd0e5",
+          "commit": "335c617edf9310c01d20596bd4d8c63b1301f517",
+          "tree": "fdd58feaf6bd51f29ecca45e5b6b4b121f1ea191"
         },
-        "summary": "Reconciled parent provenance with the merged child-scope behavior: child-only blocked retries remain valid when conditional review routes are enabled, while transient parent-test changes still require provenance. Real-submodule tests with both capabilities and the 49-test scaffold/scope suite passed; the accepted recovery suite exposed one incompatible synthetic submodule fixture."
+        "summary": "Verified the synced implementation against the corrected declared-submodule fixture. All 31 recovery and blocked-scope tests, the individually requested mixed-gitlink case, and three real-submodule cross-capability checks pass locally; no additional code changes were needed."
       },
       "reason": "stale",
       "status": "done"
