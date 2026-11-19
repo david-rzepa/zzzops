@@ -1,0 +1,7 @@
+# G1050 test review
+
+Changes requested. I independently ran the boolean-only route-change case and the valid child-implementation advancement case with the real local-remote fixtures. Both fail before implementation for the reported reasons: no `scaffold_needed` output and the superproject gitlink is frozen. The author's full red command reports 8.767 seconds; my two-case probe took 1.853 seconds. These are appropriate local costs for end-to-end Git and CLI behavior, but the present red state reaches an early missing-route assertion before proving later route-transition safeguards.
+
+The four child tests establish one valid descendant and test/helper alteration, deletion and rename cases, but do not establish durable protected scope across retries or fail-closed behavior when object provenance and mapping cannot be verified. The route tests omit the approved waiver, retained exact-checkpoint and reviewed removal paths, and the real behavior-level scaffold journey. The policy migration section has no fixtures or actual observation for existing approved/in-flight states. Without these cases a superficially working implementation could silently waive an unreviewed scaffold, narrow accepted child scope, or treat stale reviews as approved on adoption.
+
+The findings request focused tests and migration observations; unrelated migration repairs remain a separate goal. Full green evidence is naturally deferred until implementation.
