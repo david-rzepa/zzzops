@@ -229,14 +229,14 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 7,
+      "attempt": 8,
       "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-19T00:41:15Z",
+      "finished_at": "2026-11-19T00:46:42Z",
       "fp_parts": {
         "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
         "inputs": {
-          "doc": "v1:blob:9cb29051a0a95acfc44450b98dd9a7c4098bc907",
+          "doc": "v1:blob:5b199f7a7f94e75dfbec83fa682e91d088f0edec",
           "spec": "v1:sha256:36d23dbf43af22b9cc7117bb206dfaccc678b6f1574bc36a6de214fab025777e"
         },
         "lenses": [
@@ -270,25 +270,25 @@
             "serves": "Developers who delegate project work to coding agents, and the agents doing it."
           }
         },
-        "subject": "v1:sha256:76b2cd6ab8c4878803120faffd4610be67101f99733aba43e565e83935096c84"
+        "subject": "v1:sha256:c60733bb1db215443c1ecadee8a858652e39e652d7e7ad9e8394690f678cacaa"
       },
-      "holder": "codex:root/g1051-review-7",
-      "input_fp": "v1:sha256:6bd792a720c7c04a799e220dabb75d2b22ea97511c3b570b11fd4ebffc3bea84",
+      "holder": "codex:root/g1051-review-8",
+      "input_fp": "v1:sha256:c1d17a897ef5973fc383312bad89428ffb4b0581c44e1cae527f53d0fb8cbcc9",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "6a41deac4b8cbf4740795c05e5ee6296413c6fb3",
-          "commit": "f9eb69d3ecb029b3536cacb0bcbea9bb74b55b3f",
+          "blob": "2c6c5d8cd1847d4acbc72aec2894781ad80f5dd4",
+          "commit": "4515e27ba2fdd6e3ad8653cbbfa2eb70d52b8a9d",
           "path": ".zzzops/reviews/1051/review_design.md"
         },
-        "summary": "The separate forward-port goal gives each destination an explicit reviewable operation while preserving closed maintenance provenance and protected-PR limitations."
+        "summary": "The no-diff forward-port cases distinguish reachability, proven historical PR merges and unproven equivalence without fabricating a merge."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "9cb29051a0a95acfc44450b98dd9a7c4098bc907",
-          "commit": "26244b595d5c7b0d6a9fb02f2d9630d2a453e00e"
+          "blob": "5b199f7a7f94e75dfbec83fa682e91d088f0edec",
+          "commit": "0e0aa4a5025a803bff52ee39e7cce3ce238a0218"
         }
       },
       "status": "done"
