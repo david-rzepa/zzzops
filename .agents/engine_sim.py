@@ -137,6 +137,9 @@ class Sim:
             out = {"decision": decision or ("changes_requested" if any("id" not in f for f in given) else "approved"),
                    "summary": summary or f"review {self.counter}"}
             out["report"] = {"path": f".zzzops/reviews/{g}/{n}.md", "blob": self.sha(), "commit": self.sha()}
+            for key, kind in (graph.nodes[n].get("outputs") or {}).items():
+                if kind == "bool":
+                    out[key] = (outputs or {}).get(key, False)
         else:
             out = self._gen_outputs(g, n, same, outputs or {})
         if responses:

@@ -277,10 +277,12 @@ class PolicyLiveLeaseTests(LiveInputChangeBase):
         wf = copy.deepcopy(self.w.workflow)
         nodes = wf["graphs"]["default"]["nodes"]
         rd = self.n("review_design")
-        del nodes[rd]
-        for nd in nodes.values():                       # drop every input that references the removed node
+        removed = {rd, self.n("scaffold"), self.n("review_scaffold")}
+        for node in removed:
+            del nodes[node]
+        for nd in nodes.values():
             ins = nd.get("inputs") or {}
-            for k in [k for k, spec in ins.items() if rd in spec["from"].split(".")[:2]]:
+            for k in [k for k, spec in ins.items() if removed.intersection(spec["from"].split(".")[:2])]:
                 del ins[k]
         self.assertNotIn(rd, json.dumps(wf["graphs"]["default"]))
         self.policy_branch({".zzzops/workflow.json": json.dumps(wf, indent=2) + "\n"}, topic="drop")

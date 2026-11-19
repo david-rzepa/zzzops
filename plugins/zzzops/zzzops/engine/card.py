@@ -350,6 +350,7 @@ def output_schema(graph, n, s, follows: bool = False) -> dict:
                            "approve with notes)" if graph.filter_of(n)
                            else "approved | changes_requested (approved only with no finding open)")
         out["summary"] = "text: your verdict"
+        out.update(graph.nodes[n].get("outputs") or {})
         if follows:
             out["findings"] = ("[{\"id\": <id>, \"status\": \"open\"|\"resolved\"} for every finding in previous.findings, "
                                f"{new_finding_hint(graph, n, True)} for new ones]. Ids in "

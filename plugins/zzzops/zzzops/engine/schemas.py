@@ -31,7 +31,7 @@ NODE_FIELDS = {
     "prompt": {"agent", "human"}, "root": {"agent"}, "capability": {"agent"}, "op": {"op"},
     "workspace": {"agent", "op"}, "inputs": {"agent", "human", "op"}, "outputs": {"agent", "op"},
     "review": {"agent", "human"}, "policy": {"agent", "human", "op"}, "instructions": {"agent", "human"},
-    "preserve": {"agent"}, "release_gate": {"agent", "human", "op"}, "rev": {"agent", "human", "op"},
+    "when": {"agent"}, "preserve": {"agent"}, "release_gate": {"agent", "human", "op"}, "rev": {"agent", "human", "op"},
     "timeout": {"agent", "op"}, "skippable": {"agent", "human", "op"}, "lenses": {"agent"},
     # G1025 release lines: `schedule: "upstream"` re-runs an op whenever its line moved; `line_complete` waits for the
     # line's open members
@@ -487,8 +487,12 @@ def _validate_node(e: Errors, where, n, nd, nodes, settings, instructions, promp
             e.add(f"{where}.review", "a review's subject is another node")
         elif review["subject"] not in nodes:
             e.add(f"{where}.review", f"unknown subject {review['subject']!r}")
-        if "outputs" in nd:
-            e.add(f"{where}.outputs", "review nodes have implicit outputs only")
+        if "outputs" in nd and (not isinstance(nd["outputs"], dict)
+                                or any(t != "bool" for t in nd["outputs"].values())
+                                or set(nd["outputs"]) & set(implicit_outputs(nd))):
+            e.add(f"{where}.outputs", "review routing outputs must be non-reserved booleans")
+        elif "outputs" in nd and settings is not None and "conditional_review_routes" not in required_caps(settings):
+            e.add(f"{where}.outputs", "review routing outputs require capability conditional_review_routes")
     if "lenses" in nd:
         _validate_lenses(e, where, nd, prompt_exists)
     outputs = nd.get("outputs", {})
@@ -514,6 +518,11 @@ def _validate_node(e: Errors, where, n, nd, nodes, settings, instructions, promp
                 e.add(f"{where}.instructions", f"POLICY instructions has no key {key!r}")
     if "preserve" in nd and not _is_str(nd["preserve"]):
         e.add(f"{where}.preserve", "must be a node id")
+    if "when" in nd:
+        if not isinstance(nd["when"], str) or nd["when"] not in (nd.get("inputs") or {}):
+            e.add(f"{where}.when", "must name an input containing a boolean route decision")
+        if settings is not None and "conditional_review_routes" not in required_caps(settings):
+            e.add(f"{where}.when", "requires capability conditional_review_routes")
     inputs = nd.get("inputs", {})
     if not isinstance(inputs, dict):
         e.add(f"{where}.inputs", "must be an object")
@@ -536,6 +545,8 @@ def _validate_node(e: Errors, where, n, nd, nodes, settings, instructions, promp
         if spec.get("pending") and sel.kind != "deps":
             e.add(f"{iw}.pending", "only on deps. selectors")
         if sel.kind == "goal":
+            if nd.get("when") == k:
+                e.add(iw, "conditional routing requires a boolean node output")
             continue
         if sel.node not in nodes:
             e.add(f"{iw}.from", f"unknown node {sel.node!r}")
@@ -545,6 +556,8 @@ def _validate_node(e: Errors, where, n, nd, nodes, settings, instructions, promp
             e.add(f"{iw}.from", f"{sel.node!r} has no output {sel.output!r}")
             continue
         t = types[sel.output]
+        if nd.get("when") == k and (sel.kind != "node" or sel.path or t != "bool" or spec.get("optional") or spec.get("context")):
+            e.add(iw, "conditional routing requires a non-optional, fingerprinted boolean node output")
         if sel.path:
             if t not in KEYED_TYPES:
                 e.add(f"{iw}.from", f"key paths are allowed only into object, checkpoint and artifact outputs")
@@ -1146,7 +1159,8 @@ def largest_paths(doc, k=5):
 # ----------------------------------------------------------------------------------------------- record (§3.4–§3.7)
 
 RECORD_KEYS = {"status", "ok", "attempt", "holder", "reason", "correction_runs", "input_fp", "fp_parts", "output",
-               "findings", "blocked", "answer", "reviewed", "frozen", "pending_segments", "recovery_work", "carried_by", "prompt", "finished_at", "last_output"}
+               "findings", "blocked", "answer", "reviewed", "frozen", "child_scope", "pending_segments", "recovery_work",
+               "carried_by", "prompt", "finished_at", "last_output"}
 
 
 def validate_record(r) -> list:
@@ -1214,6 +1228,24 @@ def validate_record(r) -> list:
             e.add("record.pending_segments", "must be an array of fenced producer segments")
     if "frozen" in r and not _strings(r["frozen"]):
         e.add("record.frozen", "must be an array of paths")
+    if "child_scope" in r:
+        scope = r["child_scope"]
+        if not isinstance(scope, dict) or set(scope) != {"parent_start", "children"}:
+            e.add("record.child_scope", "must contain parent_start and children")
+        elif not isinstance(scope["parent_start"], str) or not SHA.match(scope["parent_start"]):
+            e.add("record.child_scope.parent_start", "must be a commit id")
+        elif not isinstance(scope["children"], dict):
+            e.add("record.child_scope.children", "must be an object")
+        else:
+            for path, child in scope["children"].items():
+                if (not isinstance(path, str) or not path or path.startswith("/") or ".." in path.split("/")
+                    or not isinstance(child, dict) or set(child) != {"baseline", "accepted", "mapping", "entries"}
+                    or any(not isinstance(child.get(k), str) or not SHA.match(child[k])
+                           for k in ("baseline", "accepted", "mapping"))
+                    or not isinstance(child.get("entries"), dict)
+                    or any(not isinstance(k, str) or not k or (v is not None and not isinstance(v, str))
+                           for k, v in child["entries"].items())):
+                    e.add("record.child_scope.children", "contains invalid child provenance")
     if "carried_by" in r and not isinstance(r["carried_by"], str):
         e.add("record.carried_by", "must be a string")
     if "prompt" in r and not (r["prompt"] is None or isinstance(r["prompt"], str)):
@@ -1368,7 +1400,13 @@ def validate_submit_output(graph: Graph, node: str, out) -> list:
         return e
     nd = graph.nodes[node]
     if graph.is_review(node):
-        e.unknown("output", out, {"decision", "summary", "findings", "responses"})
+        extra = nd.get("outputs") or {}
+        e.unknown("output", out, {"decision", "summary", "findings", "responses"} | set(extra))
+        for k, t in extra.items():
+            if k not in out:
+                e.add("output", f"missing output {k!r}")
+            elif check_value_type(out[k], t):
+                e.add(f"output.{k}", check_value_type(out[k], t))
         if out.get("decision") not in ("approved", "changes_requested"):
             e.add("output.decision", "must be approved or changes_requested")
         if not isinstance(out.get("summary"), str) or not out["summary"].strip():

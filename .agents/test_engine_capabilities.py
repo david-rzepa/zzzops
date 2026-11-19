@@ -56,7 +56,9 @@ class CapWorld(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.w = fx.World(self.tmp)
         self.gh = fx.FakeGitHub(self.w)
-        self.w.bootstrap()
+        # Legacy capability floors apply to a policy installed before routing.
+        legacy = json.loads((Path(__file__).parent / "fixtures/scaffold-route-migration/workflow.json").read_text())
+        self.w.bootstrap(workflow=legacy)
 
     def set_engine(self, block: dict):
         p = copy.deepcopy(self.w.policy)
@@ -193,6 +195,8 @@ class LegacyMinTests(CapWorld):
         policy = fx.load_template("POLICY.json")
         policy["settings"]["engine"] = {"min": "0.0.0"}
         (policy_dir / "POLICY.json").write_text(json.dumps(policy), encoding="utf-8")
+        old_graph = Path(__file__).parent / "fixtures/scaffold-route-migration/workflow.json"
+        (policy_dir / "workflow.json").write_text(old_graph.read_text(), encoding="utf-8")
         rc, out = self.w.run("a", "validate", "--policy", "--dir", str(policy_dir), cwd=nowhere)
         self.assertEqual(0, rc, out)
         self.assertIn("engine_min_deprecated", self.kinds(out["warnings"]))
@@ -372,7 +376,7 @@ class TemplateTests(unittest.TestCase):
     def test_default_template_requires_lens_findings(self):
         # lenses added at rebase onto G1022 (merged first): the template requires it too
         p = json.loads((fx.SHIPPED / "POLICY.json").read_text(encoding="utf-8"))
-        self.assertEqual({"requires": ["lens_findings", "lenses", "test_cost"]}, p["settings"]["engine"])
+        self.assertEqual({"requires": ["conditional_review_routes", "lens_findings", "lenses", "test_cost"]}, p["settings"]["engine"])
         nowhere = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, nowhere, True)
         r = subprocess.run([sys.executable, str(fx.PLUGIN_CODE / "zzzops.py"), "validate", "--policy", "--dir",
@@ -390,7 +394,7 @@ class TemplateTests(unittest.TestCase):
                     workflow=json.loads((fx.SHIPPED / "workflow.json").read_text(encoding="utf-8")), prompts=False)
         w.push_dev({f".zzzops/prompts/{p.name}": p.read_text(encoding="utf-8")
                     for p in sorted((fx.SHIPPED / "prompts").iterdir())}, "chore(zzzops): prompts")
-        self.assertEqual({"requires": ["lens_findings", "lenses", "test_cost"]}, w.policy["settings"]["engine"])
+        self.assertEqual({"requires": ["conditional_review_routes", "lens_findings", "lenses", "test_cost"]}, w.policy["settings"]["engine"])
         out = w.ok("a", "next")
         self.assertEqual([], [b for b in out["blockers"] if b["kind"] in ("engine_too_old", "policy_invalid")])
         w.new(title="from the template")

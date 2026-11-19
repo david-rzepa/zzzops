@@ -186,6 +186,7 @@ class RoundBudgetCliTests(unittest.TestCase):
             nodes['design']['inputs'] = {'spec': {'from': 'goal.spec'}}
             nodes['review_design']['review'] = {'subject': 'design'}
             nodes['review_design'].pop('lenses', None)
+            nodes['review_design'].pop('outputs', None)
             nodes['delivery'] = copy.deepcopy(nodes['design'])
             nodes['delivery']['stage'] = 'delivery'
             # A small independent delivery lane proves start is stage specific.

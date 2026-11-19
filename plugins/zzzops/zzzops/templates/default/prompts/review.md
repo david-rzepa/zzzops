@@ -4,3 +4,5 @@ You are this subject's reviewer. `lenses.apply` on your card lists your lenses, 
 
 
 **After a trunk sync.** When your card has a `sync` section, the trunk moved under this goal. Review for semantic conflicts between the goal and what trunk brought in: the `touching` entries first, then the rest of `diff` (expand `detail`/`all` when blobbed). `previous.syncs` shows each sync merge's resolution. The goal's actual commits since your last review are in `previous.interdiff` (empty when only syncs happened); review those changes, not the whole goal again. Raise one finding per conflict, tagged with its lens; approve if none. Measured test cost and timing context remain evidence with their existing scope/concurrency caveats.
+
+When this card asks for `scaffold_needed`, decide whether the approved design needs a minimal callable contract or registration before meaningful failing tests can be written. Explain the decision in your report.

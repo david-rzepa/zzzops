@@ -244,7 +244,7 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
     cur, st = {}, {}
 
     def current_out(p):
-        if p in skip:
+        if p in skip or (st.get(p) or {}).get("name") == "skipped":
             return SKIPPED
         return cur[p] if p in cur else Missing("not_current")
 
@@ -267,6 +267,56 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
             L = None
         vals, missing = resolve(graph, doc, n, current_out, dep_view)
         subj = graph.subject(n)
+        # A conditional review may be skipped along with its subject. Check the
+        # route before requiring the subject, but never infer false from missing
+        # or stale inputs.
+        route = node.get("when")
+        if route and vals.get(route) is False and not any(
+                m.get("node") != subj or m.get("reason") != "skipped" for m in missing):
+            selector = (node.get("inputs") or {}).get(route, {}).get("from")
+            members = [x for x, nd in N.items() if nd.get("when") and
+                       ((nd.get("inputs") or {}).get(nd["when"]) or {}).get("from") == selector]
+            active = any(leases.get(x) and leases[x].live(now) for x in members)
+            findings_open = any(f.get("status") == "open" and is_material(f)
+                                and (carrier in members or f.get("target") in members)
+                                for carrier, record in records.items() for f in record.get("findings") or [])
+            # A blocked attempt may have published work without a checkpoint.
+            # Keep its normal repair/review path available until it completes.
+            blocked_work = any((records.get(x) or {}).get("status") == "blocked"
+                               and graph.checkpoint_outputs(x) for x in members)
+            safe = not active and not findings_open and not blocked_work
+            for x in members:
+                producer = records.get(x) or {}
+                output = producer.get("output") or producer.get("last_output") or {}
+                for key in graph.checkpoint_outputs(x):
+                    checkpoint = (output.get(key) or {}).get("commit")
+                    if not checkpoint:
+                        continue
+                    def reviewed_current(y):
+                        r = records.get(y) or {}
+                        if (r.get("status") != "done" or not r.get("ok") or
+                                ((r.get("reviewed") or {}).get(key) or {}).get("commit") != checkpoint):
+                            return False
+                        def review_input(p):
+                            return held_recorded(p) if p == x else current_out(p)
+                        review_vals, review_missing = resolve(graph, doc, y, review_input, dep_view)
+                        if review_missing:
+                            return False
+                        expected = fp_parts(graph, y, review_vals, R.get(x), settings, R, skip)
+                        observed = r.get("fp_parts") or {}
+                        # Only the route decision may change without invalidating
+                        # the exact checkpoint's prior independent review.
+                        expected_inputs = {k: v for k, v in expected.get("inputs", {}).items()
+                                           if k != N[y].get("when")}
+                        observed_inputs = {k: v for k, v in observed.get("inputs", {}).items()
+                                           if k != N[y].get("when")}
+                        return (expected_inputs == observed_inputs and
+                                all(expected.get(k) == observed.get(k) for k in ("def", "policy", "subject")))
+                    if not any(reviewed_current(y) for y in members if graph.subject(y) == x):
+                        safe = False
+            if safe:
+                st[n] = {"name": "skipped", "reason": f"{route} is false"}
+                continue
         if subj and subj not in cur:
             missing.append(miss(subj, "subject_not_current"))
         if L and L.live(now):

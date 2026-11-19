@@ -482,6 +482,11 @@ def blocked_record(s, res, doc, X, L, r0, b, ident, work):
     last = (r0["output"] if r0 and r0["status"] == "done" else (r0 or {}).get("last_output"))
     extra = {"last_output": last} if nd["kind"] == "agent" and "blocked_findings" in schemas.required_caps(s.settings) else {}
     extra.update(extra_provenance)
+    if (nd.get("workspace") and "conditional_review_routes" in schemas.required_caps(s.settings)
+            and any(n.get("preserve") == X for n in res.graph.nodes.values())):
+        from engine import child_scope
+        head = wt.local_tip(s.git, g)
+        extra["child_scope"] = child_scope.capture(s, L, head, (r0 or {}).get("child_scope"))
     return rec.record("blocked", False, L.attempt, L.holder, L.reason, r0, L.input_fp, L.fp_parts, None, [], s.now,
                       prompt=L.prompt, graph=res.graph, node=X, settings=s.settings, blocked=blocked, **extra)
 
@@ -538,6 +543,7 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
     vals_rec, _ = resolve(graph, doc, X, lambda p: recorded_out(doc, p), s.portfolio().views)
     new_tip = s.snap.work.get(g)
     frozen = None
+    child_evidence = None
     cp_key = None
     if nd.get("workspace"):
         if wt.sync(s.git, ident, s.snap, g, "clean", X, L.attempt) == "ahead":
@@ -558,6 +564,9 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
                               details={"commit": c, "subject": subject, "type": parsed[0]})
             if nd.get("preserve"):
                 accepted = (doc.get("records") or {}).get(nd["preserve"]) or {}
+                if "conditional_review_routes" in schemas.required_caps(s.settings):
+                    from engine import child_scope
+                    child_scope.verify(s, g, c, accepted.get("child_scope"))
                 bad = sorted(set(accepted.get("frozen") or []) & set(ident.changed_paths(c)))
                 if bad:
                     raise Refused("test_freeze", f"commit {c[:12]} changed accepted test paths: " + ", ".join(bad),
@@ -578,8 +587,15 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
             base = vals_rec["base"]
             out[k] = {"commit": c, "base": base, "tree": ident.code_tree(c)}
             if any(n2.get("preserve") == X for n2 in graph.nodes.values()):
-                frozen = frozen_paths(s, r0, L, out[k], ident, (doc.get("records", {}).get("base", {}).get("output") or {}).get("replay_map"), scope_selection, scope_review)
+                replay_map = (doc.get("records", {}).get("base", {}).get("output") or {}).get("replay_map")
+                frozen = frozen_paths(s, r0, L, out[k], ident, replay_map, scope_selection, scope_review)
+                if "conditional_review_routes" in schemas.required_caps(s.settings):
+                    from engine import child_scope
+                    child_evidence = child_scope.capture(s, L, c, (r0 or {}).get("child_scope"))
+                    frozen = sorted(set(frozen) - set(child_evidence["children"]))
             scope = rec.checkpoint_scope(graph, X, {"frozen": frozen} if frozen is not None else (r0 or {}))
+            if child_evidence and scope is not None:
+                scope = sorted(set(scope) | set(child_evidence["children"]))
             out[k]["change"] = ident.change(base, c, paths=scope)
         if nd.get("preserve") and cp_key:
             preserve_check(s, res, doc, X, out[cp_key], ident)
@@ -603,6 +619,8 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
     extra = {"reviewed": rec.reviewed(graph, doc, X, fresh)} if graph.is_review(X) else {}
     if frozen is not None:
         extra["frozen"] = frozen
+    if child_evidence is not None:
+        extra["child_scope"] = child_evidence
     return rec.record("done", ok, L.attempt, L.holder, L.reason, r0, L.input_fp, L.fp_parts, out, findings, s.now,
                       prompt=L.prompt, graph=graph, node=X, settings=s.settings, **extra)
 

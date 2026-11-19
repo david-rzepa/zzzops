@@ -58,7 +58,7 @@ def vtuple(v):
 def follows_settings() -> dict:
     """Bootstrap settings under which the policy requires `finding_follows` (either merge order, design §6a)."""
     if G1027_MERGED:
-        return {"engine.requires": ["finding_follows"]}
+        return {"engine.requires": ["conditional_review_routes", "finding_follows"]}
     return {"engine.min": ENGINE_VERSION}
 
 
@@ -164,6 +164,8 @@ def follows_workflow():
     nodes = {n: source[n] for n in ("design", "base", "test_design", "implement", "run_tests", "review_impl")}
     nodes["design"]["inputs"] = {"spec": {"from": "goal.spec"}}
     nodes["base"]["inputs"] = {}
+    nodes["test_design"]["inputs"].pop("scaffold", None)
+    nodes["test_design"]["inputs"].pop("scaffold_review", None)
     nodes["implement"]["inputs"].pop("tests_review")
     nodes["review_impl"]["inputs"].pop("base")
     nodes["review_impl"]["review"] = {"subject": "implement"}
@@ -512,7 +514,7 @@ class RoundTwoCardTests(Journey):
         from engine.card import shrink_candidates
         self.assertTrue(len(canonical(c)) <= 4096 or not shrink_candidates(c), len(canonical(c)))
         # a restated `resolved` for the closed id is accepted
-        out = {"decision": "approved", "summary": "ok", "findings": [
+        out = {"decision": "approved", "scaffold_needed": False, "summary": "ok", "findings": [
             {"id": "review_design:1:1", "status": "resolved"}, {"id": "review_design:2:1", "status": "resolved"}]}
         self.B.submit(g, self.n("review_design"), c, out, artifact="# ok\n")
 
@@ -539,7 +541,7 @@ class FollowsJourney(Journey):
         return self.B.start(g, "review_design")
 
     def follow_up(self, card):
-        return {"decision": "changes_requested", "summary": "half done", "findings": [
+        return {"decision": "changes_requested", "scaffold_needed": False, "summary": "half done", "findings": [
             {"id": "review_design:1:1", "status": "resolved"},
             {"text": "the rollback half is still missing", "follows": "review_design:1:1",
              "lens": card["lenses"]["apply"][0],
@@ -590,7 +592,7 @@ class FollowsRoundTripTests(FollowsJourney):
         c = self.B.start(g, "review_design")
         entry = next(f for f in c["previous"]["findings"] if f["id"] == "review_design:2:1")
         self.assertEqual("review_design:1:1", entry["follows"])
-        self.B.submit(g, "review_design", c, {"decision": "approved", "summary": "ok",
+        self.B.submit(g, "review_design", c, {"decision": "approved", "scaffold_needed": False, "summary": "ok",
                                               "findings": [{"id": "review_design:2:1", "status": "resolved"}]},
                       artifact="# ok\n")
         self.finish_review_join(self.B, g, "review_design")

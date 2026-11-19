@@ -54,8 +54,12 @@ class LensPolishWorld(LensWorld):
         return next(l[len("Outcome: "):] for l in msg.splitlines() if l.startswith("Outcome: "))
 
     def submit_lens(self, g, lens, decision, findings, summary="lens verdict", ok=True):
+        if lens == "adversary_design" and self.p.states(g)["review_design"].startswith("ready"):
+            self.p.run(g, "review_design")
         ag, card = self.p.start(g, lens)
         out = {"decision": decision, "summary": summary, "findings": list(findings)}
+        if "scaffold_needed" in card["output_schema"]:
+            out["scaffold_needed"] = False
         res = ag.submit(g, self.n(lens), card, out, artifact="# review\n", ok=ok)
         return ag, card, res
 
@@ -142,6 +146,7 @@ class NotesOnlyApprovalTests(LensPolishWorld):
         push_goal_doc(self.w, doc, tip)
         self.assertNotIn("material", next(x for x in self.p.record(g, "adversary_design")["findings"] if x["id"] == fid))
         self.p.run(g, "design")
+        self.p.run(g, "review_design")
         self.assertTrue(self.p.states(g)["adversary_design"].startswith("ready"), self.p.states(g)["adversary_design"])
         ag, card = self.p.start(g, "adversary_design")
         self.assertIn(fid, [x["id"] for x in (card.get("previous") or {}).get("findings", [])])
