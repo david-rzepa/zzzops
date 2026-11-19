@@ -185,6 +185,40 @@
       "reason": "stale",
       "status": "done"
     },
+    "filter_impl": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-19T05:57:54Z",
+      "fp_parts": {
+        "candidates": [
+          [
+            "review_impl:1:1",
+            true
+          ],
+          [
+            "review_impl:1:2",
+            true
+          ]
+        ],
+        "def": "v1:sha256:5fab78ee7a74554d9897b964ee764247bd55068d6c3b2a64932fad9704979c4b",
+        "inputs": {
+          "code": "v1:sha256:b78622cb1defc74de5e3fb83ddd16258f40e44de89fb7392efb3b93c335da6f4",
+          "doc": "v1:blob:2a8f10ac60632611baa7b55985abcb60f4650b1d",
+          "review": "v1:sha256:3c9dd08ca145a8aaf3a673a66db2cb7c9cb43e593c4b7fbefea41ef1696d0fb8"
+        },
+        "policy": {}
+      },
+      "holder": "codex:root/g1050-filter-impl",
+      "input_fp": "v1:sha256:05f0ecb7fa20b97bd997aab8de0cbeff0c4d957ea3b639a8037b1a086f2a4c91",
+      "ok": true,
+      "output": {
+        "summary": "The independent implementation review found two material correctness defects; both reopen implementation. The route guard inspects findings only on route-member records and can ignore a downstream finding targeting scaffold. It also ignores published blocked-attempt work when no checkpoint output exists, allowing unreviewed scaffold commits through a false route. Both contradict the approved fail-closed contract. Zero notes.",
+        "verdicts": {}
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "implement": {
       "attempt": 4,
       "correction_runs": 3,
