@@ -313,15 +313,15 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 6,
+      "attempt": 7,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-19T04:54:15Z",
+      "finished_at": "2026-11-19T05:21:12Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
           "base": "v1:sha256:1eee7b2e3964a69facb766f50195fd0750184506761869cf1d3140667ff55a3a",
-          "doc": "v1:blob:b0a79141fe1b4c4ad3c03ac7f911f36d48919512"
+          "doc": "v1:blob:a3ac387cd2f38ff9ee0f04e627ebb2d7657176b0"
         },
         "policy": {}
       },
@@ -329,44 +329,46 @@
         ".agents/test_engine_blocked_scope.py",
         ".agents/test_engine_scope_recovery.py"
       ],
-      "holder": "codex:root/g1049-test-fixtures",
-      "input_fp": "v1:sha256:dca0a827e846224eb024a71650baa5188d24382ed046cdee0a34a4dde85e9f96",
+      "holder": "codex:root/g1049-test-fencing",
+      "input_fp": "v1:sha256:14dd57a63f08c6dda3ef92c6bbec79988da5bd1b1d319b671f8e4d5a7f7804c8",
       "ok": true,
       "output": {
         "commands": [
-          "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope test_engine_scope_recovery"
+          "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope test_engine_scope_recovery",
+          "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_scope_recovery.RecoveryJourney.test_already_changed_work_ref_refuses_proposal_before_write test_engine_scope_recovery.RecoveryJourney.test_workspace_claim_cannot_race_past_recovery_gate test_engine_scope_recovery.RecoveryJourney.test_competing_recoveries_cannot_both_apply_the_same_proposal test_engine_scope_recovery.RecoveryJourney.test_direct_work_push_is_disclosed_and_not_claimed_as_fenced"
         ],
         "cost": {
           "changed_tests": [
             {
-              "duration_ms": 57380,
-              "id_or_scope": "test_engine_blocked_scope and test_engine_scope_recovery",
-              "observation": "Measured all 19 tests on the exact checkpoint; the feature remains unimplemented on this worktree and the red assertions are expected."
+              "duration_ms": 21813,
+              "id_or_scope": "four new recovery fencing regressions",
+              "observation": "Measured narrow run before implementation: all four reach the missing scope_recovery diagnostic; barriers and race outcomes must be exercised after implementation."
             }
           ],
-          "checkpoint": "e5a3749104b1ae6aa811f14faaf1b6b95471aca9",
+          "checkpoint": "9b22b5314c74bc6450cc67db151b49ceb7c6206f",
           "commands": [
             {
               "cmd": "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope test_engine_scope_recovery",
-              "duration_ms": 57380,
+              "duration_ms": 87561,
+              "exit": 1
+            },
+            {
+              "cmd": "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_scope_recovery.RecoveryJourney.test_already_changed_work_ref_refuses_proposal_before_write test_engine_scope_recovery.RecoveryJourney.test_workspace_claim_cannot_race_past_recovery_gate test_engine_scope_recovery.RecoveryJourney.test_competing_recoveries_cannot_both_apply_the_same_proposal test_engine_scope_recovery.RecoveryJourney.test_direct_work_push_is_disclosed_and_not_claimed_as_fenced",
+              "duration_ms": 21813,
               "exit": 1
             }
           ],
-          "summary": "Pre-implementation real Git/CLI red run. A separate real Git check confirmed the corrected submodule is initialized and clean.",
-          "total_ms": 57380
-        },
-        "responses": {
-          "implement:1:1": "fixed: initialized an actual clean local Git submodule, staged and committed it with the test/source candidates, and asserted clean status; separately checked the fixture against real Git.",
-          "implement:1:2": "fixed: unchanged scoped test identity now asserts the prior review remains current instead of attempting a second review; widening recovery still requires a fresh independent review."
+          "summary": "Real local Git/CLI red runs, including a four-test timing run. The required diagnostic is not implemented yet.",
+          "total_ms": 109374
         },
         "tests": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "d00a2baeea05c70cb076838495b7e387f22cd402",
-          "commit": "e5a3749104b1ae6aa811f14faaf1b6b95471aca9",
-          "tree": "23d0e5106881aa9a02e028ed93783c8767e3b174"
+          "change": "72402e3295763873faa1f043d69f095a70987dcb",
+          "commit": "9b22b5314c74bc6450cc67db151b49ceb7c6206f",
+          "tree": "a4f0764cd90585b9fcee93c3061a9955c3cdea90"
         }
       },
-      "reason": "reopened",
+      "reason": "stale",
       "status": "done"
     }
   },
