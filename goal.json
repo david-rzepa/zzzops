@@ -232,36 +232,45 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 5,
-      "correction_runs": 2,
-      "findings": [],
-      "finished_at": "2026-11-19T06:33:07Z",
+      "attempt": 6,
+      "correction_runs": 3,
+      "findings": [
+        {
+          "id": "implement:6:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 10,
+          "target_fp": "v1:sha256:15f1b4b51c0d0f9e75642cabeb862aeb799b3ce60d0ae385e2b3360fa5437174",
+          "text": "After the upstream conditional_review_routes merge, test_ambiguous_blocked_source_and_gitlink_are_not_silently_frozen creates vendor/dependency as a Git link and initializes a child working tree but does not declare its origin in .gitmodules. The independently approved child-scope engine correctly fails closed at the blocked producer submission with validation: submodule mapping changed or is missing, before this test can reach its scope assertion. Update this fixture to declare a real supported submodule mapping (or explicitly test that fail-closed outcome separately), preserving its mixed source/test/gitlink coverage. Do not weaken child provenance validation.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-19T14:19:41Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
-          "base": "v1:sha256:1eee7b2e3964a69facb766f50195fd0750184506761869cf1d3140667ff55a3a",
+          "base": "v1:sha256:b99e32e47003f2ce6d216be0b56eb57c6f6b37d1c7b18c742ee3bfb0e2475354",
           "doc": "v1:blob:fbac244685db79270e91c498ab400c3f5bd862c4",
           "tests": "v1:sha256:41660b716d5fb268bf432e4f99fb58ec7f4f9c4a31f5fed9516138c4b2c1a03b"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1049-implement-5",
-      "input_fp": "v1:sha256:6aae2182d928dfd431297ce0588cef6083254b46b5bda0e5ecd14b42ce18ff9b",
+      "holder": "codex:root/g1049-implement-sync",
+      "input_fp": "v1:sha256:7b6f60056947afbf0d2c262ef2d27e7ac9e1d1cd9d628f315ef3e1369ba2ef9f",
       "ok": true,
       "output": {
         "code": {
-          "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "e282096beca6fc5d08bd3c0caea254877d0a29c3",
-          "commit": "3bd4f62a1f90c83f83213b96559c35b201c24088",
-          "tree": "e45f5bd2dfc19a8c452abc76456f1e9b99fc5112"
+          "base": "a8a2e7855f2dc0a4ca27331a94b930e4df222387",
+          "change": "0181b2e2d8ec7e0e93ae44287789d64a10715a56",
+          "commit": "7a505595b5b9e963cd06ec6e5b936646a688cf29",
+          "tree": "6a14c5d9d490373195e4013a455b0f058916f1a2"
         },
-        "responses": {
-          "review_impl:1:1": "fixed: include every final candidate under the capability, require explicit scope_selection for ambiguous paths, and verify the non-blocked mixed-source selection and reviewer context against a real Git remote.",
-          "review_impl:1:2": "fixed: refetch and rerun the complete start validation inside the acquired workspace gate; deterministic real Git regressions verify a newly acquired same-node lease remains untouched and a different live workspace lease is refused."
-        },
-        "summary": "Inspect final producer candidates even when no blocked segment exists, and require explicit independently reviewed selection for mixed test/source changes. Revalidate workspace-start state, force/reclaim requirements, policy, and conflicting node leases after acquiring the gate; real local Git regressions cover both same-node and other-node races. All 31 accepted tests, both targeted gate tests and 24 related local tests passed."
+        "summary": "Reconciled parent provenance with the merged child-scope behavior: child-only blocked retries remain valid when conditional review routes are enabled, while transient parent-test changes still require provenance. Real-submodule tests with both capabilities and the 49-test scaffold/scope suite passed; the accepted recovery suite exposed one incompatible synthetic submodule fixture."
       },
-      "reason": "reopened",
+      "reason": "stale",
       "status": "done"
     },
     "integrate": {
