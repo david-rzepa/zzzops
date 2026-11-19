@@ -5,6 +5,8 @@ import copy
 import json
 import os
 import shlex
+import signal
+from datetime import datetime, timezone
 import subprocess
 import sys
 import time
@@ -26,7 +28,12 @@ class RecoveryJourney(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.w = fx.World(self.tmp)
-        self.w.bootstrap(workflow=checkpoint_workflow())
+        workflow = checkpoint_workflow()
+        artifact = copy.deepcopy(fx.load_template("workflow.json")["graphs"]["default"]["nodes"]["design"])
+        artifact["inputs"] = {}
+        workflow["graphs"]["default"]["nodes"]["artifact_probe"] = artifact
+        workflow["graphs"]["default"]["terminal"].append("artifact_probe")
+        self.w.bootstrap(workflow=workflow)
         self.a = fx.Agent(self.w, "a", "codex:aaaa/tester")
         self.b = fx.Agent(self.w, "b", "codex:bbbb/reviewer")
         self.g = self.w.new(title="Historical lost scope")["created"]["id"]
@@ -289,16 +296,18 @@ exit 0
         hook.chmod(0o755)
         return ready, release
 
-    def start_guarded_recovery(self):
+    def start_guarded_recovery(self, before_start=None, now=None):
         self.damaged_history()
         diag = self.diagnostic()
         proposal = diag["proposal"]
         self.activate_capability()
+        if before_start:
+            before_start()
         ready, release = self.install_goal_push_barrier()
         argv = [sys.executable, str(fx.PLUGIN_CODE / "zzzops.py"), "edit", str(self.g),
                 "--file", self.w.file(proposal["edit"]), "--base", proposal["base"]]
-        proc = subprocess.Popen(argv, cwd=self.w.clones["a"].path, env=self.w.cli_env(),
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(argv, cwd=self.w.clones["a"].path, env=self.w.cli_env(now),
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
         self.addCleanup(lambda: proc.kill() if proc.poll() is None else None)
         self.addCleanup(release.touch)
         deadline = time.monotonic() + 25
@@ -353,6 +362,8 @@ exit 0
         # claim must not also succeed. If reclaim/expiration invalidates recovery,
         # its later push must refuse instead of publishing a stale repair.
         self.assertNotEqual(0, rc, (claim, recovery))
+        self.assertEqual("workspace_busy", claim["error"]["code"])
+        self.assertEqual("held", claim["error"]["details"]["workspace_gate"]["state"])
         self.assertEqual(0, recovery_rc, (claim, recovery))
         self.assertTrue(recovery.get("applied"), recovery)
         payload = (Path(self.tmp) / "guarded-push-payload").read_text().splitlines()
@@ -397,6 +408,112 @@ exit 0
             self.assertTrue(any(word in str(second_result).lower() for word in ("gate", "lease", "busy", "claim")), second_result)
         winner = first_result if first_rc == 0 else second_result
         self.assertTrue(winner.get("applied"), winner)
+
+    def assert_held_gate(self):
+        state = self.w.ok("b", "show", str(self.g), "--json")["workspace_gate"]
+        self.assertEqual("held", state["state"])
+        self.assertTrue(state["holder"])
+        self.assertTrue(state["operation"])
+        expiry = datetime.fromisoformat(state["expires_at"].replace("Z", "+00:00"))
+        ttl = self.w.policy["settings"]["leases"]["ttl_minutes"] * 60
+        self.assertEqual(datetime.fromtimestamp(fx.NOW + ttl, timezone.utc), expiry)
+        return ttl
+
+    def test_base_sync_start_refuses_held_recovery_gate(self):
+        diag, proposal, holder, release = self.start_guarded_recovery()
+        try:
+            self.w.ok("b", "reopen", str(self.g), "base", "--note", "request sync")
+            before_goal = self.tip()
+            before_work = self.w.remote_git("rev-parse", f"refs/heads/zzzops/work/g{self.g}")
+            rc, result = self.w.run("b", "start", str(self.g), "base", "--as", "codex:bbbb/op")
+            self.assertNotEqual(0, rc, result)
+            self.assertIn(result["error"]["code"], ("workspace_busy", "validation"))
+            self.assertEqual(before_goal, self.tip())
+            self.assertEqual(before_work, self.w.remote_git("rev-parse", f"refs/heads/zzzops/work/g{self.g}"))
+        finally:
+            recovery_rc, recovery = self.finish_recovery(holder, release)
+        # Reopening base moved the goal; the held recovery must not publish its
+        # previously approved proposal against that stale goal snapshot.
+        self.assertNotEqual(0, recovery_rc, recovery)
+
+    def test_non_workspace_artifact_submission_refuses_held_gate_then_succeeds(self):
+        saved = {}
+        def claim_artifact():
+            saved["card"] = self.b.start(self.g, "artifact_probe")
+        diag, proposal, holder, release = self.start_guarded_recovery(before_start=claim_artifact)
+        try:
+            before_goal = self.tip()
+            before_work = self.w.remote_git("rev-parse", f"refs/heads/zzzops/work/g{self.g}")
+            rc, result = self.b.submit(self.g, "artifact_probe", saved["card"], {"summary": "Review"},
+                                       artifact="An independent artifact.\n", ok=False)
+            self.assertNotEqual(0, rc, result)
+            self.assertEqual("workspace_busy", result["error"]["code"])
+            self.assertEqual(before_goal, self.tip())
+            self.assertEqual(before_work, self.w.remote_git("rev-parse", f"refs/heads/zzzops/work/g{self.g}"))
+        finally:
+            recovery_rc, recovery = self.finish_recovery(holder, release)
+        self.assertEqual(0, recovery_rc, recovery)
+        self.b.submit(self.g, "artifact_probe", saved["card"], {"summary": "Review"},
+                      artifact="An independent artifact.\n")
+
+    def test_expired_workspace_submit_routes_refuse_a_newly_held_gate(self):
+        saved = {}
+        def claim_workspace():
+            saved["card"] = self.a.start(self.g, "test_design")
+        ttl = self.w.policy["settings"]["leases"]["ttl_minutes"] * 60
+        diag, proposal, holder, release = self.start_guarded_recovery(before_start=claim_workspace,
+                                                                    now=fx.NOW + ttl + 1)
+        card = saved["card"]
+        before_goal = self.tip()
+        before_work = self.w.remote_git("rev-parse", f"refs/heads/zzzops/work/g{self.g}")
+        try:
+            for kwargs in ({"output": {"commands": ["true"]}},
+                           {"blocked": {"waiting_for": "agent", "instructions": "retry"}}):
+                rc, result = self.a.submit(self.g, "test_design", card, ok=False, **kwargs)
+                self.assertNotEqual(0, rc, result)
+                self.assertIn(result["error"]["code"], ("workspace_busy", "superseded", "claim_lost"))
+                self.assertEqual(before_goal, self.tip())
+                self.assertEqual(before_work, self.w.remote_git("rev-parse", f"refs/heads/zzzops/work/g{self.g}"))
+        finally:
+            recovery_rc, recovery = self.finish_recovery(holder, release)
+        self.assertEqual(0, recovery_rc, recovery)
+
+    def test_expired_gate_is_automatically_reclaimed_and_stale_holder_cannot_publish(self):
+        diag, proposal, holder, release = self.start_guarded_recovery()
+        ttl = self.assert_held_gate()
+        later = fx.NOW + ttl + 1
+        expired = self.w.ok("b", "show", str(self.g), "--json", now=later)["workspace_gate"]
+        self.assertEqual("expired", expired["state"])
+        try:
+            rc, replacement = self.w.run("b", "edit", str(self.g), "--file", self.w.file(proposal["edit"]),
+                                         "--base", proposal["base"], now=later)
+        finally:
+            old_rc, old_result = self.finish_recovery(holder, release)
+        self.assertEqual(0, rc, replacement)
+        self.assertTrue(replacement["workspace_gate_reclaimed"], replacement)
+        self.assertNotEqual(0, old_rc, old_result)
+        self.assertIn(old_result["error"]["code"], ("superseded", "claim_lost"))
+        self.assertEqual(self.paths, self.show()["goal"]["records"]["test_design"]["frozen"])
+
+    def test_crashed_gate_expires_and_is_reclaimed_without_rewriting_history(self):
+        diag, proposal, holder, release = self.start_guarded_recovery()
+        ttl = self.assert_held_gate()
+        before = self.tip()
+        # Kill the complete command process group, including the pending Git
+        # push; the acquired gate remains observable on the remote.
+        os.killpg(holder.pid, signal.SIGKILL)
+        holder.communicate(timeout=10)
+        release.touch()
+        self.assertEqual(before, self.tip())
+        later = fx.NOW + ttl + 1
+        expired = self.w.ok("b", "show", str(self.g), "--json", now=later)["workspace_gate"]
+        self.assertEqual("expired", expired["state"])
+        rc, result = self.w.run("b", "edit", str(self.g), "--file", self.w.file(proposal["edit"]),
+                                "--base", proposal["base"], now=later)
+        self.assertEqual(0, rc, result)
+        self.assertTrue(result["workspace_gate_reclaimed"], result)
+        self.assertTrue(result["applied"], result)
+        self.assertEqual(self.paths, self.show()["goal"]["records"]["test_design"]["frozen"])
 
     def test_direct_work_push_is_disclosed_and_not_claimed_as_fenced(self):
         diag, proposal, proc, release = self.start_guarded_recovery()
