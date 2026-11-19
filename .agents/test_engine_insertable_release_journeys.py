@@ -909,6 +909,8 @@ class MaintenanceForwardPortJourneys(Branching):
         p.git("fetch", "-q", "origin", "refs/heads/dev", "refs/heads/release/1.1")
         p.git("checkout", "-q", "--detach", "origin/dev")
         p.git("merge", "-q", "--no-ff", "-m", "manually integrate finished maintenance", source)
+        # Historical reachability remains true even if the merge was reverted.
+        p.git("revert", "--no-edit", "-m", "1", "HEAD")
         p.git("push", "-q", "origin", "HEAD:refs/heads/dev")
         observed = self.tip("dev")
         self.assertTrue(self.is_ancestor(source, observed))
@@ -919,6 +921,9 @@ class MaintenanceForwardPortJourneys(Branching):
         self.assertIn("already_in_history", evidence)
         self.assertIn(source, evidence)
         self.assertIn(observed, evidence)
+        self.assertNotIn("src/maintenance.py", self.w.remote_git(
+            "ls-tree", "--name-only", "-r", "refs/heads/dev").splitlines())
+        self.assertIn("history", evidence.lower())
         self.assertEqual(prior_prs, len(self.gh.load()["prs"]))
         self.answer_port(port, item)
         self.drive_port(port)
