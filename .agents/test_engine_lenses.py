@@ -291,8 +291,6 @@ class Pilot:
                     finding["lens"] = card["lenses"]["apply"][0]
             out = {"decision": "changes_requested" if new or keep_open else "approved",
                    "summary": summary or f"{node} verdict", "findings": prior + new}
-            if "scaffold_needed" in schema:
-                out["scaffold_needed"] = False
         else:
             for k, t in schema.items():
                 if k in ("findings", "responses"):
