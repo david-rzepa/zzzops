@@ -216,14 +216,14 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 6,
+      "attempt": 7,
       "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-18T23:08:02Z",
+      "finished_at": "2026-11-19T00:41:15Z",
       "fp_parts": {
         "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
         "inputs": {
-          "doc": "v1:blob:b4f730d036d7169afa4a2a4c7c7c814b9522fc98",
+          "doc": "v1:blob:9cb29051a0a95acfc44450b98dd9a7c4098bc907",
           "spec": "v1:sha256:36d23dbf43af22b9cc7117bb206dfaccc678b6f1574bc36a6de214fab025777e"
         },
         "lenses": [
@@ -257,25 +257,25 @@
             "serves": "Developers who delegate project work to coding agents, and the agents doing it."
           }
         },
-        "subject": "v1:sha256:5a98dd972f1d033cd1fe1b0b27228dda295abf1d9980a2996c8412356e07e5a6"
+        "subject": "v1:sha256:76b2cd6ab8c4878803120faffd4610be67101f99733aba43e565e83935096c84"
       },
-      "holder": "codex:root/g1051-review-6",
-      "input_fp": "v1:sha256:bcf6dbfaa0a4a20ac52e4288022a68e2ebdf5bf8609bb04e699085b7aff270d7",
+      "holder": "codex:root/g1051-review-7",
+      "input_fp": "v1:sha256:6bd792a720c7c04a799e220dabb75d2b22ea97511c3b570b11fd4ebffc3bea84",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "3162299f9f0c616cdd0998620221de7ab0169086",
-          "commit": "be0000ac6c98837468573e5415f2709466834718",
+          "blob": "6a41deac4b8cbf4740795c05e5ee6296413c6fb3",
+          "commit": "f9eb69d3ecb029b3536cacb0bcbea9bb74b55b3f",
           "path": ".zzzops/reviews/1051/review_design.md"
         },
-        "summary": "The revised design follows the approved immutable-snapshot and protected-PR scope and accurately states the remaining independent-ref race."
+        "summary": "The separate forward-port goal gives each destination an explicit reviewable operation while preserving closed maintenance provenance and protected-PR limitations."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "b4f730d036d7169afa4a2a4c7c7c814b9522fc98",
-          "commit": "a8b3eed5959ea290e0ded9dd9f432856906eefd1"
+          "blob": "9cb29051a0a95acfc44450b98dd9a7c4098bc907",
+          "commit": "26244b595d5c7b0d6a9fb02f2d9630d2a453e00e"
         }
       },
       "status": "done"
