@@ -143,26 +143,26 @@
       "status": "done"
     },
     "filter_design": {
-      "attempt": 4,
+      "attempt": 5,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T05:12:04Z",
+      "finished_at": "2026-11-19T05:30:38Z",
       "fp_parts": {
         "candidates": [],
         "def": "v1:sha256:c83a5e0ec02bc9504ff118f774138ad5517f6b3a5885d1c28444982e78d23a9f",
         "inputs": {
-          "adversary": "v1:sha256:79af7710b478a8b4a798b6e7ea8fe8f2120d2b2c58701e72ef6ab8d1a6549e37",
-          "doc": "v1:blob:a3ac387cd2f38ff9ee0f04e627ebb2d7657176b0",
-          "review": "v1:sha256:b4948e2f9382c72acafc951f1fc1877b22ae189b0bb852415f1884d435d21f74",
+          "adversary": "v1:sha256:8bbd234e99ba38c79b8afafba137809123d799b96e445aa9f315498e6f4aa522",
+          "doc": "v1:blob:fbac244685db79270e91c498ab400c3f5bd862c4",
+          "review": "v1:sha256:76a26131c53cb72c63e296cb3e20efeaff392ff76cf3e23a6548fe5a04be3008",
           "spec": "v1:sha256:4a8cbbd6281ed2930a25aaeeab28d289c69eab99320d3a8dca44789c357b3dae"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1049-filter-4",
-      "input_fp": "v1:sha256:a0f2d139325efeb7e4b04be7fbaf91333cc7ad1201ec704f465cd42a933dc828",
+      "holder": "codex:root/g1049-filter-5",
+      "input_fp": "v1:sha256:4a3bc8319788c666e84720e56a082d9f82863368edf769236f5b7b2fd773f673",
       "ok": true,
       "output": {
-        "summary": "Both independent re-reviews accept the owner-directed cooperating-writer fencing and explicitly disclosed direct-push race. The updated design calls for a changed CAS gate, expiry and reclaim fencing, and local remote race coverage; no candidates or notes remain.",
+        "summary": "Both independent re-reviews accepted the explicit workspace gate lifecycle, expired holder reclaim and fail-closed work-ref writer coverage. The updated design requires real-remote race and public entry-point tests; no candidates or notes remain.",
         "verdicts": {}
       },
       "reason": "stale",
