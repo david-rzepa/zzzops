@@ -106,10 +106,10 @@
       "status": "done"
     },
     "design": {
-      "attempt": 10,
+      "attempt": 11,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-18T23:06:44Z",
+      "finished_at": "2026-11-19T00:39:52Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -118,18 +118,21 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/zzzops1051-design-10",
+      "holder": "codex:root/zzzops1051-design-11",
       "input_fp": "v1:sha256:44ebef9f6d0d178355830a2197c6294d9d8eee9fc74ab24332b0ae945a8ef22a",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "b4f730d036d7169afa4a2a4c7c7c814b9522fc98",
-          "commit": "a8b3eed5959ea290e0ded9dd9f432856906eefd1",
+          "blob": "9cb29051a0a95acfc44450b98dd9a7c4098bc907",
+          "commit": "26244b595d5c7b0d6a9fb02f2d9630d2a453e00e",
           "path": ".zzzops/reviews/1051/design.md"
         },
-        "summary": "Use an explicitly approved immutable release-source snapshot and normal GitHub protected PRs with expected-head checking, retaining the documented limitation that independent source or base changes can race the merge. Keep older maintenance releases isolated and stop downstream automation when post-merge evidence reveals divergence."
+        "responses": {
+          "implement:2:1": "fixed: specify release forward-port source/to entry point, separate durable graph and approval, exact source/head/base and partial PR state, allowed destinations, retry/race behavior, branch cleanup, and real-Git/protected-PR tests while preserving immediate isolated finish."
+        },
+        "summary": "Define a separately requested, independently approved forward-port goal for a completed isolated maintenance line. Preserve its exact finished source provenance, create and review one protected PR per explicit destination, and persist idempotent partial state without reopening the source or moving production backwards."
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     },
     "filter_design": {
