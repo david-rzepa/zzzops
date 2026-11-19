@@ -1,5 +1,5 @@
 # Adversarial re-review
 
-The revised design records the owner's choice and limits its claim to cooperating ZzzOps writers. It requires an actually changed CAS gate in supported atomic transactions, fencing every work-ref mutation and workspace claim, preventing reclaimed holders from publishing, and exposing the remaining direct-push race. The test plan includes controlled races and a separate out-of-band push reproducing that limitation. No additional material finding.
+The revised design makes gate ownership, expiry, CAS reclaim, stale-holder refusal and each public workspace-writing route explicit. It requires a shared fail-closed guard for future work-ref update routes, rather than assuming the current callers are exhaustive, and retains the disclosed out-of-band direct-push limitation. No additional material finding.
 
-Implementation review should verify that the gate is applied to every write path and cannot be bypassed by a stale holder after reclaim, rather than assuming that an unchanged ref is validated by GitHub.
+Implementation review should verify that a stale holder cannot publish after an actual successful reclaim using the real remote transaction, and that all gate acquisition and release writes advance the ref rather than relying on a no-op check.
