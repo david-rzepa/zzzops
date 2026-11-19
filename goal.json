@@ -184,30 +184,14 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 1,
-      "findings": [
-        {
-          "id": "review_design:1:1",
-          "impact": "A newly accepted test can remain unfrozen after the retry, allowing a later implementation to change it and leaving the independent review scope incomplete.",
-          "lens": "concurrency",
-          "material": true,
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "design",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:d820d99b43a6fb0a478511beb918f6b0a385468e2642542dc83dcdd2ace91bf0",
-          "text": "The proposed union with the existing lease-to-checkpoint change set misses tests committed during a blocked attempt: blocked_record synchronizes and pushes an ahead work branch, so the next lease starts at that advanced commit. A retry that then submits without further changes sees an empty diff and never adds those newly accepted paths. Specify a provenance-safe way to identify all producer test commits since the last accepted checkpoint across blocked attempts (and rebases/syncs), and test a test commit made before a block followed by a no-op retry. Avoid broad diffs that include implementation files.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-19T04:08:35Z",
+      "findings": [],
+      "finished_at": "2026-11-19T04:18:43Z",
       "fp_parts": {
         "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
         "inputs": {
-          "doc": "v1:blob:e9fc7a9db4ca6f297f27853c3ce3671519784d2c",
+          "doc": "v1:blob:b0a79141fe1b4c4ad3c03ac7f911f36d48919512",
           "spec": "v1:sha256:4a8cbbd6281ed2930a25aaeeab28d289c69eab99320d3a8dca44789c357b3dae"
         },
         "lenses": [
@@ -241,25 +225,25 @@
             "serves": "Developers who delegate project work to coding agents, and the agents doing it."
           }
         },
-        "subject": "v1:sha256:86a774a331dc6a49b0da66cceac76865e0c15a92023c3054af74e4cbc20e1505"
+        "subject": "v1:sha256:ae633a16bb8d04a3df5bfd42a50c83580634e0bbb835c70e625d71afd2e4164c"
       },
-      "holder": "codex:root/g1049-review-design-2",
-      "input_fp": "v1:sha256:228354f194dc215119a30f618d19a43c98e8b93e2b2dbb9a7c11d028e278e453",
+      "holder": "codex:root/g1049-review-design-3",
+      "input_fp": "v1:sha256:b9298c15cf7f90008bcde07dc754fab4e8f604f955ad2af02b674cde8a306888",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "98483db0b7ccd800b3fc54e11b4d72abe5649896",
-          "commit": "44a7d2cc47bb49f663476a3b094b3e0b183f0bf6",
+          "blob": "2b8c78582be784cea4d70c31ab9e8daca6ce7a22",
+          "commit": "085219b18244d8e82fb5e72c1bb8f41750350941",
           "path": ".zzzops/reviews/1049/review_design.md"
         },
-        "summary": "The revised design preserves attributable producer-attempt segments and checks the blocked-work retry case."
+        "summary": "The validation, edit and capability contracts are concrete and maintain the previously reviewed safeguards."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "e9fc7a9db4ca6f297f27853c3ce3671519784d2c",
-          "commit": "e9e29aaa75c06db5842a7f8ead5cc8c6be3b3157"
+          "blob": "b0a79141fe1b4c4ad3c03ac7f911f36d48919512",
+          "commit": "0d7accf6e9435976befa8ce72f1b74217ab2de9f"
         }
       },
       "status": "done"
