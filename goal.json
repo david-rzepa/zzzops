@@ -10,36 +10,36 @@
   "priority": "P2",
   "records": {
     "adversary_design": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-19T04:18:52Z",
+      "finished_at": "2026-11-19T05:11:36Z",
       "fp_parts": {
         "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
         "inputs": {
-          "doc": "v1:blob:b0a79141fe1b4c4ad3c03ac7f911f36d48919512",
+          "doc": "v1:blob:a3ac387cd2f38ff9ee0f04e627ebb2d7657176b0",
           "spec": "v1:sha256:4a8cbbd6281ed2930a25aaeeab28d289c69eab99320d3a8dca44789c357b3dae"
         },
         "policy": {},
-        "subject": "v1:sha256:ae633a16bb8d04a3df5bfd42a50c83580634e0bbb835c70e625d71afd2e4164c"
+        "subject": "v1:sha256:391d3a46a3fa92dbfab76c41b2df18d3e404bf5a9557b2e60dc23bf6e15f0d24"
       },
-      "holder": "codex:root/g1049-adversary-3",
-      "input_fp": "v1:sha256:46fb5ab91adbe0d7cd8efedff7a986ca5fe75e7780a7d49396acd9f02de718c2",
+      "holder": "codex:root/g1049-adversary-4",
+      "input_fp": "v1:sha256:85e386af2db52d94bee2fb729680f04627d839dc41da91be1165838a9d80cccf",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "aa3befb2a7c6f866a8a01ae7b8072c1ae1e5fec4",
-          "commit": "30bd1bb9acc42f6d58c54417fd345bb2b744fb40",
+          "blob": "713525c85b3894cfce4ce6f6db106606ff96ab2e",
+          "commit": "594bf843e91ee9fb7cd1399fad49779306748754",
           "path": ".zzzops/reviews/1049/adversary_design.md"
         },
-        "summary": "The repair contract preserves provenance and revalidates edits; review concurrency fencing during implementation."
+        "summary": "The fencing contract matches the owner decision and explicitly discloses the unfenced direct-push race."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "b0a79141fe1b4c4ad3c03ac7f911f36d48919512",
-          "commit": "0d7accf6e9435976befa8ce72f1b74217ab2de9f"
+          "blob": "a3ac387cd2f38ff9ee0f04e627ebb2d7657176b0",
+          "commit": "8975028b3e43dc85fd7e151c7759f2d8e03be891"
         }
       },
       "status": "done"
