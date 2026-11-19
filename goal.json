@@ -106,10 +106,10 @@
       "status": "done"
     },
     "design": {
-      "attempt": 11,
+      "attempt": 12,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T00:39:52Z",
+      "finished_at": "2026-11-19T00:45:31Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -118,19 +118,19 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/zzzops1051-design-11",
+      "holder": "codex:root/zzzops1051-design-12",
       "input_fp": "v1:sha256:44ebef9f6d0d178355830a2197c6294d9d8eee9fc74ab24332b0ae945a8ef22a",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "9cb29051a0a95acfc44450b98dd9a7c4098bc907",
-          "commit": "26244b595d5c7b0d6a9fb02f2d9630d2a453e00e",
+          "blob": "5b199f7a7f94e75dfbec83fa682e91d088f0edec",
+          "commit": "0e0aa4a5025a803bff52ee39e7cce3ce238a0218",
           "path": ".zzzops/reviews/1051/design.md"
         },
         "responses": {
-          "implement:2:1": "fixed: specify release forward-port source/to entry point, separate durable graph and approval, exact source/head/base and partial PR state, allowed destinations, retry/race behavior, branch cleanup, and real-Git/protected-PR tests while preserving immediate isolated finish."
+          "filter_design:7:1": "fixed: specify ancestry and exact merged-PR evidence, independently approved already-in-history/previously-merged outcomes, explicit no-diff-unproven block, recheck/race limits, recovery and real-Git/provider tests."
         },
-        "summary": "Define a separately requested, independently approved forward-port goal for a completed isolated maintenance line. Preserve its exact finished source provenance, create and review one protected PR per explicit destination, and persist idempotent partial state without reopening the source or moving production backwards."
+        "summary": "Handle no-diff maintenance forward-ports as evidence-backed, separately approved non-mutating outcomes, or block clearly if history cannot establish inclusion. Preserve source records, report exact observed Git/PR evidence and do not claim an unperformed merge."
       },
       "reason": "reopened",
       "status": "done"
