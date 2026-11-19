@@ -186,43 +186,30 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 3,
-      "findings": [
-        {
-          "id": "implement:3:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "test_design",
-          "target_attempt": 5,
-          "target_fp": "v1:sha256:67e2892c29ebf43726ef7aa2d74104273d5ea9e05aacb78929a3d5e452045b85",
-          "text": "PolicyAdoptionJourneys.test_preview_preserves_live_lease_and_never_starts_new_workers indexes actual[\"leases\"][0], but the existing real show --json API returns leases as an object keyed by node name (engine/cli.py builds leases[node]). The required suite runs 33/34 with this case raising KeyError: 0 before checking the lease. Read actual[\"leases\"][\"test_design\"] and retain the exact attempt assertion; do not change the CLI shape.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-19T05:12:07Z",
+      "findings": [],
+      "finished_at": "2026-11-19T05:47:33Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
           "base": "v1:sha256:1eee7b2e3964a69facb766f50195fd0750184506761869cf1d3140667ff55a3a",
           "doc": "v1:blob:2a8f10ac60632611baa7b55985abcb60f4650b1d",
-          "tests": "v1:sha256:a17edd796f68292ebab1d21b05fc6b9f2effb70ed9cce30b2b511530c9def2f8"
+          "tests": "v1:sha256:45eae548751d46a53d957954da7301a3344ecadb48b76da84ab176644b72933f"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1050-implement-3",
-      "input_fp": "v1:sha256:82bad039f0e05df8f4bb9a421421f27d8538eb3bcd76c7a9cdc23e6f36859af6",
+      "holder": "codex:root/g1050-implement-4",
+      "input_fp": "v1:sha256:4ececea6e42a5de2de7900673dab510b56e3bc825f8dff1d89f1bf71f82d55f1",
       "ok": true,
       "output": {
         "code": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "cd080fba91dd3f630915622b59d48af0ef591ce2",
-          "commit": "f0bbc199588a184ade9dd1d642fd1f40e5e9e7b5",
-          "tree": "7103df92f5bf38bd10b64431d9ff65134ae36a0f"
+          "change": "e7a30b016641fa68763ba7c87e84ab735920bd64",
+          "commit": "9a8d1ccc1e39dbd0a7bc55d171a1df84aef1fa8e",
+          "tree": "2b9fca79afc4929b9dbb56904e2c36ce596d2cab"
         },
-        "summary": "Implemented capability-gated conditional scaffold routing and child Git test preservation, with local base/integration checks and migration guidance. The focused routing and child journeys pass, but full product validation still reports legacy fixture and review-order failures that need further investigation; this checkpoint is not ready to merge. The accepted migration-preview test also has a confirmed lease-shape fixture error."
+        "summary": "Added capability-gated typed review routing so independent design review selects optional scaffold work before tests, with guarded route changes and review freshness. Added verified local submodule test-scope preservation across retries, implementation, base sync, and PR tree construction, plus reviewed adoption guidance and focused regressions. Updated current-workflow test drivers and removed the obsolete parallel-review-only assertion while retaining migration-safety checks. Full local product validation passed 1,209 tests; the required 34 real CLI/Git journeys and focused submodule advance check also passed."
       },
       "reason": "stale",
       "status": "done"
