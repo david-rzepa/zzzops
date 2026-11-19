@@ -211,14 +211,14 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 4,
+      "attempt": 5,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-19T05:11:32Z",
+      "finished_at": "2026-11-19T05:30:06Z",
       "fp_parts": {
         "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
         "inputs": {
-          "doc": "v1:blob:a3ac387cd2f38ff9ee0f04e627ebb2d7657176b0",
+          "doc": "v1:blob:fbac244685db79270e91c498ab400c3f5bd862c4",
           "spec": "v1:sha256:4a8cbbd6281ed2930a25aaeeab28d289c69eab99320d3a8dca44789c357b3dae"
         },
         "lenses": [
@@ -252,25 +252,25 @@
             "serves": "Developers who delegate project work to coding agents, and the agents doing it."
           }
         },
-        "subject": "v1:sha256:391d3a46a3fa92dbfab76c41b2df18d3e404bf5a9557b2e60dc23bf6e15f0d24"
+        "subject": "v1:sha256:10b7b0853f6e6fc1da637d96d1b77a020aeb16d75cb1365e453638a862062ad4"
       },
-      "holder": "codex:root/g1049-review-design-4",
-      "input_fp": "v1:sha256:96e1f50a80570cdcc9272134df5467e53850d38c2619681021dfab404541c17a",
+      "holder": "codex:root/g1049-review-design-5",
+      "input_fp": "v1:sha256:93edf8a50825ada8a48cb3a3a873162887f8f8369e6b59ad8ec498c6eb490415",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "05d0cb367b5b9eb4cd4db5e2504b8c9a7fb2d4ea",
-          "commit": "6839b416a8c26c62b3a50eb7ef97a4db716f9c1a",
+          "blob": "7a11b08d1c84b9fa7bf29121c8dea838ea7ffe22",
+          "commit": "610b4c90ae1e3ef06c7d06a1a4b4a432406549b2",
           "path": ".zzzops/reviews/1049/review_design.md"
         },
-        "summary": "The revised design fences cooperating writers using a changed CAS ref and explicitly discloses the direct-push race."
+        "summary": "The revised contract specifies gate expiry, automatic reclaim, stale-holder fencing and complete writer-path coverage."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "a3ac387cd2f38ff9ee0f04e627ebb2d7657176b0",
-          "commit": "8975028b3e43dc85fd7e151c7759f2d8e03be891"
+          "blob": "fbac244685db79270e91c498ab400c3f5bd862c4",
+          "commit": "b6fe3d3e95529b818a0f089bb2b84743da086f1a"
         }
       },
       "status": "done"
