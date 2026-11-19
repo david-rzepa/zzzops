@@ -514,7 +514,7 @@ class RoundTwoCardTests(Journey):
         from engine.card import shrink_candidates
         self.assertTrue(len(canonical(c)) <= 4096 or not shrink_candidates(c), len(canonical(c)))
         # a restated `resolved` for the closed id is accepted
-        out = {"decision": "approved", "summary": "ok", "findings": [
+        out = {"decision": "approved", "scaffold_needed": False, "summary": "ok", "findings": [
             {"id": "review_design:1:1", "status": "resolved"}, {"id": "review_design:2:1", "status": "resolved"}]}
         self.B.submit(g, self.n("review_design"), c, out, artifact="# ok\n")
 
@@ -541,7 +541,7 @@ class FollowsJourney(Journey):
         return self.B.start(g, "review_design")
 
     def follow_up(self, card):
-        return {"decision": "changes_requested", "summary": "half done", "findings": [
+        return {"decision": "changes_requested", "scaffold_needed": False, "summary": "half done", "findings": [
             {"id": "review_design:1:1", "status": "resolved"},
             {"text": "the rollback half is still missing", "follows": "review_design:1:1",
              "lens": card["lenses"]["apply"][0],

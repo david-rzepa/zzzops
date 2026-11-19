@@ -730,6 +730,8 @@ class FilterTests(LensWorld):
         designer = self.p.record(g, "design")["holder"]
         ag = next(a for a in self.p.agents if a.label == designer)
         for lens in lens_ids():
+            if lens == "adversary_design":
+                self.p.run(g, "review_design", avoid=(ag.label,))
             rc, err = ag.start(g, self.n(lens), ok=False)
             self.assertNotEqual(0, rc, lens)
             self.assertEqual("independence", err["error"]["code"], (lens, err))
@@ -837,6 +839,7 @@ class IntentTests(LensWorld):
         self.through_design(g)
         ag, card = self.p.start(g, "review_design")
         self.assertEqual({"intent": INTENT}, card.get("policy"))
+        ag.submit(g, self.n("review_design"), card, self.p.output(self.n("review_design"), card), artifact="# review\n")
         ag, card = self.p.start(g, "adversary_design", avoid=(ag.label,))
         self.assertNotIn("intent", card.get("policy") or {})
 
@@ -848,13 +851,13 @@ class IntentTests(LensWorld):
         self.assertEqual("ready (stale: policy.intent)", st["review_design"])
         stale = sorted(n for n, s in st.items() if s.startswith("ready (stale"))
         self.assertEqual(["review_design"], stale, st)
-        for lens in lens_ids():
-            if lens != "review_design":
-                self.assertEqual("current", st[lens], lens)
+        self.assertTrue(st["adversary_design"].startswith("blocked"), st)
         self.assertEqual("current", st["design"])
-        # the intent re-run is exempt from the budget
+        # The adversary waits on the refreshed route, then remains current
+        # when the decision is unchanged.
         self.p.run(g, "review_design")
         self.assertEqual(0, self.p.record(g, "review_design")["correction_runs"])
+        self.assertEqual("current", self.p.states(g)["adversary_design"])
 
     def test_changing_intent_at_delivery_keeps_unaffected_implementation_current(self):
         g = self.goal()
@@ -900,6 +903,7 @@ class PointerTests(LensWorld):
         self.assertIn("doc", r.get("reviewed") or {}, r)
         r["reviewed"]["doc"]["blob"] = HEX40
         push_goal_doc(self.w, doc, tip)
+        self.p.run(g, "review_design")
         ag, card = self.p.start(g, "adversary_design")
         prev = json.dumps(card.get("previous"))
         self.assertIn("previous version not available; review in full", prev)

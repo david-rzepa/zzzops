@@ -40,7 +40,7 @@ DESIGN_REQUIRED = {"intent", "simplicity"}
 IMPL_LENSES = ["compliance", "correctness", "missing", "tests", "craft"]
 IMPL_REQUIRED = {"compliance", "missing", "craft"}
 SHIPPED_NODES = ["design", "review_design", "adversary_design", "filter_design", "approve_design", "base",
-                 "test_design", "review_tests", "implement", "run_tests", "review_impl", "filter_impl", "integrate",
+                 "scaffold", "review_scaffold", "test_design", "review_tests", "implement", "run_tests", "review_impl", "filter_impl", "integrate",
                  "approve_merge", "merge"]
 MISSING_GREP = "git grep <pattern> <code.commit>"
 SHIPPED_RENAME = dict(fx.RENAME)
@@ -126,10 +126,11 @@ class ShippedTemplateTests(unittest.TestCase):
         self.assertEqual([], schemas.validate_policy(self.policy))
         self.assertEqual([], schemas.validate_workflow(self.wf, self.policy, shipped_prompt_exists, OPS))
 
-    def test_the_15_node_graph(self):
+    def test_default_graph_includes_conditional_scaffolding(self):
         self.assertEqual(SHIPPED_NODES, list(self.nodes))
         agents = [n for n, nd in self.nodes.items() if nd["kind"] == "agent"]
-        self.assertEqual(9, len(agents), agents)           # the default budget is 3 x 9 = 27
+        self.assertEqual(11, len(agents), agents)
+        self.assertEqual({"scaffold", "review_scaffold"}, {n for n in agents if self.nodes[n].get("when")})
         for lens in DESIGN_LENSES:
             if lens != "adversary":
                 self.assertNotIn(f"{lens}_design", self.nodes)

@@ -797,6 +797,7 @@ class UnfilteredOwnerQuestionTests(unittest.TestCase):
         nodes["design"]["inputs"] = {"spec": {"from": "goal.spec"}}
         nodes["review_design"]["review"] = {"subject": "design"}
         nodes["review_design"].pop("lenses", None)
+        nodes["review_design"].pop("outputs", None)
         wf["graphs"]["default"] = {"terminal": ["review_design"], "nodes": nodes}
         w.bootstrap(workflow=wf)
         A, B = fx.Agent(w, "a", "claude:aaaa/w-1"), fx.Agent(w, "b", "codex:bbbb/w-2")
