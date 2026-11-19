@@ -373,10 +373,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 4,
+      "attempt": 5,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T04:36:12Z",
+      "finished_at": "2026-11-19T04:43:13Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
@@ -389,7 +389,7 @@
         ".agents/fixtures/scaffold-route-migration/workflow.json",
         ".agents/test_engine_scaffold_routes.py"
       ],
-      "holder": "codex:root/g1050-test-design-4",
+      "holder": "codex:root/g1050-test-design-5",
       "input_fp": "v1:sha256:cdb0db4b691ad0c3e227234e3b89e974f37f37c39d7526d02aff59941a93e84a",
       "ok": true,
       "output": {
@@ -400,35 +400,36 @@
         "cost": {
           "changed_tests": [
             {
-              "duration_ms": 1285,
+              "duration_ms": 1275,
               "id_or_scope": "test_engine_scaffold_routes.SubmoduleTestPreservation.test_implementation_pointer_advances_with_accepted_child_tests_unchanged",
-              "observation": "Measured red real-Git scenario reaches existing whole-gitlink preservation failure."
+              "observation": "Real local Git CLI red run exercises the current frozen-gitlink behavior."
             }
           ],
-          "checkpoint": "f5fccc01b5cdd75993de3187d596e15411a5ca78",
+          "checkpoint": "e824f256566663d3faac1369fadca33cca791fd6",
           "commands": [
             {
               "cmd": "PYTHONPATH=plugins/zzzops/zzzops:.agents python3 -m unittest -v test_engine_scaffold_routes",
-              "duration_ms": 42692,
+              "duration_ms": 42687,
               "exit": 1
             },
             {
               "cmd": "PYTHONPATH=plugins/zzzops/zzzops:.agents python3 -m unittest -v test_engine_scaffold_routes.SubmoduleTestPreservation.test_implementation_pointer_advances_with_accepted_child_tests_unchanged",
-              "duration_ms": 1285,
+              "duration_ms": 1275,
               "exit": 1
             }
           ],
-          "summary": "Measured suite and focused pre-implementation red runs. Verified separately in an isolated copied engine with the capability advertised and already in default requirements: no duplicate-validation error; test reaches the real frozen-gitlink behavior.",
-          "total_ms": 43977
+          "summary": "Measured pre-implementation red suite and narrow child-preservation case. Independently verified real CLI review accepts required artifact and Python -B leaves a clean Git worktree.",
+          "total_ms": 43962
         },
         "responses": {
-          "implement:1:1": "fixed: Add conditional_review_routes only when the engine advertises it and the policy does not already require it. Verified an isolated engine copy with the capability advertised and pre-required reaches the real test-freeze behavior without the duplicate requirements validation error."
+          "implement:2:1": "fixed: Every direct review_design submission, including expected-invalid inputs, now supplies an actual review artifact. Verified missing artifact is rejected and valid report is accepted by the real local CLI.",
+          "implement:2:2": "fixed: Run the red and green behavior probe with python3 -B to suppress bytecode writes. Verified the real failing behavior leaves Git status clean."
         },
         "tests": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "1fb8883b3fc28cbb80fdd7a373021ea3385394f3",
-          "commit": "f5fccc01b5cdd75993de3187d596e15411a5ca78",
-          "tree": "c292540e24e085c0e1e7a3a2f3decc8953962aba"
+          "change": "38aeabcd2344563b388fe11f94692106905da884",
+          "commit": "e824f256566663d3faac1369fadca33cca791fd6",
+          "tree": "12a5555c0e86fc19ea5f88c3520832ed81829761"
         }
       },
       "reason": "reopened",
