@@ -136,6 +136,35 @@ class BlockedScopeJourney(unittest.TestCase):
         self.assertNotIn("unrelated.txt", self.record()["frozen"])
         self.review()
 
+    def test_rewritten_pending_segment_refuses_the_runnable_noop_retry(self):
+        self.accept_tests()
+        self.enable_capability()
+        self.w.ok("a", "reopen", str(self.g), "test_design", "--note", "pending work")
+        producer = self.a.start(self.g, "test_design")
+        before = self.wt.git("rev-parse", "HEAD")
+        pending = self.wt.commit({"tests/pending.py": "assert 3\n"}, "test: blocked pending test")
+        self.a.submit(self.g, "test_design", producer,
+                      blocked={"waiting_for": "agent", "instructions": "retry"})
+        self.assertEqual(pending, self.w.remote_git("rev-parse", f"refs/heads/zzzops/work/g{self.g}"))
+        # Simulate an external unverified history rewrite, with no engine mapping.
+        # Keep the real accepted history as a parent so the producer can retry;
+        # only the blocked attempt's pending segment is lost from the new tip.
+        self.wt.git("reset", "--hard", before)
+        rewritten = self.wt.commit({"tests/replacement.py": "assert 4\n"}, "test: replacement history")
+        ref = f"refs/heads/zzzops/work/g{self.g}"
+        self.wt.git("push", "-q", f"--force-with-lease={ref}:{pending}", "origin", f"{rewritten}:{ref}")
+        retry = self.a.start(self.g, "test_design")
+        self.assertEqual("retry", retry["reason"])
+        old_goal = self.w.remote_git("rev-parse", f"refs/heads/zzzops/goal/g{self.g}")
+        responses = {f["id"]: "fixed: retry" for f in retry.get("corrections", [])}
+        rc, out = self.a.submit(self.g, "test_design", retry,
+                                {"commands": ["true"], "responses": responses}, ok=False)
+        self.assertNotEqual(0, rc, out)
+        self.assertTrue(any(word in str(out).lower() for word in ("provenance", "segment", "ancestry", "rewrite")), out)
+        self.assertEqual(old_goal, self.w.remote_git("rev-parse", f"refs/heads/zzzops/goal/g{self.g}"))
+        self.assertEqual(rewritten, self.w.remote_git("rev-parse", ref))
+        self.assertEqual("blocked", self.record()["status"])
+
     def test_ambiguous_blocked_source_and_gitlink_are_not_silently_frozen(self):
         self.accept_tests()
         self.enable_capability()
