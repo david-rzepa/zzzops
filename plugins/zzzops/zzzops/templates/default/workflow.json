@@ -224,6 +224,58 @@
             "replay_pos": "object"
           }
         },
+        "scaffold": {
+          "description": "Prepare the minimal callable contract required to author meaningful tests.",
+          "kind": "agent",
+          "capability": "reasoning",
+          "prompt": "scaffold.md",
+          "workspace": true,
+          "stage": "delivery",
+          "when": "route",
+          "inputs": {
+            "base": {
+              "from": "base.base_commit"
+            },
+            "doc": {
+              "from": "design.doc"
+            },
+            "route": {
+              "from": "review_design.scaffold_needed"
+            }
+          },
+          "outputs": {
+            "code": "checkpoint",
+            "summary": "text"
+          },
+          "instructions": [
+            "verification",
+            "owner_questions"
+          ],
+          "skippable": false
+        },
+        "review_scaffold": {
+          "description": "Independently review the minimal contract and its testability.",
+          "kind": "agent",
+          "capability": "reasoning",
+          "prompt": "review_scaffold.md",
+          "stage": "delivery",
+          "when": "route",
+          "review": {
+            "subject": "scaffold"
+          },
+          "inputs": {
+            "doc": {
+              "from": "design.doc"
+            },
+            "code": {
+              "from": "scaffold.code"
+            },
+            "route": {
+              "from": "review_design.scaffold_needed"
+            }
+          },
+          "skippable": false
+        },
         "test_design": {
           "description": "Write the tests and the commands that run them.",
           "kind": "agent",
@@ -541,58 +593,6 @@
             "merge_commit": "sha",
             "merged_at": "string"
           }
-        },
-        "scaffold": {
-          "description": "Prepare the minimal callable contract required to author meaningful tests.",
-          "kind": "agent",
-          "capability": "reasoning",
-          "prompt": "scaffold.md",
-          "workspace": true,
-          "stage": "delivery",
-          "when": "route",
-          "inputs": {
-            "base": {
-              "from": "base.base_commit"
-            },
-            "doc": {
-              "from": "design.doc"
-            },
-            "route": {
-              "from": "review_design.scaffold_needed"
-            }
-          },
-          "outputs": {
-            "code": "checkpoint",
-            "summary": "text"
-          },
-          "instructions": [
-            "verification",
-            "owner_questions"
-          ],
-          "skippable": false
-        },
-        "review_scaffold": {
-          "description": "Independently review the minimal contract and its testability.",
-          "kind": "agent",
-          "capability": "reasoning",
-          "prompt": "review_scaffold.md",
-          "stage": "delivery",
-          "when": "route",
-          "review": {
-            "subject": "scaffold"
-          },
-          "inputs": {
-            "doc": {
-              "from": "design.doc"
-            },
-            "code": {
-              "from": "scaffold.code"
-            },
-            "route": {
-              "from": "review_design.scaffold_needed"
-            }
-          },
-          "skippable": false
         }
       }
     },
