@@ -512,6 +512,63 @@ class InsertedReleaseJourneys(Branching):
         self.assertEqual("OPEN", pr["state"], "the provider must refuse the changed finish PR head")
         self.assertEqual(moved, self.tip(pr["headRefName"]))
 
+    def assert_external_unapproved_finish_merge_blocks(self, *, at_view):
+        # Use the ordinary release finish path: production has not yet moved,
+        # and the owner has approved the exact synced tip T.
+        _, line = self.cut_release_1()
+        approved = self.op(line, "sync")["ran"]["output"]["merged"]
+        self.approve(line, "approve_finish")
+        dev_before, main_before = self.tip("dev"), self.tip("main")
+        branch = "release/1"
+        env = self.w.cli_env()
+        subprocess.run(["gh", "pr", "create", "--head", branch, "--base", "main",
+                        "--title", "Release 1", "--body", "owner-approved tip"],
+                       cwd=self.w.clones["a"].path, env=env, check=True, capture_output=True, text=True)
+        prs = [p for p in self.gh.load()["prs"].values()
+               if p["state"] == "OPEN" and p["headRefName"] == branch and p["baseRefName"] == "main"]
+        self.assertEqual(1, len(prs))
+        number = prs[0]["number"]
+        tree = self.w.remote_git("rev-parse", f"{approved}^{{tree}}")
+        moved = self.w.remote_git("commit-tree", tree, "-p", approved, "-m", "unapproved external head")
+        self.gh.update(lambda st: st.update(auto_delete=True))
+        if at_view:
+            # Let finish discover an open PR; change and merge it immediately
+            # before the protected provider's actual pr view response.
+            gh = Path(self.gh.bindir) / "gh"
+            real = Path(self.gh.bindir) / "gh-real"
+            gh.rename(real)
+            gh.write_text(
+                f"#!{sys.executable}\nimport os, subprocess, sys\n"
+                f"args = sys.argv[1:]\nreal = {str(real)!r}\n"
+                f"if args[:2] == ['pr', 'view'] and args[2] == {str(number)!r}:\n"
+                f"    subprocess.run(['git', '--git-dir', {self.w.remote!r}, 'update-ref', "
+                f"'refs/heads/{branch}', {moved!r}, {approved!r}], check=True)\n"
+                f"    subprocess.run([real, 'pr', 'merge', {str(number)!r}, '--merge'], check=True)\n"
+                "os.execv(real, [real] + args)\n", encoding="utf-8")
+            gh.chmod(0o755)
+        else:
+            self.w.remote_git("update-ref", f"refs/heads/{branch}", moved, approved)
+            subprocess.run(["gh", "pr", "merge", str(number), "--merge"],
+                           cwd=self.w.clones["a"].path, env=env, check=True, capture_output=True, text=True)
+        result = self.op(line, "finish")
+        pr = self.gh.pr(number)
+        self.assertEqual("MERGED", pr["state"])
+        self.assertEqual(moved, pr["headRefOid"])
+        merge = pr["mergeCommit"]
+        self.assertEqual(merge, self.tip("main"))
+        self.assertTrue(self.is_ancestor(main_before, merge))
+        self.assertEqual(dev_before, self.tip("dev"), "unapproved merge must not propagate")
+        self.assertNotEqual("done", (result.get("closed") or {}).get("reason"))
+        evidence = json.dumps({"result": result, "goal": self.show(line), "next": self.nxt(line)})
+        for value in (approved, moved, merge, str(number)):
+            self.assertIn(value, evidence)
+
+    def test_external_changed_head_merged_before_provider_view_is_recorded(self):
+        self.assert_external_unapproved_finish_merge_blocks(at_view=True)
+
+    def test_external_changed_head_merged_before_recovery_is_recorded(self):
+        self.assert_external_unapproved_finish_merge_blocks(at_view=False)
+
     def test_protected_provider_refusal_does_not_bypass_pr(self):
         capability = fx.PLUGIN_CODE / "engine/capabilities/insertable_release_targets.txt"
         self.assertTrue(capability.is_file(), "insertable release capability is not implemented")
@@ -1187,3 +1244,77 @@ class MaintenanceForwardPortJourneys(Branching):
 
     def test_base_move_at_provider_merge_is_recorded_and_pauses(self):
         self.assert_post_merge_race_is_recorded_and_paused(change_source=False)
+
+    def finished_nested_maintenance(self):
+        intermediate_line, intermediate_tip, production = self.finished_maintenance()
+        info = self.show(intermediate_line)["goal"]["flow"]["inserted"]
+        released_base = info["source_commit"]
+        count = int(self.w.remote_git("rev-list", "--count", f"{released_base}..{intermediate_tip}"))
+        self.assertGreaterEqual(count, 2, "intermediate source must contain multiple unpublished commits")
+        self.assertFalse(self.is_ancestor(intermediate_tip, self.tip("dev")))
+        self.assertFalse(self.is_ancestor(intermediate_tip, production))
+        released_parents = self.w.remote_git("rev-list", "--parents", "-n", "1", released_base).split()[1:]
+        self.assertTrue(any(self.is_ancestor(parent, self.tip("dev")) for parent in released_parents))
+        member = self.goal(release="1.1.1")
+        nested = self.insert(self.preview(target="1.1.1", source="1.1"),
+                             target="1.1.1", source="1.1")["goal"]
+        self.done(member, code={"src/nested_fix.py": "fixed = True\n"})
+        # The closed nested line is itself an approved immutable source; no
+        # later mutable branch tip is used as lineage evidence.
+        self.op(nested, "sync")
+        self.approve(nested, "approve_finish")
+        self.op(nested, "finish")
+        self.assertEqual(production, self.tip("main"))
+        return nested, intermediate_line, intermediate_tip, released_base
+
+    def test_nested_maintenance_forward_port_uses_verified_older_released_ancestor(self):
+        nested, intermediate, source, released = self.finished_nested_maintenance()
+        closed = self.goal_tip(nested)
+        port = self.request_port(source="1.1.1", destination="dev")
+        details = json.loads(self.show(port)["goal"]["spec"])
+        self.assertEqual(self.tip("release/1.1.1"), details["source_tip"])
+        self.assertEqual(nested, details["source_goal"])
+        self.assertTrue(self.is_ancestor(details["released_base"], self.tip("dev")))
+        self.assertTrue(self.is_ancestor(details["released_base"], source))
+        self.assertNotEqual(source, details["released_base"])
+        self.assertEqual(closed, self.goal_tip(nested))
+        item = self.port_until_human(port)
+        self.assertIn(details["source_tip"], json.dumps(item))
+        self.assertEqual(closed, self.goal_tip(nested))
+
+    def test_invalid_historical_source_snapshots_never_fall_back_to_common_git_history(self):
+        from engine.errors import Refused
+        from engine.forward_port import released_lineage
+        from engine.session import Session
+
+        intermediate, tip, _ = self.finished_maintenance()
+        with fx.env_of(self.w.cli_env()):
+            session = Session(cwd=self.w.clones["a"].path, now=self.w.now)
+            self.addCleanup(session.git.close)
+            session.open(all_goals=True)
+            session.fetch_branches(["main", "dev", "release/1.1"])
+            valid = session.state.docs[intermediate]
+            self.assertTrue(released_lineage(session, valid), "real approved seed must have valid lineage")
+            cases = {}
+            missing = copy.deepcopy(valid)
+            missing["flow"]["inserted"]["source_goal_commit"] = "0" * 40
+            cases["missing object"] = missing
+            contradictory = copy.deepcopy(valid)
+            contradictory["records"]["finish"]["output"]["maintenance"]["source_commit"] = tip
+            cases["contradictory snapshot"] = contradictory
+            cycle = copy.deepcopy(valid)
+            cycle["flow"]["inserted"].update(source_goal=intermediate,
+                                               source_goal_commit=self.goal_tip(intermediate),
+                                               source_commit=tip)
+            cycle["records"]["finish"]["output"]["maintenance"].update(
+                source_goal=intermediate, source_commit=tip)
+            cases["logical source-goal cycle"] = cycle
+            for label, doc in cases.items():
+                with self.subTest(case=label):
+                    message = store.with_trailers(store.goal_message("edit", intermediate, label, "closed"),
+                                                  doc, self.w.policy["settings"])
+                    snapshot = store.goal_commit(session.git, doc, self.goal_tip(intermediate), message)
+                    historical, error = store.read_goal_json(session.git, snapshot)
+                    self.assertIsNone(error)
+                    with self.assertRaises(Refused, msg=f"{label} must not be treated as released ancestry"):
+                        released_lineage(session, historical)
