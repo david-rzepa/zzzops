@@ -91,6 +91,10 @@ def capture(s, lease, end, prior):
     # Rebased ordinary repositories need no child provenance. Do not impose a
     # submodule ancestry requirement where no child gitlinks are involved.
     if not prior_children and not _links(s.git, end) and (not start or not _links(s.git, start)):
+        if start and s.git.is_ancestor(start, end):
+            for commit in s.git.out('rev-list', '--reverse', f'{start}..{end}').split():
+                if _links(s.git, commit):
+                    raise Refused('validation', 'submodule was added and removed without a verifiable baseline')
         return {'parent_start': end, 'children': {}}
     if not start or not s.git.is_ancestor(start, end):
         raise Refused('validation', 'submodule test checkpoint provenance is unavailable')
