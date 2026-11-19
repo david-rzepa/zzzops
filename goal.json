@@ -9,6 +9,56 @@
   },
   "priority": "P2",
   "records": {
+    "adversary_design": {
+      "attempt": 1,
+      "correction_runs": 1,
+      "findings": [
+        {
+          "id": "adversary_design:1:1",
+          "impact": "An implementation could silently weaken accepted test behavior by modifying an omitted helper, fixture, or configuration file.",
+          "material": true,
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "design",
+          "target_attempt": 3,
+          "target_fp": "v1:sha256:cd19a6bfa9f285e9d1936f0cbd1f34fabaca319d3147ddb0ae785573c8c291a1",
+          "text": "The child-repository section says to resolve “test-scoped paths” and protect their entries, but does not define how that scope is derived or require it to include every child path changed by the accepted test checkpoint. The existing superproject rule at plugins/zzzops/zzzops/engine/verbs.py:frozen_paths freezes every changed path since the pre-test work/base, not just files identified as tests. An implementation could choose files by test name or worker declaration, omit a test fixture/helper/config changed during test authoring, and then alter it in the child implementation while the listed test files remain equal; accepted behavior can be weakened without detection. Specify a deterministic child baseline and derive the protected union from all changed child entries through the accepted test checkpoint (including additions, removals, renames and non-test-named helpers), retain prior accepted paths on retries, and fail closed when provenance cannot establish the full scope. Add a real child-repository regression in which an accepted test calls a changed helper and modifying or deleting only that helper is rejected. Impact: implementers could otherwise change accepted test behavior without review, violating the stated preservation guarantee. Material: true.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-19T04:05:19Z",
+      "fp_parts": {
+        "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
+        "inputs": {
+          "doc": "v1:blob:6e65cc4166ced0eb308e9005e159540200dea7dc",
+          "spec": "v1:sha256:014dd47b89f4500ebe37fe1115934cf99ce5e5928862020735efad9984e42177"
+        },
+        "policy": {},
+        "subject": "v1:sha256:cd19a6bfa9f285e9d1936f0cbd1f34fabaca319d3147ddb0ae785573c8c291a1"
+      },
+      "holder": "codex:root/g1050-adversary",
+      "input_fp": "v1:sha256:194b2bf9b15497c748f2980234e19db1f19f76aa53c7781ede132cf2a4b8a134",
+      "ok": true,
+      "output": {
+        "decision": "changes_requested",
+        "report": {
+          "blob": "6034e673ab81ef00a6804084207bc829c41c26bd",
+          "commit": "5d02947cb3a90cb7b7b122a5df06a1de9082e2ea",
+          "path": ".zzzops/reviews/1050/adversary_design.md"
+        },
+        "summary": "Child checkpoint protection needs a complete, deterministic protected-path scope; otherwise a helper changed with accepted tests can be omitted and silently weakened."
+      },
+      "reason": "new",
+      "reviewed": {
+        "doc": {
+          "blob": "6e65cc4166ced0eb308e9005e159540200dea7dc",
+          "commit": "5e63f550368a5ff1b1d377f492fbee9929436e87"
+        }
+      },
+      "status": "done"
+    },
     "design": {
       "attempt": 3,
       "correction_runs": 0,
