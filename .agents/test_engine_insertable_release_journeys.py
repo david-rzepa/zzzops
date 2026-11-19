@@ -1057,10 +1057,12 @@ class MaintenanceForwardPortJourneys(Branching):
         gh = Path(self.gh.bindir) / "gh"
         real = Path(self.gh.bindir) / "gh-real"
         gh.rename(real)
-        gh.write_text('#!/bin/sh\nif [ "$1" = pr ] && [ "$2" = merge ]; then\n'
-                      '  "$(dirname "$0")/gh-real" "$@" || exit $?\n'
-                      '  echo "connection lost after merge" >&2; exit 1\nfi\n'
-                      'exec "$(dirname "$0")/gh-real" "$@"\n')
+        gh.write_text('#!/bin/sh\n'
+                      'case "$*" in\n'
+                      '  "pr merge "*|*"mergePullRequest"*)\n'
+                      '    "$(dirname "$0")/gh-real" "$@" || exit $?\n'
+                      '    echo "connection lost after merge" >&2; exit 1 ;;\n'
+                      'esac\nexec "$(dirname "$0")/gh-real" "$@"\n')
         gh.chmod(0o755)
         self.drive_port(port)
         actual = self.gh.pr(prs[0]["number"])
