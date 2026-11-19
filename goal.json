@@ -261,38 +261,10 @@
       "status": "done"
     },
     "integrate": {
-      "attempt": 7,
-      "blocked": {
-        "category": "external",
-        "op_state": {
-          "head": "68495b3ff76ea71823a7a29488e1a7e016af48a2",
-          "pending_since": 1795100733,
-          "polls": 1,
-          "rerun_head": null
-        },
-        "reason": "required checks pending: dev-required-tests (mergeable: MERGEABLE/BLOCKED)",
-        "repeats": 1,
-        "retry_after": "2026-11-19T15:10:33Z",
-        "waiting_for": "time"
-      },
+      "attempt": 8,
       "correction_runs": 0,
-      "findings": [
-        {
-          "carrier_fp": "v1:sha256:c4e20001858919a24a369cd80c66b4b35868577cde4240ec9dd7eece8536acd0",
-          "id": "integrate:conflict",
-          "note": null,
-          "repeats": 1,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "base",
-          "target_attempt": 1,
-          "target_fp": "v1:sha256:9a1cf62e82b3f59e7beed7cc43dc8c2254e28c786188f4ca73fe313f87f82b0d",
-          "text": "PR #785 conflicts with dev (merging into dev (a8a2e78) conflicts in plugins/zzzops/zzzops/engine/schemas.py, plugins/zzzops/zzzops/engine/verbs.py, plugins/zzzops/zzzops/references/MIGRATING.md); sync the work branch",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-19T15:05:33Z",
+      "findings": [],
+      "finished_at": "2026-11-19T15:15:02Z",
       "fp_parts": {
         "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
         "inputs": {
@@ -305,12 +277,30 @@
           ]
         }
       },
-      "holder": "codex:root/g1049-ci-fix-retry",
+      "holder": "codex:root/g1049-integrate-checks",
       "input_fp": "v1:sha256:3fa5496c62f9f1638e5f49d7be935288d03847c5b79c0d03f8d83fe200cda9b2",
-      "ok": false,
-      "output": null,
+      "ok": true,
+      "output": {
+        "ci": {
+          "failed": [],
+          "passed": [
+            "dev-required-tests"
+          ],
+          "required": [
+            "dev-required-tests"
+          ],
+          "stacked": false
+        },
+        "pr": {
+          "base": "dev",
+          "head": "68495b3ff76ea71823a7a29488e1a7e016af48a2",
+          "number": 785,
+          "tree": "42d8135e3aaf6d925871d49bdb34a5985087c5fa",
+          "url": "https://github.com/david-rzepa/zzzops/pull/785"
+        }
+      },
       "reason": "retry",
-      "status": "blocked"
+      "status": "done"
     },
     "review_design": {
       "attempt": 5,
