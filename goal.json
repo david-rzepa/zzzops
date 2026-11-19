@@ -415,15 +415,15 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T02:36:11Z",
+      "finished_at": "2026-11-19T02:54:19Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:f42c8b7b2364ceff7e6f4b9f301e9b48eb4be3436f06a7434fd097f6ffe36f20",
-          "commands": "v1:sha256:9aa0c53958c5a7119a7648882d3b5e958b1ceca5ec6747e999c990784bf86de9"
+          "code": "v1:sha256:4a73a724128098542d771ffded59b8328e671c244d8ff26252b03ccb12c99ae4",
+          "commands": "v1:sha256:edecaa672966f67eea34c8e1e6d27c8b83831304a7afc10a6bbab2b8a765ce07"
         },
         "policy": {
           "verification": {
@@ -441,27 +441,27 @@
           ]
         }
       },
-      "holder": "codex:root/g1051-run-tests-3",
-      "input_fp": "v1:sha256:2832d7aafe6ff44050bf229f8a414df6e4c002e001ebec441514584f91dafd10",
+      "holder": "codex:root/g1051-run-tests-4",
+      "input_fp": "v1:sha256:0a4c38393c4a038ed79077b29ea660921e6584d4f71eca86ea11c29f35ef0180",
       "ok": true,
       "output": {
         "result": {
           "details": [
             {
-              "cmd": "PYTHONPATH=.agents python3 -m unittest -v test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_provider_view_is_recorded test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_recovery_is_recorded test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_nested_maintenance_forward_port_uses_verified_older_released_ancestor test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_invalid_historical_source_snapshots_never_fall_back_to_common_git_history --durations 10",
+              "cmd": "PYTHONPATH=.agents python3 -m unittest -v test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_release_finish_ignores_earlier_merged_pr_and_merges_approved_descendant test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_release_finish_recovers_exact_merged_head_when_older_pr_listed_first test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_provider_view_is_recorded test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_recovery_is_recorded --durations 10",
               "exit": 0,
-              "milliseconds": 36846,
-              "seconds": 36,
+              "milliseconds": 23919,
+              "seconds": 23,
               "source": "goal",
-              "tail": "------------------------------------\n7.204s     test_nested_maintenance_forward_port_uses_verified_older_released_ancestor (test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_nested_maintenance_forward_port_uses_verified_older_released_ancestor)\n5.889s     test_external_changed_head_merged_before_provider_view_is_recorded (test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_provider_view_is_recorded)\n5.756s     test_external_changed_head_merged_before_recovery_is_recorded (test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_recovery_is_recorded)\n0.229s     test_invalid_historical_source_snapshots_never_fall_back_to_common_git_history (test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_invalid_historical_source_snapshots_never_fall_back_to_common_git_history)\n\n----------------------------------------------------------------------\nRan 4 tests in 36.783s\n\nOK\n"
+              "tail": "test_release_finish_ignores_earlier_merged_pr_and_merges_approved_descendant (test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_release_finish_ignores_earlier_merged_pr_and_merges_approved_descendant) ... ok\ntest_release_finish_recovers_exact_merged_head_when_older_pr_listed_first (test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_release_finish_recovers_exact_merged_head_when_older_pr_listed_first) ... ok\ntest_external_changed_head_merged_before_provider_view_is_recorded (test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_provider_view_is_recorded) ... ok\ntest_external_changed_head_merged_before_recovery_is_recorded (test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_recovery_is_recorded) ... ok\n\nSlowest test durations\n----------------------------------------------------------------------\n6.186s     test_release_finish_recovers_exact_merged_head_when_older_pr_listed_first (test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_release_finish_recovers_exact_merged_head_when_older_pr_listed_first)\n6.008s     test_release_finish_ignores_earlier_merged_pr_and_merges_approved_descendant (test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_release_finish_ignores_earlier_merged_pr_and_merges_approved_descendant)\n5.857s     test_external_changed_head_merged_before_provider_view_is_recorded (test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_provider_view_is_recorded)\n5.808s     test_external_changed_head_merged_before_recovery_is_recorded (test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_recovery_is_recorded)\n\n----------------------------------------------------------------------\nRan 4 tests in 23.860s\n\nOK\n"
             },
             {
               "cmd": "python3 .github/scripts/run_product_validation.py --platform linux --local",
               "exit": 0,
-              "milliseconds": 215876,
-              "seconds": 215,
+              "milliseconds": 214457,
+              "seconds": 214,
               "source": "verification",
-              "tail": "......................\n{\"status\": \"failed\", \"inventory_count\": 0, \"inventory_sha256\": null, \"workers\": 0, \"wall_seconds\": 2.634600969031453e-05, \"aggregate_test_seconds\": 0, \"slowest_tests\": [], \"executed_count\": 0, \"completed_count\": 0, \"worker_seconds\": [], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": [], \"error\": \"loader failed\"}\n...........................................................\n...........................................................\n..........................................................\n.s\n..........................................................\n{\"status\": \"success\", \"inventory_count\": 1172, \"inventory_sha256\": \"2d6afb4d2becdb136d5163fc5a6df5259073ca96f67c7da259235ff409752976\", \"workers\": 20, \"wall_seconds\": 215.81130524000037, \"aggregate_test_seconds\": 3263.311027331132, \"slowest_tests\": [[\"test_engine_journeys.JourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 43.142751589999534], [\"test_engine_journeys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 42.68602644800558], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_approved_patch_reaches_production_and_later_line_only_after_approval\", 41.990643738012295], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_older_maintenance_finishes_without_rewinding_production\", 40.27830782599631], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_changed_forward_port_pr_head_invalidates_previous_approval\", 40.001514136994956]], \"executed_count\": 1172, \"completed_count\": 1172, \"worker_seconds\": [207.5698317049828, 210.6277472539805, 180.8652574160078, 204.94444591499632, 215.74104537800304, 194.1212936679949, 205.87401405599667, 174.69769543700386, 192.30136962799588, 171.99362478000694, 188.96099613499246, 188.58844511999632, 165.4333191550104, 198.94119497897918, 196.29168315898278, 180.6919605509902, 197.81071339998743, 206.5359326270118, 180.6362874660117, 167.6613818060141], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
+              "tail": "JourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 41.159067706990754], [\"test_engine_journeys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 40.602232442004606], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_older_maintenance_finishes_without_rewinding_production\", 40.518629016994964], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_changed_forward_port_pr_head_invalidates_previous_approval\", 39.56112175699673]], \"executed_count\": 1174, \"completed_count\": 1174, \"worker_seconds\": [211.29867796000326, 214.3254344020097, 206.1974466899992, 194.45634550700197, 209.1960317750054, 196.67526787900715, 203.39199572100188, 180.8258586100128, 182.5428567029885, 178.66741384999477, 184.49353214501753, 184.87004127399996, 146.12122425300186, 201.90460303099826, 211.817871532985, 174.86638336800388, 188.9327234319935, 205.31374787498498, 177.73480771199684, 157.81518755000434], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
             }
           ],
           "passed": true,
@@ -480,7 +480,7 @@
               "status": "unavailable",
               "verification": {
                 "caveat": "informational; machine load and concurrent goal-command workload may differ",
-                "delta_ms": 54322,
+                "delta_ms": 52903,
                 "source": {
                   "finished_at": "2026-11-15T14:20:50Z",
                   "goal": 1048,
@@ -501,18 +501,18 @@
               "platform": "linux",
               "python": "3.14"
             },
-            "goal_ms": 36846,
+            "goal_ms": 23919,
             "parallel_commands": false,
-            "plan_sha256": "023be16205a436ffc85f8944af0e2272b13efa629355f196550224005b80efe8",
-            "total_ms": 252721,
-            "verification_ms": 215876,
+            "plan_sha256": "1f3e7e2813aa4b89989b0c70016b01c98a8b9148b6ce595ed948af7d46811e38",
+            "total_ms": 238376,
+            "verification_ms": 214457,
             "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1",
             "workers": {
               "goal": 20,
               "verification": 20
             }
           },
-          "tree": "ef3026c840bbbb508b843508a0ac76c754880ee2"
+          "tree": "95ff86ada529489f05ab28330062d2b38c63ca56"
         }
       },
       "reason": "stale",
