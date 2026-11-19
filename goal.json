@@ -220,10 +220,10 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 4,
+      "attempt": 5,
       "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-19T05:47:33Z",
+      "finished_at": "2026-11-19T06:06:37Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -233,19 +233,23 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/g1050-implement-4",
+      "holder": "codex:root/g1050-implement-5",
       "input_fp": "v1:sha256:4ececea6e42a5de2de7900673dab510b56e3bc825f8dff1d89f1bf71f82d55f1",
       "ok": true,
       "output": {
         "code": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "e7a30b016641fa68763ba7c87e84ab735920bd64",
-          "commit": "9a8d1ccc1e39dbd0a7bc55d171a1df84aef1fa8e",
-          "tree": "2b9fca79afc4929b9dbb56904e2c36ce596d2cab"
+          "change": "04890ac25e0432a6973b00e1ad111e047d15aeea",
+          "commit": "022a43939169c7a9b87d39e15dfe7646a14108fb",
+          "tree": "cec7a9e255d742af17652bb89c4a4adf97da0bba"
         },
-        "summary": "Added capability-gated typed review routing so independent design review selects optional scaffold work before tests, with guarded route changes and review freshness. Added verified local submodule test-scope preservation across retries, implementation, base sync, and PR tree construction, plus reviewed adoption guidance and focused regressions. Updated current-workflow test drivers and removed the obsolete parallel-review-only assertion while retaining migration-safety checks. Full local product validation passed 1,209 tests; the required 34 real CLI/Git journeys and focused submodule advance check also passed."
+        "responses": {
+          "review_impl:1:1": "fixed: inspect open material findings across all carriers for conditional-node targets; the CLI regression verifies the finding remains visible and a waiver allows progress.",
+          "review_impl:1:2": "fixed: treat blocked checkpoint-producing conditional nodes as unresolved work; the CLI regression verifies blocked commits cannot be skipped and independent review permits progress."
+        },
+        "summary": "Preserved false-route gates for open material findings targeting scaffold phases, regardless of which phase carries them, and for blocked scaffold attempts that may have published unreviewed commits. Real CLI and Git regressions reproduce both failures and verify an authorized waiver or an independently reviewed repair allows progress. Full local product validation passed 1,211 tests; both task-card commands passed."
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
