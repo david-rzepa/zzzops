@@ -10,36 +10,36 @@
   "priority": "P2",
   "records": {
     "adversary_design": {
-      "attempt": 4,
+      "attempt": 5,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-19T05:11:36Z",
+      "finished_at": "2026-11-19T05:30:10Z",
       "fp_parts": {
         "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
         "inputs": {
-          "doc": "v1:blob:a3ac387cd2f38ff9ee0f04e627ebb2d7657176b0",
+          "doc": "v1:blob:fbac244685db79270e91c498ab400c3f5bd862c4",
           "spec": "v1:sha256:4a8cbbd6281ed2930a25aaeeab28d289c69eab99320d3a8dca44789c357b3dae"
         },
         "policy": {},
-        "subject": "v1:sha256:391d3a46a3fa92dbfab76c41b2df18d3e404bf5a9557b2e60dc23bf6e15f0d24"
+        "subject": "v1:sha256:10b7b0853f6e6fc1da637d96d1b77a020aeb16d75cb1365e453638a862062ad4"
       },
-      "holder": "codex:root/g1049-adversary-4",
-      "input_fp": "v1:sha256:85e386af2db52d94bee2fb729680f04627d839dc41da91be1165838a9d80cccf",
+      "holder": "codex:root/g1049-adversary-5",
+      "input_fp": "v1:sha256:d13aa49530b41f7c632d68414c55b63ea00ce54a5ac63adf6c4c6fdb0d184260",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "713525c85b3894cfce4ce6f6db106606ff96ab2e",
-          "commit": "594bf843e91ee9fb7cd1399fad49779306748754",
+          "blob": "c6a342ed38c074e243516cbebc6fc1b7291e1d07",
+          "commit": "218008b024079c8652b99859a31fec2618269dc9",
           "path": ".zzzops/reviews/1049/adversary_design.md"
         },
-        "summary": "The fencing contract matches the owner decision and explicitly discloses the unfenced direct-push race."
+        "summary": "Gate lifecycle, reclaim and public writer coverage are now explicit and testable."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "a3ac387cd2f38ff9ee0f04e627ebb2d7657176b0",
-          "commit": "8975028b3e43dc85fd7e151c7759f2d8e03be891"
+          "blob": "fbac244685db79270e91c498ab400c3f5bd862c4",
+          "commit": "b6fe3d3e95529b818a0f089bb2b84743da086f1a"
         }
       },
       "status": "done"
