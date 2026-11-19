@@ -99,10 +99,10 @@ class OwnerQuestionsTemplateTests(unittest.TestCase):
                       "the design's `## Owner decisions` section quotes that answer; otherwise keep it open.", text)
 
     def test_the_instruction_is_listed_on_the_four_nodes(self):
-        for n in ("design", "review_design", "adversary_design", "review_impl"):
+        for n in ("design", "review_design", "adversary_design", "review_impl", "scaffold"):
             self.assertIn("owner_questions", self.nodes[n].get("instructions") or [], n)
         for n, nd in self.nodes.items():
-            if n not in ("design", "review_design", "adversary_design", "review_impl"):
+            if n not in ("design", "review_design", "adversary_design", "review_impl", "scaffold"):
                 self.assertNotIn("owner_questions", nd.get("instructions") or [], n)
 
     def test_the_review_instruction_has_the_targeting_sentence(self):
@@ -198,7 +198,7 @@ class NoFormatChangeTests(unittest.TestCase):
         """D1: `instructions` is not fingerprinted, so listing `owner_questions` stales no record."""
         from engine.fingerprint import node_def_fp
         nodes = shipped("workflow.json")["graphs"]["default"]["nodes"]
-        for n in ("design", "review_design", "adversary_design", "review_impl"):
+        for n in ("design", "review_design", "adversary_design", "review_impl", "scaffold"):
             bare = copy.deepcopy(nodes[n])
             bare["instructions"] = [i for i in bare.get("instructions") or [] if i != "owner_questions"]
             self.assertEqual(node_def_fp(bare), node_def_fp(nodes[n]), n)
@@ -761,6 +761,7 @@ class OwnerFilterTests(OwnerWorld):
     def test_adversary_is_held_to_the_same_rule(self):
         g = self.goal()
         self.p.drive(g, lambda st: st["design"] == "current")
+        self.p.run(g, "review_design")
         ag, card = self.p.start(g, "adversary_design")
         bad = {"decision": "changes_requested", "summary": "s",
                "findings": [{"text": OWNER_Q, "impact": "x", "material": False}]}
@@ -796,6 +797,7 @@ class UnfilteredOwnerQuestionTests(unittest.TestCase):
         nodes["design"]["inputs"] = {"spec": {"from": "goal.spec"}}
         nodes["review_design"]["review"] = {"subject": "design"}
         nodes["review_design"].pop("lenses", None)
+        nodes["review_design"].pop("outputs", None)
         wf["graphs"]["default"] = {"terminal": ["review_design"], "nodes": nodes}
         w.bootstrap(workflow=wf)
         A, B = fx.Agent(w, "a", "claude:aaaa/w-1"), fx.Agent(w, "b", "codex:bbbb/w-2")

@@ -113,7 +113,7 @@ class GraphErrorTests(unittest.TestCase):
         self.assertError(lambda n, g: n["approve_merge"].update({"timeout": 30}), "not allowed on human")
         self.assertError(lambda n, g: n["implement"].update({"timeout": 5}), "10-1440")
         self.assertError(lambda n, g: n["run_tests"].update({"timeout": 500}), "2-240")
-        self.assertError(lambda n, g: n["review_impl"].update({"outputs": {"x": "text"}}), "implicit outputs only")
+        self.assertError(lambda n, g: n["review_impl"].update({"outputs": {"x": "text"}}), "review routing outputs must be non-reserved booleans")
         self.assertError(lambda n, g: n["design"]["inputs"]["spec"].update({"pending": True}), "only on deps.")
 
     def test_policy_keys_instructions_and_capabilities(self):

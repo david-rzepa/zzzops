@@ -19,6 +19,18 @@ def rebase_in_progress(git, p) -> bool:
 
 
 def run(ctx):
+    result = _run(ctx)
+    if isinstance(result, Done) and "conditional_review_routes" in required_caps(ctx.settings):
+        from engine import child_scope
+        candidates = [new for ref, _, new in result.ref_updates if ref.endswith(f"zzzops/work/g{ctx.goal}")]
+        commit = candidates[-1] if candidates else ctx.snap.work.get(ctx.goal)
+        for record in (ctx.doc.get("records") or {}).values():
+            if record.get("child_scope") and commit:
+                child_scope.verify(ctx.session, ctx.goal, commit, record["child_scope"])
+    return result
+
+
+def _run(ctx):
     git, snap = ctx.git, ctx.snap
     ident = Identity(git)
     g, p = ctx.goal, ctx.worktree
