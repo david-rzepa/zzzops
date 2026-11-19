@@ -169,37 +169,28 @@
       "status": "done"
     },
     "filter_impl": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T06:28:47Z",
+      "finished_at": "2026-11-19T06:41:45Z",
       "fp_parts": {
-        "candidates": [
-          [
-            "review_impl:1:1",
-            true
-          ],
-          [
-            "review_impl:1:2",
-            true
-          ]
-        ],
+        "candidates": [],
         "def": "v1:sha256:5fab78ee7a74554d9897b964ee764247bd55068d6c3b2a64932fad9704979c4b",
         "inputs": {
-          "code": "v1:sha256:8958c8b43680f663443b3eba9cd0df2bcf48bdbc6b69c6f4021221005a1fa6d5",
+          "code": "v1:sha256:1800757cb83982b9992e1ace7a5c0466a3beefe6008ebc3c1d6cfa38cf9aad0e",
           "doc": "v1:blob:fbac244685db79270e91c498ab400c3f5bd862c4",
-          "review": "v1:sha256:a2233d1342e7e37575b995d8968dd8707d350a8b66ec16ce6be1cfce45aef1c7"
+          "review": "v1:sha256:7f4d771e8cbf7d4e85a8c2bf8da6d25af2fdfe562e4e24d6b64c2ae6c8fbefb1"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1049-filter-impl",
-      "input_fp": "v1:sha256:a3898917419a0da8a1dbc03ef493af143519f54d85aebacaaf440b27478cc8f3",
+      "holder": "codex:root/g1049-filter-impl-2",
+      "input_fp": "v1:sha256:dd21e33d77e573985fb89ab5d1102941a0a71938d68c1302eadc0311080033d5",
       "ok": true,
       "output": {
-        "summary": "Both independent review findings are material and reopen implementation. The scope-selection guard omits final candidates when no blocked segments exist, despite the approved ambiguity contract; the workspace claim re-fetches under the gate without repeating readiness and lease checks, allowing a stale starter to replace a live lease. No non-material notes.",
+        "summary": "Independent implementation re-review confirms both material findings are resolved. With the capability enabled, final producer candidates are checked for ambiguity even without blocked segments, and workspace claim revalidates readiness, live leases and related constraints after refetch while holding the gate. Three focused real-Git regressions passed independently. No open candidates or notes.",
         "verdicts": {}
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "implement": {
