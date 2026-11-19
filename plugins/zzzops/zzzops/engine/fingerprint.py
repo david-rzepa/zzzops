@@ -45,7 +45,7 @@ def node_def_fp(nd: dict) -> str:
          "workspace": nd.get("workspace", False), "rev": nd.get("rev", 0)}
     if isinstance(nd.get("lenses"), dict):        # only on multi-lens reviewers, so no other node's fp changes
         d["lenses"] = {k: (s or {}).get("skippable", True) is not False for k, s in nd["lenses"].items()}
-    for k in ("schedule", "line_complete"):                  # G1025 line nodes only, so no other fingerprint changes
+    for k in ("schedule", "line_complete", "when"):                  # G1025 line nodes only, so no other fingerprint changes
         if k in nd:
             d[k] = nd[k]
     return V + "sha256:" + H(d)

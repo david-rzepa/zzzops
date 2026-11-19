@@ -1,4 +1,4 @@
-"""Generic filtered-review, intent and provenance contracts on the current shipped workflow.
+"""Filtered-review, intent and provenance contracts on shipped and legacy workflows.
 
 Reviews join at their filter; only non-material candidates receive keep/note verdicts.
 Intent and definition changes stale the responsible reviewers without consuming correction rounds.
@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -379,7 +380,10 @@ class LensWorld(unittest.TestCase):
         self.w = fx.World(self.tmp)
         self.gh = fx.FakeGitHub(self.w)
         self.m = SHIPPED_RENAME if self.renamed else {}
-        wf = renamed_shipped() if self.renamed else shipped("workflow.json")
+        # These lens tests cover the pre-routing graph as an installed policy.
+        # The routing journeys separately exercise the new shipped default.
+        old_graph = json.loads((Path(__file__).parent / "fixtures/scaffold-route-migration/workflow.json").read_text())
+        wf = fx.renamed_workflow(old_graph, SHIPPED_RENAME) if self.renamed else old_graph
         policy = shipped("POLICY.json")
         policy["settings"]["intent"] = copy.deepcopy(INTENT)
         self.w.bootstrap(policy=policy, workflow=wf, prompts=False)

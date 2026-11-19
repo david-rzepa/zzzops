@@ -71,7 +71,11 @@ def ensure_worktree(git: Git, snap, g: int, self_sync: bool = False) -> str:
 
 
 def is_clean(git: Git, p: str) -> bool:
-    return git.run("status", "--porcelain=v1", "-z", "--untracked-files=all", cwd=p).stdout == ""
+    try:
+        return git.run("status", "--porcelain=v1", "-z", "--untracked-files=all", cwd=p).stdout == ""
+    except GitError as exc:
+        raise Refused("validation", "worktree or submodule Git objects are unavailable; verify child repository provenance",
+                      details={"worktree": p}) from exc
 
 
 def salvage_lines(git: Git, snap, g: int, node: str, attempt, local_tip: str | None = None) -> list:
