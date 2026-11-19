@@ -677,6 +677,34 @@ class InsertedReleaseJourneys(Branching):
             self.assertIsNone(self.tip("release/1.1"))
         self.assertTrue(self.is_ancestor(prior_dev, self.tip("dev")))
 
+    def test_source_revocation_before_dispatch_blocks_inserted_members(self):
+        source_goal, source = self.finished_source()
+        self.activate()
+        patch = self.goal(release="1.1")
+        self.insert(self.preview())
+        line_tip = self.tip("release/1.1")
+        self.assertEqual(source, line_tip)
+        self._reopen_source(source_goal, "dispatch-source-revoker")
+        status = self.nxt(patch)
+        self.assertFalse(any(a.get("goal") == patch and a.get("node") in ("base", "implement", "integrate", "merge")
+                             for a in status.get("actions", [])), status)
+        self.assertIn(str(source_goal), json.dumps(status))
+        self.assertEqual(line_tip, self.tip("release/1.1"))
+        self.assertEqual(source, self.tip("main"))
+
+    def test_production_change_before_dispatch_blocks_inserted_members(self):
+        _, source = self.finished_source()
+        self.activate()
+        patch = self.goal(release="1.1")
+        self.insert(self.preview())
+        moved = self.push_branch("main", {"src/new_production.py": "new = True\n"})
+        self.assertNotEqual(source, moved)
+        status = self.nxt(patch)
+        self.assertFalse(any(a.get("goal") == patch and a.get("node") in ("base", "implement", "integrate", "merge")
+                             for a in status.get("actions", [])), status)
+        self.assertEqual(source, self.tip("release/1.1"))
+        self.assertEqual(moved, self.tip("main"))
+
     def test_retargeted_inflight_work_cannot_integrate_into_old_patch_line(self):
         capability = fx.PLUGIN_CODE / "engine/capabilities/insertable_release_targets.txt"
         self.assertTrue(capability.is_file(), "insertable release capability is not implemented")
