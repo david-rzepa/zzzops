@@ -162,55 +162,30 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 3,
-      "findings": [
-        {
-          "id": "implement:3:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "test_design",
-          "target_attempt": 10,
-          "target_fp": "v1:sha256:e1203e7c17236697b6b38fbfa64b8a65ada9dbf15e0af3336875ab4cb85ced6f",
-          "text": "`test_equal_trees_without_lineage_or_matching_pr_are_not_proof` replaces the entire dev tree with the older maintenance source tree. A direct read of the real seeded Git objects shows the source POLICY requires only lens_findings, lenses, test_cost and release_lines; dev additionally requires insertable_release_targets. Therefore the test removes the capability floor immediately before invoking the capability-gated command, and the exact required run correctly fails with `forward-port requires capability insertable_release_targets`. Preserve equal trees and divergent ancestry while ensuring the exact source tree and resulting dev both retain the reviewed capability policy; do not bypass the old-writer protection.",
-          "upheld": false
-        },
-        {
-          "id": "implement:3:2",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "test_design",
-          "target_attempt": 10,
-          "target_fp": "v1:sha256:e1203e7c17236697b6b38fbfa64b8a65ada9dbf15e0af3336875ab4cb85ced6f",
-          "text": "The separate-destination journey reaches the dedicated graph human approval, then `answer_port` sends `text` and no `summary`. Existing human approval nodes require `summary` and reject `text`; `text` belongs to blocked-op answers. Use the shown answer template/schema for the resulting human approval, or explicitly require and specify a blocked-op decision instead. The implementation must not special-case away the established approval schema solely to satisfy the fixture.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-19T01:25:51Z",
+      "findings": [],
+      "finished_at": "2026-11-19T01:50:16Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
           "base": "v1:sha256:7137968f0afc1e3d944fd561b2af20955f2aef16fd65a3864f6989ddd512e960",
           "doc": "v1:blob:5b199f7a7f94e75dfbec83fa682e91d088f0edec",
-          "tests": "v1:sha256:f319cec08b4e6640a9bd01b5130cd3faaa5d9e0a6bd6dcb33432eaebec22122c"
+          "tests": "v1:sha256:0ce2b5e1230dc659f4eb530eb5e30e34443c3832dbc7178bdd86df1e0131a33a"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1051-implement-3",
-      "input_fp": "v1:sha256:8e6e4ea5a6e50e80f16fdd1568aca51a8767b3f35053439e66828ee4d49c2b22",
+      "holder": "codex:root/g1051-implement-4",
+      "input_fp": "v1:sha256:35bcefc8fed9697df5a6e73bad2edf442d6746662e9c3e0ae7bd15173c8a315a",
       "ok": true,
       "output": {
         "code": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "1537fc188af356e0d2da0c5bb5914ee9e428c453",
-          "commit": "747fa5f3abc31a5c0eea49e39972a5a91cf69224",
-          "tree": "22e9bc5cb66d0ce3066b57b438d51614e8f104e1"
+          "change": "71f2887213b32322bc14cdd11928fed25bbe6a57",
+          "commit": "89522c479ccab2d3268f046405eefea23eb54d52",
+          "tree": "3cb0d63246db2e36cdf948ed8235ab3fdc65ef9d"
         },
-        "summary": "Incomplete checkpoint: added a capability-gated maintenance forward-port request, provenance and destination checks, atomic goal/carrier creation, and an initial prepare/approval/finish graph. The required no-diff test is red because its fixture removes the required capability from the integration policy; a separate journey also exposes an answer-schema mismatch. Approval refresh, partial-merge recovery, no-diff evidence hardening and the remaining approved behavior are not complete."
+        "summary": "Implemented separately tracked maintenance forward-ports with immutable source provenance, capability-gated atomic goal/carrier creation, per-destination approval and protected PR merges. Added evidence-backed history-only outcomes, fresh approval after observed head/base changes, resumable provider errors, recorded post-merge divergence, and coordination-goal isolation. The required local checks pass; actual hosted protected-branch staging remains to be verified."
       },
       "reason": "stale",
       "status": "done"
