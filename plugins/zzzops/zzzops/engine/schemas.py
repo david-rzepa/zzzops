@@ -621,7 +621,7 @@ SETTINGS_SHAPE = {
     "integration_branch": "branch",
     "verification": {"commands": "strings", "required_ci": "strings", "timeout_minutes": (1, 240),
                      "ci_timeout_minutes": (10, 1440), "parallel_commands": ("optional", "bool")},
-    "releases": {"current": (1, None)},
+    "releases": {"current": "release_id"},
     "leases": {"ttl_minutes": (10, 1440)},
     "parallelism": {"max_workers": (1, 50)},
     "scheduling": {"order": ("stage_first", "goal_first")},
@@ -766,6 +766,9 @@ def validate_policy(p) -> list:
             if k in settings:
                 _check_shape(e, f"settings.{k}", settings[k], shape)
         _check_branching(e, settings)
+        current = (settings.get("releases") or {}).get("current") if isinstance(settings.get("releases"), dict) else None
+        if isinstance(current, str) and "insertable_release_targets" not in required_caps(settings):
+            e.add("settings.releases.current", "string release targets require capability `insertable_release_targets`")
         verification = settings.get("verification")
         if isinstance(verification, dict) and "parallel_commands" in verification and "test_cost" not in required_caps(settings):
             e.add("settings.verification.parallel_commands", "requires capability `test_cost`: add it to settings.engine.requires")
@@ -829,7 +832,12 @@ def _check_shape(e: Errors, where, value, shape):
         return
     if _optional(shape):
         shape = shape[1]
-    if shape == "textmap":
+    if shape == "release_id":
+        try:
+            release_id.components(value)
+        except (ValueError, TypeError):
+            e.add(where, "must be a positive integer or dotted release identifier")
+    elif shape == "textmap":
         if not isinstance(value, dict):
             e.add(where, "must be an object of text or lists of text")
             return
@@ -1067,6 +1075,30 @@ def flow_errors(flow) -> list:
         out.append("cut must be a full 40-hex sha")
     if "inserted" in flow and (flow["line"] != "release" or not isinstance(flow["inserted"], dict)):
         out.append("inserted metadata requires a release line")
+    elif "inserted" in flow:
+        metadata = flow["inserted"]
+        if metadata.get("mode") not in ("production_patch", "maintenance"):
+            out.append("inserted mode must be production_patch or maintenance")
+        try:
+            release_id.components(metadata.get("source_release"))
+        except (ValueError, TypeError):
+            out.append("inserted source_release must be a release identifier")
+        if not _is_int(metadata.get("source_goal")) or metadata["source_goal"] < 1:
+            out.append("inserted source_goal must be a positive integer")
+        for key in ("source_commit", "source_goal_commit", "production_commit"):
+            if not isinstance(metadata.get(key), str) or not SHA.fullmatch(metadata[key]):
+                out.append(f"inserted {key} must be a full 40-hex sha")
+        if metadata.get("source_commit") != flow["cut"]:
+            out.append("inserted source_commit must match the recorded cut")
+        try:
+            if release_id.components(metadata.get("source_release")) >= release_id.components(flow.get("name")):
+                out.append("inserted source release must precede the target")
+        except ValueError:
+            pass
+        if not isinstance(metadata.get("verified"), bool):
+            out.append("inserted verified must be a boolean")
+        if not isinstance(metadata.get("fingerprint"), str) or not metadata["fingerprint"].startswith("v1:sha256:"):
+            out.append("inserted fingerprint must identify the approved snapshot")
     return out
 
 

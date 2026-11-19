@@ -107,6 +107,7 @@ class Session:
         self._portfolio = None
         self._goals = list(goals)
         self.fetch_lines()
+        self.check_release_aliases()
         return self.state
 
     def refetch(self, goals=(), deps=(), all_goals=False):
@@ -116,6 +117,60 @@ class Session:
         self.state = read_state(self.git, self.snap, all_goals=all_goals, wanted=goals)
         self._portfolio = None
         self.fetch_lines()
+        self.check_release_aliases()
+
+    def check_release_aliases(self):
+        """Fail closed when distinct remote names alias one release identity."""
+        from engine import release_id
+        b = self.branching()
+        if (not b or "insertable_release_targets" not in schemas.required_caps(self.state.settings)
+                or not self.snap.current):
+            return
+        prefix = b["release_prefix"]
+        result = self.git.run("ls-remote", self.R, f"refs/heads/{prefix}*", check=False, timeout=120)
+        if result.returncode:
+            message = "could not inspect remote release refs for alias collisions"
+            self.state.blockers.append({"kind": "release_alias_check_unavailable", "message": message})
+            self.state.pause = True
+            if self.state.write_block is None:
+                self.state.write_block = Refused("remote", message)
+            return
+        by_identity = {}
+        noncanonical = []
+        for row in result.stdout.splitlines():
+            pieces = row.split("\t", 1)
+            if len(pieces) != 2 or not pieces[1].startswith("refs/heads/" + prefix):
+                continue
+            branch = pieces[1][len("refs/heads/"):]
+            name = branch[len(prefix):]
+            try:
+                canonical = prefix + release_id.label(name)
+            except ValueError:
+                continue
+            by_identity.setdefault(canonical, []).append(branch)
+            if canonical != branch:
+                noncanonical.append(branch)
+        conflicts = {key: names for key, names in by_identity.items() if len(names) > 1}
+        from engine.lines import lines_of, merged_ledger
+        records = {}
+        for line in lines_of(merged_ledger(self.state.ledger, self.state.docs), self.state.settings):
+            if line.kind != "release":
+                continue
+            try:
+                canonical = release_id.label(line.name)
+            except ValueError:
+                continue
+            records.setdefault(canonical, []).append(line.goal)
+            if line.name != canonical:
+                noncanonical.append(f"G{line.goal} ({line.name})")
+        duplicate_records = {name: goals for name, goals in records.items() if len(goals) > 1}
+        if conflicts or noncanonical or duplicate_records:
+            message = (f"release ref or line collision or noncanonical names: "
+                       f"{conflicts or noncanonical or duplicate_records}; resolve explicitly before writing")
+            self.state.blockers.append({"kind": "release_alias_collision", "message": message})
+            self.state.pause = True
+            if self.state.write_block is None:
+                self.state.write_block = Refused("conflict", message)
 
     # ------------------------------------------------------------------ release lines (G1025)
     def branching(self):
@@ -186,7 +241,8 @@ class Session:
             return {}
         from engine.lines import lines_of, merged_ledger, target_of
         st = self.state
-        lns = lines_of(merged_ledger(st.ledger, docs), st.settings)
+        ledger = merged_ledger(st.ledger, docs)
+        lns = lines_of(ledger, st.settings)
         open_release = [self.snap.targets.get(x.branch) for x in lns if x.open and x.kind == "release"]
         out = {}
         for g, d in sorted(docs.items()):
@@ -200,6 +256,15 @@ class Session:
             u = {"target": tg["branch"], "tip": tip, "behind": False, "merged_in_target": {}}
             records = d.get("records") or {}
             flow = d.get("flow") or {}
+            line = next((x for x in lns if x.open and x.branch == tg["branch"]), None)
+            inserted = (ledger.get(line.goal) or {}).get("inserted") if line else None
+            if isinstance(inserted, dict) and not flow.get("line"):
+                production = self.target_tip(b["production"])
+                if (not inserted.get("verified")
+                        or self.snap.goals.get(inserted.get("source_goal")) != inserted.get("source_goal_commit")
+                        or production != inserted.get("production_commit")
+                        or not self.ancestor(inserted.get("source_commit"), tip)):
+                    u["insert_invalid"] = True
             if flow.get("line"):
                 sr = next((records.get(n) for n in graph.topo if graph.nodes[n].get("schedule")), None)
                 if tip and flow["line"] == "release" and not flow.get("inserted"):

@@ -257,6 +257,10 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
             st[n] = {"name": "waiting", "until": f"release {lx['insert_waiting']} inserted",
                      "reason": "release_insert"}
             continue
+        if (lx.get("upstream") or {}).get("insert_invalid"):
+            st[n] = {"name": "waiting", "until": "inserted release provenance reviewed",
+                     "reason": "release_insert_provenance_changed"}
+            continue
         r = R.get(n)
         L = leases.get(n)
         if L and r and r["attempt"] >= L.attempt:
@@ -524,10 +528,18 @@ def portfolio(docs: dict, graphs: dict, leases: dict, settings: dict, now: int, 
     invalid: id -> errors; newer: ids whose schema is newer than this engine. G1025, with settings.branching only:
     `ledger` (id -> trailer entry, §3.1) and `upstream` (id -> {"target", "tip", "behind", "merged_in_target"})."""
     from engine import lines as ln
+    from engine import release_id
     b = ln.branching(settings)
     L = ln.merged_ledger(ledger, docs) if b else {}
     lns = ln.lines_of(L, settings) if b else []
     effective = ln.effective_release(settings, lns) if b else None
+    if b and "insertable_release_targets" in required_caps(settings):
+        targets = [entry.get("release") for entry in L.values()
+                   if entry.get("state") in ("open", "held") and not entry.get("line")
+                   and not entry.get("hotfix") and entry.get("release") is not None]
+        targets.extend(x.name for x in lns if x.kind == "release" and x.open)
+        if any(isinstance(release_id.canonical(target), str) for target in targets):
+            effective = release_id.canonical(min(targets, key=release_id.components))
     upstream = upstream or {}
     invalid = dict(invalid or {})
     newer = set(newer or ())
@@ -565,7 +577,6 @@ def portfolio(docs: dict, graphs: dict, leases: dict, settings: dict, now: int, 
                 lctx["members_open"] = ln.open_members(L, me) if me else []
                 lctx["line_behind"] = bool((upstream.get(g) or {}).get("behind"))
         else:
-            from engine import release_id
             if isinstance(release_id.canonical(d["release"]), str) and not (d.get("flow") or {}):
                 lctx = {"insert_waiting": release_id.label(d["release"]), "effective": effective}
         st, cur, live, notes, stale = frontier(graph, d, dep_view, goal_leases, settings, now, lctx)

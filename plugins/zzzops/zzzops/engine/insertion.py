@@ -18,6 +18,10 @@ def preview(s, target, source):
         raise Refused("validation", str(exc)) from exc
     s.open(all_goals=True, readonly=True)
     settings = s.state.settings
+    collision = next((b for b in s.state.blockers if b.get("kind") in
+                      ("release_alias_collision", "release_alias_check_unavailable")), None)
+    if collision:
+        raise Refused("conflict", collision["message"])
     if CAPABILITY not in schemas.required_caps(settings):
         raise Refused("validation", f"release insertion requires capability `{CAPABILITY}`")
     b = branching(settings)
@@ -35,6 +39,9 @@ def preview(s, target, source):
     finish = next((n for n in graph.topo if graph.nodes[n].get("op") == "git.line_finish"), None) if graph else None
     record = (doc.get("records") or {}).get(finish) or {}
     output = record.get("output") or {}
+    # Fetch only to make immutable recorded objects available locally; the
+    # movable source ref is never used as the release provenance.
+    s.fetch_branches([b["production"], line.branch])
     maintenance = output.get("maintenance")
     source_commit = output.get("production_merge")
     provenance_kind = "production_merge"
@@ -47,11 +54,11 @@ def preview(s, target, source):
                 or (sync.get("output") or {}).get("merged") != source_commit
                 or not s.ancestor(maintenance.get("source_commit"), source_commit)):
             raise Refused("not_ready", f"release {source} lacks approved maintenance provenance")
-    if record.get("status") != "done" or not record.get("ok") or not source_commit or not s.git.exists(source_commit):
-        raise Refused("not_ready", f"release {source} has no verifiable finished source commit")
     production = s.target_tip(b["production"])
     if not production:
         raise Refused("not_found", f"production branch `{b['production']}` was not found")
+    if record.get("status") != "done" or not record.get("ok") or not source_commit or not s.git.exists(source_commit):
+        raise Refused("not_ready", f"release {source} has no verifiable finished source commit")
     released_base = maintenance.get("source_commit") if provenance_kind == "maintenance" else source_commit
     if not s.ancestor(released_base, production):
         raise Refused("not_ready", "source release and production have no verified released ancestry")
@@ -89,27 +96,49 @@ def insert(s, target, source, answer):
         raise Refused("validation", "answer requires quote, decided_by and fingerprint")
     details = preview(s, target, source)["insert_preview"]
     if answer["fingerprint"] != details["fingerprint"]:
-        raise Refused("not_ready", "release insertion preview changed; obtain fresh approval")
+        raise Refused("preview_stale", "release insertion preview changed; obtain fresh approval")
     if details["already_completed_members"]:
         raise Refused("not_ready", "completed integration members require reviewed backport before insertion",
                       details={"goals": details["already_completed_members"]})
     s.require_writable()
     name, branch = release_id.label(details["target"]), details["branch"]
     key = lineverbs.line_key("release", name)
-    hits = scan_request_key(s, key) if s.snap.current else []
-    if hits:
-        gid, _, old = hits[0]
-        meta = (old.get("flow") or {}).get("inserted") or {}
-        if old.get("state") == "closed" or meta.get("fingerprint") != details["fingerprint"]:
-            raise Refused("conflict", "release line exists with different or finished provenance")
-        return {"ok": True, "goal": gid, "branch": branch, "created": {"id": gid, "recovered": True}}
-    if s.fetch_branches([branch]).get(branch):
-        raise Refused("conflict", f"release branch `{branch}` already exists")
     metadata = {"mode": details["mode"], "source_release": details["source_release"],
                 "source_goal": details["source_goal"], "source_commit": details["source_commit"],
                 "source_goal_commit": details["source_provenance_goal_commit"],
                 "production_commit": details["production_commit"],
-                "fingerprint": details["fingerprint"], "verified": False}
+                "fingerprint": details["fingerprint"], "verified": False,
+                "approval": {k: v for k, v in answer.items() if k != "fingerprint"}}
+    hits = scan_request_key(s, key) if s.snap.current else []
+    if hits:
+        gid, _, old = hits[0]
+        meta = (old.get("flow") or {}).get("inserted") or {}
+        if (old.get("state") == "closed" or meta.get("source_commit") != details["source_commit"]
+                or not release_id.equal(meta.get("source_release"), details["source_release"])):
+            raise Refused("conflict", "release line exists with different or finished provenance")
+        if meta.get("verified"):
+            if meta.get("fingerprint") != details["fingerprint"]:
+                raise Refused("conflict", "verified release line has different provenance")
+            return {"ok": True, "goal": gid, "branch": branch, "created": {"id": gid, "recovered": True}}
+        observed = s.fetch_branches([branch, details["production_ref"]])
+        if (observed.get(branch) != details["source_commit"]
+                or observed.get(details["production_ref"]) != details["production_commit"]
+                or s.snap.goals.get(details["source_goal"]) != details["source_provenance_goal_commit"]):
+            raise Refused("preview_stale", "pending release observations changed; obtain fresh approval")
+        verified = copy.deepcopy(old)
+        metadata["verified"] = True
+        verified["flow"]["inserted"] = metadata
+        old_tip = s.snap.goals[gid]
+        message = store.with_trailers(store.goal_message("edit", gid, "verified inserted release", "open"),
+                                      verified, s.state.settings)
+        new = store.goal_commit(s.git, verified, old_tip, message)
+        result, stderr = store.push_atomic(s.git, s.R, [(f"refs/heads/zzzops/goal/g{gid}", old_tip, new)])
+        if result != "ok":
+            raise Refused("conflict", "release remains pending after verification race", details={"reason": stderr[:500]})
+        return {"ok": True, "goal": gid, "branch": branch, "pending_verification": False,
+                "created": {"id": gid, "recovered": True}}
+    if s.fetch_branches([branch]).get(branch):
+        raise Refused("conflict", f"release branch `{branch}` already exists")
     line_answer = {k: v for k, v in answer.items() if k != "fingerprint"}
     gid, doc, commit = lineverbs.line_goal(s, "release", name, branch, details["source_commit"],
                                           line_answer, key, inserted=metadata)

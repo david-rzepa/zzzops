@@ -15,10 +15,13 @@ Every verb prints one JSON object (`show` prints text unless `--json`). **Runnin
 | `reopen G X --note T` | Re-run a done node (for example re-observe a flaky check). |
 | `edit G… (--file F… \| --set PATH=JSON…) [--base C]…` | Change goals: hold, unhold, depend, skip (a node, or one lens with `skip.<node>:<lens>`), close, budget, waive. Without `--base` for every goal it is a dry run that prints the impact preview. Both the preview and the applied result list `live_leases_on_changed_nodes` (running phases whose inputs the edit changes, with `abandon` and `restart` commands). `carried_findings` lists the open findings that stay live after the edit although their review went stale, each with the `--set` lines that waive it in the same edit. |
 | `release cut N --answer F` | With `settings.branching`: answer a `release_cut` item. Cuts `<release_prefix>N` from the integration tip and creates its line goal; `F` is the item's `answer_template` (`{"decision": "approved", "quote", "decided_by"}`). Safe to rerun: a cut that already happened returns its goal with `created.recovered: true`. |
+| `release insert TARGET --from SOURCE [--answer F]` | With release branching and the `insertable_release_targets` capability, preview an isolated release from a previously finished release. Apply with the preview's answer template after owner approval. The source and production snapshots are checked again; changes require a fresh preview. |
 | `hotfix start X --answer F` | With `settings.branching`: answer a `hotfix_start` item. Creates `<hotfix_prefix>X` from the production branch and its line goal; a finished hotfix name is refused (choose a new one). |
 | `validate [G…]` / `validate --policy [--dir D]` | Check goals, the environment and policy files, and show the engine's `build` and `capabilities`; changes nothing. With `--policy-ref REF`, check the policy on `REF` and report its impact. |
 
 `ZZZOPS_TRACE=<file>` appends one JSON line per network call (`git fetch`, `push`, `ls-remote`, and every `gh` call) with `cmd`, `rc` and `ms`. Local git commands are not traced.
+
+Release targets compare as numeric components: `2.1` precedes `2.10`, and trailing zero components are aliases (`2`, `2.0`). An inserted maintenance release remains on its own line; it does not move production backwards. Production forward-ports require separate approval for each destination. GitHub guards the approved PR head but cannot atomically guard independent refs, so a detected source or base race pauses further propagation for review.
 
 **Examples.**
 ```sh

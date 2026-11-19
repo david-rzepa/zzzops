@@ -39,6 +39,16 @@ def run(s, kind: str, name: str, answer: dict) -> dict:
     check_answer(answer)
     name = str(name)
     s.open()
+    if kind == "release":
+        try:
+            canonical = release_id.canonical(name)
+        except ValueError as exc:
+            raise Refused("validation", str(exc)) from exc
+        if "." in name and "insertable_release_targets" not in schemas.required_caps(s.state.settings):
+            raise Refused("validation", "dotted release targets require capability `insertable_release_targets`")
+        if isinstance(canonical, str):
+            raise Refused("usage", "inserted releases need an approved source; use `release insert` instead")
+        name = str(canonical)
     b = branching(s.state.settings)
     if not b:
         raise Refused("usage", "release lines need settings.branching in .zzzops/POLICY.json",

@@ -880,6 +880,16 @@ def line_items(ctx: Ctx, p: Portfolio, full: bool) -> list:
     I = s["integration_branch"]
     template = {"decision": "approved", "quote": "<the human's words, verbatim>", "decided_by": "<name>"}
     key = (0, (), 0, 0, 0)
+    from engine import release_id
+    missing = {}
+    for goal, result in p.goals.items():
+        target = result.target or {}
+        if target.get("kind") == "inserted" and not target.get("branch"):
+            missing.setdefault(release_id.label(result.doc["release"]), []).append(goal)
+    for target, goals in sorted(missing.items(), key=lambda item: release_id.components(item[0])):
+        out.append((key, {"kind": "release_insert", "release": target, "goals": goals,
+                          "question": f"Release {target} needs an isolated line from a finished release. Choose the source and review the preview.",
+                          "command": command(ctx, ["release", "insert", target, "--from", "<SOURCE_RELEASE>"])["command"]}))
     if p.cut:
         N = p.cut["release"]
         branch = b["release_prefix"] + str(N)

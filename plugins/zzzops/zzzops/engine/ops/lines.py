@@ -6,6 +6,7 @@ A line goal has no work branch. Its worktree is detached; each back-merge builds
 from __future__ import annotations
 
 import os
+import re
 
 from engine.canon import iso
 from engine.lines import branching, lines_of, merged_ledger, open_members
@@ -139,8 +140,21 @@ def back_merge(ctx, state, source, into, into_tip, slot, title, require_approval
     if require_approval:
         subject = {"pr": pr["number"], "head": head, "base": into_tip, "source": source}
         if bm.get("asked_forward") == subject and ctx.answer:
-            bm.setdefault("approved_forward", []).append(subject)
-            bm.pop("asked_forward", None)
+            text = str(ctx.answer.get("text") or "").strip().casefold().rstrip(".! ")
+            destination = into.casefold()
+            affirmative = {"yes", "approve", "approved", "approve the forward-port",
+                           f"i approve this exact {destination} forward-port",
+                           f"i approve the displayed {destination} forward-port"}
+            quote = str(ctx.answer.get("quote") or "").casefold()
+            contradicted = bool(re.search(r"\b(?:no|not|never|decline|reject|refuse)\b", quote))
+            if text in affirmative and not contradicted:
+                bm.setdefault("approved_forward", []).append(subject)
+                bm.pop("asked_forward", None)
+            else:
+                return Blocked({"category": "decision", "waiting_for": "human",
+                                "reason": f"forward-port to {into} was not approved",
+                                "question": f"PR #{pr['number']} to `{into}` was not approved. To proceed, answer `approve the forward-port`; otherwise reopen and revise it.",
+                                "options": ["approve the forward-port", "reopen and revise"], "op_state": state})
         if subject not in bm.get("approved_forward", []):
             bm["asked_forward"] = subject
             return Blocked({"category": "decision", "waiting_for": "human",
@@ -248,9 +262,9 @@ def finish(ctx):
         # production change needs new approval rather than a guessed rebase.
         observed_production = s.fetch_branches([prod]).get(prod)
         observed_source = s.snap.goals.get(inserted["source_goal"])
-        if (not state.get("production_merge") and
-                (observed_production != inserted["production_commit"]
-                 or observed_source != inserted["source_goal_commit"])):
+        expected_production = state.get("production_merge") or inserted["production_commit"]
+        if (observed_production != expected_production
+                or observed_source != inserted["source_goal_commit"]):
             return Blocked({"category": "decision", "waiting_for": "human",
                             "reason": "inserted release provenance or production changed",
                             "question": "The approved release source or production changed. Obtain a fresh preview and approval before finishing.",
@@ -311,7 +325,8 @@ def finish(ctx):
                             "question": "The PR merged but its source or production base changed. Review the recorded merge before further propagation; no automatic rollback was attempted.",
                             "op_state": state})
     back = state.setdefault("back", {})
-    intos = [(ctx.snap.I, ctx.snap.integration, "integration")]
+    integration_tip = s.fetch_branches([ctx.snap.I]).get(ctx.snap.I) if inserted else ctx.snap.integration
+    intos = [(ctx.snap.I, integration_tip, "integration")]
     if kind == "hotfix":
         rel = next((x for x in lns if x.kind == "release" and x.open), None)
         if rel and tip(ctx, rel.branch):
@@ -332,5 +347,17 @@ def finish(ctx):
         if isinstance(out, Blocked):
             return out
         back[into] = out[1]
+        if inserted and out[1]:
+            actual = s.fetch_branches([into, prod])
+            merge_parents = parents(git, out[1]) if git.exists(out[1]) else []
+            s.refetch(all_goals=True)
+            if (not merge_parents or merge_parents[0] != into_tip
+                    or actual.get(prod) != state["production_merge"]
+                    or s.snap.goals.get(inserted["source_goal"]) != inserted["source_goal_commit"]
+                    or not actual.get(into) or not git.is_ancestor(out[1], actual[into])):
+                return Blocked({"category": "decision", "waiting_for": "human",
+                                "reason": "post-merge forward-port source or base divergence",
+                                "question": "Review the recorded forward-port before further propagation; no automatic rollback was attempted.",
+                                "op_state": state})
     return Done({"production_merge": state["production_merge"], "back_merges": dict(back)}, ok=True,
                 summary=f"{branch} merged into {prod}" + "".join(f", {k}" for k in back))

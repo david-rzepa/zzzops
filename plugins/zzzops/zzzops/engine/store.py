@@ -465,6 +465,10 @@ def build_ledger(git: Git, snap: Snapshot, commits: dict, st: State) -> dict:
             line = c.trailer("Line")
             out[g] = {"release": target, "state": c.trailer("State") or "open", "closed": c.trailer("Closed"),
                       "line": line, "hotfix": c.trailer("Hotfix")}
+            if line and (g in st.invalid or g in st.newer):
+                # A trailer alone cannot prove an invalid or unreadable line's
+                # isolation metadata. Never route members onto it as verified.
+                out[g]["inserted"] = {"verified": False}
             continue
         doc, _ = read_goal_json(git, snap.goals[g])
         if isinstance(doc, dict):

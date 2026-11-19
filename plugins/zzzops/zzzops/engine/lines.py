@@ -34,8 +34,14 @@ def merged_ledger(ledger: dict | None, docs: dict) -> dict:
 
 
 def line_branch(b: dict, kind: str, name: str) -> str:
-    return (b["release_prefix"] + release_id.label(name) if kind == "release"
-            else b["hotfix_prefix"] + str(name))
+    if kind != "release":
+        return b["hotfix_prefix"] + str(name)
+    try:
+        name = release_id.label(name)
+    except ValueError:
+        # Preserve legacy diagnostic access to malformed existing records.
+        name = str(name)
+    return b["release_prefix"] + name
 
 
 @dataclass(frozen=True)
@@ -71,11 +77,11 @@ def lines_of(ledger: dict, settings: dict) -> list:
     return out
 
 
-def effective_release(settings: dict, lines: list) -> int:
+def effective_release(settings: dict, lines: list):
     """max(releases.current, 1 + the highest cut release): a finished line keeps counting (§3.1)."""
     cur = settings["releases"]["current"]
     cut = [int(x.name) for x in lines if x.kind == "release" and x.name.isdigit()]
-    return max([cur] + [n + 1 for n in cut])
+    return max([release_id.canonical(cur)] + [n + 1 for n in cut], key=release_id.components)
 
 
 def open_line(lines: list, kind: str, name) -> Line | None:
@@ -137,6 +143,10 @@ def target_of(doc: dict, settings: dict, lines: list) -> dict:
 def cut_state(ledger: dict, lines: list, settings: dict, effective: int) -> tuple:
     """(cut, waiting): the release_cut offer {"release", "goals"} or None, and the waiting entries (§3.2)."""
     N = effective
+    if isinstance(release_id.canonical(N), str):
+        # Dotted lines must be created from an explicitly approved released
+        # source, never cut implicitly from the integration branch.
+        return None, []
     mem = [g for g, e in sorted(ledger.items()) if is_member(e) and release_id.equal(e.get("release"), N)]
     complete = bool(mem) and all(ledger[g].get("state") == "closed" for g in mem) \
         and any(ledger[g].get("closed") == "done" for g in mem)
