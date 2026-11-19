@@ -374,48 +374,17 @@
       "status": "done"
     },
     "review_impl": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 1,
-      "findings": [
-        {
-          "id": "review_impl:1:1",
-          "impact": "Unrelated production source can be silently frozen, blocking legitimate implementation changes without informed test review.",
-          "lens": "compliance",
-          "material": true,
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "implement",
-          "target_attempt": 4,
-          "target_fp": "v1:sha256:d775c7970661d8a1a7ca5630814135f10e7f8e86f8f8cbb8acd33fc33bfb2329",
-          "text": "Material: frozen_paths only adds final candidates to all_candidates when blocked segments exist. With preserved_test_provenance enabled and no blocked segment, a real local Git producer commit containing runtime.py and test_feature.py returns both as frozen without scope_selection or independent candidate review. This silently protects implementation/source files and violates the approved explicit ambiguity-selection contract; inspect all final candidates in every producer attempt and add a non-blocked mixed-source regression.",
-          "upheld": false
-        },
-        {
-          "id": "review_impl:1:2",
-          "impact": "A second agent can displace a live worker without authorization, corrupting coordination and risking loss of work.",
-          "lens": "correctness",
-          "material": true,
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "implement",
-          "target_attempt": 4,
-          "target_fp": "v1:sha256:d775c7970661d8a1a7ca5630814135f10e7f8e86f8f8cbb8acd33fc33bfb2329",
-          "text": "Material: workspace start validates readiness and conflicting leases before acquiring the gate; after the gate it refetches then _claim can replace a newly live same-node lease without --force and does not recheck other workspace leases. Reproduced with two local Git clones and a deterministic pre-gate interception: reviewer acquired attempt 1, stale starter acquired attempt 2, and remote holder changed. Revalidate same-node readiness, reclaim/force, and other live workspace leases under the acquired gate and add a concurrent stale-observation regression.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-19T06:41:11Z",
+      "findings": [],
+      "finished_at": "2026-11-19T14:36:19Z",
       "fp_parts": {
         "def": "v1:sha256:ba0e80cd449a16330f3e62cea7fab93aad71b666081fd28f1c0386cf4f3d2d24",
         "inputs": {
-          "base": "v1:sha256:1eee7b2e3964a69facb766f50195fd0750184506761869cf1d3140667ff55a3a",
-          "code": "v1:sha256:1800757cb83982b9992e1ace7a5c0466a3beefe6008ebc3c1d6cfa38cf9aad0e",
+          "base": "v1:sha256:b99e32e47003f2ce6d216be0b56eb57c6f6b37d1c7b18c742ee3bfb0e2475354",
+          "code": "v1:sha256:6b2bcdd007cae480de454593aef2effa4b507cecdb8b9b515d58553273a0feb6",
           "doc": "v1:blob:fbac244685db79270e91c498ab400c3f5bd862c4",
-          "tests": "v1:sha256:41660b716d5fb268bf432e4f99fb58ec7f4f9c4a31f5fed9516138c4b2c1a03b"
+          "tests": "v1:sha256:aa9881cac9a3e433b901e7d1a2c819f963299ee5c361019beefd58a2282f2d8b"
         },
         "lenses": [
           "compliance",
@@ -425,27 +394,27 @@
           "craft"
         ],
         "policy": {},
-        "subject": "v1:sha256:3ef40c02073ddc306c7f189a21c4349d87913de55d7a4d2aeeb90bc1f0cb2ec1"
+        "subject": "v1:sha256:d8cbdb9da10bec36c705662dc43cf208de1105c1656aac5e7bd70fca99035078"
       },
-      "holder": "codex:root/g1049-review-impl-2",
-      "input_fp": "v1:sha256:e9041884e2b0eac12b7ffd5a323079bc3929b61df10373b8eac5e7eb5d938663",
+      "holder": "codex:root/g1049-review-impl-3",
+      "input_fp": "v1:sha256:d38d9bd530dfd385b2298396f11415e7c0dc7c84cc735a572109934c43b718b6",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "f145a3a6be3c49deea21ebfb4934e8d7552707dc",
-          "commit": "fa9f1de0a3e1edc42895141c78035df6e762c898",
+          "blob": "5179d53c57c84cdd920a0f9b1fabe59fa202395a",
+          "commit": "d285516fc9b6e8ccbfa70b56d776700798527589",
           "path": ".zzzops/reviews/1049/review_impl.md"
         },
-        "summary": "Both scope-selection and concurrent-claim findings are fixed; three targeted real-Git regressions passed independently."
+        "summary": "Post-sync combined parent/child scope review passed; seven targeted real-Git checks passed independently."
       },
       "reason": "stale",
       "reviewed": {
         "code": {
-          "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "e282096beca6fc5d08bd3c0caea254877d0a29c3",
-          "commit": "3bd4f62a1f90c83f83213b96559c35b201c24088",
-          "tree": "e45f5bd2dfc19a8c452abc76456f1e9b99fc5112"
+          "base": "a8a2e7855f2dc0a4ca27331a94b930e4df222387",
+          "change": "bf6a1ffe18619172871dcc3add11ef9fb39bd0e5",
+          "commit": "335c617edf9310c01d20596bd4d8c63b1301f517",
+          "tree": "fdd58feaf6bd51f29ecca45e5b6b4b121f1ea191"
         }
       },
       "status": "done"
