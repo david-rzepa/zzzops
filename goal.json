@@ -162,37 +162,33 @@
       "status": "done"
     },
     "filter_impl": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T02:15:48Z",
+      "finished_at": "2026-11-19T02:43:40Z",
       "fp_parts": {
         "candidates": [
           [
-            "review_impl:1:1",
-            true
-          ],
-          [
-            "review_impl:1:2",
+            "review_impl:2:1",
             true
           ]
         ],
         "def": "v1:sha256:5fab78ee7a74554d9897b964ee764247bd55068d6c3b2a64932fad9704979c4b",
         "inputs": {
-          "code": "v1:sha256:3a6d56b75d44b454441c04b7b04065d5d09424bd36b47fee8bb4b141f5f997ec",
+          "code": "v1:sha256:00e3cac2f684cf5f588e71808194fe1c65f3acbee7962033e4b5d23360c42462",
           "doc": "v1:blob:5b199f7a7f94e75dfbec83fa682e91d088f0edec",
-          "review": "v1:sha256:89cb85b316bfcb8f54bfaa2024b3fdf418c36212806c58f6ca66e3e55764a4f0"
+          "review": "v1:sha256:696719899420b3c8ed648a2389787cdde4a9b2d8e5d02b8b9bad04121a490efc"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1051-filter-impl-1",
-      "input_fp": "v1:sha256:628fe09fb6ef4ac38651056d31cbe8901021fcfe7ce01ea75cac552eb63752b8",
+      "holder": "codex:root/g1051-filter-impl-2",
+      "input_fp": "v1:sha256:a094cc165a4174eb12dcf7cf0f54057f6e60d38f44cc9e0e67b0123be270fdf9",
       "ok": true,
       "output": {
-        "summary": "Implementation review raised two material correctness findings, both of which reopen implementation: merged-PR recovery can accept an unapproved head, and nested maintenance forward-port ancestry is limited to the immediate source and its parents. There are no non-material notes to filter.",
+        "summary": "The independent implementation re-review accepted both earlier corrections and identified one new material correctness finding: release recovery can select an unrelated historical merged PR and block the currently approved release. It reopens implementation. There are no non-material notes to filter.",
         "verdicts": {}
       },
-      "reason": "new",
+      "reason": "stale",
       "status": "done"
     },
     "implement": {
