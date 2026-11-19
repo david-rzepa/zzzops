@@ -355,10 +355,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 8,
+      "attempt": 9,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-19T01:05:02Z",
+      "finished_at": "2026-11-19T01:12:05Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
@@ -371,98 +371,115 @@
         ".agents/test_engine_insertable_release_journeys.py",
         ".agents/test_engine_insertable_releases.py"
       ],
-      "holder": "codex:root/g1051-test-design-8",
+      "holder": "codex:root/g1051-test-design-9",
       "input_fp": "v1:sha256:3ce6c7f02de3e84a43a88d0eff381bee7670709ac5c1114464b2481b92491374",
       "ok": true,
       "output": {
         "commands": [
-          "PYTHONPATH=.agents python3 -m unittest -v test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_source_revocation_before_dispatch_blocks_inserted_members test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_production_change_before_dispatch_blocks_inserted_members test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_production_advance_during_atomic_line_creation_stays_pending --durations 30"
+          "PYTHONPATH=.agents python3 -m unittest -v test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_source_revocation_before_dispatch_blocks_inserted_members test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_production_change_before_dispatch_blocks_inserted_members test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_production_advance_during_atomic_line_creation_stays_pending --durations 40"
         ],
         "cost": {
           "changed_tests": [
             {
-              "duration_ms": 17560,
-              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_separate_destinations_approve_and_resume_without_rewinding_production",
-              "observation": "Failed at unimplemented forward-port CLI (unknown --to); later assertions not exercised."
-            },
-            {
-              "duration_ms": 17469,
-              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_previously_squash_merged_pr_is_proof_but_not_a_new_merge",
-              "observation": "Failed at unimplemented forward-port CLI (unknown --to); later assertions not exercised."
-            },
-            {
-              "duration_ms": 17468,
-              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_equal_trees_without_lineage_or_matching_pr_are_not_proof",
-              "observation": "Failed at unimplemented forward-port CLI (unknown --to); later assertions not exercised."
-            },
-            {
-              "duration_ms": 17453,
-              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_source_revocation_after_port_approval_blocks_the_merge",
-              "observation": "Failed at unimplemented forward-port CLI (unknown --to); later assertions not exercised."
-            },
-            {
-              "duration_ms": 17421,
-              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_refusal_and_moved_destination_require_fresh_approval",
-              "observation": "Failed at unimplemented forward-port CLI (unknown --to); later assertions not exercised."
-            },
-            {
-              "duration_ms": 17419,
-              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_already_in_history_needs_evidence_and_separate_approval",
-              "observation": "Failed at unimplemented forward-port CLI (unknown --to); later assertions not exercised."
-            },
-            {
-              "duration_ms": 17411,
-              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_retry_after_lost_successful_merge_response_records_one_merge",
-              "observation": "Failed at unimplemented forward-port CLI (unknown --to); later assertions not exercised."
-            },
-            {
-              "duration_ms": 17410,
-              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_changed_carrier_head_and_destination_invalidate_approval",
-              "observation": "Failed at unimplemented forward-port CLI (unknown --to); later assertions not exercised."
-            },
-            {
-              "duration_ms": 17381,
-              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_protected_merge_failure_can_resume_without_duplicate_pr",
-              "observation": "Failed at unimplemented forward-port CLI (unknown --to); later assertions not exercised."
-            },
-            {
-              "duration_ms": 7121,
+              "duration_ms": 7126,
               "id_or_scope": "test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_production_advance_during_atomic_line_creation_stays_pending",
-              "observation": "Passed against local Git and the existing engine."
+              "observation": "Passed against actual local engine and Git."
             },
             {
-              "duration_ms": 6270,
-              "id_or_scope": "test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_source_revocation_before_dispatch_blocks_inserted_members",
-              "observation": "Passed against local Git and the existing engine."
-            },
-            {
-              "duration_ms": 6249,
+              "duration_ms": 6298,
               "id_or_scope": "test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_production_change_before_dispatch_blocks_inserted_members",
-              "observation": "Passed against local Git and the existing engine."
+              "observation": "Passed against actual local engine and Git."
+            },
+            {
+              "duration_ms": 6274,
+              "id_or_scope": "test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_source_revocation_before_dispatch_blocks_inserted_members",
+              "observation": "Passed against actual local engine and Git."
+            },
+            {
+              "duration_ms": 243,
+              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_previously_squash_merged_pr_is_proof_but_not_a_new_merge",
+              "observation": "Failed at missing forward-port CLI, so subsequent race/approval assertions were not reached."
+            },
+            {
+              "duration_ms": 234,
+              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_already_in_history_needs_evidence_and_separate_approval",
+              "observation": "Failed at missing forward-port CLI, so subsequent race/approval assertions were not reached."
+            },
+            {
+              "duration_ms": 221,
+              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_equal_trees_without_lineage_or_matching_pr_are_not_proof",
+              "observation": "Failed at missing forward-port CLI, so subsequent race/approval assertions were not reached."
+            },
+            {
+              "duration_ms": 218,
+              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_separate_destinations_approve_and_resume_without_rewinding_production",
+              "observation": "Failed at missing forward-port CLI, so subsequent race/approval assertions were not reached."
+            },
+            {
+              "duration_ms": 167,
+              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_base_change_alone_invalidates_approval",
+              "observation": "Failed at missing forward-port CLI, so subsequent race/approval assertions were not reached."
+            },
+            {
+              "duration_ms": 166,
+              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_retry_after_lost_successful_merge_response_records_one_merge",
+              "observation": "Failed at missing forward-port CLI, so subsequent race/approval assertions were not reached."
+            },
+            {
+              "duration_ms": 163,
+              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_head_change_alone_invalidates_approval",
+              "observation": "Failed at missing forward-port CLI, so subsequent race/approval assertions were not reached."
+            },
+            {
+              "duration_ms": 163,
+              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_source_move_at_provider_merge_is_recorded_and_pauses",
+              "observation": "Failed at missing forward-port CLI, so subsequent race/approval assertions were not reached."
+            },
+            {
+              "duration_ms": 162,
+              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_protected_merge_failure_can_resume_without_duplicate_pr",
+              "observation": "Failed at missing forward-port CLI, so subsequent race/approval assertions were not reached."
+            },
+            {
+              "duration_ms": 161,
+              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_base_move_at_provider_merge_is_recorded_and_pauses",
+              "observation": "Failed at missing forward-port CLI, so subsequent race/approval assertions were not reached."
+            },
+            {
+              "duration_ms": 161,
+              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_refusal_and_moved_destination_require_fresh_approval",
+              "observation": "Failed at missing forward-port CLI, so subsequent race/approval assertions were not reached."
+            },
+            {
+              "duration_ms": 159,
+              "id_or_scope": "test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_source_revocation_after_port_approval_blocks_the_merge",
+              "observation": "Failed at missing forward-port CLI, so subsequent race/approval assertions were not reached."
             }
           ],
-          "checkpoint": "b620f93806557b5211eeb85e6e6e5061975fbe84",
+          "checkpoint": "e55d6edba65dea68d7b433636b38e51c9d4cb204",
           "commands": [
             {
-              "cmd": "PYTHONPATH=.agents python3 -m unittest -v test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_source_revocation_before_dispatch_blocks_inserted_members test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_production_change_before_dispatch_blocks_inserted_members test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_production_advance_during_atomic_line_creation_stays_pending --durations 30",
-              "duration_ms": 176707,
+              "cmd": "PYTHONPATH=.agents python3 -m unittest -v test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_source_revocation_before_dispatch_blocks_inserted_members test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_production_change_before_dispatch_blocks_inserted_members test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_production_advance_during_atomic_line_creation_stays_pending --durations 40",
+              "duration_ms": 39478,
               "exit": 1
             }
           ],
-          "summary": "Exact checkpoint: 12 tests in 176.633 seconds. Nine maintenance forward-port journeys reach the not-yet-implemented CLI and fail there; their downstream assertions have not run. Source and production dispatch guards and the actual atomic pending-line recovery pass. Uses real local Git and fake GitHub; no hosted protected-branch staging evidence.",
-          "total_ms": 176707
+          "summary": "Exact checkpoint: 15 tests, 39.418 seconds; one actual-engine seed is created once in class setup (included in command time, excluded from per-test durations), then copied to independent real Git/provider fixtures. Three insertion dispatch/pending tests pass; 12 maintenance tests reach the unimplemented CLI and stop at unknown --to. The post-CLI race assertions remain unexercised; hosted protected-branch behavior remains unverified.",
+          "total_ms": 39478
         },
         "responses": {
-          "implement:2:2": "fixed: Added explicit separate durable maintenance forward-port journeys covering distinct destination approvals, alias retry, refusal, changed head/base/source, protected-merge retry and lost-response recovery, without production rewind. Added evidence-backed ancestor (including subsequent revert) and provider-recorded squash-merge outcomes, and unproven no-diff refusal. Added source/production dispatch guards and fresh-approved pending-line recovery. The unimplemented new CLI currently prevents exercising the forward-port assertions; hosted protected-PR staging remains required."
+          "review_tests:6:1": "fixed: Separate head-only and base-only scenarios hold the other ref constant, require a fresh approval fingerprint and assert no stale-approved merge.",
+          "review_tests:6:2": "fixed: Independent source-goal-only and destination-only mutations are injected at the actual provider merge boundary, with expected-head validation, provider merge result/ancestry evidence, no rollback and paused human review asserted; these assertions await the missing forward-port CLI.",
+          "review_tests:6:3": "fixed: A real engine creates the full finished two-release seed once; each test gets a physical copy of the bare remote and independent provider state, verifies identical refs and isolated remote path, and runs the real engine. Whole focused run is 39.478 seconds versus 176.707 seconds previously despite three additional scenarios; class seed cost is included in whole-run timing."
         },
         "tests": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "88b7d6725eb1de2b40b12821cb27f3e9e02a77c8",
-          "commit": "b620f93806557b5211eeb85e6e6e5061975fbe84",
-          "tree": "b0e3cf6d7fb058d55b6a0c9f4c0571cae7acbcb0"
+          "change": "1043145381525bd72fd02c530989d1e1138a5b01",
+          "commit": "e55d6edba65dea68d7b433636b38e51c9d4cb204",
+          "tree": "398fcb0c490bc7a36a6385c0fd82920a4a70d13c"
         }
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     }
   },
