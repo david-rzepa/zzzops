@@ -298,7 +298,14 @@ def finish(ctx):
     if state.get("production_merge") is None:
         prs = gh.json("pr", "list", "--head", branch, "--base", prod, "--state", "all", "--json",
                       "number,state,headRefOid,mergeCommit") or []
-        done = next((x for x in prs if x["state"] == "MERGED"), None)
+        merged_prs = [x for x in prs if x["state"] == "MERGED"]
+        # An earlier delivery of the same branch can precede the newly
+        # approved tip. Recover an exact match first; a merged descendant of
+        # the approved tip instead indicates a changed-head delivery.
+        done = next((x for x in merged_prs if x.get("headRefOid") == T), None)
+        if done is None:
+            done = next((x for x in merged_prs if x.get("headRefOid")
+                         and git.is_ancestor(T, x["headRefOid"])), None)
         if done:
             view = gh.json("pr", "view", str(done["number"]), "--json", VIEW)
             out = verified_merged_pr(ctx, state, view, T, prod)
