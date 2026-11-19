@@ -261,7 +261,18 @@
       "status": "done"
     },
     "integrate": {
-      "attempt": 2,
+      "attempt": 3,
+      "blocked": {
+        "category": "external",
+        "op_state": {
+          "pending_since": 1795099029,
+          "polls": 1
+        },
+        "reason": "GitHub is computing mergeability",
+        "repeats": 1,
+        "retry_after": "2026-11-19T14:38:09Z",
+        "waiting_for": "time"
+      },
       "correction_runs": 0,
       "findings": [
         {
@@ -279,12 +290,12 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-19T14:11:51Z",
+      "finished_at": "2026-11-19T14:37:09Z",
       "fp_parts": {
         "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
         "inputs": {
-          "base": "v1:sha256:1eee7b2e3964a69facb766f50195fd0750184506761869cf1d3140667ff55a3a",
-          "code": "v1:sha256:55d6bdbf0633e8763113b00d3d7fa45da4cbdac14061aa483b42a05483c24a29"
+          "base": "v1:sha256:b99e32e47003f2ce6d216be0b56eb57c6f6b37d1c7b18c742ee3bfb0e2475354",
+          "code": "v1:sha256:f85a2900ff80b8d14a1917f1d5908fe3d58e32caed7608f5da51dc9cbca07945"
         },
         "policy": {
           "verification.required_ci": [
@@ -292,21 +303,12 @@
           ]
         }
       },
-      "holder": "codex:root/g1049-integrate-retry",
-      "input_fp": "v1:sha256:c4e20001858919a24a369cd80c66b4b35868577cde4240ec9dd7eece8536acd0",
+      "holder": "codex:root/g1049-integrate-post-sync",
+      "input_fp": "v1:sha256:84c7eef183a126e78c23b819e2d873aad0099c1f8057f8a7729ad766ba5b0a25",
       "ok": false,
-      "output": {
-        "ci": null,
-        "pr": {
-          "base": "dev",
-          "head": "8e17b2a4207d33c4dde83d27a1edbe46bdc172f0",
-          "number": 785,
-          "tree": "e45f5bd2dfc19a8c452abc76456f1e9b99fc5112",
-          "url": "https://github.com/david-rzepa/zzzops/pull/785"
-        }
-      },
-      "reason": "retry",
-      "status": "done"
+      "output": null,
+      "reason": "stale",
+      "status": "blocked"
     },
     "review_design": {
       "attempt": 5,
