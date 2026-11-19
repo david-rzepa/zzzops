@@ -281,51 +281,15 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 7,
+      "attempt": 8,
       "correction_runs": 4,
       "findings": [
-        {
-          "id": "review_tests:6:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 8,
-          "target_fp": "v1:sha256:df239fab8155901b4264b9df78cdd6033b4bf449860ac3a9442e92c3cdee60af",
-          "text": "The approval invalidation test changes the carrier head and destination simultaneously. An implementation that checks only either one can pass while the other alone changes. Exercise each change independently with the other fixed, requiring fresh exact approval and no merge under stale approval.",
-          "upheld": false
-        },
-        {
-          "id": "review_tests:6:2",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 8,
-          "target_fp": "v1:sha256:df239fab8155901b4264b9df78cdd6033b4bf449860ac3a9442e92c3cdee60af",
-          "text": "The maintenance forward-port cases do not inject source-goal-only or destination-only movement after the final precheck at the actual protected provider merge. The approved design permits the merge race but requires recording actual result/divergence, no rollback and pausing further automation. Add deterministic local-provider boundary tests for those outcomes, without asserting impossible cross-ref atomicity.",
-          "upheld": false
-        },
-        {
-          "id": "review_tests:6:3",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 8,
-          "target_fp": "v1:sha256:df239fab8155901b4264b9df78cdd6033b4bf449860ac3a9442e92c3cdee60af",
-          "text": "Each of the nine maintenance cases repeats the identical genuine two-release setup before reaching the missing CLI (17.410–17.560 s apiece; more than 156 s per run before feature assertions). Reduce this redundant cost via a real-engine-created reusable seed and isolated per-case Git/provider copies, or equivalent, retaining meaningful real-stack and independent assertions.",
-          "upheld": false
-        },
         {
           "id": "review_tests:7:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 9,
           "target_fp": "v1:sha256:0de2d8265c4f9260e5fa1d0fc27f994002f4b2f592df73d6063078d802358861",
@@ -333,35 +297,35 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-19T01:14:10Z",
+      "finished_at": "2026-11-19T01:17:07Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:5b199f7a7f94e75dfbec83fa682e91d088f0edec",
-          "tests": "v1:sha256:69e9b270f20a65610c7de7c4c10bcd5e9f51898063a82efdbbfd41e26cefdf46"
+          "tests": "v1:sha256:f319cec08b4e6640a9bd01b5130cd3faaa5d9e0a6bd6dcb33432eaebec22122c"
         },
         "policy": {},
-        "subject": "v1:sha256:3116f2bcf259cb8c2c1951dc2254d872f48154780579f89ff1e3fc03e4380aa6"
+        "subject": "v1:sha256:a453f53cd545ed3fc370e97e8f517a6515981df3428e6bbbcc1237e6812c2e08"
       },
-      "holder": "codex:root/g1051-review-tests-7",
-      "input_fp": "v1:sha256:7da6dfeef71ada50da02d2352b5c7c73e6e9df1452ec52719cd78cb3066cd4b6",
-      "ok": false,
+      "holder": "codex:root/g1051-review-tests-8",
+      "input_fp": "v1:sha256:a299cc04deea1649aa42b21f13ad1f41fbcecdb77de56ea2a7569d5fae571877",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "27b1c16bf5ab0aa610ec5a23eed3b93b867534fd",
-          "commit": "66bdd7caf9797b87c07a38e6825aa3c51d5d81f9",
+          "blob": "e691d27a38ea2db0ae3d8ff2604f1bf6a10bf98c",
+          "commit": "96d42847469ab73f6ec34c7395ad6c2f156d078b",
           "path": ".zzzops/reviews/1051/review_tests.md"
         },
-        "summary": "Independent stale guards, provider-boundary races and shared seed are fixed; the equal-tree no-diff fixture does not actually contain equal Git trees."
+        "summary": "The no-diff fixture now proves equal trees with divergent ancestry and no matching merged PR; its focused run remains red at the missing CLI."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "1043145381525bd72fd02c530989d1e1138a5b01",
-          "commit": "e55d6edba65dea68d7b433636b38e51c9d4cb204",
-          "tree": "398fcb0c490bc7a36a6385c0fd82920a4a70d13c"
+          "change": "c004ae08a58488a987d5df6431f798d6194f7b83",
+          "commit": "d442ebf6698096df247ed91f9a7b61265ffa56be",
+          "tree": "1e3f83955bd543c1fa4d0ee7422b421e9a07d07f"
         }
       },
       "status": "done"
