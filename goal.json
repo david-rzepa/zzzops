@@ -185,6 +185,48 @@
       "reason": "stale",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 1,
+      "findings": [
+        {
+          "id": "implement:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 3,
+          "target_fp": "v1:sha256:cd096f9e38563dc8dadf295f90a08345881038f68bcd47603071994397298e3a",
+          "text": "SubmoduleTestPreservation.setUp appends conditional_review_routes whenever the engine advertises it. The shipped default policy must already require this capability to make its conditional workflow safe for older writers and runnable in ScaffoldRouteJourneys. Consequently the fixture writes the capability twice and every submodule case fails policy validation before reaching the behavior under test. Reproduced using the real CLI after adding the capability to the default policy: settings.engine.requires must be an array of unique names. Make this fixture add the capability only when it is absent, while retaining capability gating coverage.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-19T04:34:05Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:1eee7b2e3964a69facb766f50195fd0750184506761869cf1d3140667ff55a3a",
+          "doc": "v1:blob:2a8f10ac60632611baa7b55985abcb60f4650b1d",
+          "tests": "v1:sha256:2f6d469780e2afa99dea55d4ded596663237c33567e8491e597416ef0869efe9"
+        },
+        "policy": {}
+      },
+      "holder": "codex:root/g1050-implement",
+      "input_fp": "v1:sha256:cc91c3e2eab6a2b2ffee8f64051bd47e4df4ce2cac9bf7ff8fdb1840e787d859",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
+          "change": "974a75d81a1f437ba45f80736270611e11ddd66b",
+          "commit": "b721ffc2a46b748e453afa6181c1d4039d5b9d82",
+          "tree": "c0925f2b5712cf136d65a8ab36c3b901059a93f9"
+        },
+        "summary": "Reproduced a test-fixture conflict before implementation; the submodule fixture duplicates the required default capability and fails policy validation."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 2,
       "correction_runs": 1,
