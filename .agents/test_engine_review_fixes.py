@@ -135,7 +135,7 @@ class StoreReviewFixTests(Journey):
         s.git("push", "-q", "origin", "HEAD:refs/heads/zzzops/policy/x")
         s.git("checkout", "-q", "dev")
         p = _json.loads(_json.dumps(self.w.policy))
-        p["settings"]["engine"] = {"requires": ["no_such_cap"]}
+        p["settings"]["engine"] = {"requires": ["conditional_review_routes", "no_such_cap"]}
         self.w.push_dev({".zzzops/POLICY.json": _json.dumps(p)})
         rc, err = self.w.run("a", "start", str(g), self.n("design"), "--as", self.A.label)
         self.assertEqual((4, "policy_branch"), (rc, err["error"]["code"]))
@@ -312,7 +312,7 @@ class OlderEngineReadTests(unittest.TestCase):
         w.bootstrap()
         g = w.new(title="t")["created"]["id"]
         p = _json.loads(_json.dumps(w.policy))
-        p["settings"]["engine"] = {"requires": ["no_such_cap"]}
+        p["settings"]["engine"] = {"requires": ["conditional_review_routes", "no_such_cap"]}
         w.push_dev({".zzzops/POLICY.json": _json.dumps(p)})
         from engine.session import Session
         with InProcess(w, "a"):

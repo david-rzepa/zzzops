@@ -40,6 +40,9 @@ class Autopilot:
             prior = [{"id": f["id"], "status": "resolved"} for f in (card.get("previous") or {}).get("findings", [])
                      if f["status"] == "open"]
             out = {"decision": "approved", "summary": f"{node} ok", "findings": prior}
+            for key, kind in schema.items():
+                if kind == "bool":
+                    out[key] = False
         else:
             for k, t in schema.items():
                 if k in ("findings", "responses"):
