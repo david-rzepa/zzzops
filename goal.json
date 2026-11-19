@@ -261,18 +261,16 @@
       "status": "done"
     },
     "integrate": {
-      "attempt": 5,
+      "attempt": 6,
       "blocked": {
         "category": "external",
         "op_state": {
-          "head": "0245fdf8d162dabcba8c12dac50819c35d4b8530",
           "pending_since": 1795099127,
-          "polls": 2,
-          "rerun_head": null
+          "polls": 3
         },
-        "reason": "required checks pending: dev-required-tests (mergeable: MERGEABLE/BLOCKED)",
-        "repeats": 2,
-        "retry_after": "2026-11-19T14:54:33Z",
+        "reason": "GitHub is computing mergeability",
+        "repeats": 1,
+        "retry_after": "2026-11-19T15:02:55Z",
         "waiting_for": "time"
       },
       "correction_runs": 0,
@@ -292,12 +290,12 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-19T14:44:33Z",
+      "finished_at": "2026-11-19T14:58:55Z",
       "fp_parts": {
         "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
         "inputs": {
           "base": "v1:sha256:b99e32e47003f2ce6d216be0b56eb57c6f6b37d1c7b18c742ee3bfb0e2475354",
-          "code": "v1:sha256:f85a2900ff80b8d14a1917f1d5908fe3d58e32caed7608f5da51dc9cbca07945"
+          "code": "v1:sha256:2b5fff5a92d4bea10979708f5b2136917e5b39fa78b2da2e84874333f9185392"
         },
         "policy": {
           "verification.required_ci": [
@@ -305,11 +303,11 @@
           ]
         }
       },
-      "holder": "codex:root/g1049-ci-observe",
-      "input_fp": "v1:sha256:84c7eef183a126e78c23b819e2d873aad0099c1f8057f8a7729ad766ba5b0a25",
+      "holder": "codex:root/g1049-ci-fix-integrate",
+      "input_fp": "v1:sha256:3fa5496c62f9f1638e5f49d7be935288d03847c5b79c0d03f8d83fe200cda9b2",
       "ok": false,
       "output": null,
-      "reason": "retry",
+      "reason": "stale",
       "status": "blocked"
     },
     "review_design": {
