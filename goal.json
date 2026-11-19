@@ -60,10 +60,10 @@
       "status": "done"
     },
     "design": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-18T18:54:01Z",
+      "finished_at": "2026-11-19T04:07:59Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -72,18 +72,23 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/zzzops1050-design-3",
+      "holder": "codex:root/g1050-design-fix",
       "input_fp": "v1:sha256:86803b65893a92790a5288c0bb60b80202829a5ada21643523747c9be19e6f3d",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "6e65cc4166ced0eb308e9005e159540200dea7dc",
-          "commit": "5e63f550368a5ff1b1d377f492fbee9929436e87",
+          "blob": "2a8f10ac60632611baa7b55985abcb60f4650b1d",
+          "commit": "c37315832627c8a5bd9759beea0aba5d4b9e3a2f",
           "path": ".zzzops/reviews/1050/design.md"
         },
-        "summary": "Let the design reviewer decide through a typed route whether a minimal contract scaffold and independent review are needed before tests; simple goals dispatch no scaffold workers. Add capability-gated conditional routing and Git-submodule-aware test preservation, and observe/document adoption and migration without fixing unrelated migration defects."
+        "responses": {
+          "adversary_design:1:1": "fixed: Specify the pre-test child gitlink baseline and full changed-entry union through accepted checkpoints, including blocked/retry history, explicit absent entries and fail-closed provenance; require helper-only real-child regression tests.",
+          "review_design:1:1": "fixed: Keep false route pending while scaffold work/findings or a live lease require resolution, require reviewed exact retained checkpoint or separately reviewed removal, and cover waiver and unresolved finding cases.",
+          "review_design:1:2": "fixed: Make the boolean and producer identity explicit fingerprinted inputs to adversarial challenge, design filter and owner approval context, and require stale-gate tests with unchanged prose summaries."
+        },
+        "summary": "The revised design fails closed on route changes, fingerprints the route into design challenge and approval, and protects every changed child path and prior retry scope using verifiable Git checkpoint provenance. It preserves the owner-selected optional scaffold route, independently reviewed test protection, and separate migration-defect scope."
       },
-      "reason": "retry",
+      "reason": "reopened",
       "status": "done"
     },
     "filter_design": {
