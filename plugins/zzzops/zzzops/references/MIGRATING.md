@@ -61,6 +61,12 @@ The current default graph has 15 nodes: one multi-lens reviewer per subject (`re
 
 Before landing a policy with `settings.branching`, require `release_lines` through the upgrade recipe in REPAIR.md and turn GitHub's "Automatically delete head branches" **off**: `gh api -X PATCH repos/{o}/{r} -F delete_branch_on_merge=false`. Merging a finish PR otherwise deletes the kept `release/N` or `hotfix/x` branch; dependency deletion can also close or move stacked and release PRs before the engine retargets them. The host-setting change needs the owner's authority; the engine never makes it. `zzzops validate` warns when the setting is on and readable, without failing validation (see SETUP.md). When removing `settings.branching`, restore the non-branching recommendation, **on**, with the owner's authority (`-F delete_branch_on_merge=true`).
 
+## Adopting insertable release targets
+
+Upgrade every writer first, then use the reviewed capability upgrade procedure in REPAIR.md to require `insertable_release_targets` before writing dotted releases. Inspect release refs and line records for aliases such as `release/2` and `release/2.0`; resolve collisions explicitly before activation. Keep the capability requirement after any dotted state has been written: removing it can let older writers misinterpret that state. Custom workflows must retain isolated release-line routing, the source snapshot checks, and the separate approval gates. A dotted label is an ordering identity, not proof of a Git ancestor; use `release insert` and review its recorded released source.
+
+For post-finish maintenance forward-ports, add the shipped `forward_port` graph and its `approve_forward_port.md` prompt to the reviewed repository workflow. Each `release forward-port SOURCE --to BRANCH` creates a separate operation; retrying the command resumes the same source snapshot and destination. History-only evidence needs its own approval and cannot prove the change remains effective after a later revert. When a source or destination changes, inspect the refreshed evidence before approving it.
+
 
 ## Adopting measured test cost (capability `test_cost`)
 
