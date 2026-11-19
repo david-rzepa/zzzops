@@ -424,38 +424,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 9,
+      "attempt": 10,
       "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-19T14:25:02Z",
+      "finished_at": "2026-11-19T14:49:08Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:fbac244685db79270e91c498ab400c3f5bd862c4",
-          "tests": "v1:sha256:aa9881cac9a3e433b901e7d1a2c819f963299ee5c361019beefd58a2282f2d8b"
+          "tests": "v1:sha256:7212efc379030e8539f8d34376a389eb91e2270b7b88b63b91aa5e38e98d9d09"
         },
         "policy": {},
-        "subject": "v1:sha256:fb85b44248c0e7983e383418d3039df984e5800cff0584a41082367725efa6a5"
+        "subject": "v1:sha256:2c84541030ca74d2d306883b35e25f0233347c136aca8666568acf0e438cae03"
       },
-      "holder": "codex:root/g1049-review-tests-9",
-      "input_fp": "v1:sha256:ba5b947e4b8142f5e0666bdd096d439156372e78dc88199c63996b56f729e855",
+      "holder": "codex:root/g1049-review-tests-10",
+      "input_fp": "v1:sha256:b9fc69b032889322e437b9e6d85cb80ea9f04a02412f3c706c84f5792b8c0f83",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "89db0bf7179f579a24b3412847af36bed8ff56ce",
-          "commit": "335c617edf9310c01d20596bd4d8c63b1301f517",
+          "blob": "5abf5a43ae3a8ce25d37a0dae0f27936e840c5fd",
+          "commit": "717d25d3c01b6cd4e8ba830b5228824950458020",
           "path": ".zzzops/reviews/1049/review_tests.md"
         },
-        "summary": "Real declared-submodule fixture preserves the mixed-candidate assertion and passes independently after sync."
+        "summary": "Fixture uses isolated fake GitHub discovery while preserving real Git/CLI checks; two independent empty-XDG cases passed."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "a8a2e7855f2dc0a4ca27331a94b930e4df222387",
-          "change": "d8727256d153393363a83c5ca96f019b252c79cd",
-          "commit": "96f3ff203378cb94a446c0192fb9677827b3210a",
-          "tree": "fdd58feaf6bd51f29ecca45e5b6b4b121f1ea191"
+          "change": "cb186c04f11e2ee4344ae0f812b3785b93905b45",
+          "commit": "41f0fa3bd90934554cf08bdae54093710560ab67",
+          "tree": "42d8135e3aaf6d925871d49bdb34a5985087c5fa"
         }
       },
       "status": "done"
