@@ -378,17 +378,17 @@
       "status": "done"
     },
     "review_impl": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-19T14:36:19Z",
+      "finished_at": "2026-11-19T14:58:08Z",
       "fp_parts": {
         "def": "v1:sha256:ba0e80cd449a16330f3e62cea7fab93aad71b666081fd28f1c0386cf4f3d2d24",
         "inputs": {
           "base": "v1:sha256:b99e32e47003f2ce6d216be0b56eb57c6f6b37d1c7b18c742ee3bfb0e2475354",
-          "code": "v1:sha256:6b2bcdd007cae480de454593aef2effa4b507cecdb8b9b515d58553273a0feb6",
+          "code": "v1:sha256:8d193d614e5c4349bdcdad60f224309de24fd20d372fae5272dbb742d0e406c5",
           "doc": "v1:blob:fbac244685db79270e91c498ab400c3f5bd862c4",
-          "tests": "v1:sha256:aa9881cac9a3e433b901e7d1a2c819f963299ee5c361019beefd58a2282f2d8b"
+          "tests": "v1:sha256:7212efc379030e8539f8d34376a389eb91e2270b7b88b63b91aa5e38e98d9d09"
         },
         "lenses": [
           "compliance",
@@ -398,27 +398,27 @@
           "craft"
         ],
         "policy": {},
-        "subject": "v1:sha256:d8cbdb9da10bec36c705662dc43cf208de1105c1656aac5e7bd70fca99035078"
+        "subject": "v1:sha256:f4a18ba1a0ebe9a02e2570846f18824a94996ad12b1a797888a3780a9a874dfb"
       },
-      "holder": "codex:root/g1049-review-impl-3",
-      "input_fp": "v1:sha256:d38d9bd530dfd385b2298396f11415e7c0dc7c84cc735a572109934c43b718b6",
+      "holder": "codex:root/g1049-review-impl-4",
+      "input_fp": "v1:sha256:7a4889f4377fa96797dff4d70acce29dd5e3be4108fd9b90f1465caf9441ff10",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "5179d53c57c84cdd920a0f9b1fabe59fa202395a",
-          "commit": "d285516fc9b6e8ccbfa70b56d776700798527589",
+          "blob": "698cd52da1f8eb4c29c15f07c9f6cb5ef8f20a5d",
+          "commit": "76b3667fc95a738d8fbfdcc533ef7207d1cffe72",
           "path": ".zzzops/reviews/1049/review_impl.md"
         },
-        "summary": "Post-sync combined parent/child scope review passed; seven targeted real-Git checks passed independently."
+        "summary": "CI recovery fixture uses isolated fake gh and real local Git; two independent CI-mode recovery checks passed."
       },
       "reason": "stale",
       "reviewed": {
         "code": {
           "base": "a8a2e7855f2dc0a4ca27331a94b930e4df222387",
-          "change": "bf6a1ffe18619172871dcc3add11ef9fb39bd0e5",
-          "commit": "335c617edf9310c01d20596bd4d8c63b1301f517",
-          "tree": "fdd58feaf6bd51f29ecca45e5b6b4b121f1ea191"
+          "change": "b21019ac382c862359bf6fd7465566602100b35d",
+          "commit": "717d25d3c01b6cd4e8ba830b5228824950458020",
+          "tree": "42d8135e3aaf6d925871d49bdb34a5985087c5fa"
         }
       },
       "status": "done"
