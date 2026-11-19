@@ -487,8 +487,10 @@ def _validate_node(e: Errors, where, n, nd, nodes, settings, instructions, promp
             e.add(f"{where}.review", "a review's subject is another node")
         elif review["subject"] not in nodes:
             e.add(f"{where}.review", f"unknown subject {review['subject']!r}")
-        if "outputs" in nd and (not isinstance(nd["outputs"], dict) or any(t != "bool" for t in nd["outputs"].values())):
-            e.add(f"{where}.outputs", "review routing outputs must be booleans")
+        if "outputs" in nd and (not isinstance(nd["outputs"], dict)
+                                or any(t != "bool" for t in nd["outputs"].values())
+                                or set(nd["outputs"]) & set(implicit_outputs(nd))):
+            e.add(f"{where}.outputs", "review routing outputs must be non-reserved booleans")
         elif "outputs" in nd and settings is not None and "conditional_review_routes" not in required_caps(settings):
             e.add(f"{where}.outputs", "review routing outputs require capability conditional_review_routes")
     if "lenses" in nd:
