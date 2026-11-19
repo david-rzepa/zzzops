@@ -460,15 +460,20 @@ def blocked_record(s, res, doc, X, L, r0, b, ident, work):
         if not L.work and end and end != s.snap.integration:
             raise Refused("validation", "cannot verify pending producer provenance without a claimed work tip; initialize the work branch and retry")
         if L.work and end and end != L.work:
-            if "preserved_test_provenance" not in schemas.required_caps(s.settings):
-                raise Refused("validation", "blocked producer has pending work; require capability `preserved_test_provenance` before publishing it")
             if not s.git.is_ancestor(L.work, end):
                 raise Refused("validation", "producer segment ancestry cannot be verified; rerun the producer")
-            segments = copy.deepcopy((r0 or {}).get("pending_segments") or [])
-            segment = {"start": L.work, "end": end, "lease": L.tip, "goal": g, "node": X, "attempt": L.attempt, "holder": L.holder}
-            segments.append(segment)
-            work["provenance_segment"] = segment
-            extra_provenance["pending_segments"] = segments
+            required = schemas.required_caps(s.settings)
+            if "preserved_test_provenance" not in required:
+                child_only = ("conditional_review_routes" in required
+                              and not segment_candidates(s.git, ident, L.work, end))
+                if not child_only:
+                    raise Refused("validation", "blocked producer has pending work; require capability `preserved_test_provenance` before publishing it")
+            else:
+                segments = copy.deepcopy((r0 or {}).get("pending_segments") or [])
+                segment = {"start": L.work, "end": end, "lease": L.tip, "goal": g, "node": X, "attempt": L.attempt, "holder": L.holder}
+                segments.append(segment)
+                work["provenance_segment"] = segment
+                extra_provenance["pending_segments"] = segments
         elif r0 and "pending_segments" in r0:
             extra_provenance["pending_segments"] = copy.deepcopy(r0["pending_segments"])
     wf = b["waiting_for"]
@@ -666,6 +671,16 @@ def producer_candidates(git, ident, start, end):
     return changed - gitlinks
 
 
+def segment_candidates(git, ident, start, end):
+    paths = set()
+    for commit in git.out("rev-list", "--reverse", f"{start}..{end}").split():
+        parents = git.out("rev-list", "--parents", "-n", "1", commit).split()[1:]
+        if len(parents) != 1:
+            raise Refused("validation", "producer segment contains ambiguous merge history")
+        paths.update(producer_candidates(git, ident, parents[0], commit))
+    return paths
+
+
 def frozen_paths(s, r0, L, cp, ident, replay_map=None, selection=None, review=None) -> list:
     prev = set(r0.get("frozen") or []) if r0 else set()
     W = L.work
@@ -706,16 +721,18 @@ def frozen_paths(s, r0, L, cp, ident, replay_map=None, selection=None, review=No
                     start, end = mapped_start, mapped_end
         if not s.git.exists(start) or not s.git.exists(end) or not s.git.is_ancestor(start, end) or not s.git.is_ancestor(end, cp["commit"]):
             raise Refused("validation", "producer pending segment provenance or ancestry cannot be verified after rewrite; rerun or reconstruct scope")
-        candidates = producer_candidates(s.git, ident, start, end)
+        candidates = segment_candidates(s.git, ident, start, end)
         all_candidates.update(candidates)
+    capability_enabled = "preserved_test_provenance" in schemas.required_caps(getattr(s, "settings", None))
     final_candidates = set()
     if not (W and s.git.is_ancestor(cp["commit"], W)):
+        if capability_enabled and W and not s.git.is_ancestor(W, cp["commit"]):
+            raise Refused("validation", "producer checkpoint has unverified work ancestry; rerun or reconstruct scope")
         a = W if W and s.git.is_ancestor(W, cp["commit"]) else cp["base"]
-        if segments or "preserved_test_provenance" in schemas.required_caps(getattr(s, "settings", None)):
-            final_candidates = producer_candidates(s.git, ident, a, cp["commit"])
+        if segments or capability_enabled:
+            final_candidates = segment_candidates(s.git, ident, a, cp["commit"])
         else:
             final_candidates = diff_paths(s.git, ident.code_tree(a), ident.code_tree(cp["commit"]))
-    capability_enabled = "preserved_test_provenance" in schemas.required_caps(getattr(s, "settings", None))
     if segments or capability_enabled:
         all_candidates.update(final_candidates)
     if selection is not None and not set(selection) <= all_candidates:
@@ -726,7 +743,7 @@ def frozen_paths(s, r0, L, cp, ident, replay_map=None, selection=None, review=No
                       details={"candidates": sorted(all_candidates), "ambiguous": sorted(ambiguous)})
     selected = set(selection) if selection is not None else all_candidates
     prev.update(selected)
-    if review is not None and selection is not None:
+    if review is not None and all_candidates:
         review.update({"candidates": sorted(all_candidates), "selected": sorted(selected), "excluded": sorted(all_candidates - selected)})
     return sorted(prev if segments or capability_enabled else prev | final_candidates)
 

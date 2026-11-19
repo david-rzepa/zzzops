@@ -81,6 +81,22 @@ class ScopeFences(unittest.TestCase):
         review = journey.b.start(journey.g, "review_tests")
         self.assertEqual(["runtime.py"], review["context"]["scope_review"]["excluded"])
 
+    def test_transient_parent_test_is_in_scope_and_requires_review(self):
+        journey = blocked.BlockedScopeJourney("test_before_capability_pending_blocked_work_is_not_published")
+        journey.setUp()
+        self.addCleanup(journey.doCleanups)
+        journey.accept_tests()
+        journey.enable_capability()
+        journey.w.ok("a", "reopen", str(journey.g), "test_design", "--note", "transient test")
+        card = journey.a.start(journey.g, "test_design")
+        journey.wt.commit({"tests/transient.py": "assert True\n"}, "test: temporary test")
+        journey.wt.commit({"tests/transient.py": None}, "test: remove temporary test")
+        responses = {f["id"]: "fixed: reconsidered" for f in card.get("corrections", [])}
+        journey.a.submit(journey.g, "test_design", card, {"commands": ["true"], "responses": responses})
+        self.assertIn("tests/transient.py", journey.record()["frozen"])
+        review = journey.b.start(journey.g, "review_tests")
+        self.assertIn("tests/transient.py", review["context"]["scope_review"]["candidates"])
+
     def test_stale_workspace_starter_cannot_replace_a_live_claim(self):
         import contextlib
         from unittest.mock import patch
@@ -176,6 +192,46 @@ class ScopeFences(unittest.TestCase):
         responses = {f["id"]: "fixed: accepted test" for f in resumed.get("corrections", [])}
         journey.b.submit(journey.g, "test_design", resumed, {"commands": ["true"], "responses": responses})
         self.assertIn("tests/three.py", journey.record()["frozen"])
+
+
+class CombinedChildScope(unittest.TestCase):
+    def check_child_case(self, name):
+        import copy
+        import json
+        from test_engine_scaffold_routes import SubmoduleTestPreservation
+
+        case = SubmoduleTestPreservation(name)
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        policy = copy.deepcopy(case.w.policy)
+        required = policy["settings"]["engine"]["requires"]
+        for capability in ("conditional_review_routes", "preserved_test_provenance"):
+            if capability not in required:
+                required.append(capability)
+        case.w.push_dev({".zzzops/POLICY.json": json.dumps(policy, indent=2) + "\n"})
+        getattr(case, name)()
+
+    def test_scaffold_only_producer_refuses_transient_parent_code_before_capability(self):
+        from test_engine_scaffold_routes import SubmoduleTestPreservation
+
+        case = SubmoduleTestPreservation("test_blocked_retry_preserves_child_path_even_after_it_is_restored_absent")
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        case.accepted_tests()
+        case.w.ok("a", "reopen", str(case.g), "test_design", "--note", "transient parent code")
+        card = case.writer.start(case.g, "test_design")
+        case.parent.commit({"tests/transient.py": "assert True\n"}, "test: temporary parent test")
+        case.parent.commit({"tests/transient.py": None}, "test: remove temporary parent test")
+        rc, result = case.writer.submit(case.g, "test_design", card,
+                                        blocked={"waiting_for": "agent", "instructions": "retry"}, ok=False)
+        self.assertNotEqual(0, rc, result)
+        self.assertIn("preserved_test_provenance", str(result))
+
+    def test_child_implementation_with_both_capabilities(self):
+        self.check_child_case("test_implementation_pointer_advances_with_accepted_child_tests_unchanged")
+
+    def test_blocked_child_retry_with_both_capabilities(self):
+        self.check_child_case("test_blocked_retry_preserves_child_path_even_after_it_is_restored_absent")
 
 
 if __name__ == "__main__":
