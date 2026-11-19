@@ -291,6 +291,36 @@
       "reason": "retry",
       "status": "done"
     },
+    "merge": {
+      "attempt": 1,
+      "blocked": {
+        "category": "external",
+        "op_state": {
+          "pending_since": 1795059732,
+          "polls": 1
+        },
+        "reason": "GitHub blocks the merge (required reviews, checks, signatures or queue); satisfy it on GitHub or merge there",
+        "repeats": 1,
+        "retry_after": "2026-11-19T04:12:12Z",
+        "waiting_for": "time"
+      },
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-19T03:42:12Z",
+      "fp_parts": {
+        "def": "v1:sha256:419e27874c23acb41b4a93f50e046ea22acb7c295474856cd3665d891f16a67a",
+        "inputs": {
+          "pr": "v1:sha256:26070488e642f733ab577b370010fe85d5e613c4b3e22b25f20fd3f65e85e445"
+        },
+        "policy": {}
+      },
+      "holder": "codex:root/g1051-merge-1",
+      "input_fp": "v1:sha256:198b2e540dfdf6cba8e66d94792ab0cfa4137c322330c0e0f6e6b1f510040122",
+      "ok": false,
+      "output": null,
+      "reason": "new",
+      "status": "blocked"
+    },
     "review_design": {
       "attempt": 8,
       "correction_runs": 3,
