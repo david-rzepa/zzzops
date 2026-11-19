@@ -99,16 +99,32 @@ class InsertedReleaseJourneys(Branching):
         self.assertIsNone(self.tip("release/1.01.0"))
         self.assertEqual(source, self.tip("release/1.1"))
 
-    def test_approved_patch_reaches_production_and_later_line_only_after_approval(self):
+    def forward_port_item(self, line, destination, source):
+        """Verify the human item names the actual PR's source, head and base."""
+        status = self.nxt(line)
+        items = [item for item in status["needs_human"]
+                 if item.get("node") == "finish" and destination in item.get("question", "")]
+        self.assertEqual(1, len(items), status)
+        item = items[0]
+        prs = [pr for pr in self.gh.load()["prs"].values()
+               if pr["state"] == "OPEN" and pr["baseRefName"] == destination]
+        self.assertEqual(1, len(prs), prs)
+        pr = prs[0]
+        question = item["question"]
+        self.assertIn(str(pr["number"]), question)
+        self.assertIn(self.tip(pr["headRefName"]), question)
+        self.assertIn(self.tip(destination), question)
+        self.assertIn(source, question)
+        return item, pr
+
+    def approved_patch_waiting_for_dev_forward(self):
         _, source = self.finished_source()
         later = self.goal(release=2)
         self.done(later, code={"src/later_only.py": "later = True\n"})
         self.cut(2)
         self.activate()
         patch = self.goal(release="1.0.1")
-        preview = self.preview(target="1.0.1")
-        inserted = self.insert(preview, target="1.0.1")
-        line = inserted["goal"]
+        line = self.insert(self.preview(target="1.0.1"), target="1.0.1")["goal"]
         self.done(patch, code={"src/isolated_patch.py": "patched = True\n"})
         patch_tip = self.tip("release/1.0.1")
         self.assertTrue(self.is_ancestor(source, patch_tip))
@@ -117,8 +133,28 @@ class InsertedReleaseJourneys(Branching):
         self.assertEqual(before, {branch: self.tip(branch) for branch in before},
                          "inserted line sync must be record-only before owner approval")
         self.approve(line, "approve_finish")
+        first = self.op(line, "finish")
+        self.assertNotEqual("done", (first.get("closed") or {}).get("reason"), first)
+        self.assertTrue(self.is_ancestor(patch_tip, self.tip("main")))
+        self.assertEqual(before["dev"], self.tip("dev"), "dev waits for its own approval")
+        self.assertEqual(before["release/2"], self.tip("release/2"), "later line waits for its own approval")
+        item, pr = self.forward_port_item(line, "dev", patch_tip)
+        return line, later, patch_tip, item, pr
+
+    def test_approved_patch_reaches_production_and_later_line_only_after_approval(self):
+        line, later, patch_tip, _, dev_pr = self.approved_patch_waiting_for_dev_forward()
+        release_before = self.tip("release/2")
+        self.answer_blocked(line, "finish", text="I approve this exact dev forward-port")
+        second = self.op(line, "finish")
+        self.assertNotEqual("done", (second.get("closed") or {}).get("reason"), second)
+        self.assertEqual("MERGED", self.gh.pr(dev_pr["number"])["state"])
+        self.assertTrue(self.is_ancestor(patch_tip, self.tip("dev")))
+        self.assertEqual(release_before, self.tip("release/2"), "later line waits for its own approval")
+        _, later_pr = self.forward_port_item(line, "release/2", patch_tip)
+        self.answer_blocked(line, "finish", text="I approve this exact release/2 forward-port")
         finished = self.op(line, "finish")
         self.assertEqual("done", finished["closed"]["reason"], finished)
+        self.assertEqual("MERGED", self.gh.pr(later_pr["number"])["state"])
         self.assertTrue(self.is_ancestor(patch_tip, self.tip("main")))
         self.assertTrue(self.is_ancestor(patch_tip, self.tip("dev")))
         self.assertTrue(self.is_ancestor(patch_tip, self.tip("release/2")))
@@ -129,6 +165,33 @@ class InsertedReleaseJourneys(Branching):
         self.assertIn("src/isolated_patch.py", later_tree)
         self.assertIn("src/later_only.py", later_tree)
         self.assertEqual(2, self.show(later)["goal"]["release"])
+
+    def test_changed_forward_port_pr_head_invalidates_previous_approval(self):
+        line, _, patch_tip, _, pr = self.approved_patch_waiting_for_dev_forward()
+        dev_before = self.tip("dev")
+        old_head = self.tip(pr["headRefName"])
+        self.answer_blocked(line, "finish", text="I approve the displayed dev forward-port")
+        moved = self.push_branch(pr["headRefName"], {"src/unapproved_forward.py": "unapproved = True\n"},
+                                 "fix: change forward-port head after approval")
+        self.assertNotEqual(old_head, moved)
+        result = self.op(line, "finish")
+        self.assertNotEqual("done", (result.get("closed") or {}).get("reason"), result)
+        self.assertEqual(dev_before, self.tip("dev"), "old approval must not authorize a changed PR")
+        self.assertEqual("OPEN", self.gh.pr(pr["number"])["state"])
+        refreshed, current = self.forward_port_item(line, "dev", patch_tip)
+        self.assertEqual(pr["number"], current["number"])
+        self.assertIn(self.tip(pr["headRefName"]), refreshed["question"])
+        self.assertNotEqual(old_head, self.tip(pr["headRefName"]))
+
+    def test_declined_forward_port_is_not_merged(self):
+        line, _, _, item, pr = self.approved_patch_waiting_for_dev_forward()
+        dev_before = self.tip("dev")
+        self.w.ok("a", "answer", str(line), "finish", "--fp", item["fp"],
+                  "--file", self.w.file({"text": "I do not approve this forward-port", "quote": "No", "decided_by": "Dave"}))
+        rc, result = self.w.run("a", "start", str(line), "finish", "--as", "claude:aaaa/op")
+        self.assertFalse(rc == 0 and (result.get("closed") or {}).get("reason") == "done", result)
+        self.assertEqual(dev_before, self.tip("dev"), "a refusal must never approve or merge the PR")
+        self.assertEqual("OPEN", self.gh.pr(pr["number"])["state"])
 
     def test_conflicting_forward_port_preserves_later_line_and_exposes_partial_state(self):
         self.finished_source()
