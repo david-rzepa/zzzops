@@ -121,6 +121,19 @@ def finish_output(s, g, updates, closed, extra=None) -> dict:
 
 def start(s, g: int, X: str, label: str, reclaim=False, force=False) -> dict:
     s.open(goals=[g], deps=dependency_ids(s, g))
+    res, nd, state = validate_start(s, g, X, label, reclaim, force)
+    if nd["kind"] == "op":
+        from engine.ops.run import start_op
+        return start_op(s, res, X, label, state, reclaim, force)
+    lease, workspace = claim(s, res, X, label, state, reclaim, force)
+    from engine import card
+    result = card.build(s, res, X, lease["kind_state"], lease)
+    if lease.get("workspace_gate_reclaimed"):
+        result["workspace_gate_reclaimed"] = True
+    return result
+
+
+def validate_start(s, g, X, label, reclaim, force):
     st = s.state
     if st.policy_branches:
         b = st.policy_branches[0]
@@ -175,15 +188,7 @@ def start(s, g: int, X: str, label: str, reclaim=False, force=False) -> dict:
                           hint="inspect it; pass --force to reclaim anyway")
     if nd["kind"] == "agent" and p.live_agents >= s.settings["parallelism"]["max_workers"]:
         raise Refused("capacity", f"{p.live_agents} agent phases are running (max {s.settings['parallelism']['max_workers']})")
-    if nd["kind"] == "op":
-        from engine.ops.run import start_op
-        return start_op(s, res, X, label, state, reclaim, force)
-    lease, workspace = claim(s, res, X, label, state, reclaim, force)
-    from engine import card
-    result = card.build(s, res, X, lease["kind_state"], lease)
-    if lease.get("workspace_gate_reclaimed"):
-        result["workspace_gate_reclaimed"] = True
-    return result
+    return res, nd, state
 
 
 def dependency_ids(s, g):
@@ -216,9 +221,9 @@ def claim(s, res, X, label, state, reclaim, force, extra_updates=()):
     g = res.goal
     if res.graph.nodes[X].get("workspace") and workspace_gate.enabled(s):
         with workspace_gate.hold(s, g, "workspace claim") as gate:
-            s.refetch([g])
-            res = goal_result(s, g, allow_held=False)
-            lease, workspace = _claim(s, res, X, label, res.st[X], reclaim, force, extra_updates)
+            s.refetch([g], deps=dependency_ids(s, g))
+            res, _, state = validate_start(s, g, X, label, reclaim, force)
+            lease, workspace = _claim(s, res, X, label, state, reclaim, force, extra_updates)
             lease["workspace_gate_reclaimed"] = gate["reclaimed"]
             return lease, workspace
     return _claim(s, res, X, label, state, reclaim, force, extra_updates)
@@ -692,7 +697,8 @@ def frozen_paths(s, r0, L, cp, ident, replay_map=None, selection=None, review=No
             final_candidates = producer_candidates(s.git, ident, a, cp["commit"])
         else:
             final_candidates = diff_paths(s.git, ident.code_tree(a), ident.code_tree(cp["commit"]))
-    if segments:
+    capability_enabled = "preserved_test_provenance" in schemas.required_caps(getattr(s, "settings", None))
+    if segments or capability_enabled:
         all_candidates.update(final_candidates)
     if selection is not None and not set(selection) <= all_candidates:
         raise Refused("validation", "scope_selection contains paths outside the verified producer candidates")
@@ -704,7 +710,7 @@ def frozen_paths(s, r0, L, cp, ident, replay_map=None, selection=None, review=No
     prev.update(selected)
     if review is not None and selection is not None:
         review.update({"candidates": sorted(all_candidates), "selected": sorted(selected), "excluded": sorted(all_candidates - selected)})
-    return sorted(prev if segments else prev | final_candidates)
+    return sorted(prev if segments or capability_enabled else prev | final_candidates)
 
 
 def preserve_check(s, res, doc, X, new_cp, ident):
