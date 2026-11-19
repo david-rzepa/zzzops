@@ -286,39 +286,9 @@
       "status": "done"
     },
     "review_impl": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 2,
       "findings": [
-        {
-          "id": "review_impl:1:1",
-          "impact": "Unapproved code can reach production and be propagated as though the owner approved it.",
-          "lens": "correctness",
-          "material": true,
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "implement",
-          "target_attempt": 5,
-          "target_fp": "v1:sha256:61622de376b0ca0252805417bf97d81611020980f423aabf61a0f41e381e181e",
-          "text": "plugins/zzzops/zzzops/engine/ops/lines.py:167-177 and 283-284: an already-merged PR is accepted before its head is compared to the approved T, and merged-PR recovery accepts any head descending from T. The subsequent checks verify the merge base and source but not that the merged head was T. In a real-Git/fake-provider local reproduction I approved T, paused finish immediately before provider pr view, pushed H on the release branch, externally merged that PR, and resumed finish. Production contained H and finish proceeded to request forward-port approval instead of reporting divergence. This defeats the design’s exact-head approval binding and permits automatic propagation after an unapproved head is merged. Verify merged PR head/merge parent against T on both already-merged and recovery paths, and stop for human review on mismatch; cover this race with a provider fixture.",
-          "upheld": false
-        },
-        {
-          "id": "review_impl:1:2",
-          "impact": "Valid nested maintenance releases cannot be forward-ported to their intended downstream branches.",
-          "lens": "correctness",
-          "material": true,
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "implement",
-          "target_attempt": 5,
-          "target_fp": "v1:sha256:61622de376b0ca0252805417bf97d81611020980f423aabf61a0f41e381e181e",
-          "text": "plugins/zzzops/zzzops/engine/forward_port.py:91-95: common ancestry checks only the maintenance line’s immediate source commit and its direct parents. For a legitimate nested maintenance 2.1.1 based on a finished 2.1 whose own work includes multiple commits, production/dev can share the verified released 2 baseline while neither the 2.1 tip nor its immediate parent is an ancestor of the destination. Forward-port is then incorrectly refused as lacking verifiable common released ancestry. Follow recorded release provenance to a verified common released ancestor rather than stopping at one Git parent; add an end-to-end nested-maintenance forward-port case.",
-          "upheld": false
-        },
         {
           "id": "review_impl:2:1",
           "impact": "Legitimate release finishes can become permanently blocked by an unrelated historical pull request, even though the approved new head is valid and ready to merge.",
@@ -327,7 +297,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "implement",
           "target_attempt": 7,
           "target_fp": "v1:sha256:13e6962efa75308b22851e552727cf028bcbc8f50a091bca2606212a61206386",
@@ -335,14 +305,14 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-19T02:42:39Z",
+      "finished_at": "2026-11-19T02:59:30Z",
       "fp_parts": {
         "def": "v1:sha256:ba0e80cd449a16330f3e62cea7fab93aad71b666081fd28f1c0386cf4f3d2d24",
         "inputs": {
           "base": "v1:sha256:7137968f0afc1e3d944fd561b2af20955f2aef16fd65a3864f6989ddd512e960",
-          "code": "v1:sha256:00e3cac2f684cf5f588e71808194fe1c65f3acbee7962033e4b5d23360c42462",
+          "code": "v1:sha256:be38cd02873395aa02c4c56a146f70bffa220dd601f7f0ac577050d73a2ecfd8",
           "doc": "v1:blob:5b199f7a7f94e75dfbec83fa682e91d088f0edec",
-          "tests": "v1:sha256:5b3d2b2935c6c0f2161877f15e91423daf5301fa0f3b8e31d4946bb53aec7596"
+          "tests": "v1:sha256:622da7ee43de8a07d85bdec887523172be48194a446942e4d28b89e3dbe701e4"
         },
         "lenses": [
           "compliance",
@@ -352,27 +322,27 @@
           "craft"
         ],
         "policy": {},
-        "subject": "v1:sha256:13e6962efa75308b22851e552727cf028bcbc8f50a091bca2606212a61206386"
+        "subject": "v1:sha256:f9312ffda7ca6b235db1444b175132da1982ef12804dc089b6f9ce783208b7c3"
       },
-      "holder": "codex:root/g1051-review-impl-2",
-      "input_fp": "v1:sha256:da648fb1a598c840aae9c6a4501c5af909edef7236a9785703387e17750d1d2b",
+      "holder": "codex:root/g1051-review-impl-3",
+      "input_fp": "v1:sha256:e84233b377131f7f00424e1f9c89d1a6cdd8e506b5f64e43f957d63e6588a61d",
       "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "ca28fd215ceb2869ec1becfc6b996ce5e927cb8b",
-          "commit": "80ebc8b96b2adb2d1308d94519c3ab946e55ddb1",
+          "blob": "f3b577cdef7de89d9c9580827985f67d8d8c9ec9",
+          "commit": "ea64f63f9d25c5455c7036e97370c2e50fb45a70",
           "path": ".zzzops/reviews/1051/review_impl.md"
         },
-        "summary": "Both prior findings are corrected and their focused tests pass, but the revised merged-PR discovery introduces an unrelated historical-PR recovery regression."
+        "summary": "The prior recovery regression is fixed, and the approved-head race protection remains in place."
       },
       "reason": "stale",
       "reviewed": {
         "code": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "31c243367bde1467441dbf6c3b385e26e571d100",
-          "commit": "4223972b644696fe9895682000ae78cc7e199615",
-          "tree": "ef3026c840bbbb508b843508a0ac76c754880ee2"
+          "change": "fe6aa4f12ae3075b34fd6feaee4ecf0e482e6641",
+          "commit": "1a453a9b739d2356c58e15ed5fcee87246d7d2f9",
+          "tree": "95ff86ada529489f05ab28330062d2b38c63ca56"
         }
       },
       "status": "done"
