@@ -157,6 +157,11 @@ def build(session, res, n: str, s: dict, lease: dict) -> dict:
                             for k in nd.get("instructions", []) if k in ins}
     if graph.lens_defs(n):
         card["lenses"] = lens_section(reader, graph, n, doc.get("skip") or {})
+    subject = graph.subject(n)
+    producer = ((doc.get("records") or {}).get(subject) or {}) if subject else {}
+    scope_review = (producer.get("output") or {}).get("scope_review")
+    if scope_review is not None:
+        context["scope_review"] = scope_review
     card["inputs"], card["context"] = inputs, context
     from engine import sync_review
     sync = sync_review.build(session.git, graph, doc, n, s.get("stale_because") or [], vals, reader)

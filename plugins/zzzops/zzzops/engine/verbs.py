@@ -180,7 +180,10 @@ def start(s, g: int, X: str, label: str, reclaim=False, force=False) -> dict:
         return start_op(s, res, X, label, state, reclaim, force)
     lease, workspace = claim(s, res, X, label, state, reclaim, force)
     from engine import card
-    return card.build(s, res, X, lease["kind_state"], lease)
+    result = card.build(s, res, X, lease["kind_state"], lease)
+    if lease.get("workspace_gate_reclaimed"):
+        result["workspace_gate_reclaimed"] = True
+    return result
 
 
 def dependency_ids(s, g):
@@ -209,6 +212,19 @@ def lease_state(s, res, X, state, force):
 
 
 def claim(s, res, X, label, state, reclaim, force, extra_updates=()):
+    from engine import workspace_gate
+    g = res.goal
+    if res.graph.nodes[X].get("workspace") and workspace_gate.enabled(s):
+        with workspace_gate.hold(s, g, "workspace claim") as gate:
+            s.refetch([g])
+            res = goal_result(s, g, allow_held=False)
+            lease, workspace = _claim(s, res, X, label, res.st[X], reclaim, force, extra_updates)
+            lease["workspace_gate_reclaimed"] = gate["reclaimed"]
+            return lease, workspace
+    return _claim(s, res, X, label, state, reclaim, force, extra_updates)
+
+
+def _claim(s, res, X, label, state, reclaim, force, extra_updates=()):
     g = res.goal
     nd = res.graph.nodes[X]
     st0 = state
@@ -250,6 +266,8 @@ def claim(s, res, X, label, state, reclaim, force, extra_updates=()):
     c = s.git.commit_tree(EMPTY_TREE, [], msg)
     ref = lease_ref(g, X)
     updates.insert(0, (ref, s.snap.leases.get((g, X)), c))     # replaces an orphan or unparsable lease too
+    from engine import workspace_gate
+    updates, gate_advances = workspace_gate.decorate(s, updates, force_goal=g if nd.get("workspace") else None)
     r_, stderr = push_atomic(s.git, s.R, updates)
     if r_ == "remote":
         raise Refused("remote", f"push to `{s.R}` failed")
@@ -258,6 +276,7 @@ def claim(s, res, X, label, state, reclaim, force, extra_updates=()):
         W = s.state.leases.get((g, X))
         raise Refused("claim_lost", f"another agent claimed G{g} {X} first",
                       details={"holder": W.holder if W else None})
+    workspace_gate.confirm(s, gate_advances)
     s.snap.advance(updates)
     from engine.leases import parse_message, to_lease
     s.state.leases[(g, X)] = to_lease(parse_message(msg), c, s.now, s.now)
@@ -294,6 +313,21 @@ def staleness(s, st0, state, r, parts) -> dict:
 
 
 def submit(s, g: int, X: str, N: int, label: str, output=None, artifact=None, blocked=None) -> dict:
+    from engine import workspace_gate
+    s.open(goals=[g])
+    res = goal_result(s, g)
+    node = node_of(res, X)
+    needs_gate = node.get("workspace") or bool(res.graph.artifact_outputs(X))
+    if needs_gate and workspace_gate.enabled(s):
+        with workspace_gate.hold(s, g, "workspace submit") as gate:
+            result = _submit(s, g, X, N, label, output=output, artifact=artifact, blocked=blocked)
+            if gate["reclaimed"]:
+                result["workspace_gate_reclaimed"] = True
+            return result
+    return _submit(s, g, X, N, label, output=output, artifact=artifact, blocked=blocked)
+
+
+def _submit(s, g: int, X: str, N: int, label: str, output=None, artifact=None, blocked=None) -> dict:
     if (output is None) == (blocked is None):
         raise Refused("usage", "submit needs exactly one of --output F or --blocked F")
     s.open(goals=[g])
@@ -347,6 +381,11 @@ def submit(s, g: int, X: str, N: int, label: str, output=None, artifact=None, bl
         nt = work.get("new_tip")
         if nt and nt != sess.snap.work.get(g):
             ups.append((f"refs/heads/zzzops/work/g{g}", sess.snap.work.get(g), nt))
+        segment = work.get("provenance_segment")
+        if segment:
+            prefix = f"refs/heads/zzzops/provenance/g{g}/{X}/{N}"
+            ups.extend([(prefix + "/lease", None, segment["lease"]),
+                        (prefix + "/end", None, segment["end"])])
         return ups
 
     def message(gg, old, new):
@@ -354,7 +393,8 @@ def submit(s, g: int, X: str, N: int, label: str, output=None, artifact=None, bl
         return goal_message("submit", gg, outcome_of(s, gg, X, r, old, new), new["state"], X, N, label)
 
     try:
-        kind, updates, closed = s.write_goals("submit", [g], mutate, extra, message=message)
+        kind, updates, closed = s.write_goals("submit", [g], mutate, extra, message=message,
+                                                     gate_goal=g if g in s.__dict__.get("workspace_gates", {}) else None)
     except Applied as a:
         r = a.out
         return {"ok": True, "coordinator": s.state.coordinator, "applied": True,
@@ -404,6 +444,26 @@ def blocked_record(s, res, doc, X, L, r0, b, ident, work):
     if nd.get("workspace"):
         if wt.sync(s.git, ident, s.snap, g, "dirty_ok", X, L.attempt) == "ahead":
             work["new_tip"] = wt.local_tip(s.git, g)
+    preserved = any(n.get("preserve") == X for n in res.graph.nodes.values())
+    extra_provenance = {}
+    if preserved:
+        if r0 and "frozen" in r0:
+            extra_provenance["frozen"] = copy.deepcopy(r0["frozen"])
+        end = work.get("new_tip") or s.snap.work.get(g)
+        if not L.work and end and end != s.snap.integration:
+            raise Refused("validation", "cannot verify pending producer provenance without a claimed work tip; initialize the work branch and retry")
+        if L.work and end and end != L.work:
+            if "preserved_test_provenance" not in schemas.required_caps(s.settings):
+                raise Refused("validation", "blocked producer has pending work; require capability `preserved_test_provenance` before publishing it")
+            if not s.git.is_ancestor(L.work, end):
+                raise Refused("validation", "producer segment ancestry cannot be verified; rerun the producer")
+            segments = copy.deepcopy((r0 or {}).get("pending_segments") or [])
+            segment = {"start": L.work, "end": end, "lease": L.tip, "goal": g, "node": X, "attempt": L.attempt, "holder": L.holder}
+            segments.append(segment)
+            work["provenance_segment"] = segment
+            extra_provenance["pending_segments"] = segments
+        elif r0 and "pending_segments" in r0:
+            extra_provenance["pending_segments"] = copy.deepcopy(r0["pending_segments"])
     wf = b["waiting_for"]
     text = b.get("question") if wf == "human" else b.get("instructions")
     reason = b.get("reason") or (text or "").strip().splitlines()[0][:200]
@@ -414,6 +474,7 @@ def blocked_record(s, res, doc, X, L, r0, b, ident, work):
             blocked[k] = b[k]
     last = (r0["output"] if r0 and r0["status"] == "done" else (r0 or {}).get("last_output"))
     extra = {"last_output": last} if nd["kind"] == "agent" and "blocked_findings" in schemas.required_caps(s.settings) else {}
+    extra.update(extra_provenance)
     return rec.record("blocked", False, L.attempt, L.holder, L.reason, r0, L.input_fp, L.fp_parts, None, [], s.now,
                       prompt=L.prompt, graph=res.graph, node=X, settings=s.settings, blocked=blocked, **extra)
 
@@ -443,6 +504,13 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
     nd = graph.nodes[X]
     g = res.goal
     out = copy.deepcopy(out_in)
+    scope_selection = out.pop("scope_selection", None) if isinstance(out, dict) else None
+    is_producer = any(n.get("preserve") == X for n in graph.nodes.values())
+    if scope_selection is not None and (not is_producer or "preserved_test_provenance" not in schemas.required_caps(s.settings)
+            or not isinstance(scope_selection, list) or any(not isinstance(p, str) or not p for p in scope_selection)
+            or len(scope_selection) != len(set(scope_selection))):
+        raise Refused("validation", "scope_selection requires a preserved producer and capability `preserved_test_provenance`; provide unique paths")
+    scope_review = {}
     errs = schemas.validate_submit_output(graph, X, out)
     if errs:
         code = "too_large" if any("too_large" in e for e in errs) else "validation"
@@ -503,11 +571,13 @@ def done_record(s, res, doc, X, L, r0, out_in, artifact, ident, work):
             base = vals_rec["base"]
             out[k] = {"commit": c, "base": base, "tree": ident.code_tree(c)}
             if any(n2.get("preserve") == X for n2 in graph.nodes.values()):
-                frozen = frozen_paths(s, r0, L, out[k], ident)
+                frozen = frozen_paths(s, r0, L, out[k], ident, (doc.get("records", {}).get("base", {}).get("output") or {}).get("replay_map"), scope_selection, scope_review)
             scope = rec.checkpoint_scope(graph, X, {"frozen": frozen} if frozen is not None else (r0 or {}))
             out[k]["change"] = ident.change(base, c, paths=scope)
         if nd.get("preserve") and cp_key:
             preserve_check(s, res, doc, X, out[cp_key], ident)
+    if scope_review:
+        out["scope_review"] = scope_review
     arts = graph.artifact_outputs(X)
     if arts:
         if artifact is None:
@@ -559,19 +629,88 @@ def diff_paths(git, a_tree, b_tree) -> set:
     return {p.decode("utf-8", "surrogateescape") for p in out.split(b"\0") if p}
 
 
-def frozen_paths(s, r0, L, cp, ident) -> list:
-    prev = set(r0.get("frozen") or []) if r0 and r0["status"] == "done" else set()
+def producer_candidates(git, ident, start, end):
+    a_tree, b_tree = ident.code_tree(start), ident.code_tree(end)
+    changed = diff_paths(git, a_tree, b_tree)
+    gitlinks = set()
+    for tree in (a_tree, b_tree):
+        entries = git.run("ls-tree", "-r", "-z", tree, text=False).stdout
+        for entry in entries.split(b"\0"):
+            if entry and entry.startswith(b"160000 "):
+                gitlinks.add(entry.split(b"\t", 1)[1].decode("utf-8", "surrogateescape"))
+    return changed - gitlinks
+
+
+def frozen_paths(s, r0, L, cp, ident, replay_map=None, selection=None, review=None) -> list:
+    prev = set(r0.get("frozen") or []) if r0 else set()
     W = L.work
-    if W and s.git.is_ancestor(cp["commit"], W):
-        return sorted(prev)
-    a = W if W and s.git.is_ancestor(W, cp["commit"]) else cp["base"]
-    return sorted(prev | diff_paths(s.git, ident.code_tree(a), ident.code_tree(cp["commit"])))
+    segments = (r0 or {}).get("pending_segments") or []
+    previous_end = None
+    previous_attempt = 0
+    all_candidates = set()
+    for segment in segments:
+        start, end = segment["start"], segment["end"]
+        from engine.leases import parse_message
+        if segment["goal"] != L.goal or segment["node"] != L.node or segment["attempt"] <= previous_attempt or segment["attempt"] >= L.attempt:
+            raise Refused("validation", "producer segment provenance has invalid goal, node or attempt")
+        prefix = f"refs/heads/zzzops/provenance/g{L.goal}/{L.node}/{segment['attempt']}"
+        if not s.git.exists(segment["lease"]) or not s.git.exists(end):
+            s.git.run("fetch", "-q", s.R, prefix + "/lease", prefix + "/end", check=False)
+        raw = s.git.cat(segment["lease"])
+        parsed = parse_message(parse_commit(segment["lease"], raw).message) if raw else None
+        if (not parsed or any(parsed[k] != segment[k] for k in ("goal", "node", "attempt", "holder"))
+                or parsed["work"] != start):
+            raise Refused("validation", "producer segment lease provenance cannot be verified")
+        if previous_end and not s.git.is_ancestor(previous_end, start):
+            mapped_previous = (replay_map or {}).get(previous_end)
+            if not mapped_previous or not s.git.is_ancestor(mapped_previous, start):
+                raise Refused("validation", "producer segment ancestry is not ordered; reconstruct scope")
+            old_parent = s.git.out("rev-parse", previous_end + "^")
+            mapped_parent = s.git.out("rev-parse", mapped_previous + "^")
+            old_diff = s.git.run("diff", "--binary", "--no-ext-diff", old_parent, previous_end, text=False).stdout
+            new_diff = s.git.run("diff", "--binary", "--no-ext-diff", mapped_parent, mapped_previous, text=False).stdout
+            if old_diff != new_diff:
+                raise Refused("validation", "producer segment replay provenance is not equivalent")
+        previous_end, previous_attempt = end, segment["attempt"]
+        if not s.git.is_ancestor(end, cp["commit"]) and replay_map:
+            mapped_start, mapped_end = replay_map.get(start), replay_map.get(end)
+            if mapped_start and mapped_end and s.git.exists(mapped_start) and s.git.exists(mapped_end):
+                old_diff = s.git.run("diff", "--binary", "--no-ext-diff", start, end, text=False).stdout
+                new_diff = s.git.run("diff", "--binary", "--no-ext-diff", mapped_start, mapped_end, text=False).stdout
+                if old_diff == new_diff:
+                    start, end = mapped_start, mapped_end
+        if not s.git.exists(start) or not s.git.exists(end) or not s.git.is_ancestor(start, end) or not s.git.is_ancestor(end, cp["commit"]):
+            raise Refused("validation", "producer pending segment provenance or ancestry cannot be verified after rewrite; rerun or reconstruct scope")
+        candidates = producer_candidates(s.git, ident, start, end)
+        all_candidates.update(candidates)
+    final_candidates = set()
+    if not (W and s.git.is_ancestor(cp["commit"], W)):
+        a = W if W and s.git.is_ancestor(W, cp["commit"]) else cp["base"]
+        if segments or "preserved_test_provenance" in schemas.required_caps(getattr(s, "settings", None)):
+            final_candidates = producer_candidates(s.git, ident, a, cp["commit"])
+        else:
+            final_candidates = diff_paths(s.git, ident.code_tree(a), ident.code_tree(cp["commit"]))
+    if segments:
+        all_candidates.update(final_candidates)
+    if selection is not None and not set(selection) <= all_candidates:
+        raise Refused("validation", "scope_selection contains paths outside the verified producer candidates")
+    ambiguous = {p for p in all_candidates if not p.startswith(("tests/", ".agents/")) and p not in prev}
+    if ambiguous and selection is None:
+        raise Refused("validation", "producer scope candidates include ambiguous paths; submit scope_selection and independently review the candidates",
+                      details={"candidates": sorted(all_candidates), "ambiguous": sorted(ambiguous)})
+    selected = set(selection) if selection is not None else all_candidates
+    prev.update(selected)
+    if review is not None and selection is not None:
+        review.update({"candidates": sorted(all_candidates), "selected": sorted(selected), "excluded": sorted(all_candidates - selected)})
+    return sorted(prev if segments else prev | final_candidates)
 
 
 def preserve_check(s, res, doc, X, new_cp, ident):
     graph = res.graph
     P = graph.nodes[X]["preserve"]
     pr = (doc.get("records") or {}).get(P)
+    if pr and pr["status"] == "blocked":
+        raise Refused("test_freeze", f"preserved producer {P} is blocked; resume it before submitting {X} (capability `preserved_test_provenance`)")
     if not pr or pr["status"] != "done":
         return
     k = graph.checkpoint_outputs(P)[0]
@@ -876,6 +1015,21 @@ def apply_sets(doc: dict, sets: list) -> dict:
 
 
 def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
+    from engine import workspace_gate
+    s.open(goals=gids)
+    keys = [k for k, _ in sets]
+    for path in files:
+        content = load(path, "edit")
+        if isinstance(content, dict) and isinstance(content.get("set"), dict):
+            keys.extend(content["set"])
+    recovery = any(k.startswith("records.") and k.endswith(".frozen") for k in keys)
+    if bases and recovery and len(gids) == 1 and workspace_gate.enabled(s):
+        with workspace_gate.hold(s, gids[0], "scope recovery"):
+            return _edit(s, gids, files, sets, bases)
+    return _edit(s, gids, files, sets, bases)
+
+
+def _edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
     s.open(goals=gids)
     base_of = {}
     for C in bases:
@@ -905,6 +1059,7 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
         if g not in s.snap.goals:
             raise Refused("not_found", f"G{g} does not exist")
     info = {}
+    recovery_locks = {}
 
     if base_of:
         s.require_writable(gids)
@@ -921,6 +1076,25 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
             if old is None and not doc_files:
                 raise Refused("validation", f"G{g} is unreadable: replace it with a whole-document --file")
             d = copy.deepcopy(doc_files[g]) if doc_files else apply_sets(copy.deepcopy(old), set_entries)
+            if base_of:
+                from engine import scope_recovery
+                graph = sess.state.graphs.get((old or {}).get("graph"))
+                if graph:
+                    producers = {n.get("preserve") for n in graph.nodes.values() if n.get("preserve")}
+                    for producer in producers:
+                        before_record = ((old or {}).get("records") or {}).get(producer) or {}
+                        after_record = (d.get("records") or {}).get(producer) or {}
+                        if before_record.get("frozen") != after_record.get("frozen"):
+                            if scope_recovery.CAPABILITY not in schemas.required_caps(sess.state.settings):
+                                raise Refused("validation", "scope recovery requires capability `preserved_test_provenance`")
+                            candidates = scope_recovery.diagnostics(sess, g)
+                            proposal = next((x["proposal"] for x in candidates if x["producer"] == producer and x["proposal"]), None)
+                            if proposal is None or d != apply_sets(copy.deepcopy(old), list(proposal["edit"]["set"].items())):
+                                raise Refused("validation", "scope repair differs from verified accepted-history provenance or observed work")
+                            if any(lg == g and graph.nodes.get(node, {}).get("workspace") and lease.live(sess.now)
+                                   for (lg, node), lease in sess.state.leases.items()):
+                                raise Refused("lease_held", "scope recovery requires all live workspace leases to finish")
+                            recovery_locks[g] = graph
             from engine import release_id
             if (isinstance(d.get("release"), str) and d.get("release") != (old or {}).get("release")
                     and "insertable_release_targets" not in schemas.required_caps(sess.state.settings)):
@@ -947,6 +1121,10 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
     live = [live_lease_entry(ctx, g, n, L, sb)
             for g, n, L, sb in live_input_changes(before, after, s.now, impact_scope(before, after, gids))]
     extra = {"live_leases_on_changed_nodes": live, "carried_findings": carried_findings(after, impact_scope(before, after, gids))}
+    if not base_of and any(k.startswith("records.") and k.endswith(".frozen") for k, _ in set_entries):
+        from engine import workspace_gate
+        extra["concurrency_guard"] = "cooperating_writers"
+        extra["concurrency_warning"] = workspace_gate.WARNING
     if live:
         extra["warning"] = f"{len(live)} running phase(s) have inputs this edit changes; see live_leases_on_changed_nodes"
     stale = sum(1 for g, nodes in prev.items() for n, ch in nodes.items()
@@ -973,7 +1151,13 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
         paths = changed_paths(old or {}, new)
         return goal_message("edit", gg, ", ".join(paths[:6]) or "no change", new["state"])
 
-    kind, updates, closed = s.write_goals("edit", gids, op, retry=False, message=message)
+    guarded_goal = next(iter(recovery_locks), None)
+    kind, updates, closed = s.write_goals("edit", gids, op, retry=False, message=message, gate_goal=guarded_goal)
+    if recovery_locks:
+        from engine import workspace_gate
+        extra["concurrency_guard"] = "cooperating_writers"
+        extra["concurrency_warning"] = workspace_gate.WARNING
+        extra["workspace_gate_reclaimed"] = any(s.workspace_gates[g]["reclaimed"] for g in recovery_locks)
     if extra["carried_findings"]:
         w = (f"{len(extra['carried_findings'])} open finding(s) stay live on their targets after this edit; "
              "see carried_findings")

@@ -107,3 +107,8 @@ Decide `workflow.json` before individual prompt changes. Every row offers `apply
 After explicit review or decline, `record.reviewed` contains exactly the current shipped `files` hashes, including when local content or absence is kept. Writing that snapshot quiets the notice until a subsequent shipped change. Missing or invalid records offer this snapshot for explicit review and infer no historical base. A legacy `removed` entry means reviewed absence: quiet while the path is absent from current defaults and reviewable as an addition if it reappears; new receipts omit these old entries. A newer record schema alone gives `newer_record` without a replacement offer. `policy_merge_markers` is a warning. Reading these notices never writes policy or provenance and never blocks other work.
 
 **Maintainers:** maintain and validate only the current shipped defaults. G1047 removes template archive/seed maintenance and the obsolete full-workflow fixtures. Generic workflow coverage uses the shipped default, fully renamed current graphs or small explicit scenarios; it does not promise historical reconstruction. Existing schema and capability floors remain unchanged.
+
+
+## Adopt preserved test provenance
+
+Upgrade every writer before requiring `preserved_test_provenance` through the reviewed capability upgrade in REPAIR.md. Before activation, new writers preserve existing frozen scope and refuse publishing blocked producer work that cannot be recorded safely; older writers can still lose scope, so activation is necessary to exclude them. Keep this capability required while provenance records exist. For a suspected historical loss, use the read-only `validate G` recovery diagnostic and reviewed, guarded edit described in REPAIR.md.
