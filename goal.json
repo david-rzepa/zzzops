@@ -203,10 +203,10 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 4,
+      "attempt": 5,
       "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-19T06:17:22Z",
+      "finished_at": "2026-11-19T06:33:07Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -216,20 +216,21 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/g1049-implement-4",
+      "holder": "codex:root/g1049-implement-5",
       "input_fp": "v1:sha256:6aae2182d928dfd431297ce0588cef6083254b46b5bda0e5ecd14b42ce18ff9b",
       "ok": true,
       "output": {
         "code": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "903193ac046daed996eb75043d54f3e4792b4d99",
-          "commit": "e4b0edcadfb1c50797a6fb6fef2b4bd9b63cfb70",
-          "tree": "4c27873e9f1753e9eefd652ca354ea1227cd0c4b"
+          "change": "e282096beca6fc5d08bd3c0caea254877d0a29c3",
+          "commit": "3bd4f62a1f90c83f83213b96559c35b201c24088",
+          "tree": "e45f5bd2dfc19a8c452abc76456f1e9b99fc5112"
         },
         "responses": {
-          "run_tests:failed": "fixed: reused the initial coordinator snapshot for ungated submits and edits, and preserved the existing already-applied path for closed goals; both reproduced failing tests pass locally."
+          "review_impl:1:1": "fixed: include every final candidate under the capability, require explicit scope_selection for ambiguous paths, and verify the non-blocked mixed-source selection and reviewer context against a real Git remote.",
+          "review_impl:1:2": "fixed: refetch and rerun the complete start validation inside the acquired workspace gate; deterministic real Git regressions verify a newly acquired same-node lease remains untouched and a different live workspace lease is refused."
         },
-        "summary": "Restored idempotent resubmission after goal closure and the existing single-fetch behavior for ungated submits and edits. Both previously failing product tests, the complete 31-test recovery suite and the two specified gate-guard tests pass locally; the live coordinator reports no clock-skew warning."
+        "summary": "Inspect final producer candidates even when no blocked segment exists, and require explicit independently reviewed selection for mixed test/source changes. Revalidate workspace-start state, force/reclaim requirements, policy, and conflicting node leases after acquiring the gate; real local Git regressions cover both same-node and other-node races. All 31 accepted tests, both targeted gate tests and 24 related local tests passed."
       },
       "reason": "reopened",
       "status": "done"
