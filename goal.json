@@ -361,10 +361,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 5,
+      "attempt": 6,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T04:43:13Z",
+      "finished_at": "2026-11-19T05:14:34Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
@@ -377,7 +377,7 @@
         ".agents/fixtures/scaffold-route-migration/workflow.json",
         ".agents/test_engine_scaffold_routes.py"
       ],
-      "holder": "codex:root/g1050-test-design-5",
+      "holder": "codex:root/g1050-test-design-6",
       "input_fp": "v1:sha256:cdb0db4b691ad0c3e227234e3b89e974f37f37c39d7526d02aff59941a93e84a",
       "ok": true,
       "output": {
@@ -388,36 +388,35 @@
         "cost": {
           "changed_tests": [
             {
-              "duration_ms": 1275,
+              "duration_ms": 1472,
               "id_or_scope": "test_engine_scaffold_routes.SubmoduleTestPreservation.test_implementation_pointer_advances_with_accepted_child_tests_unchanged",
-              "observation": "Real local Git CLI red run exercises the current frozen-gitlink behavior."
+              "observation": "Real Git child-preservation regression passes on the current implementation."
             }
           ],
-          "checkpoint": "e824f256566663d3faac1369fadca33cca791fd6",
+          "checkpoint": "ddf4c505ca195a2d8010c336772915f841ac2346",
           "commands": [
             {
               "cmd": "PYTHONPATH=plugins/zzzops/zzzops:.agents python3 -m unittest -v test_engine_scaffold_routes",
-              "duration_ms": 42687,
-              "exit": 1
+              "duration_ms": 71572,
+              "exit": 0
             },
             {
               "cmd": "PYTHONPATH=plugins/zzzops/zzzops:.agents python3 -m unittest -v test_engine_scaffold_routes.SubmoduleTestPreservation.test_implementation_pointer_advances_with_accepted_child_tests_unchanged",
-              "duration_ms": 1275,
-              "exit": 1
+              "duration_ms": 1472,
+              "exit": 0
             }
           ],
-          "summary": "Measured pre-implementation red suite and narrow child-preservation case. Independently verified real CLI review accepts required artifact and Python -B leaves a clean Git worktree.",
-          "total_ms": 43962
+          "summary": "Measured full 34-test local CLI/Git suite and focused child-preservation test; both pass. Verified separately that the real show response uses a node-keyed leases object and the attempt matches the task card.",
+          "total_ms": 73044
         },
         "responses": {
-          "implement:2:1": "fixed: Every direct review_design submission, including expected-invalid inputs, now supplies an actual review artifact. Verified missing artifact is rejected and valid report is accepted by the real local CLI.",
-          "implement:2:2": "fixed: Run the red and green behavior probe with python3 -B to suppress bytecode writes. Verified the real failing behavior leaves Git status clean."
+          "implement:3:1": "fixed: Read the live attempt from actual[\"leases\"][\"test_design\"][\"attempt\"]. A real CLI fixture confirms the keyed object and exact task-card attempt; the full 34-test suite passes at this checkpoint."
         },
         "tests": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "38aeabcd2344563b388fe11f94692106905da884",
-          "commit": "e824f256566663d3faac1369fadca33cca791fd6",
-          "tree": "12a5555c0e86fc19ea5f88c3520832ed81829761"
+          "change": "56b10e6b77241f54fbfaf8429d13ddbb29f549af",
+          "commit": "ddf4c505ca195a2d8010c336772915f841ac2346",
+          "tree": "d99e77a00239c9838690daf068d8d253a32a7636"
         }
       },
       "reason": "reopened",
