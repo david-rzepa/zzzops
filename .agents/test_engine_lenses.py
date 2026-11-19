@@ -9,7 +9,6 @@ from __future__ import annotations
 import copy
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -291,6 +290,8 @@ class Pilot:
                     finding["lens"] = card["lenses"]["apply"][0]
             out = {"decision": "changes_requested" if new or keep_open else "approved",
                    "summary": summary or f"{node} verdict", "findings": prior + new}
+            if getattr(self, "auto_route", False) and "scaffold_needed" in schema:
+                out["scaffold_needed"] = False
         else:
             for k, t in schema.items():
                 if k in ("findings", "responses"):
@@ -380,16 +381,14 @@ class LensWorld(unittest.TestCase):
         self.w = fx.World(self.tmp)
         self.gh = fx.FakeGitHub(self.w)
         self.m = SHIPPED_RENAME if self.renamed else {}
-        # These lens tests cover the pre-routing graph as an installed policy.
-        # The routing journeys separately exercise the new shipped default.
-        old_graph = json.loads((Path(__file__).parent / "fixtures/scaffold-route-migration/workflow.json").read_text())
-        wf = fx.renamed_workflow(old_graph, SHIPPED_RENAME) if self.renamed else old_graph
+        wf = renamed_shipped() if self.renamed else shipped("workflow.json")
         policy = shipped("POLICY.json")
         policy["settings"]["intent"] = copy.deepcopy(INTENT)
         self.w.bootstrap(policy=policy, workflow=wf, prompts=False)
         self.w.push_dev({f".zzzops/prompts/{p.name}": p.read_text(encoding="utf-8")
                          for p in sorted((fx.SHIPPED / "prompts").iterdir())}, "chore(zzzops): prompts")
         self.p = Pilot(self.w, self.m)
+        self.p.auto_route = True
 
     def n(self, x):
         return self.m.get(x, x)
