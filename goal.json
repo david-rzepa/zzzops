@@ -404,15 +404,15 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T01:59:46Z",
+      "finished_at": "2026-11-19T02:36:11Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:5ccefd2fc671d07d372dff586f121a411f7b87f7924824d727c569556769ef4a",
-          "commands": "v1:sha256:b8db774e98cc7104cf7f3c81c615cf63febd1673786a8c46df919cadfbe1b59d"
+          "code": "v1:sha256:f42c8b7b2364ceff7e6f4b9f301e9b48eb4be3436f06a7434fd097f6ffe36f20",
+          "commands": "v1:sha256:9aa0c53958c5a7119a7648882d3b5e958b1ceca5ec6747e999c990784bf86de9"
         },
         "policy": {
           "verification": {
@@ -430,27 +430,27 @@
           ]
         }
       },
-      "holder": "codex:root/g1051-run-tests-2",
-      "input_fp": "v1:sha256:7112b3d7e5c99c01b8f1962cd599a8972af40d613ad61e26ce9e5155e3463081",
+      "holder": "codex:root/g1051-run-tests-3",
+      "input_fp": "v1:sha256:2832d7aafe6ff44050bf229f8a414df6e4c002e001ebec441514584f91dafd10",
       "ok": true,
       "output": {
         "result": {
           "details": [
             {
-              "cmd": "PYTHONPATH=.agents python3 -m unittest -v test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_equal_trees_without_lineage_or_matching_pr_are_not_proof test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_separate_destinations_approve_and_resume_without_rewinding_production test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_refusal_and_moved_destination_require_fresh_approval --durations 10",
+              "cmd": "PYTHONPATH=.agents python3 -m unittest -v test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_provider_view_is_recorded test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_recovery_is_recorded test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_nested_maintenance_forward_port_uses_verified_older_released_ancestor test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_invalid_historical_source_snapshots_never_fall_back_to_common_git_history --durations 10",
               "exit": 0,
-              "milliseconds": 23840,
-              "seconds": 23,
+              "milliseconds": 36846,
+              "seconds": 36,
               "source": "goal",
-              "tail": "test_equal_trees_without_lineage_or_matching_pr_are_not_proof (test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_equal_trees_without_lineage_or_matching_pr_are_not_proof) ... ok\ntest_separate_destinations_approve_and_resume_without_rewinding_production (test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_separate_destinations_approve_and_resume_without_rewinding_production) ... ok\ntest_refusal_and_moved_destination_require_fresh_approval (test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_refusal_and_moved_destination_require_fresh_approval) ... ok\n\nSlowest test durations\n----------------------------------------------------------------------\n3.501s     test_separate_destinations_approve_and_resume_without_rewinding_production (test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_separate_destinations_approve_and_resume_without_rewinding_production)\n1.537s     test_refusal_and_moved_destination_require_fresh_approval (test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_refusal_and_moved_destination_require_fresh_approval)\n1.038s     test_equal_trees_without_lineage_or_matching_pr_are_not_proof (test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_equal_trees_without_lineage_or_matching_pr_are_not_proof)\n\n----------------------------------------------------------------------\nRan 3 tests in 23.777s\n\nOK\n"
+              "tail": "------------------------------------\n7.204s     test_nested_maintenance_forward_port_uses_verified_older_released_ancestor (test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_nested_maintenance_forward_port_uses_verified_older_released_ancestor)\n5.889s     test_external_changed_head_merged_before_provider_view_is_recorded (test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_provider_view_is_recorded)\n5.756s     test_external_changed_head_merged_before_recovery_is_recorded (test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_external_changed_head_merged_before_recovery_is_recorded)\n0.229s     test_invalid_historical_source_snapshots_never_fall_back_to_common_git_history (test_engine_insertable_release_journeys.MaintenanceForwardPortJourneys.test_invalid_historical_source_snapshots_never_fall_back_to_common_git_history)\n\n----------------------------------------------------------------------\nRan 4 tests in 36.783s\n\nOK\n"
             },
             {
               "cmd": "python3 .github/scripts/run_product_validation.py --platform linux --local",
               "exit": 0,
-              "milliseconds": 209431,
-              "seconds": 209,
+              "milliseconds": 215876,
+              "seconds": 215,
               "source": "verification",
-              "tail": "s.InsertedReleaseJourneys.test_changed_forward_port_pr_head_invalidates_previous_approval\", 40.59538166600396], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_older_maintenance_finishes_without_rewinding_production\", 40.367252436000854], [\"test_engine_journeys.JourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 40.35803759400733], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_declined_forward_port_is_not_merged\", 39.71652332300437]], \"executed_count\": 1168, \"completed_count\": 1168, \"worker_seconds\": [191.30156583100324, 185.98338271601824, 182.3476892010076, 186.0782475739834, 203.6079678100068, 165.2240827550122, 190.33221024199156, 199.82001402799506, 177.6790711679787, 182.8892698760028, 178.97542633401463, 209.29984514499665, 176.37788333397475, 204.42035168400616, 193.82629698701203, 184.64184800401563, 187.96030315000098, 205.28517662300146, 180.29377933000796, 172.84924668102758], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
+              "tail": "......................\n{\"status\": \"failed\", \"inventory_count\": 0, \"inventory_sha256\": null, \"workers\": 0, \"wall_seconds\": 2.634600969031453e-05, \"aggregate_test_seconds\": 0, \"slowest_tests\": [], \"executed_count\": 0, \"completed_count\": 0, \"worker_seconds\": [], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": [], \"error\": \"loader failed\"}\n...........................................................\n...........................................................\n..........................................................\n.s\n..........................................................\n{\"status\": \"success\", \"inventory_count\": 1172, \"inventory_sha256\": \"2d6afb4d2becdb136d5163fc5a6df5259073ca96f67c7da259235ff409752976\", \"workers\": 20, \"wall_seconds\": 215.81130524000037, \"aggregate_test_seconds\": 3263.311027331132, \"slowest_tests\": [[\"test_engine_journeys.JourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 43.142751589999534], [\"test_engine_journeys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 42.68602644800558], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_approved_patch_reaches_production_and_later_line_only_after_approval\", 41.990643738012295], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_older_maintenance_finishes_without_rewinding_production\", 40.27830782599631], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_changed_forward_port_pr_head_invalidates_previous_approval\", 40.001514136994956]], \"executed_count\": 1172, \"completed_count\": 1172, \"worker_seconds\": [207.5698317049828, 210.6277472539805, 180.8652574160078, 204.94444591499632, 215.74104537800304, 194.1212936679949, 205.87401405599667, 174.69769543700386, 192.30136962799588, 171.99362478000694, 188.96099613499246, 188.58844511999632, 165.4333191550104, 198.94119497897918, 196.29168315898278, 180.6919605509902, 197.81071339998743, 206.5359326270118, 180.6362874660117, 167.6613818060141], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
             }
           ],
           "passed": true,
@@ -469,7 +469,7 @@
               "status": "unavailable",
               "verification": {
                 "caveat": "informational; machine load and concurrent goal-command workload may differ",
-                "delta_ms": 47877,
+                "delta_ms": 54322,
                 "source": {
                   "finished_at": "2026-11-15T14:20:50Z",
                   "goal": 1048,
@@ -490,18 +490,18 @@
               "platform": "linux",
               "python": "3.14"
             },
-            "goal_ms": 23840,
+            "goal_ms": 36846,
             "parallel_commands": false,
-            "plan_sha256": "710386aae273b27625a2ba755d475e548bc432141d6b857441f1c245ab65a60a",
-            "total_ms": 233271,
-            "verification_ms": 209431,
+            "plan_sha256": "023be16205a436ffc85f8944af0e2272b13efa629355f196550224005b80efe8",
+            "total_ms": 252721,
+            "verification_ms": 215876,
             "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1",
             "workers": {
               "goal": 20,
               "verification": 20
             }
           },
-          "tree": "bba78499c3736231bd8f1379c49406cf18062762"
+          "tree": "ef3026c840bbbb508b843508a0ac76c754880ee2"
         }
       },
       "reason": "stale",
