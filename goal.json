@@ -10,36 +10,36 @@
   "priority": "P2",
   "records": {
     "adversary_design": {
-      "attempt": 7,
+      "attempt": 8,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-19T00:42:00Z",
+      "finished_at": "2026-11-19T00:47:02Z",
       "fp_parts": {
         "def": "v1:sha256:dc145bce044fd2a77d598b0ad3c7716d0f6be4e7acaf468319ff291c84903a4d",
         "inputs": {
-          "doc": "v1:blob:9cb29051a0a95acfc44450b98dd9a7c4098bc907",
+          "doc": "v1:blob:5b199f7a7f94e75dfbec83fa682e91d088f0edec",
           "spec": "v1:sha256:36d23dbf43af22b9cc7117bb206dfaccc678b6f1574bc36a6de214fab025777e"
         },
         "policy": {},
-        "subject": "v1:sha256:76b2cd6ab8c4878803120faffd4610be67101f99733aba43e565e83935096c84"
+        "subject": "v1:sha256:c60733bb1db215443c1ecadee8a858652e39e652d7e7ad9e8394690f678cacaa"
       },
-      "holder": "codex:root/g1051-adversary-7",
-      "input_fp": "v1:sha256:950ba78dc130b8e26f9c8c74df265daa60062d93afe68760678430e1db707e5c",
+      "holder": "codex:root/g1051-adversary-8",
+      "input_fp": "v1:sha256:fea02f6f6a4d641bdf1e1e014c5488085dca9df61701748c5b5b7494f32ec3df",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "6e1d7500a709bedb9768dd448432e62b0e92657d",
-          "commit": "698f7440aef6891585ba77ee0e77b9ef8de842ae",
+          "blob": "b33b6d45da912ecd4432a44c2e531e186ba675e9",
+          "commit": "7fc168ea8105132abe94f12bb76b6aedc308203f",
           "path": ".zzzops/reviews/1051/adversary_design.md"
         },
-        "summary": "The separate forward-port workflow preserves approvals, source provenance, PR protections and resumable outcomes."
+        "summary": "No-diff handling is evidence-backed, separately reviewed and honest about provenance and races."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "9cb29051a0a95acfc44450b98dd9a7c4098bc907",
-          "commit": "26244b595d5c7b0d6a9fb02f2d9630d2a453e00e"
+          "blob": "5b199f7a7f94e75dfbec83fa682e91d088f0edec",
+          "commit": "0e0aa4a5025a803bff52ee39e7cce3ce238a0218"
         }
       },
       "status": "done"
