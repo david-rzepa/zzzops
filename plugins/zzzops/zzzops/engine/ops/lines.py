@@ -169,7 +169,7 @@ def merge_pr(ctx, state, n, head, into):
     gh = ctx.gh
     v = gh.json("pr", "view", str(n), "--json", VIEW)
     if v["state"] == "MERGED":
-        return "merged", (v.get("mergeCommit") or {}).get("oid")
+        return verified_merged_pr(ctx, state, v, head, into)
     if v["state"] == "CLOSED":
         return Blocked({"category": "external", "waiting_for": "human", "reason": f"PR #{n} closed without merging",
                         "question": f"PR #{n} into `{into}` was closed on GitHub. Reopen it, then answer.",
@@ -199,7 +199,24 @@ def merge_pr(ctx, state, n, head, into):
     v = gh.json("pr", "view", str(n), "--json", VIEW)
     if v["state"] != "MERGED":
         return wait(ctx, state, "merge not observed yet", 120)
-    return "merged", (v.get("mergeCommit") or {}).get("oid")
+    return verified_merged_pr(ctx, state, v, head, into)
+
+
+def verified_merged_pr(ctx, state, pr, approved_head, into):
+    """An observed merge is evidence only when its actual head was approved."""
+    merged = (pr.get("mergeCommit") or {}).get("oid")
+    ctx.session.fetch_branches([into])
+    actual_parents = parents(ctx.git, merged) if merged and ctx.git.exists(merged) else []
+    if (pr.get("headRefOid") != approved_head or pr.get("baseRefName") != into
+            or len(actual_parents) != 2 or actual_parents[1] != approved_head):
+        state["observed_merge"] = {"pr": pr.get("number"), "merge_commit": merged,
+                                   "observed_head": pr.get("headRefOid"), "approved_head": approved_head,
+                                   "base": pr.get("baseRefName"), "parents": actual_parents}
+        return Blocked({"category": "decision", "waiting_for": "human",
+                        "reason": "merged PR head or merge evidence differs from approval",
+                        "question": f"PR #{pr.get('number')} merged as {merged}, but its actual head or merge evidence differs from the approved {approved_head}. Review before further propagation; no rollback was attempted.",
+                        "op_state": state})
+    return "merged", merged
 
 
 def line_info(ctx):
@@ -281,9 +298,13 @@ def finish(ctx):
     if state.get("production_merge") is None:
         prs = gh.json("pr", "list", "--head", branch, "--base", prod, "--state", "all", "--json",
                       "number,state,headRefOid,mergeCommit") or []
-        done = next((x for x in prs if x["state"] == "MERGED" and git.is_ancestor(T, x["headRefOid"] or "")), None)
+        done = next((x for x in prs if x["state"] == "MERGED"), None)
         if done:
-            state["production_merge"] = (done.get("mergeCommit") or {}).get("oid")
+            view = gh.json("pr", "view", str(done["number"]), "--json", VIEW)
+            out = verified_merged_pr(ctx, state, view, T, prod)
+            if isinstance(out, Blocked):
+                return out
+            state["production_merge"] = out[1]
         else:
             P = tip(ctx, prod)
             if not P:

@@ -11,6 +11,54 @@ from engine.errors import Refused
 from engine.lines import branching
 
 
+def released_lineage(s, doc):
+    """Follow immutable approved source records to the released production base."""
+    commits = []
+    seen = set()
+    while True:
+        graph = s.state.graphs.get(doc.get("graph"))
+        finish = next((n for n in graph.topo if graph.nodes[n].get("op") == "git.line_finish"), None) if graph else None
+        record = (doc.get("records") or {}).get(finish) or {}
+        output = record.get("output") or {}
+        if (doc.get("state") != "closed" or (doc.get("closed") or {}).get("reason") != "done"
+                or record.get("status") != "done" or not record.get("ok")):
+            raise Refused("not_ready", "source lineage contains an unfinished release")
+        approval = (doc.get("records") or {}).get("approve_finish") or {}
+        sync = (doc.get("records") or {}).get("sync") or {}
+        if (approval.get("status") != "done" or not approval.get("ok")
+                or sync.get("status") != "done" or not sync.get("ok")):
+            raise Refused("not_ready", "source lineage lacks an approved finished tip")
+        production = output.get("production_merge")
+        if production:
+            if not s.git.exists(production):
+                raise Refused("not_ready", "released production provenance is unavailable")
+            commits.append(production)
+            # Integration may contain the released line parent rather than
+            # the production merge commit itself.
+            commits.extend(s.git.out("rev-list", "--parents", "-n", "1", production).split()[1:])
+            return commits
+        maintenance = output.get("maintenance") or {}
+        metadata = (doc.get("flow") or {}).get("inserted") or {}
+        goal, snapshot = metadata.get("source_goal"), metadata.get("source_goal_commit")
+        source_tip = maintenance.get("source_commit")
+        if (not isinstance(goal, int) or not snapshot or snapshot in seen or not s.git.exists(snapshot)
+                or maintenance.get("source_goal") != goal or metadata.get("source_commit") != source_tip
+                or (sync.get("output") or {}).get("merged") != maintenance.get("approved_tip")):
+            raise Refused("not_ready", "maintenance lineage has missing or contradictory provenance")
+        parent, error = store.read_goal_json(s.git, snapshot)
+        if error or not isinstance(parent, dict) or parent.get("id") != goal:
+            raise Refused("not_ready", "maintenance source snapshot is unavailable or invalid")
+        parent_graph = s.state.graphs.get(parent.get("graph"))
+        parent_finish = next((n for n in parent_graph.topo if parent_graph.nodes[n].get("op") == "git.line_finish"), None) if parent_graph else None
+        parent_output = (((parent.get("records") or {}).get(parent_finish) or {}).get("output") or {})
+        parent_tip = parent_output.get("production_merge") or (parent_output.get("maintenance") or {}).get("approved_tip")
+        if parent_tip != source_tip:
+            raise Refused("not_ready", "maintenance source snapshot does not match its recorded base")
+        commits.append(source_tip)
+        seen.add(snapshot)
+        doc = parent
+
+
 def recover_unavailable_source(s, source, destination):
     """Keep an existing operation discoverable when its source was revoked."""
     matches = []
@@ -88,9 +136,8 @@ def start(s, source, destination):
         raise Refused("validation", "destination must be integration, production or an existing open release line")
     tips = s.fetch_branches([destination, line.branch, b["production"]])
     target_tip = tips.get(destination)
-    base = maintenance.get("source_commit")
-    parents = s.git.out("rev-list", "--parents", "-n", "1", base).split()[1:] if base and s.git.exists(base) else []
-    common = next((x for x in [base, *parents] if s.ancestor(x, target_tip) and s.ancestor(x, tip)), None)
+    lineage = released_lineage(s, doc)
+    common = next((x for x in lineage if s.ancestor(x, target_tip) and s.ancestor(x, tip)), None)
     if not target_tip or not s.git.exists(tip) or not common:
         raise Refused("not_ready", "source and destination lack verifiable common released ancestry")
     source_commit = s.snap.goals[line.goal]
