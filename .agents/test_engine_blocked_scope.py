@@ -5,6 +5,7 @@ normal CLI leases, blocked submissions, retry and independent test review.
 """
 from __future__ import annotations
 
+import json
 import shutil
 import tempfile
 import unittest
@@ -76,6 +77,36 @@ class BlockedScopeJourney(unittest.TestCase):
         rc, out = self.a.submit(self.g, "implement", c, {"summary": "Attempt"}, ok=False)
         self.assertNotEqual(0, rc, out)
         self.assertEqual("test_freeze", out["error"]["code"])
+
+    def test_capability_enabled_two_blocked_attempts_then_noop_retry_protects_all_tests(self):
+        self.accept_tests()
+        policy = json.loads(json.dumps(self.w.policy))
+        policy["settings"]["engine"]["requires"].append("preserved_test_provenance")
+        self.w.push_dev({".zzzops/POLICY.json": json.dumps(policy, indent=2) + "\n"})
+        self.w.ok("a", "reopen", str(self.g), "test_design", "--note", "more tests")
+        first = self.a.start(self.g, "test_design")
+        self.wt.commit({"tests/three.py": "assert 3\n"}, "test: before first block")
+        self.a.submit(self.g, "test_design", first,
+                      blocked={"waiting_for": "agent", "instructions": "first retry"})
+        second = self.a.start(self.g, "test_design")
+        self.wt.commit({"tests/four.py": "assert 4\n"}, "test: before second block")
+        self.a.submit(self.g, "test_design", second,
+                      blocked={"waiting_for": "agent", "instructions": "second retry"})
+        last = self.a.start(self.g, "test_design")
+        responses = {f["id"]: "fixed: added tests" for f in last.get("corrections", [])}
+        self.a.submit(self.g, "test_design", last, {"commands": ["true"], "responses": responses})
+        self.assertEqual(sorted(["tests/one.py", "tests/two.py", "tests/three.py", "tests/four.py"]),
+                         self.record()["frozen"])
+        self.review()
+        c = self.a.start(self.g, "implement")
+        for path in self.record()["frozen"]:
+            self.wt.commit({path: "assert False\n"}, "fix: weaken accepted test")
+            rc, out = self.a.submit(self.g, "implement", c, {"summary": "Attempt"}, ok=False)
+            self.assertNotEqual(0, rc, out)
+            self.assertEqual("test_freeze", out["error"]["code"])
+            self.wt.git("reset", "--hard", "HEAD^")
+        self.wt.commit({"src/good.py": "value = 1\n"}, "feat: permitted implementation")
+        self.a.submit(self.g, "implement", c, {"summary": "Non-test implementation"})
 
     def test_before_capability_pending_blocked_work_is_not_published(self):
         self.accept_tests()
