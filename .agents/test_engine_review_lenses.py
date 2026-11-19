@@ -492,6 +492,9 @@ class ReviewWorld(unittest.TestCase):
         return read_text_view(self.w, card["instructions"][name])
 
     def submit(self, ag, g, node, card, out, ok=True):
+        out = dict(out)
+        if "scaffold_needed" in card["output_schema"]:
+            out.setdefault("scaffold_needed", False)
         return ag.submit(g, self.n(node), card, out, artifact="# review\n" if card.get("artifact") else None, ok=ok)
 
     def runs(self, g) -> int:
@@ -519,6 +522,8 @@ class ReviewerCardTests(ReviewWorld):
         from engine.card import CARD_LIMIT
         self.assertLessEqual(len(canonical({k: v for k, v in card.items() if k not in ("ok", "coordinator")})),
                              CARD_LIMIT)
+        self.submit(ag, g, "review_design", card,
+                    {"decision": "approved", "summary": "reviewed", "findings": []})
         _, adv = self.p.start(g, "adversary_design", avoid=(ag.label,))
         self.assertNotIn("lenses", adv)
         self.assertNotIn('"lens"', adv["output_schema"]["findings"])
@@ -756,22 +761,20 @@ class NoFindingLostTests(ReviewWorld):
 
 
 class ReviewJourneyTests(ReviewWorld):
-    def test_design_reviewers_run_in_parallel_and_reopen_the_design_once(self):
+    def test_design_reviewers_challenge_the_route_and_reopen_design_once(self):
         g = self.goal()
         self.p.drive(g, lambda st: st["design"] == "current")
         nxt = self.w.ok("a", "next", "--goal", str(g))
         ready = sorted(self.p.rev.get(a["node"], a["node"]) for a in nxt["actions"] if a["goal"] == g)
-        self.assertEqual(["adversary_design", "review_design"], ready)
+        self.assertEqual(["review_design"], ready)
         designer = self.p.record(g, "design")["holder"]
         r_ag, a_ag = fx.Agent(self.w, "b", "claude:1111/rev-1"), fx.Agent(self.w, "b", "claude:2222/adv-1")
         self.assertNotIn(designer, (r_ag.label, a_ag.label))
-        rcard, acard = r_ag.start(g, self.n("review_design")), a_ag.start(g, self.n("adversary_design"))
-        st = self.p.states(g)
-        self.assertEqual(("running", "running"), (st["review_design"], st["adversary_design"]))
-        self.assertTrue(st["filter_design"].startswith("blocked"), st["filter_design"])
+        rcard = r_ag.start(g, self.n("review_design"))
         self.submit(r_ag, g, "review_design", rcard,
                     {"decision": "changes_requested", "summary": "r", "findings": [tag("gap", True, self.l("truth"))]})
         self.assertTrue(self.p.states(g)["filter_design"].startswith("blocked"))
+        acard = a_ag.start(g, self.n("adversary_design"))
         self.submit(a_ag, g, "adversary_design", acard,
                     {"decision": "changes_requested", "summary": "a",
                      "findings": [{"text": "can be gamed", "impact": "x", "material": True}]})
@@ -790,6 +793,7 @@ class ReviewJourneyTests(ReviewWorld):
     def test_g1000s_refusal_still_guards_a_node_skip_of_the_adversary(self):
         g = self.goal()
         self.p.drive(g, lambda st: st["design"] == "current")
+        self.p.run(g, "review_design")
         self.p.run(g, "adversary_design", findings=[{"text": "can be gamed", "impact": "x", "material": True}])
         fid = self.open_ids(g, "adversary_design")[0]
         rc, err = self.edit(g, f'skip.{self.n("adversary_design")}="noisy"', ok=False)
