@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from engine import release_id
+
 RELEASE_GRAPH = "release"
 
 
@@ -16,8 +18,13 @@ def branching(settings: dict | None) -> dict | None:
 def entry_of(doc: dict) -> dict:
     """The ledger entry of a document: what the goal-commit trailers cache (§3.1)."""
     flow = doc.get("flow") or {}
-    return {"release": doc.get("release"), "state": doc.get("state"), "closed": (doc.get("closed") or {}).get("reason"),
-            "line": f"{flow['line']}:{flow['name']}" if flow.get("line") else None, "hotfix": flow.get("hotfix")}
+    entry = {"release": doc.get("release"), "state": doc.get("state"), "closed": (doc.get("closed") or {}).get("reason"),
+             "line": f"{flow['line']}:{flow['name']}" if flow.get("line") else None, "hotfix": flow.get("hotfix")}
+    if "inserted" in flow:
+        entry["inserted"] = flow["inserted"]
+    if doc.get("graph") == "forward_port":
+        entry["coordination"] = True
+    return entry
 
 
 def merged_ledger(ledger: dict | None, docs: dict) -> dict:
@@ -29,7 +36,14 @@ def merged_ledger(ledger: dict | None, docs: dict) -> dict:
 
 
 def line_branch(b: dict, kind: str, name: str) -> str:
-    return (b["release_prefix"] if kind == "release" else b["hotfix_prefix"]) + str(name)
+    if kind != "release":
+        return b["hotfix_prefix"] + str(name)
+    try:
+        name = release_id.label(name)
+    except ValueError:
+        # Preserve legacy diagnostic access to malformed existing records.
+        name = str(name)
+    return b["release_prefix"] + name
 
 
 @dataclass(frozen=True)
@@ -40,6 +54,7 @@ class Line:
     branch: str
     state: str                # open | held | closed
     closed: str | None
+    verified: bool = True
 
     @property
     def open(self) -> bool:
@@ -58,25 +73,28 @@ def lines_of(ledger: dict, settings: dict) -> list:
         kind, name = v.split(":", 1)
         if kind not in ("release", "hotfix"):
             continue
-        out.append(Line(g, kind, name, line_branch(b, kind, name), e.get("state") or "open", e.get("closed")))
+        inserted = e.get("inserted")
+        verified = not isinstance(inserted, dict) or inserted.get("verified") is True
+        out.append(Line(g, kind, name, line_branch(b, kind, name), e.get("state") or "open", e.get("closed"), verified))
     return out
 
 
-def effective_release(settings: dict, lines: list) -> int:
+def effective_release(settings: dict, lines: list):
     """max(releases.current, 1 + the highest cut release): a finished line keeps counting (§3.1)."""
     cur = settings["releases"]["current"]
     cut = [int(x.name) for x in lines if x.kind == "release" and x.name.isdigit()]
-    return max([cur] + [n + 1 for n in cut])
+    return max([release_id.canonical(cur)] + [n + 1 for n in cut], key=release_id.components)
 
 
 def open_line(lines: list, kind: str, name) -> Line | None:
-    hits = [x for x in lines if x.kind == kind and x.name == str(name) and x.open]
+    hits = [x for x in lines if x.kind == kind and x.open
+            and (release_id.equal(x.name, name) if kind == "release" else x.name == str(name))]
     return hits[0] if hits else None
 
 
 def is_member(e: dict) -> bool:
     """A goal that belongs to its release (not a line goal, not a hotfix member)."""
-    return not e.get("line") and not e.get("hotfix")
+    return not e.get("line") and not e.get("hotfix") and not e.get("coordination")
 
 
 def members(ledger: dict, line: Line) -> list:
@@ -86,7 +104,7 @@ def members(ledger: dict, line: Line) -> list:
             continue
         if line.kind == "hotfix" and e.get("hotfix") == line.name:
             out.append(g)
-        elif line.kind == "release" and is_member(e) and str(e.get("release")) == line.name:
+        elif line.kind == "release" and is_member(e) and release_id.equal(e.get("release"), line.name):
             out.append(g)
     return out
 
@@ -99,10 +117,18 @@ def target_of(doc: dict, settings: dict, lines: list) -> dict:
     """{"branch", "kind"} of a goal: its open line's branch, else the integration branch. A hotfix member with no
     open line has branch None (its `base` waits for `hotfix start`)."""
     I = settings["integration_branch"]
-    b = branching(settings)
-    if not b:
+    if doc.get("graph") == "forward_port":
         return {"branch": I, "kind": "integration"}
+    b = branching(settings)
     flow = doc.get("flow") or {}
+    try:
+        inserted = isinstance(release_id.canonical(doc.get("release")), str)
+    except ValueError:
+        inserted = False
+    if not b:
+        if inserted and not flow:
+            return {"branch": None, "kind": "inserted", "name": release_id.label(doc["release"])}
+        return {"branch": I, "kind": "integration"}
     if flow.get("line"):
         return {"branch": line_branch(b, flow["line"], flow["name"]), "kind": flow["line"]}
     if flow.get("hotfix"):
@@ -110,14 +136,22 @@ def target_of(doc: dict, settings: dict, lines: list) -> dict:
         return {"branch": x.branch if x else None, "kind": "hotfix", "name": flow["hotfix"]}
     x = open_line(lines, "release", doc.get("release"))
     if x:
+        if not x.verified:
+            return {"branch": None, "kind": "inserted", "name": release_id.label(doc["release"])}
         return {"branch": x.branch, "kind": "release"}
+    if inserted:
+        return {"branch": None, "kind": "inserted", "name": release_id.label(doc["release"])}
     return {"branch": I, "kind": "integration"}
 
 
 def cut_state(ledger: dict, lines: list, settings: dict, effective: int) -> tuple:
     """(cut, waiting): the release_cut offer {"release", "goals"} or None, and the waiting entries (§3.2)."""
     N = effective
-    mem = [g for g, e in sorted(ledger.items()) if is_member(e) and e.get("release") == N]
+    if isinstance(release_id.canonical(N), str):
+        # Dotted lines must be created from an explicitly approved released
+        # source, never cut implicitly from the integration branch.
+        return None, []
+    mem = [g for g, e in sorted(ledger.items()) if is_member(e) and release_id.equal(e.get("release"), N)]
     complete = bool(mem) and all(ledger[g].get("state") == "closed" for g in mem) \
         and any(ledger[g].get("closed") == "done" for g in mem)
     if not complete or any(x.kind == "release" and x.name == str(N) for x in lines):

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from engine import POLICY_SCHEMA, WORKFLOW_SCHEMA, GOAL_SCHEMAS
+from engine import POLICY_SCHEMA, WORKFLOW_SCHEMA, GOAL_SCHEMAS, release_id
 from engine.canon import find_floats, goal_bytes, parse_iso, version_tuple
 
 NODE_ID = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -621,7 +621,7 @@ SETTINGS_SHAPE = {
     "integration_branch": "branch",
     "verification": {"commands": "strings", "required_ci": "strings", "timeout_minutes": (1, 240),
                      "ci_timeout_minutes": (10, 1440), "parallel_commands": ("optional", "bool")},
-    "releases": {"current": (1, None)},
+    "releases": {"current": "release_id"},
     "leases": {"ttl_minutes": (10, 1440)},
     "parallelism": {"max_workers": (1, 50)},
     "scheduling": {"order": ("stage_first", "goal_first")},
@@ -766,6 +766,9 @@ def validate_policy(p) -> list:
             if k in settings:
                 _check_shape(e, f"settings.{k}", settings[k], shape)
         _check_branching(e, settings)
+        current = (settings.get("releases") or {}).get("current") if isinstance(settings.get("releases"), dict) else None
+        if isinstance(current, str) and "insertable_release_targets" not in required_caps(settings):
+            e.add("settings.releases.current", "string release targets require capability `insertable_release_targets`")
         verification = settings.get("verification")
         if isinstance(verification, dict) and "parallel_commands" in verification and "test_cost" not in required_caps(settings):
             e.add("settings.verification.parallel_commands", "requires capability `test_cost`: add it to settings.engine.requires")
@@ -829,7 +832,12 @@ def _check_shape(e: Errors, where, value, shape):
         return
     if _optional(shape):
         shape = shape[1]
-    if shape == "textmap":
+    if shape == "release_id":
+        try:
+            release_id.components(value)
+        except (ValueError, TypeError):
+            e.add(where, "must be a positive integer or dotted release identifier")
+    elif shape == "textmap":
         if not isinstance(value, dict):
             e.add(where, "must be an object of text or lists of text")
             return
@@ -932,8 +940,10 @@ def validate_goal(doc, old=None, all_docs: dict | None = None, workflow: dict | 
         e.add("goal.spec", f"1-{SPEC_LIMIT} bytes of text")
     if doc["priority"] not in ("P0", "P1", "P2", "P3"):
         e.add("goal.priority", "must be P0, P1, P2 or P3")
-    if not _is_int(doc["release"]) or doc["release"] < 1:
-        e.add("goal.release", "must be an integer >= 1")
+    try:
+        release_id.components(doc["release"])
+    except ValueError:
+        e.add("goal.release", "must be a positive integer or dotted numeric release")
     deps = doc["depends_on"]
     if not isinstance(deps, list) or not all(_is_int(d) for d in deps) or len(set(deps)) != len(deps):
         e.add("goal.depends_on", "must be an array of unique integers")
@@ -1000,8 +1010,13 @@ def validate_goal(doc, old=None, all_docs: dict | None = None, workflow: dict | 
         for d in deps:
             if d not in all_docs:
                 e.add("goal.depends_on", f"G{d} does not exist")
-            elif _is_int(doc["release"]) and _is_int(all_docs[d].get("release")) and all_docs[d]["release"] > doc["release"]:
-                e.add("goal.depends_on", f"G{d} is in release {all_docs[d]['release']}, after this goal's release {doc['release']}")
+            else:
+                try:
+                    later = release_id.components(all_docs[d].get("release")) > release_id.components(doc["release"])
+                except ValueError:
+                    later = False
+                if later:
+                    e.add("goal.depends_on", f"G{d} is in release {all_docs[d]['release']}, after this goal's release {doc['release']}")
         merged = dict(all_docs)
         merged[doc["id"]] = doc
         cycle = find_cycle(merged, doc["id"])
@@ -1048,7 +1063,7 @@ def flow_errors(flow) -> list:
         return ["must be an object"]
     if set(flow) == {"hotfix"}:
         return [] if ref_ok(flow["hotfix"]) and "/" not in flow["hotfix"] else ["hotfix must be a branch-name part"]
-    if set(flow) != FLOW_LINE_KEYS:
+    if set(flow) not in (FLOW_LINE_KEYS, FLOW_LINE_KEYS | {"inserted"}):
         return ['must be {"hotfix": "<name>"} or {"line", "name", "branch", "from", "cut"}']
     out = []
     if flow["line"] not in ("release", "hotfix"):
@@ -1058,6 +1073,32 @@ def flow_errors(flow) -> list:
             out.append(f"{k} must be a branch name")
     if not (isinstance(flow["cut"], str) and SHA.match(flow["cut"])):
         out.append("cut must be a full 40-hex sha")
+    if "inserted" in flow and (flow["line"] != "release" or not isinstance(flow["inserted"], dict)):
+        out.append("inserted metadata requires a release line")
+    elif "inserted" in flow:
+        metadata = flow["inserted"]
+        if metadata.get("mode") not in ("production_patch", "maintenance"):
+            out.append("inserted mode must be production_patch or maintenance")
+        try:
+            release_id.components(metadata.get("source_release"))
+        except (ValueError, TypeError):
+            out.append("inserted source_release must be a release identifier")
+        if not _is_int(metadata.get("source_goal")) or metadata["source_goal"] < 1:
+            out.append("inserted source_goal must be a positive integer")
+        for key in ("source_commit", "source_goal_commit", "production_commit"):
+            if not isinstance(metadata.get(key), str) or not SHA.fullmatch(metadata[key]):
+                out.append(f"inserted {key} must be a full 40-hex sha")
+        if metadata.get("source_commit") != flow["cut"]:
+            out.append("inserted source_commit must match the recorded cut")
+        try:
+            if release_id.components(metadata.get("source_release")) >= release_id.components(flow.get("name")):
+                out.append("inserted source release must precede the target")
+        except ValueError:
+            pass
+        if not isinstance(metadata.get("verified"), bool):
+            out.append("inserted verified must be a boolean")
+        if not isinstance(metadata.get("fingerprint"), str) or not metadata["fingerprint"].startswith("v1:sha256:"):
+            out.append("inserted fingerprint must identify the approved snapshot")
     return out
 
 

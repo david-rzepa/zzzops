@@ -450,19 +450,34 @@ def build_ledger(git: Git, snap: Snapshot, commits: dict, st: State) -> dict:
     without trailers (closed by an older engine, or before branching was on) has its document read through the
     persistent cat-file batch, so the cost does not grow with the number of such goals."""
     from engine.lines import entry_of
+    from engine import release_id
     out = {}
     for g, c in sorted(commits.items()):
         if g in st.docs:
             out[g] = entry_of(st.docs[g])
             continue
         rel = c.trailer("Release")
-        if rel is not None and rel.isdigit():
+        try:
+            target = release_id.canonical(rel)
+        except ValueError:
+            target = None
+        if target is not None:
             line = c.trailer("Line")
-            out[g] = {"release": int(rel), "state": c.trailer("State") or "open", "closed": c.trailer("Closed"),
+            out[g] = {"release": target, "state": c.trailer("State") or "open", "closed": c.trailer("Closed"),
                       "line": line, "hotfix": c.trailer("Hotfix")}
+            if c.trailer("Coordination") == "forward_port":
+                out[g]["coordination"] = True
+            if line and (g in st.invalid or g in st.newer):
+                # A trailer alone cannot prove an invalid or unreadable line's
+                # isolation metadata. Never route members onto it as verified.
+                out[g]["inserted"] = {"verified": False}
             continue
         doc, _ = read_goal_json(git, snap.goals[g])
-        if isinstance(doc, dict) and isinstance(doc.get("release"), int):
+        if isinstance(doc, dict):
+            try:
+                release_id.components(doc.get("release"))
+            except ValueError:
+                continue
             out[g] = entry_of(doc)
     return out
 
@@ -472,6 +487,8 @@ def ledger_trailers(doc: dict, settings: dict | None) -> str:
     if not settings or settings.get("branching") is None or not isinstance(doc, dict):
         return ""
     lines = [f"Release: {doc.get('release')}"]
+    if doc.get("graph") == "forward_port":
+        lines.append("Coordination: forward_port")
     if doc.get("state") == "closed" and isinstance(doc.get("closed"), dict):
         lines.append(f"Closed: {doc['closed'].get('reason')}")
     flow = doc.get("flow") or {}
