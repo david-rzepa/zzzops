@@ -207,25 +207,25 @@
       "status": "done"
     },
     "filter_impl": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T06:41:45Z",
+      "finished_at": "2026-11-19T14:36:56Z",
       "fp_parts": {
         "candidates": [],
         "def": "v1:sha256:5fab78ee7a74554d9897b964ee764247bd55068d6c3b2a64932fad9704979c4b",
         "inputs": {
-          "code": "v1:sha256:1800757cb83982b9992e1ace7a5c0466a3beefe6008ebc3c1d6cfa38cf9aad0e",
+          "code": "v1:sha256:6b2bcdd007cae480de454593aef2effa4b507cecdb8b9b515d58553273a0feb6",
           "doc": "v1:blob:fbac244685db79270e91c498ab400c3f5bd862c4",
-          "review": "v1:sha256:7f4d771e8cbf7d4e85a8c2bf8da6d25af2fdfe562e4e24d6b64c2ae6c8fbefb1"
+          "review": "v1:sha256:893b53ad67197067b2d92a1e686c681c2a69dfa89f692c4bb22fdfbbfe960e5e"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1049-filter-impl-2",
-      "input_fp": "v1:sha256:dd21e33d77e573985fb89ab5d1102941a0a71938d68c1302eadc0311080033d5",
+      "holder": "codex:root/g1049-filter-impl-3",
+      "input_fp": "v1:sha256:b41e8f14c4ac44cbc6f62c16d8b5fa557db5f4adeba59fea109f112ece19f2af",
       "ok": true,
       "output": {
-        "summary": "Independent implementation re-review confirms both material findings are resolved. With the capability enabled, final producer candidates are checked for ambiguity even without blocked segments, and workspace claim revalidates readiness, live leases and related constraints after refetch while holding the gate. Three focused real-Git regressions passed independently. No open candidates or notes.",
+        "summary": "Post-sync independent implementation review passed. Seven targeted real-Git checks cover the combined parent and child scope; no open candidates or notes remain.",
         "verdicts": {}
       },
       "reason": "stale",
