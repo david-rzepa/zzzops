@@ -281,51 +281,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 8,
+      "attempt": 9,
       "correction_runs": 4,
-      "findings": [
-        {
-          "id": "review_tests:7:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 9,
-          "target_fp": "v1:sha256:0de2d8265c4f9260e5fa1d0fc27f994002f4b2f592df73d6063078d802358861",
-          "text": "The no-diff test named equal-trees does not create equal Git trees: the target retains src/newer.py absent from the maintenance source, and the fake provider always emits no-diff. An implementation that mistakes truly equal trees without lineage for integration proof can pass. Construct genuinely equal source/destination trees with divergent ancestry, assert both preconditions, and verify no_diff_unproven without fabricated merge or target change.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-19T01:17:07Z",
+      "findings": [],
+      "finished_at": "2026-11-19T01:30:02Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:5b199f7a7f94e75dfbec83fa682e91d088f0edec",
-          "tests": "v1:sha256:f319cec08b4e6640a9bd01b5130cd3faaa5d9e0a6bd6dcb33432eaebec22122c"
+          "tests": "v1:sha256:0ce2b5e1230dc659f4eb530eb5e30e34443c3832dbc7178bdd86df1e0131a33a"
         },
         "policy": {},
-        "subject": "v1:sha256:a453f53cd545ed3fc370e97e8f517a6515981df3428e6bbbcc1237e6812c2e08"
+        "subject": "v1:sha256:d3118211aee8ff34defda42f30ba75738af17ba1b7fd9a443e8acdb95623c8c3"
       },
-      "holder": "codex:root/g1051-review-tests-8",
-      "input_fp": "v1:sha256:a299cc04deea1649aa42b21f13ad1f41fbcecdb77de56ea2a7569d5fae571877",
+      "holder": "codex:root/g1051-review-tests-9",
+      "input_fp": "v1:sha256:34590136fe23cbbedf11df63e834f17d658544de6855df8aa3533e27423bfda9",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "e691d27a38ea2db0ae3d8ff2604f1bf6a10bf98c",
-          "commit": "96d42847469ab73f6ec34c7395ad6c2f156d078b",
+          "blob": "b6eeabe479fe9702af8f90f42f4bd0cb4381a7d5",
+          "commit": "575e0e2db113140f6e9a11544a7980281673d5c5",
           "path": ".zzzops/reviews/1051/review_tests.md"
         },
-        "summary": "The no-diff fixture now proves equal trees with divergent ancestry and no matching merged PR; its focused run remains red at the missing CLI."
+        "summary": "The fixture preserves opt-in at the immutable equal-tree source and uses the actual human approval/refusal schema; all three focused cases pass locally."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "c004ae08a58488a987d5df6431f798d6194f7b83",
-          "commit": "d442ebf6698096df247ed91f9a7b61265ffa56be",
-          "tree": "1e3f83955bd543c1fa4d0ee7422b421e9a07d07f"
+          "change": "8c1a3d0357153613dc741559bc852732cf6b37d3",
+          "commit": "025b1cb948b148e770fb2502276cffb0113d89cd",
+          "tree": "0136d58a9bb276d3235057362feed0b4bf96925b"
         }
       },
       "status": "done"
