@@ -162,30 +162,25 @@
       "status": "done"
     },
     "filter_impl": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T02:43:40Z",
+      "finished_at": "2026-11-19T03:00:32Z",
       "fp_parts": {
-        "candidates": [
-          [
-            "review_impl:2:1",
-            true
-          ]
-        ],
+        "candidates": [],
         "def": "v1:sha256:5fab78ee7a74554d9897b964ee764247bd55068d6c3b2a64932fad9704979c4b",
         "inputs": {
-          "code": "v1:sha256:00e3cac2f684cf5f588e71808194fe1c65f3acbee7962033e4b5d23360c42462",
+          "code": "v1:sha256:be38cd02873395aa02c4c56a146f70bffa220dd601f7f0ac577050d73a2ecfd8",
           "doc": "v1:blob:5b199f7a7f94e75dfbec83fa682e91d088f0edec",
-          "review": "v1:sha256:696719899420b3c8ed648a2389787cdde4a9b2d8e5d02b8b9bad04121a490efc"
+          "review": "v1:sha256:6425dcfcb1a535420992946bf027301f4ec48ef563bc1b8c67da0c136204deba"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1051-filter-impl-2",
-      "input_fp": "v1:sha256:a094cc165a4174eb12dcf7cf0f54057f6e60d38f44cc9e0e67b0123be270fdf9",
+      "holder": "codex:root/g1051-filter-impl-3",
+      "input_fp": "v1:sha256:44f668f6ca43246253352dde6457b646e14afb1fbdce1cb310ed8ed66cc3d6e4",
       "ok": true,
       "output": {
-        "summary": "The independent implementation re-review accepted both earlier corrections and identified one new material correctness finding: release recovery can select an unrelated historical merged PR and block the currently approved release. It reopens implementation. There are no non-material notes to filter.",
+        "summary": "Independent implementation re-review approved the corrected historical PR selection and confirmed the earlier approved-head protection remains. There are no open findings or non-material notes to filter.",
         "verdicts": {}
       },
       "reason": "stale",
