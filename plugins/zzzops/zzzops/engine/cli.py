@@ -617,7 +617,11 @@ def cmd_edit(argv):
 @verb("release")
 def cmd_release(argv):
     from engine import lineverbs
-    a = Args(argv, dict(GLOBAL, answer="value", **{"from": "value"}))
+    a = Args(argv, dict(GLOBAL, answer="value", **{"from": "value", "to": "value"}))
+    if len(a.pos) == 2 and a.pos[0] == "forward-port" and a.get("to"):
+        from engine import forward_port
+        emit(forward_port.start(session(a), a.pos[1], a.get("to")))
+        return 0
     if len(a.pos) == 2 and a.pos[0] == "insert" and a.get("from"):
         from engine import insertion
         if a.get("answer"):
