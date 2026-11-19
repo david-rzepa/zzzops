@@ -965,11 +965,22 @@ class MaintenanceForwardPortJourneys(Branching):
     def test_equal_trees_without_lineage_or_matching_pr_are_not_proof(self):
         line, source, production = self.finished_maintenance()
         closed = self.goal_tip(line)
-        # Independently make the same maintenance content; cherry-pick-equivalent
-        # trees do not prove that this exact finished source was integrated.
-        self.push_branch("dev", {"src/maintenance.py": "fixed = True\n"})
-        observed = self.tip("dev")
+        # Commit the exact finished-source tree on the independently advancing
+        # dev history. Equal trees alone cannot prove this source was integrated.
+        previous = self.tip("dev")
+        source_tree = self.w.remote_git("rev-parse", f"{source}^{{tree}}")
+        observed = self.w.remote_git("commit-tree", source_tree, "-p", previous,
+                                     "-m", "test: independent identical tree")
+        self.w.remote_git("update-ref", "refs/heads/dev", observed, previous)
+        self.assertNotEqual(source, observed)
+        self.assertEqual(source_tree, self.w.remote_git("rev-parse", f"{observed}^{{tree}}"))
         self.assertFalse(self.is_ancestor(source, observed))
+        self.assertFalse(self.is_ancestor(observed, source))
+        self.assertTrue(self.is_ancestor(previous, observed))
+        matches = [p for p in self.gh.load()["prs"].values()
+                   if p["state"] == "MERGED" and p["baseRefName"] == "dev"
+                   and p.get("headRefOid") == source]
+        self.assertEqual([], matches, "no provider evidence may prove this integration")
         # Simulate GitHub rejecting an apparently empty PR, while leaving all
         # other provider operations real within the fixture.
         gh = Path(self.gh.bindir) / "gh"
