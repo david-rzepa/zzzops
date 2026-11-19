@@ -60,10 +60,10 @@
       "status": "done"
     },
     "design": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-18T18:34:57Z",
+      "finished_at": "2026-11-19T04:08:01Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -72,18 +72,22 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/zzzops1049-design-1",
+      "holder": "codex:root/g1049-design-fix",
       "input_fp": "v1:sha256:66037f9e6a03e6b47cc13989a77c66f91ff9b2379287946442f0d56d000b533d",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "78edeec1d293bebb785dc457dff049df68d7bef7",
-          "commit": "d9278a51a1c11c48fc757586716f625266bb1ef3",
+          "blob": "e9fc7a9db4ca6f297f27853c3ce3671519784d2c",
+          "commit": "e9e29aaa75c06db5842a7f8ead5cc8c6be3b3157",
           "path": ".zzzops/reviews/1049/design.md"
         },
-        "summary": "Retain a preserved producer's frozen paths through blocked and repeated retry records, then union newly accepted test paths using the existing ancestry rules. Add a read-only provenance-backed recovery proposal applied through the existing CAS-protected edit workflow, with capability-gated mixed-version safety and independent re-review. The design covers the actual Project Base G12 loss without changing its tests or rewriting checkpoint history."
+        "responses": {
+          "adversary_design:1:1": "fixed: Refuse all preserved consumer checkpoint submissions while the producer is blocked, independently of blocked_findings; test the previously published work-tip case and require normal final-tree checks after producer acceptance.",
+          "review_design:1:1": "fixed: Persist lease-fenced immutable start/end provenance for each blocked producer attempt, derive and review its candidates with the retry segment, and refuse ambiguous rebase provenance or silently included unrelated changes; test a pre-block test commit followed by a no-op retry."
+        },
+        "summary": "Preserve verified producer-attempt provenance through blocked retries so tests committed before a no-op retry remain in the reviewed scope, and refuse preserved consumer checkpoints while their producer is blocked. Recover damaged goals from accepted Git history with explicit CAS, capability-gated compatibility, and independent review."
       },
-      "reason": "new",
+      "reason": "reopened",
       "status": "done"
     },
     "filter_design": {
