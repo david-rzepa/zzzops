@@ -192,10 +192,23 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 7,
-      "correction_runs": 4,
-      "findings": [],
-      "finished_at": "2026-11-19T02:35:48Z",
+      "attempt": 8,
+      "correction_runs": 5,
+      "findings": [
+        {
+          "id": "implement:8:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 12,
+          "target_fp": "v1:sha256:5d272b156e48f3650d1da112c681235cbb15797400e9cc2d45f4c3c51827c54f",
+          "text": "Add a real-Git/provider regression for release PR recovery with an earlier PR from the same branch already merged at H, subsequent approved release tip T descending from H, and a later finish. Assert the old PR is ignored and a new PR at T merges successfully. Also cover exact-head recovery when an older unrelated PR is listed first, while retaining the current tests that an unapproved descendant merged after T is recorded and blocks propagation.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-19T02:47:26Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -205,19 +218,22 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/g1051-implement-7",
+      "holder": "codex:root/g1051-implement-8",
       "input_fp": "v1:sha256:3a0cd67624f2118de53d3c98db8780d8ca0aa78c9882a71325bbeabd7bbdc14d",
       "ok": true,
       "output": {
         "code": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "31c243367bde1467441dbf6c3b385e26e571d100",
-          "commit": "4223972b644696fe9895682000ae78cc7e199615",
-          "tree": "ef3026c840bbbb508b843508a0ac76c754880ee2"
+          "change": "5db9293e3622a37f5fb174e54c50f79de2d26895",
+          "commit": "5b44cb7941ab250bd8d1af61f98f966307c98b4f",
+          "tree": "a059e2b307f74e615055347ddf5ecd37d6b24083"
         },
-        "summary": "Reject repeated logical source-goal IDs while traversing immutable maintenance lineage, in addition to the existing repeated-snapshot check. The focused cycle regression and all four required real-Git tests pass, including valid nested ancestry and both already-merged approved-head races."
+        "responses": {
+          "review_impl:2:1": "fixed: select an exact-head merged PR first, ignore historical heads that do not descend from the approved tip, and preserve the mismatch block for merged descendants."
+        },
+        "summary": "Recovery now prefers a merged PR at the exact approved tip and only considers a different head when it descends from that tip; older unrelated merged PRs no longer prevent a new delivery. A real local Git/provider reproduction now completes the later approved release, and all four required head-race and nested-lineage tests pass."
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
