@@ -119,14 +119,15 @@ def capture(s, lease, end, prior):
             if _git(repo, 'merge-base', '--is-ancestor', prev, target, missing_ok=True) is None:
                 raise Refused('validation', 'submodule test history is not a descendant', details={'path': path})
             chain = _git(repo, 'rev-list', '--reverse', '--parents', f'{prev}..{target}').decode().splitlines()
-            old = prev
             for line in chain:
                 commits = line.split()
-                if len(commits) != 2 or commits[1] != old:
+                if len(commits) < 2:
                     raise Refused('validation', 'unsupported or rewritten submodule test history', details={'path': path})
-                changes = _git(repo, 'diff', '--no-renames', '--name-only', '-z', old, commits[0])
-                protected.update(x.decode('utf-8', 'surrogateescape') for x in changes.split(b'\0') if x)
-                old = commits[0]
+                for parent in commits[1:]:
+                    if parent != prev and _git(repo, 'merge-base', '--is-ancestor', prev, parent, missing_ok=True) is None:
+                        raise Refused('validation', 'submodule test history has an unverified parent', details={'path': path})
+                    changes = _git(repo, 'diff', '--no-renames', '--name-only', '-z', parent, commits[0])
+                    protected.update(x.decode('utf-8', 'surrogateescape') for x in changes.split(b'\0') if x)
             prev = target
         entries = {p: _entry(repo, prev, p) for p in sorted(protected)}
         children[path] = {'baseline': initial, 'accepted': prev, 'mapping': mapping, 'entries': entries}
@@ -148,15 +149,15 @@ def verify(s, goal, commit, evidence):
         if not target or _git(repo, 'merge-base', '--is-ancestor', accepted, target, missing_ok=True) is None:
             raise Refused('test_freeze', 'submodule implementation is not a descendant of accepted tests', details={'path': path})
         chain = _git(repo, 'rev-list', '--reverse', '--parents', f'{accepted}..{target}').decode().splitlines()
-        previous = accepted
         commits = [accepted]
         for line in chain:
             parts = line.split()
-            if len(parts) != 2 or parts[1] != previous:
+            if len(parts) < 2 or any(parent != accepted and _git(
+                    repo, 'merge-base', '--is-ancestor', accepted, parent, missing_ok=True) is None
+                    for parent in parts[1:]):
                 raise Refused('test_freeze', 'unsupported or rewritten submodule implementation history',
                               details={'path': path})
-            previous = parts[0]
-            commits.append(previous)
+            commits.append(parts[0])
         for current in commits:
             for name, value in entry['entries'].items():
                 if _entry(repo, current, name) != value:
