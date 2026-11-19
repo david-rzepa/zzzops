@@ -351,10 +351,10 @@
       "status": "done"
     },
     "test_design": {
-      "attempt": 9,
+      "attempt": 10,
       "correction_runs": 2,
       "findings": [],
-      "finished_at": "2026-11-19T05:40:01Z",
+      "finished_at": "2026-11-19T05:46:26Z",
       "fp_parts": {
         "def": "v1:sha256:7cea203fccc83b8de6cb2a28d48b939836ddc98a2cb7481b63d3f918a4f07de8",
         "inputs": {
@@ -367,46 +367,49 @@
         ".agents/test_engine_blocked_scope.py",
         ".agents/test_engine_scope_recovery.py"
       ],
-      "holder": "codex:root/g1049-test-gate-lifecycle",
+      "holder": "codex:root/g1049-test-unlisted",
       "input_fp": "v1:sha256:16c20071c3ab0acc6fa9b9a8293ba4021a3429f1266a1dcf8c4eefea6b91c770",
       "ok": true,
       "output": {
         "commands": [
           "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope test_engine_scope_recovery",
-          "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_scope_recovery.RecoveryJourney.test_expired_gate_is_automatically_reclaimed_and_stale_holder_cannot_publish test_engine_scope_recovery.RecoveryJourney.test_crashed_gate_expires_and_is_reclaimed_without_rewriting_history test_engine_scope_recovery.RecoveryJourney.test_expired_workspace_submit_routes_refuse_a_newly_held_gate test_engine_scope_recovery.RecoveryJourney.test_non_workspace_artifact_submission_refuses_held_gate_then_succeeds test_engine_scope_recovery.RecoveryJourney.test_base_sync_start_refuses_held_recovery_gate"
+          "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_scope_recovery.RecoveryJourney.test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal test_engine_scope_recovery.RecoveryJourney.test_registered_base_operation_advances_work_with_its_valid_gate"
         ],
         "cost": {
           "changed_tests": [
             {
-              "duration_ms": 28176,
-              "id_or_scope": "five workspace-gate lifecycle and writer-route tests",
-              "observation": "Preimplementation red run; tests reach the missing scope_recovery diagnostic before gate/barrier behavior can be executed."
+              "duration_ms": 2204,
+              "id_or_scope": "unlisted transaction and registered base operation",
+              "observation": "Preimplementation red: both scenarios reach the missing required capability before the new transaction guard can execute."
             }
           ],
-          "checkpoint": "28aa280dd7d709f77651234b83fbacffc479081b",
+          "checkpoint": "bfe4f6a2d289a6989610177d5dea8ffb790f799d",
           "commands": [
             {
               "cmd": "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope test_engine_scope_recovery",
-              "duration_ms": 170973,
+              "duration_ms": 158122,
               "exit": 1
             },
             {
-              "cmd": "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_scope_recovery.RecoveryJourney.test_expired_gate_is_automatically_reclaimed_and_stale_holder_cannot_publish test_engine_scope_recovery.RecoveryJourney.test_crashed_gate_expires_and_is_reclaimed_without_rewriting_history test_engine_scope_recovery.RecoveryJourney.test_expired_workspace_submit_routes_refuse_a_newly_held_gate test_engine_scope_recovery.RecoveryJourney.test_non_workspace_artifact_submission_refuses_held_gate_then_succeeds test_engine_scope_recovery.RecoveryJourney.test_base_sync_start_refuses_held_recovery_gate",
-              "duration_ms": 28176,
+              "cmd": "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_scope_recovery.RecoveryJourney.test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal test_engine_scope_recovery.RecoveryJourney.test_registered_base_operation_advances_work_with_its_valid_gate",
+              "duration_ms": 2204,
               "exit": 1
             }
           ],
-          "summary": "Real local Git/CLI red runs. New tests require implementing the approved recovery and gate contract.",
-          "total_ms": 199149
+          "summary": "Local Git/CLI red runs at exact checkpoint; new gate capability has not yet been implemented.",
+          "total_ms": 160326
+        },
+        "responses": {
+          "review_tests:7:1": "fixed: used the existing Session.write_goals extra-ref-updates seam to attempt an unlisted atomic work and goal update without a gate, asserting structured refusal and unchanged remote refs; added a real gated git.base completion that advances the work ref after upstream movement."
         },
         "tests": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "99d2ef86d02388c45a1e7ab09a2e868a308286ac",
-          "commit": "28aa280dd7d709f77651234b83fbacffc479081b",
-          "tree": "41fb2ab4496aa5b0561630e595203bd6fec6ff08"
+          "change": "1a89053b91df26cf6e39b54943e7e8458201033e",
+          "commit": "bfe4f6a2d289a6989610177d5dea8ffb790f799d",
+          "tree": "7edf0160fb11900bd146d1a8d97b54c270588703"
         }
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     }
   },
