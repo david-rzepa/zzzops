@@ -3,6 +3,12 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import shlex
+import subprocess
+import sys
+import time
+from pathlib import Path
 import shutil
 import tempfile
 import unittest
@@ -244,6 +250,132 @@ class RecoveryJourney(unittest.TestCase):
         self.assertEqual("uncertain", diag["status"])
         self.assertIsNone(diag["proposal"])
         self.assertTrue(diag["issues"])
+
+    def install_goal_push_barrier(self):
+        """Pause the first goal-ref push on the real bare fixture remote."""
+        ready = Path(self.tmp) / "recovery-goal-push-ready"
+        release = Path(self.tmp) / "release-recovery-goal-push"
+        lock = Path(self.tmp) / "recovery-goal-push-lock"
+        hook = Path(self.w.remote) / "hooks" / "pre-receive"
+        payload_path = Path(self.tmp) / "guarded-push-payload"
+        script = f"""#!/bin/sh
+payload=$(cat)
+case "$payload" in
+  *refs/heads/zzzops/goal/g{self.g}*)
+    if mkdir {shlex.quote(str(lock))} 2>/dev/null; then
+      printf '%s\n' "$payload" > {shlex.quote(str(payload_path))}
+      touch {shlex.quote(str(ready))}
+      i=0
+      while [ ! -f {shlex.quote(str(release))} ]; do
+        i=$((i + 1))
+        [ "$i" -lt 300 ] || exit 1
+        sleep 0.1
+      done
+    fi ;;
+esac
+exit 0
+"""
+        hook.write_text(script)
+        hook.chmod(0o755)
+        return ready, release
+
+    def start_guarded_recovery(self):
+        self.damaged_history()
+        diag = self.diagnostic()
+        proposal = diag["proposal"]
+        self.activate_capability()
+        ready, release = self.install_goal_push_barrier()
+        argv = [sys.executable, str(fx.PLUGIN_CODE / "zzzops.py"), "edit", str(self.g),
+                "--file", self.w.file(proposal["edit"]), "--base", proposal["base"]]
+        proc = subprocess.Popen(argv, cwd=self.w.clones["a"].path, env=self.w.cli_env(),
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: proc.kill() if proc.poll() is None else None)
+        self.addCleanup(release.touch)
+        deadline = time.monotonic() + 25
+        while not ready.exists() and proc.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(ready.exists(), "recovery did not reach the final guarded goal push")
+        return diag, proposal, proc, release
+
+    @staticmethod
+    def finish_recovery(proc, release):
+        release.touch()
+        stdout, stderr = proc.communicate(timeout=30)
+        try:
+            result = json.loads(stdout)
+        except ValueError:
+            result = {"stdout": stdout, "stderr": stderr}
+        return proc.returncode, result
+
+    def test_already_changed_work_ref_refuses_proposal_before_write(self):
+        self.damaged_history()
+        proposal = self.diagnostic()["proposal"]
+        self.activate_capability()
+        changed = self.wt.commit({"src/changed.py": "new = True\n"}, "fix: changed work")
+        self.wt.git("push", "-q", "origin", f"{changed}:refs/heads/zzzops/work/g{self.g}")
+        before = self.tip()
+        rc, out = self.w.run("a", "edit", str(self.g), "--file", self.w.file(proposal["edit"]),
+                             "--base", proposal["base"])
+        self.assertNotEqual(0, rc, out)
+        self.assertEqual(before, self.tip())
+
+    def test_workspace_claim_cannot_race_past_recovery_gate(self):
+        diag, proposal, proc, release = self.start_guarded_recovery()
+        before = self.tip()
+        try:
+            rc, claim = self.w.run("b", "start", str(self.g), "test_design", "--as", self.b.label)
+        finally:
+            recovery_rc, recovery = self.finish_recovery(proc, release)
+        # While recovery is held inside its guarded push, a competing workspace
+        # claim must not also succeed. If reclaim/expiration invalidates recovery,
+        # its later push must refuse instead of publishing a stale repair.
+        self.assertNotEqual(0, rc, (claim, recovery))
+        self.assertEqual(0, recovery_rc, (claim, recovery))
+        self.assertTrue(recovery.get("applied"), recovery)
+        payload = (Path(self.tmp) / "guarded-push-payload").read_text().splitlines()
+        refs = [line.split() for line in payload]
+        excluded = ("refs/heads/zzzops/goal/", "refs/heads/zzzops/work/", "refs/heads/zzzops/lease/")
+        changed_gate = [parts for parts in refs if len(parts) == 3 and parts[0] != parts[1]
+                        and not parts[2].startswith(excluded)]
+        self.assertTrue(changed_gate, "recovery goal update must atomically advance a real gate ref")
+
+    def test_competing_recoveries_cannot_both_apply_the_same_proposal(self):
+        diag, proposal, first, release = self.start_guarded_recovery()
+        argv = [sys.executable, str(fx.PLUGIN_CODE / "zzzops.py"), "edit", str(self.g),
+                "--file", self.w.file(proposal["edit"]), "--base", proposal["base"]]
+        second = subprocess.Popen(argv, cwd=self.w.clones["b"].path, env=self.w.cli_env(),
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: second.kill() if second.poll() is None else None)
+        # Give the contender time to try acquiring the shared gate while the
+        # first writer is held at its final ref transaction.
+        time.sleep(0.5)
+        first_rc, first_result = self.finish_recovery(first, release)
+        second_stdout, second_stderr = second.communicate(timeout=30)
+        try:
+            second_result = json.loads(second_stdout)
+        except ValueError:
+            second_result = {"stdout": second_stdout, "stderr": second_stderr}
+        self.assertEqual(1, (first_rc == 0) + (second.returncode == 0), (first_result, second_result))
+        winner = first_result if first_rc == 0 else second_result
+        self.assertTrue(winner.get("applied"), winner)
+
+    def test_direct_work_push_is_disclosed_and_not_claimed_as_fenced(self):
+        diag, proposal, proc, release = self.start_guarded_recovery()
+        self.assertEqual("cooperating_writers", diag["concurrency_guard"])
+        self.assertIn("direct", json.dumps(diag).lower())
+        old_work = self.w.remote_git("rev-parse", f"refs/heads/zzzops/work/g{self.g}")
+        self.assertEqual(old_work, proposal["work_commit"])
+        try:
+            new_work = self.wt.commit({"src/direct.py": "outside = True\n"}, "fix: direct work push")
+            self.wt.git("push", "-q", "origin", f"{new_work}:refs/heads/zzzops/work/g{self.g}")
+        finally:
+            rc, result = self.finish_recovery(proc, release)
+        # This push races after the guarded observation. It is intentionally out
+        # of band and cannot be promised as an atomically fenced source ref.
+        self.assertEqual(0, rc, result)
+        self.assertEqual(new_work, self.w.remote_git("rev-parse", f"refs/heads/zzzops/work/g{self.g}"))
+        self.assertEqual("cooperating_writers", result["concurrency_guard"])
+        self.assertIn("direct", json.dumps(result).lower())
 
     def test_unrelated_paths_in_modified_proposal_are_refused(self):
         self.damaged_history()
