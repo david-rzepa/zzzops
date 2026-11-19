@@ -1,5 +1,5 @@
 # Adversarial design re-review
 
-The revised design resolves the blocked-producer bypass: a preserved consumer cannot submit any checkpoint while its producer is blocked, including when `blocked_findings` is off and the changed work tip is already published. Its real-Git regression specifically covers the empty per-commit range and then checks both guards after producer acceptance. The additional attempt segments also address paths introduced during a blocked producer attempt without resorting to an unscoped base-to-tip diff.
+The revised contract names the required capability and makes the recovery proposal a bounded, read-only response with provenance per path. Apply must revalidate evidence rather than trusting a supplied edit file, refuse stale goal bases, changed work history and conflicting leases, and preserve the independent review requirement. The previous blocked-consumer safeguard remains intact. No additional material adversarial finding was identified.
 
-The implementation review should verify that every checkpoint submission route actually enforces the refusal, and that pending segment objects and attribution survive record and lease lifecycle changes. No additional material finding is raised on the design.
+During implementation review, check how a conflicting lease or work-ref change between validation and the actual write is fenced; a goal-tip comparison alone does not establish that those separate refs stayed unchanged.
