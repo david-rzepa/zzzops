@@ -261,18 +261,18 @@
       "status": "done"
     },
     "integrate": {
-      "attempt": 4,
+      "attempt": 5,
       "blocked": {
         "category": "external",
         "op_state": {
           "head": "0245fdf8d162dabcba8c12dac50819c35d4b8530",
           "pending_since": 1795099127,
-          "polls": 1,
+          "polls": 2,
           "rerun_head": null
         },
         "reason": "required checks pending: dev-required-tests (mergeable: MERGEABLE/BLOCKED)",
-        "repeats": 1,
-        "retry_after": "2026-11-19T14:43:47Z",
+        "repeats": 2,
+        "retry_after": "2026-11-19T14:54:33Z",
         "waiting_for": "time"
       },
       "correction_runs": 0,
@@ -292,7 +292,7 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-19T14:38:47Z",
+      "finished_at": "2026-11-19T14:44:33Z",
       "fp_parts": {
         "def": "v1:sha256:e2bc5ba4bab5ee48b60bbac872aa8787c8183b9bea68e99a6cafbe25d67d00a5",
         "inputs": {
@@ -305,7 +305,7 @@
           ]
         }
       },
-      "holder": "codex:root/g1049-post-sync-retry",
+      "holder": "codex:root/g1049-ci-observe",
       "input_fp": "v1:sha256:84c7eef183a126e78c23b819e2d873aad0099c1f8057f8a7729ad766ba5b0a25",
       "ok": false,
       "output": null,
