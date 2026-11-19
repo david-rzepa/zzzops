@@ -207,7 +207,7 @@ class BlockedScopeJourney(unittest.TestCase):
     def test_older_writer_rejects_policy_requiring_capability(self):
         self.enable_capability()
         old = Path(self.tmp) / "old-plugin"
-        shutil.copytree(fx.PLUGIN_CODE, old)
+        shutil.copytree(fx.PLUGIN_CODE, old, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"))
         (old / "engine" / "capabilities" / "preserved_test_provenance.txt").unlink(missing_ok=True)
         p = subprocess.run([sys.executable, str(old / "zzzops.py"), "next"],
                            cwd=self.w.clones["a"].path, env=self.w.cli_env(), capture_output=True, text=True)
