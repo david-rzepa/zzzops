@@ -78,6 +78,40 @@
       },
       "status": "done"
     },
+    "approve_merge": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-19T03:41:55Z",
+      "fp_parts": {
+        "def": "v1:sha256:a2d3367f8c6fe8d79f2275e7ae90c04deb746148accdf26f5bfd54ee7ecb28e3",
+        "inputs": {
+          "code": "v1:sha256:be38cd02873395aa02c4c56a146f70bffa220dd601f7f0ac577050d73a2ecfd8"
+        },
+        "policy": {},
+        "subject": "v1:sha256:f9312ffda7ca6b235db1444b175132da1982ef12804dc089b6f9ce783208b7c3"
+      },
+      "holder": "human",
+      "input_fp": "v1:sha256:6d1a3541e85fb15f1470af007c0123618ddb8d4fde5eecf688e62fbb78a423d8",
+      "ok": true,
+      "output": {
+        "decided_at": "2026-11-19T03:41:55Z",
+        "decided_by": "David Rzepa",
+        "decision": "approved",
+        "quote": "Approved, merge, update the plugin, then uodate the other two goals we created for zzzops in this thread to be in a new release ahead of everything else",
+        "summary": "Approved merging G1051 PR #783 into dev at the reviewed head after passing checks."
+      },
+      "reason": "new",
+      "reviewed": {
+        "code": {
+          "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
+          "change": "fe6aa4f12ae3075b34fd6feaee4ecf0e482e6641",
+          "commit": "1a453a9b739d2356c58e15ed5fcee87246d7d2f9",
+          "tree": "95ff86ada529489f05ab28330062d2b38c63ca56"
+        }
+      },
+      "status": "done"
+    },
     "base": {
       "attempt": 1,
       "correction_runs": 0,
