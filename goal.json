@@ -1,0 +1,18 @@
+{
+  "budget": null,
+  "closed": null,
+  "depends_on": [],
+  "graph": "default",
+  "id": 1052,
+  "links": {
+    "issue": null
+  },
+  "priority": "P1",
+  "records": {},
+  "release": 1,
+  "schema": 1,
+  "skip": {},
+  "spec": "Support safely adopting a release that was shipped before the repository enabled ZzzOps release branching, so an inserted release can use the existing, verified history without fabricating a release merge or moving production backwards. The immediate case is this repository: release 1 was shipped to main in v3.0.0 at ed91d6c64b45e9c5d97ff883fae395b540a8733e; the shipped dev tip was acab4c38a984494e2478f427a163602b394ded6e. The user considers the dev history before the G1051 merge (cb33c2d65b0affbdc60b4492cdc4a032c1014241) release 1; that includes two documentation commits not in main. Preserve and clearly distinguish those commits from actually published production provenance. Design a reviewable adoption or migration with source and production verification and appropriate human approval, then enable inserting a subsequent release while preserving histories, approvals, and other goals. Do not claim unpublished commits were released, fabricate past approval records, push to main, or automatically rewrite existing goals. This is a separate migration goal, per the owner.",
+  "state": "open",
+  "title": "Adopt an existing shipped release as a ZzzOps release-line source"
+}
