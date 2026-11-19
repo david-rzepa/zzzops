@@ -590,6 +590,14 @@ class InsertedReleaseJourneys(Branching):
             self.assertFalse(any(a.get("goal") == patch for a in self.nxt(patch)["actions"]),
                              "a production move before post-push verification must keep members blocked")
             self.assertIsNone(self.tip("release/1.1.0"))
+            if self.tip("release/1.1"):
+                # Resume the existing pending line only after a fresh preview
+                # and its own approval; aliases must not create another line.
+                fresh = self.preview()
+                self.insert(fresh)
+                self.assertEqual(source, self.tip("release/1.1"))
+                self.assertTrue(any(a.get("goal") == patch for a in self.nxt(patch)["actions"]))
+                self.assertEqual(advanced, self.tip("main"))
         finally:
             race_continue.write_text("continue", encoding="utf-8")
             try:
