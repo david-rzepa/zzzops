@@ -290,8 +290,8 @@
       "status": "done"
     },
     "review_impl": {
-      "attempt": 1,
-      "correction_runs": 1,
+      "attempt": 2,
+      "correction_runs": 2,
       "findings": [
         {
           "id": "review_impl:1:1",
@@ -301,7 +301,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "implement",
           "target_attempt": 5,
           "target_fp": "v1:sha256:61622de376b0ca0252805417bf97d81611020980f423aabf61a0f41e381e181e",
@@ -316,22 +316,37 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "implement",
           "target_attempt": 5,
           "target_fp": "v1:sha256:61622de376b0ca0252805417bf97d81611020980f423aabf61a0f41e381e181e",
           "text": "plugins/zzzops/zzzops/engine/forward_port.py:91-95: common ancestry checks only the maintenance line’s immediate source commit and its direct parents. For a legitimate nested maintenance 2.1.1 based on a finished 2.1 whose own work includes multiple commits, production/dev can share the verified released 2 baseline while neither the 2.1 tip nor its immediate parent is an ancestor of the destination. Forward-port is then incorrectly refused as lacking verifiable common released ancestry. Follow recorded release provenance to a verified common released ancestor rather than stopping at one Git parent; add an end-to-end nested-maintenance forward-port case.",
           "upheld": false
+        },
+        {
+          "id": "review_impl:2:1",
+          "impact": "Legitimate release finishes can become permanently blocked by an unrelated historical pull request, even though the approved new head is valid and ready to merge.",
+          "lens": "correctness",
+          "material": true,
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "implement",
+          "target_attempt": 7,
+          "target_fp": "v1:sha256:13e6962efa75308b22851e552727cf028bcbc8f50a091bca2606212a61206386",
+          "text": "plugins/zzzops/zzzops/engine/ops/lines.py:298-307: recovery now selects the first merged PR returned for the release head and production base regardless of its head. If an earlier PR from the same release branch was already merged and subsequent work produced a new approved T, that historical PR is neither the PR to recover nor evidence of an external merge of T. Nevertheless verified_merged_pr blocks on its different head before the code can find or create the actual PR for T. This affects ordinary releases too, and the prior logic excluded such older heads. Distinguish an unrelated historical PR from a candidate for the current approved delivery: find exact-head matches first, only treat a changed-head merge as a divergence when it is demonstrably the current delivery, and preserve the race protection. Add coverage for a stale previously merged PR followed by a fresh approved tip.",
+          "upheld": false
         }
       ],
-      "finished_at": "2026-11-19T02:14:19Z",
+      "finished_at": "2026-11-19T02:42:39Z",
       "fp_parts": {
         "def": "v1:sha256:ba0e80cd449a16330f3e62cea7fab93aad71b666081fd28f1c0386cf4f3d2d24",
         "inputs": {
           "base": "v1:sha256:7137968f0afc1e3d944fd561b2af20955f2aef16fd65a3864f6989ddd512e960",
-          "code": "v1:sha256:3a6d56b75d44b454441c04b7b04065d5d09424bd36b47fee8bb4b141f5f997ec",
+          "code": "v1:sha256:00e3cac2f684cf5f588e71808194fe1c65f3acbee7962033e4b5d23360c42462",
           "doc": "v1:blob:5b199f7a7f94e75dfbec83fa682e91d088f0edec",
-          "tests": "v1:sha256:0ce2b5e1230dc659f4eb530eb5e30e34443c3832dbc7178bdd86df1e0131a33a"
+          "tests": "v1:sha256:5b3d2b2935c6c0f2161877f15e91423daf5301fa0f3b8e31d4946bb53aec7596"
         },
         "lenses": [
           "compliance",
@@ -341,27 +356,27 @@
           "craft"
         ],
         "policy": {},
-        "subject": "v1:sha256:34384749cbef28835c2d9ab009169c9b5377cd53856b4cd9f71fcc03054639c9"
+        "subject": "v1:sha256:13e6962efa75308b22851e552727cf028bcbc8f50a091bca2606212a61206386"
       },
-      "holder": "codex:root/g1051-review-impl-1",
-      "input_fp": "v1:sha256:b83f8a3c45c293a83352eb26fdee889b64c8ce31b5da342a457bf71e750aa12a",
+      "holder": "codex:root/g1051-review-impl-2",
+      "input_fp": "v1:sha256:da648fb1a598c840aae9c6a4501c5af909edef7236a9785703387e17750d1d2b",
       "ok": true,
       "output": {
         "decision": "changes_requested",
         "report": {
-          "blob": "36864546dab2c604b21d3a1b075100f30feb1928",
-          "commit": "6c4207915f27684f7fc342e1fd0859584375d6fc",
+          "blob": "ca28fd215ceb2869ec1becfc6b996ce5e927cb8b",
+          "commit": "80ebc8b96b2adb2d1308d94519c3ab946e55ddb1",
           "path": ".zzzops/reviews/1051/review_impl.md"
         },
-        "summary": "The implementation covers the main release identity and isolation flows, but permits an unapproved release PR head to be treated as approved after a provider race, and cannot forward-port legitimate nested maintenance releases whose released ancestor is further back in history."
+        "summary": "Both prior findings are corrected and their focused tests pass, but the revised merged-PR discovery introduces an unrelated historical-PR recovery regression."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "code": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "acf5ae1a02a635b0674c0314fc8ef47dabf98b69",
-          "commit": "12b1237dd5e0ae45f99847632787c22d078ff287",
-          "tree": "bba78499c3736231bd8f1379c49406cf18062762"
+          "change": "31c243367bde1467441dbf6c3b385e26e571d100",
+          "commit": "4223972b644696fe9895682000ae78cc7e199615",
+          "tree": "ef3026c840bbbb508b843508a0ac76c754880ee2"
         }
       },
       "status": "done"
