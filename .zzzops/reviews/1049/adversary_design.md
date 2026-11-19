@@ -1,5 +1,5 @@
-# Adversarial design re-review
+# Adversarial re-review
 
-The revised contract names the required capability and makes the recovery proposal a bounded, read-only response with provenance per path. Apply must revalidate evidence rather than trusting a supplied edit file, refuse stale goal bases, changed work history and conflicting leases, and preserve the independent review requirement. The previous blocked-consumer safeguard remains intact. No additional material adversarial finding was identified.
+The revised design records the owner's choice and limits its claim to cooperating ZzzOps writers. It requires an actually changed CAS gate in supported atomic transactions, fencing every work-ref mutation and workspace claim, preventing reclaimed holders from publishing, and exposing the remaining direct-push race. The test plan includes controlled races and a separate out-of-band push reproducing that limitation. No additional material finding.
 
-During implementation review, check how a conflicting lease or work-ref change between validation and the actual write is fenced; a goal-tip comparison alone does not establish that those separate refs stayed unchanged.
+Implementation review should verify that the gate is applied to every write path and cannot be bypassed by a stale holder after reclaim, rather than assuming that an unchanged ref is validated by GitHub.
