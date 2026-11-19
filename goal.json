@@ -324,38 +324,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 5,
+      "attempt": 6,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-19T04:43:58Z",
+      "finished_at": "2026-11-19T05:15:23Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:2a8f10ac60632611baa7b55985abcb60f4650b1d",
-          "tests": "v1:sha256:a17edd796f68292ebab1d21b05fc6b9f2effb70ed9cce30b2b511530c9def2f8"
+          "tests": "v1:sha256:45eae548751d46a53d957954da7301a3344ecadb48b76da84ab176644b72933f"
         },
         "policy": {},
-        "subject": "v1:sha256:0fc230a56446db5563c8f90ebd1ca6353143ff4eaa0d479c349cde9118e842ef"
+        "subject": "v1:sha256:3700a521a06c36f1d4bf4d2f36f4b6e04334267ce69aac952e3c6f3232bbf078"
       },
-      "holder": "codex:root/g1050-review-tests-5",
-      "input_fp": "v1:sha256:08d023422f718e81a08a4b9acf925e633ba00e04b556a2247e454e29f50e7e55",
+      "holder": "codex:root/g1050-review-tests-6",
+      "input_fp": "v1:sha256:6bf638b86b2212270d27ffd1feeaef8682020b20fc06abcf89924557a14e5fd8",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "d5329e751cbf4e82fd58ba74bf53c08c6cc52dce",
-          "commit": "fcadccaefd3576e5ee3edd5a1ba1aff52b90eb29",
+          "blob": "b165e81628e4ea9b9e739b3596b5b5ba55a3c1cc",
+          "commit": "9a6a19a002aa437cff7199111d86d2e1bc8af050",
           "path": ".zzzops/reviews/1050/review_tests.md"
         },
-        "summary": "The test fixture supplies real review artifacts and suppresses bytecode writes while preserving all prior behavior assertions."
+        "summary": "Policy preview test now reads the lease from the real node-keyed CLI response and preserves its original safety assertion."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "38aeabcd2344563b388fe11f94692106905da884",
-          "commit": "e824f256566663d3faac1369fadca33cca791fd6",
-          "tree": "12a5555c0e86fc19ea5f88c3520832ed81829761"
+          "change": "56b10e6b77241f54fbfaf8429d13ddbb29f549af",
+          "commit": "ddf4c505ca195a2d8010c336772915f841ac2346",
+          "tree": "d99e77a00239c9838690daf068d8d253a32a7636"
         }
       },
       "status": "done"
