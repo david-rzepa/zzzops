@@ -368,7 +368,7 @@ class CapabilityJourneyTests(oq.OwnerWorld):
     """One public CLI acceptance journey, on the actual shipped graph and records."""
     def bootstrap(self):
         p = rl.policy_with_intent()
-        p["settings"]["engine"] = {"requires": [CAP]}
+        p["settings"]["engine"] = {"requires": [CAP, "conditional_review_routes"]}
         self.w.bootstrap(policy=p, workflow=rl.shipped("workflow.json"), prompts=False)
         self.push_prompts(fx.SHIPPED)
 

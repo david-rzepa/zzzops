@@ -180,7 +180,8 @@ class ShippedTemplateTests(unittest.TestCase):
               for k, s in self.nodes["filter_design"]["inputs"].items()}
         self.assertEqual({"spec": ("goal.spec", False, False), "doc": ("design.doc", False, False),
                           "review": ("review_design.summary", False, False),
-                          "adversary": ("adversary_design.summary", True, False)}, fd)
+                          "adversary": ("adversary_design.summary", True, False),
+                          "scaffold_needed": ("review_design.scaffold_needed", False, False)}, fd)
         fi = {k: (s["from"], bool(s.get("optional")), bool(s.get("context")))
               for k, s in self.nodes["filter_impl"]["inputs"].items()}
         self.assertEqual({"doc": ("design.doc", False, False), "code": ("implement.code.change", False, False),

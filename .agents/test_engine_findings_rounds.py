@@ -58,7 +58,7 @@ def vtuple(v):
 def follows_settings() -> dict:
     """Bootstrap settings under which the policy requires `finding_follows` (either merge order, design §6a)."""
     if G1027_MERGED:
-        return {"engine.requires": ["finding_follows"]}
+        return {"engine.requires": ["conditional_review_routes", "finding_follows"]}
     return {"engine.min": ENGINE_VERSION}
 
 
@@ -164,6 +164,8 @@ def follows_workflow():
     nodes = {n: source[n] for n in ("design", "base", "test_design", "implement", "run_tests", "review_impl")}
     nodes["design"]["inputs"] = {"spec": {"from": "goal.spec"}}
     nodes["base"]["inputs"] = {}
+    nodes["test_design"]["inputs"].pop("scaffold", None)
+    nodes["test_design"]["inputs"].pop("scaffold_review", None)
     nodes["implement"]["inputs"].pop("tests_review")
     nodes["review_impl"]["inputs"].pop("base")
     nodes["review_impl"]["review"] = {"subject": "implement"}

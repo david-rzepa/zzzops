@@ -319,7 +319,7 @@ def journey_fps(workflow, policy=None, ledger=False):
 class NoSettingsRegressionTests(unittest.TestCase):
     def test_fp_parts_are_byte_identical_without_branching(self):
         baseline = journey_fps(fx.load_template("workflow.json"))
-        self.assertEqual(set(fx.DEFAULT_NODES), set(baseline))
+        self.assertEqual(set(fx.DEFAULT_NODES) - {"scaffold", "review_scaffold"}, set(baseline))
         self.assertEqual(baseline, journey_fps(release_workflow(), ledger=True))
 
     def test_branching_on_and_targeting_dev_keeps_every_fingerprint(self):

@@ -431,24 +431,6 @@ class LensWorld(unittest.TestCase):
 
 
 class LensJourneyTests(LensWorld):
-    def test_design_reviewers_run_in_parallel_with_distinct_holders(self):
-        g = self.goal()
-        self.through_design(g)
-        nxt = self.w.ok("a", "next", "--goal", str(g))
-        ready = sorted(self.p.rev.get(a["node"], a["node"]) for a in nxt["actions"] if a["goal"] == g)
-        self.assertEqual(sorted(lens_ids()), ready)
-        designer = self.p.record(g, "design")["holder"]
-        labels = [f"claude:{i}{i}{i}{i}/lens-{i}" for i in range(1, 3)]
-        self.assertNotIn(designer, labels)
-        cards = {}
-        for lens, label in zip(lens_ids(), labels):
-            cards[lens] = fx.Agent(self.w, "b", label).start(g, self.n(lens))
-        st = self.p.states(g)
-        for lens in lens_ids():
-            self.assertEqual("running", st[lens], lens)
-        self.assertTrue(st["filter_design"].startswith("blocked"), st["filter_design"])
-        self.assertEqual(len(labels), len({c["lease"]["holder"] for c in cards.values()}))
-
     def test_2_material_findings_wait_for_the_filter_then_reopen_the_design_once(self):
         g = self.goal()
         st = self.lenses_done(g, {"review_design": [{"findings": [lens_finding("claims are untestable", True)]}],
@@ -478,8 +460,8 @@ class LensJourneyTests(LensWorld):
         self.assertNotEqual(old_blob, new_blob)
         # 3: every lens re-reviews with previous.changed
         st = self.p.states(g)
-        for lens in lens_ids():
-            self.assertTrue(st[lens].startswith("ready"), (lens, st[lens]))
+        self.assertTrue(st["review_design"].startswith("ready"), st)
+        self.assertTrue(st["adversary_design"].startswith("blocked"), st)
         for lens in lens_ids():
             card, _ = self.p.run(g, lens)
             changed = json.dumps((card.get("previous") or {}).get("changed"))
@@ -533,11 +515,10 @@ class LensJourneyTests(LensWorld):
     def test_6_a_skip_is_refused_while_findings_wait_for_the_filter_and_accepted_after_a_visible_waiver(self):
         g = self.goal()
         self.through_design(g)
+        self.p.run(g, "review_design")
         self.p.run(g, "adversary_design", findings=[lens_finding("lease race", True)])
-        ag, tcard = self.p.start(g, "review_design")          # another reviewer is still running: no filter yet
         st = self.p.states(g)
-        self.assertEqual("running", st["review_design"])
-        self.assertTrue(st["filter_design"].startswith("blocked"), st["filter_design"])
+        self.assertTrue(st["filter_design"].startswith("ready"), st["filter_design"])
         self.assertIsNone(self.p.record(g, "filter_design"))
         self.assertEqual("current", st["design"])              # the finding is not live yet
         lens = self.n("adversary_design")
@@ -555,7 +536,6 @@ class LensJourneyTests(LensWorld):
                   "--base", self.p.tip(g))
         self.w.ok("a", "edit", str(g), "--set", f'skip.{lens}="noisy"', "--base", self.p.tip(g))
         self.assertEqual("skipped", self.p.states(g)["adversary_design"])
-        ag.submit(g, self.n("review_design"), tcard, self.p.output(self.n("review_design"), tcard), artifact="# r\n")
         self.p.drive(g, lambda st: st["approve_design"] == "needs_human (approve)")
         item = json.dumps(self.p.item(g, "approve_design"))
         self.assertIn(fid, item)                               # the waiver shows on the approval ...
@@ -581,6 +561,7 @@ class SkippedFindingVisibilityTests(LensWorld):
     def test_a_late_finding_on_a_skipped_reviewer_stays_visible_through_merge(self):
         g = self.goal()
         self.through_design(g)
+        self.p.run(g, "review_design")
         ag, card = self.p.start(g, "adversary_design")
         reason = "skipped while running: Dave said so"
         self.w.ok("a", "edit", str(g), "--set", f'skip.{self.n("adversary_design")}={json.dumps(reason)}',
@@ -718,7 +699,7 @@ class FilterTests(LensWorld):
             if lens in ("adversary_design", "review_design"):
                 continue
             self.p.run(g, lens)
-        for lens in ("adversary_design", "review_design"):
+        for lens in ("adversary_design",):
             for _ in range(3):
                 ag, card = self.p.start(g, lens)
                 ag.submit(g, self.n(lens), card, blocked={"waiting_for": "agent", "instructions": "try again",
@@ -729,10 +710,9 @@ class FilterTests(LensWorld):
         nxt = self.w.ok("a", "next", "--goal", str(g))
         items = {x["node"]: x for x in nxt["needs_human"] if x["kind"] == "crash_loop"}
         self.assertIn(self.n("adversary_design"), items)
-        self.assertIn(self.n("review_design"), items)
         sets = lambda it: [k for o in it.get("options", []) for k in ((o.get("file") or {}).get("set") or {})]
         self.assertIn(f"skip.{self.n('adversary_design')}", sets(items[self.n("adversary_design")]))
-        self.assertNotIn(f"skip.{self.n('review_design')}", sets(items[self.n("review_design")]))
+
 
     def test_a_filter_holder_who_produced_the_subject_is_refused(self):
         g = self.goal()
