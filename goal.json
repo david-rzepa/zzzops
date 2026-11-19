@@ -45,35 +45,35 @@
       "status": "done"
     },
     "approve_design": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T05:14:28Z",
+      "finished_at": "2026-11-19T05:33:33Z",
       "fp_parts": {
         "def": "v1:sha256:d04fc5094a85157b7e25b3020caaee316324161c59b30d25d4aabb2e5c24f0ed",
         "inputs": {
-          "doc": "v1:blob:a3ac387cd2f38ff9ee0f04e627ebb2d7657176b0",
-          "filter": "v1:sha256:83fe56e42269c5ddf6de688261f6aee7a5a1351581c06b21fa646020adf6548d",
-          "summary": "v1:sha256:e82e2d15078f796a6b0f7b464339c9ad0123ee768484ff01b86f6289a8fcc10d"
+          "doc": "v1:blob:fbac244685db79270e91c498ab400c3f5bd862c4",
+          "filter": "v1:sha256:cfdc400ff9f088a8f7b2ecaa0b12e03cf854eec0d5f75f37f0b75fe502768477",
+          "summary": "v1:sha256:97711cd7ab268c2a7373b20b10155c5a474bf64aceaf6952fa96a6ca4ec16c05"
         },
         "policy": {},
-        "subject": "v1:sha256:391d3a46a3fa92dbfab76c41b2df18d3e404bf5a9557b2e60dc23bf6e15f0d24"
+        "subject": "v1:sha256:10b7b0853f6e6fc1da637d96d1b77a020aeb16d75cb1365e453638a862062ad4"
       },
       "holder": "human",
-      "input_fp": "v1:sha256:150e34094fbffe00ae7caa7a8ea4f94b61975ee309b96baaa8f455a76e441a27",
+      "input_fp": "v1:sha256:5309632f2206003c1b16c20bbd75de02d574b05b687701206e6b2a144d35230b",
       "ok": true,
       "output": {
-        "decided_at": "2026-11-19T05:14:28Z",
+        "decided_at": "2026-11-19T05:33:33Z",
         "decided_by": "David Rzepa",
         "decision": "approved",
-        "quote": "Approve the revised design",
-        "summary": "Approved cooperating ZzzOps writer fencing, observed-work recheck, and explicit disclosure of the remaining direct Git push race."
+        "quote": "Approve clarification",
+        "summary": "Approved the configured lease timeout, automatic CAS gate reclaim, stale-holder refusal and writer-path safeguards."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "a3ac387cd2f38ff9ee0f04e627ebb2d7657176b0",
-          "commit": "8975028b3e43dc85fd7e151c7759f2d8e03be891"
+          "blob": "fbac244685db79270e91c498ab400c3f5bd862c4",
+          "commit": "b6fe3d3e95529b818a0f089bb2b84743da086f1a"
         }
       },
       "status": "done"
