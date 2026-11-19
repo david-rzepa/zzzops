@@ -752,3 +752,189 @@ class InsertWithoutBranching(Branching):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MaintenanceForwardPortJourneys(Branching):
+    """Post-finish operations are independently reviewed, durable release goals."""
+
+    finished_source = InsertedReleaseJourneys.finished_source
+    activate = InsertedReleaseJourneys.activate
+    preview = InsertedReleaseJourneys.preview
+    answer = InsertedReleaseJourneys.answer
+    insert = InsertedReleaseJourneys.insert
+
+    def finished_maintenance(self):
+        self.finished_source()
+        later = self.goal(release=2)
+        self.done(later, code={"src/newer.py": "newer = True\n"})
+        line2 = self.cut(2)["goal"]
+        self.op(line2, "sync")
+        self.approve(line2, "approve_finish")
+        self.op(line2, "finish")
+        production = self.tip("main")
+        self.activate()
+        patch = self.goal(release="1.1")
+        line = self.insert(self.preview())["goal"]
+        self.done(patch, code={"src/maintenance.py": "fixed = True\n"})
+        source = self.tip("release/1.1")
+        self.op(line, "sync")
+        self.approve(line, "approve_finish")
+        result = self.op(line, "finish")
+        self.assertEqual("done", result["closed"]["reason"])
+        self.assertEqual(production, self.tip("main"))
+        return line, source, production
+
+    def request_port(self, source="1.1", destination="dev"):
+        result = self.w.ok("a", "release", "forward-port", source, "--to", destination)
+        return result["goal"]
+
+    def port_until_human(self, goal):
+        for _ in range(8):
+            status = self.nxt(goal)
+            people = [item for item in status["needs_human"] if item.get("goal") == goal]
+            if people:
+                self.assertEqual(1, len(people), status)
+                return people[0]
+            actions = [a for a in status["actions"] if a.get("goal") == goal]
+            self.assertEqual(1, len(actions), status)
+            self.op(goal, actions[0]["node"])
+        self.fail("forward-port did not reach a human decision")
+
+    def answer_port(self, goal, item, decision="approved"):
+        self.w.ok("a", "answer", str(goal), item["node"], "--fp", item["fp"],
+                  "--file", self.w.file({"decision": decision, "text": decision,
+                                       "quote": decision, "decided_by": "Dave"}))
+
+    def drive_port(self, goal):
+        for _ in range(8):
+            status = self.nxt(goal)
+            actions = [a for a in status["actions"] if a.get("goal") == goal]
+            if not actions:
+                return status
+            self.op(goal, actions[0]["node"])
+        self.fail("forward-port failed to reach a stable state")
+
+    def test_separate_destinations_approve_and_resume_without_rewinding_production(self):
+        line, source, production = self.finished_maintenance()
+        closed = self.goal_tip(line)
+        self.push_branch("release/1.1", {"src/unapproved.py": "bad = True\n"})
+        dev = self.tip("dev")
+        port = self.request_port("1.1.0", "dev")
+        self.assertNotEqual(line, port)
+        self.assertEqual(port, self.request_port("1.1", "dev"), "aliases must resume one goal")
+        item = self.port_until_human(port)
+        prs = [p for p in self.gh.load()["prs"].values()
+               if p["state"] == "OPEN" and p["baseRefName"] == "dev"]
+        self.assertEqual(1, len(prs), prs)
+        pr = prs[0]
+        self.assertEqual(source, self.tip(pr["headRefName"]))
+        for value in (source, dev, str(pr["number"])):
+            self.assertIn(value, json.dumps(item))
+        self.assertEqual(dev, self.tip("dev"))
+        self.assertEqual(production, self.tip("main"))
+        self.assertEqual(closed, self.goal_tip(line))
+        self.answer_port(port, item)
+        self.drive_port(port)
+        self.assertEqual("MERGED", self.gh.pr(pr["number"])["state"])
+        self.assertTrue(self.is_ancestor(source, self.tip("dev")))
+        self.assertEqual(production, self.tip("main"))
+        self.assertEqual(closed, self.goal_tip(line))
+        self.assertEqual(port, self.request_port("1.1", "dev"))
+        self.assertEqual(1, len([p for p in self.gh.load()["prs"].values()
+                                 if p["baseRefName"] == "dev" and p["headRefName"] == pr["headRefName"]]))
+
+        # Production is a separate operation and remains newer until explicitly approved.
+        prod_port = self.request_port(destination="main")
+        self.assertNotEqual(port, prod_port)
+        prod_item = self.port_until_human(prod_port)
+        self.assertEqual(production, self.tip("main"))
+        self.answer_port(prod_port, prod_item)
+        self.drive_port(prod_port)
+        self.assertTrue(self.is_ancestor(production, self.tip("main")), "production cannot rewind")
+        self.assertTrue(self.is_ancestor(source, self.tip("main")))
+        self.assertEqual(closed, self.goal_tip(line))
+
+    def test_refusal_and_moved_destination_require_fresh_approval(self):
+        line, source, production = self.finished_maintenance()
+        closed = self.goal_tip(line)
+        port = self.request_port()
+        item = self.port_until_human(port)
+        dev_before = self.tip("dev")
+        self.answer_port(port, item, decision="rejected")
+        self.drive_port(port)
+        self.assertEqual(dev_before, self.tip("dev"))
+        self.assertEqual(production, self.tip("main"))
+        self.assertEqual(closed, self.goal_tip(line))
+
+    def test_already_in_history_needs_evidence_and_separate_approval(self):
+        line, source, production = self.finished_maintenance()
+        closed = self.goal_tip(line)
+        p = self.w.add_clone("history")
+        p.git("fetch", "-q", "origin", "refs/heads/dev", "refs/heads/release/1.1")
+        p.git("checkout", "-q", "--detach", "origin/dev")
+        p.git("merge", "-q", "--no-ff", "-m", "manually integrate finished maintenance", source)
+        p.git("push", "-q", "origin", "HEAD:refs/heads/dev")
+        observed = self.tip("dev")
+        self.assertTrue(self.is_ancestor(source, observed))
+        prior_prs = len(self.gh.load()["prs"])
+        port = self.request_port()
+        item = self.port_until_human(port)
+        evidence = json.dumps(item)
+        self.assertIn("already_in_history", evidence)
+        self.assertIn(source, evidence)
+        self.assertIn(observed, evidence)
+        self.assertEqual(prior_prs, len(self.gh.load()["prs"]))
+        self.answer_port(port, item)
+        self.drive_port(port)
+        self.assertIn("already_in_history", json.dumps(self.show(port)))
+        self.assertEqual(observed, self.tip("dev"))
+        self.assertEqual(production, self.tip("main"))
+        self.assertEqual(closed, self.goal_tip(line))
+
+    def test_equal_trees_without_lineage_or_matching_pr_are_not_proof(self):
+        line, source, production = self.finished_maintenance()
+        closed = self.goal_tip(line)
+        # Independently make the same maintenance content; cherry-pick-equivalent
+        # trees do not prove that this exact finished source was integrated.
+        self.push_branch("dev", {"src/maintenance.py": "fixed = True\n"})
+        observed = self.tip("dev")
+        self.assertFalse(self.is_ancestor(source, observed))
+        # Simulate GitHub rejecting an apparently empty PR, while leaving all
+        # other provider operations real within the fixture.
+        gh = Path(self.gh.bindir) / "gh"
+        real = Path(self.gh.bindir) / "gh-real"
+        gh.rename(real)
+        gh.write_text('#!/bin/sh\nif [ "$1" = pr ] && [ "$2" = create ]; then\n'
+                      '  echo "No commits between branches" >&2; exit 1\nfi\n'
+                      'exec "$(dirname "$0")/gh-real" "$@"\n')
+        gh.chmod(0o755)
+        before = len(self.gh.load()["prs"])
+        port = self.request_port()
+        state = self.drive_port(port)
+        self.assertIn("no_diff_unproven", json.dumps(state) + json.dumps(self.show(port)))
+        self.assertEqual(before, len(self.gh.load()["prs"]))
+        self.assertEqual(observed, self.tip("dev"))
+        self.assertEqual(production, self.tip("main"))
+        self.assertEqual(closed, self.goal_tip(line))
+
+    def test_changed_carrier_head_and_destination_invalidate_approval(self):
+        line, source, production = self.finished_maintenance()
+        closed = self.goal_tip(line)
+        port = self.request_port()
+        item = self.port_until_human(port)
+        prs = [p for p in self.gh.load()["prs"].values()
+               if p["state"] == "OPEN" and p["baseRefName"] == "dev"]
+        self.assertEqual(1, len(prs))
+        pr = prs[0]
+        self.answer_port(port, item)
+        moved_head = self.push_branch(pr["headRefName"], {"src/unapproved.py": "bad = True\n"})
+        advanced_dev = self.push_branch("dev", {"src/new_base.py": "new = True\n"})
+        self.drive_port(port)
+        self.assertEqual(advanced_dev, self.tip("dev"))
+        self.assertEqual("OPEN", self.gh.pr(pr["number"])["state"])
+        fresh = self.port_until_human(port)
+        self.assertNotEqual(item["fp"], fresh["fp"])
+        self.assertIn(moved_head, json.dumps(fresh))
+        self.assertIn(advanced_dev, json.dumps(fresh))
+        self.assertEqual(closed, self.goal_tip(line))
+        self.assertEqual(production, self.tip("main"))
