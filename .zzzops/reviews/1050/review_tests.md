@@ -1,5 +1,5 @@
 # G1050 test review
 
-Approved. The new tests accept child test deletion and rename, verify a normal implementation descendant, then reject restoring either absent old path or mutating the renamed path. A separate orphan commit has an identical Git tree but is not a descendant, so it isolates the provenance guard from content comparison. These address the residual finding.
+Approved. The only test change avoids adding a duplicate capability requirement. Existing child-history, scaffold-route and adoption assertions are unchanged.
 
-I independently ran the identical-tree rewrite and accepted-deletion cases with real child repositories: both fail on current behavior because the complete gitlink is frozen, as expected before implementation. The two focused tests took 2.424 seconds. The author's full red suite took 42.718 seconds; the end-to-end Git/CLI cost is justified by the distinct contracts. Green behavior and full migration observations remain to be verified after implementation.
+I independently copied the engine and tests to an isolated directory, advertised `conditional_review_routes`, and added it to the shipped policy. The real local-Git implementation-advancement test passed setup without duplicate policy validation and failed at the expected pre-implementation whole-gitlink freeze. The targeted test took 1.183 seconds; the author's full pre-implementation suite took 42.692 seconds. Green behavior remains to be verified with implementation.
