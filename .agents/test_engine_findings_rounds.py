@@ -592,7 +592,7 @@ class FollowsRoundTripTests(FollowsJourney):
         c = self.B.start(g, "review_design")
         entry = next(f for f in c["previous"]["findings"] if f["id"] == "review_design:2:1")
         self.assertEqual("review_design:1:1", entry["follows"])
-        self.B.submit(g, "review_design", c, {"decision": "approved", "summary": "ok",
+        self.B.submit(g, "review_design", c, {"decision": "approved", "scaffold_needed": False, "summary": "ok",
                                               "findings": [{"id": "review_design:2:1", "status": "resolved"}]},
                       artifact="# ok\n")
         self.finish_review_join(self.B, g, "review_design")
