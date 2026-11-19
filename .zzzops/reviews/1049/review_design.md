@@ -1,5 +1,3 @@
-# G1049 design re-review
+# G1049 gate lifecycle re-review
 
-The owner chose protection against cooperating ZzzOps writers, with the remaining out-of-band direct-push race disclosed. The revised design records that decision, requires a changed unique gate ref in an atomic CAS transaction for all cooperating workspace claims and mutations, covers fencing across expiration and reclaim, and requires realistic competing-writer and direct-push race tests. It no longer claims a no-op push provides atomic cross-ref protection. Diagnostic and apply output expose the scope of the guarantee.
-
-No new material finding across the applicable lenses.
+The revision makes the gate lifetime, holder visibility, CAS renew/release/reclaim, automatic crash recovery and stale-holder refusal observable. It identifies workspace claims, artifacts and op updates and requires a shared fail-closed transaction guard for future work-ref update routes. Public local-remote tests exercise the entry points and expiry/reclaim path, while documenting the direct-push limitation. No new material findings across the applied lenses.
