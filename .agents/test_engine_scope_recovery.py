@@ -326,6 +326,43 @@ exit 0
             result = {"stdout": stdout, "stderr": stderr}
         return proc.returncode, result
 
+    def test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal(self):
+        from engine.errors import Refused
+        from engine.session import Session
+
+        self.activate_capability()
+        goal_before = self.tip()
+        work_ref = f"refs/heads/zzzops/work/g{self.g}"
+        work_before = self.w.remote_git("rev-parse", work_ref)
+        proposed = self.wt.commit({"src/unlisted.py": "value = 1\n"}, "fix: unlisted writer")
+        with fx.env_of(self.w.cli_env()):
+            session = Session(cwd=self.w.clones["a"].path, now=fx.NOW)
+            self.addCleanup(session.git.close)
+            session.open(goals=[self.g])
+            def mutate(sess, docs):
+                doc = copy.deepcopy(docs[self.g])
+                doc["priority"] = "P1"
+                return {self.g: doc}
+            def unlisted_update(sess, docs):
+                return [(work_ref, work_before, proposed)]
+            with self.assertRaises(Refused) as caught:
+                session.write_goals("unlisted_probe", [self.g], mutate, extra=unlisted_update, retry=False)
+            self.assertIn(caught.exception.code, ("workspace_busy", "validation"))
+            self.assertTrue(caught.exception.message)
+        self.assertEqual(goal_before, self.tip())
+        self.assertEqual(work_before, self.w.remote_git("rev-parse", work_ref))
+
+    def test_registered_base_operation_advances_work_with_its_valid_gate(self):
+        self.activate_capability()
+        before = self.w.remote_git("rev-parse", f"refs/heads/zzzops/work/g{self.g}")
+        self.w.push_dev({"upstream-only.txt": "changed\n"})
+        self.w.ok("a", "reopen", str(self.g), "base", "--note", "sync upstream")
+        result = self.w.ok("a", "start", str(self.g), "base", "--as", "codex:aaaa/op")
+        self.assertEqual("done", result["ran"]["outcome"], result)
+        after = self.w.remote_git("rev-parse", f"refs/heads/zzzops/work/g{self.g}")
+        self.assertNotEqual(before, after)
+        self.assertTrue(result["ran"]["ok"], result)
+
     def test_already_changed_work_ref_refuses_proposal_before_write(self):
         self.damaged_history()
         proposal = self.diagnostic()["proposal"]
