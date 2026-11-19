@@ -543,6 +543,8 @@ def _validate_node(e: Errors, where, n, nd, nodes, settings, instructions, promp
         if spec.get("pending") and sel.kind != "deps":
             e.add(f"{iw}.pending", "only on deps. selectors")
         if sel.kind == "goal":
+            if nd.get("when") == k:
+                e.add(iw, "conditional routing requires a boolean node output")
             continue
         if sel.node not in nodes:
             e.add(f"{iw}.from", f"unknown node {sel.node!r}")
