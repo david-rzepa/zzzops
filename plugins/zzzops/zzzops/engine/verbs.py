@@ -314,23 +314,25 @@ def staleness(s, st0, state, r, parts) -> dict:
 
 def submit(s, g: int, X: str, N: int, label: str, output=None, artifact=None, blocked=None) -> dict:
     from engine import workspace_gate
+    if (output is None) == (blocked is None):
+        raise Refused("usage", "submit needs exactly one of --output F or --blocked F")
     s.open(goals=[g])
-    res = goal_result(s, g)
-    node = node_of(res, X)
-    needs_gate = node.get("workspace") or bool(res.graph.artifact_outputs(X))
-    if needs_gate and workspace_gate.enabled(s):
+    doc = s.state.docs.get(g) or {}
+    graph = s.state.graphs.get(doc.get("graph"))
+    node = graph.nodes.get(X) if graph else None
+    needs_gate = bool(node and (node.get("workspace") or graph.artifact_outputs(X)))
+    if needs_gate and workspace_gate.enabled(s) and doc.get("state") != "closed":
         with workspace_gate.hold(s, g, "workspace submit") as gate:
             result = _submit(s, g, X, N, label, output=output, artifact=artifact, blocked=blocked)
             if gate["reclaimed"]:
                 result["workspace_gate_reclaimed"] = True
             return result
-    return _submit(s, g, X, N, label, output=output, artifact=artifact, blocked=blocked)
+    return _submit(s, g, X, N, label, output=output, artifact=artifact, blocked=blocked, opened=True)
 
 
-def _submit(s, g: int, X: str, N: int, label: str, output=None, artifact=None, blocked=None) -> dict:
-    if (output is None) == (blocked is None):
-        raise Refused("usage", "submit needs exactly one of --output F or --blocked F")
-    s.open(goals=[g])
+def _submit(s, g: int, X: str, N: int, label: str, output=None, artifact=None, blocked=None, opened=False) -> dict:
+    if not opened:
+        s.open(goals=[g])
     data = {}
     if output is not None:
         data["out"] = load(output, "output")
@@ -1026,11 +1028,12 @@ def edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
     if bases and recovery and len(gids) == 1 and workspace_gate.enabled(s):
         with workspace_gate.hold(s, gids[0], "scope recovery"):
             return _edit(s, gids, files, sets, bases)
-    return _edit(s, gids, files, sets, bases)
+    return _edit(s, gids, files, sets, bases, opened=True)
 
 
-def _edit(s, gids: list, files=(), sets=(), bases=()) -> dict:
-    s.open(goals=gids)
+def _edit(s, gids: list, files=(), sets=(), bases=(), opened=False) -> dict:
+    if not opened:
+        s.open(goals=gids)
     base_of = {}
     for C in bases:
         data = s.git.cat(f"{C}:goal.json")
