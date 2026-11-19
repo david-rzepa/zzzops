@@ -86,6 +86,41 @@
       "reason": "new",
       "status": "done"
     },
+    "filter_design": {
+      "attempt": 1,
+      "correction_runs": 0,
+      "findings": [],
+      "finished_at": "2026-11-19T04:06:22Z",
+      "fp_parts": {
+        "candidates": [
+          [
+            "adversary_design:1:1",
+            true
+          ],
+          [
+            "review_design:1:1",
+            true
+          ]
+        ],
+        "def": "v1:sha256:c83a5e0ec02bc9504ff118f774138ad5517f6b3a5885d1c28444982e78d23a9f",
+        "inputs": {
+          "adversary": "v1:sha256:2fe5fdecf245a99dcf82c5e6329bfdcce4e9363f88e50b28a30c1e73175d4c6d",
+          "doc": "v1:blob:78edeec1d293bebb785dc457dff049df68d7bef7",
+          "review": "v1:sha256:25e8ef7cef6959d3aeb6c45996dde415b47071e308bcca6c9b831d39ed20bf77",
+          "spec": "v1:sha256:4a8cbbd6281ed2930a25aaeeab28d289c69eab99320d3a8dca44789c357b3dae"
+        },
+        "policy": {}
+      },
+      "holder": "codex:root/g1049-filter",
+      "input_fp": "v1:sha256:5c2f3a0d39ed9d373156a6cac24b318180eda3028dcc42cff86299942cb0c5c0",
+      "ok": true,
+      "output": {
+        "summary": "Both material findings reopen the design: blocked producer records lose final-tree protection, and test commits made during a blocked attempt can disappear from the retry scope. Both are supported by the current preserve_check and frozen_paths behavior and require provenance-safe corrections and realistic regression coverage. There are no non-material notes.",
+        "verdicts": {}
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 1,
       "correction_runs": 1,
