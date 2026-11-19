@@ -569,6 +569,83 @@ class InsertedReleaseJourneys(Branching):
     def test_external_changed_head_merged_before_recovery_is_recorded(self):
         self.assert_external_unapproved_finish_merge_blocks(at_view=False)
 
+    def older_merged_release_then_approved_tip(self):
+        _, line = self.cut_release_1()
+        self.gh.update(lambda state: state.update(auto_delete=False))
+        branch, env, cwd = "release/1", self.w.cli_env(), self.w.clones["a"].path
+        old_head = self.tip(branch)
+        subprocess.run(["gh", "pr", "create", "--head", branch, "--base", "main",
+                        "--title", "Earlier release delivery", "--body", "earlier head"],
+                       cwd=cwd, env=env, check=True, capture_output=True, text=True)
+        old = next(p for p in self.gh.load()["prs"].values()
+                   if p["state"] == "OPEN" and p["headRefName"] == branch and p["baseRefName"] == "main")
+        subprocess.run(["gh", "pr", "merge", str(old["number"]), "--merge"],
+                       cwd=cwd, env=env, check=True, capture_output=True, text=True)
+        old = self.gh.pr(old["number"])
+        self.assertEqual("MERGED", old["state"])
+        self.assertEqual(old_head, old["headRefOid"])
+        new_head = self.push_branch(branch, {"src/later_release_delivery.py": "newer = True\n"})
+        self.assertNotEqual(old_head, new_head)
+        self.assertTrue(self.is_ancestor(old_head, new_head))
+        self.assertEqual(new_head, self.op(line, "sync")["ran"]["output"]["merged"])
+        self.approve(line, "approve_finish")
+        return line, old, new_head
+
+    def test_release_finish_ignores_earlier_merged_pr_and_merges_approved_descendant(self):
+        line, old, approved = self.older_merged_release_then_approved_tip()
+        old_merge = old["mergeCommit"]
+        result = self.op(line, "finish")
+        self.assertEqual("done", (result.get("closed") or {}).get("reason"), result)
+        prs = [p for p in self.gh.load()["prs"].values()
+               if p["baseRefName"] == "main" and p["state"] == "MERGED"]
+        matching = [p for p in prs if p["headRefOid"] == approved]
+        self.assertEqual(1, len(matching), prs)
+        current = matching[0]
+        self.assertNotEqual(old["number"], current["number"])
+        self.assertTrue(self.is_ancestor(old_merge, self.tip("main")))
+        self.assertTrue(self.is_ancestor(approved, self.tip("main")))
+        self.assertIn("src/later_release_delivery.py", self.w.remote_git(
+            "ls-tree", "-r", "--name-only", "refs/heads/main").splitlines())
+
+    def test_release_finish_recovers_exact_merged_head_when_older_pr_listed_first(self):
+        line, old, approved = self.older_merged_release_then_approved_tip()
+        env, cwd = self.w.cli_env(), self.w.clones["a"].path
+        subprocess.run(["gh", "pr", "create", "--head", "release/1", "--base", "main",
+                        "--title", "Current approved delivery", "--body", "approved head"],
+                       cwd=cwd, env=env, check=True, capture_output=True, text=True)
+        current = next(p for p in self.gh.load()["prs"].values()
+                       if p["state"] == "OPEN" and p["headRefName"] == "release/1" and p["baseRefName"] == "main")
+        subprocess.run(["gh", "pr", "merge", str(current["number"]), "--merge"],
+                       cwd=cwd, env=env, check=True, capture_output=True, text=True)
+        current = self.gh.pr(current["number"])
+        self.assertEqual(approved, current["headRefOid"])
+        actual_main = self.tip("main")
+        self.assertEqual(current["mergeCommit"], actual_main)
+        # The fake provider normally orders newest first. Force older first so
+        # this test proves recovery searches by approved head, not list order.
+        gh = Path(self.gh.bindir) / "gh"
+        real = Path(self.gh.bindir) / "gh-real"
+        gh.rename(real)
+        gh.write_text(f"#!{sys.executable}\nimport json, os, subprocess, sys\n"
+                      f"real = {str(real)!r}\nargs = sys.argv[1:]\n"
+                      "if args[:2] == ['pr', 'list']:\n"
+                      "    p = subprocess.run([real] + args, capture_output=True, text=True)\n"
+                      "    if p.returncode: sys.stderr.write(p.stderr); sys.exit(p.returncode)\n"
+                      "    rows = json.loads(p.stdout); rows.sort(key=lambda r: r['number']); print(json.dumps(rows)); sys.exit(0)\n"
+                      "os.execv(real, [real] + args)\n", encoding="utf-8")
+        gh.chmod(0o755)
+        listing = subprocess.run(["gh", "pr", "list", "--head", "release/1", "--base", "main",
+                                  "--state", "all", "--json", "number,state,headRefOid,mergeCommit"],
+                                 cwd=cwd, env=env, check=True, capture_output=True, text=True)
+        order = json.loads(listing.stdout)
+        self.assertEqual([old["number"], current["number"]], [p["number"] for p in order])
+        result = self.op(line, "finish")
+        self.assertEqual("done", (result.get("closed") or {}).get("reason"), result)
+        self.assertEqual(actual_main, self.tip("main"), "recovery must not perform another production merge")
+        recorded = json.dumps(self.show(line)) + json.dumps(result)
+        self.assertIn(current["mergeCommit"], recorded)
+        self.assertTrue(self.is_ancestor(approved, self.tip("main")))
+
     def test_protected_provider_refusal_does_not_bypass_pr(self):
         capability = fx.PLUGIN_CODE / "engine/capabilities/insertable_release_targets.txt"
         self.assertTrue(capability.is_file(), "insertable release capability is not implemented")
