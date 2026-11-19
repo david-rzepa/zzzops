@@ -113,29 +113,10 @@
       "status": "done"
     },
     "design": {
-      "answer": {
-        "decided_at": "2026-11-19T05:09:58Z",
-        "decided_by": "David Rzepa",
-        "quote": "Protect ZzzOps writers (Recommended)",
-        "text": "Use cooperating-writer fencing on GitHub and disclose the remaining direct-push race."
-      },
-      "attempt": 4,
-      "blocked": {
-        "category": "decision",
-        "instructions": "The human answered: Use cooperating-writer fencing on GitHub and disclose the remaining direct-push race.",
-        "options": [
-          "Q1: Use cooperating-writer fencing on GitHub and disclose the remaining direct-push race",
-          "Q1: Require strict atomic cross-ref guarding and refuse recovery on unsupported hosts"
-        ],
-        "question": "owner question: Q1 (implement:2:1): Recovery must guard the recorded test scope against a work-branch or lease change while the goal record is updated. GitHub does not provide an atomic check of an unchanged second ref in an ordinary Git push. Should recovery work on GitHub with a workspace lease that fences cooperating ZzzOps writers and an immediate work-ref recheck, while clearly warning that a direct Git push can still race it, or require a host with a verifiable atomic cross-ref guard and refuse recovery on GitHub?",
-        "reason": "owner question: Q1 (implement:2:1): Recovery must guard the recorded test scope against a work-branch or lease change while the goal record is updated. GitHub does not provide an atomic check of an un",
-        "recommendation": "Q1: Use cooperating-writer fencing and disclose the race. GitHub is the intended host and Project Base G12 needs recovery; direct pushes are outside the normal engine workflow. Preserve the goal-ref CAS, reject observed changes and conflicting leases, and test and document the limitation explicitly.",
-        "repeats": 1,
-        "waiting_for": "agent"
-      },
+      "attempt": 5,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T05:07:53Z",
+      "finished_at": "2026-11-19T05:11:00Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -144,23 +125,22 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/g1049-design-atomic",
+      "holder": "codex:root/g1049-design-fenced",
       "input_fp": "v1:sha256:66037f9e6a03e6b47cc13989a77c66f91ff9b2379287946442f0d56d000b533d",
-      "last_output": {
+      "ok": true,
+      "output": {
         "doc": {
-          "blob": "b0a79141fe1b4c4ad3c03ac7f911f36d48919512",
-          "commit": "0d7accf6e9435976befa8ce72f1b74217ab2de9f",
+          "blob": "a3ac387cd2f38ff9ee0f04e627ebb2d7657176b0",
+          "commit": "8975028b3e43dc85fd7e151c7759f2d8e03be891",
           "path": ".zzzops/reviews/1049/design.md"
         },
         "responses": {
-          "test_design:2:1": "fixed: The contract names preserved_test_provenance and engine.capabilities discovery, and specifies scope_recovery diagnostics with exact status, goal base, per-path source identities, issues and an exact existing-format edit object for preview and guarded apply."
+          "implement:2:1": "fixed: recorded as owner decision Q1"
         },
-        "summary": "Define a stable capability identifier and machine-readable validation recovery proposal that can be reviewed, previewed, and applied with the existing CAS-protected edit command. Preserve provenance, ambiguity refusal, existing output fields and independent review."
+        "summary": "Fence recovery against cooperating ZzzOps writers using an actually updated, CAS-protected goal-wide workspace gate; verify the observed work tip and disclose that direct Git pushes remain outside this guarantee. Retain the existing provenance and independent review requirements."
       },
-      "ok": false,
-      "output": null,
-      "reason": "reopened",
-      "status": "blocked"
+      "reason": "retry",
+      "status": "done"
     },
     "filter_design": {
       "attempt": 3,
