@@ -168,6 +168,60 @@
       "reason": "stale",
       "status": "done"
     },
+    "implement": {
+      "attempt": 1,
+      "correction_runs": 1,
+      "findings": [
+        {
+          "id": "implement:1:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 5,
+          "target_fp": "v1:sha256:c2ded44ad2ccd1b9db8fcb75f97b9f98d24a6d093c7ce16862fb00cff329bd4b",
+          "text": "test_ambiguous_blocked_source_and_gitlink_are_not_silently_frozen creates a raw gitlink in the index without a corresponding initialized submodule/worktree, so the subsequent producer submit fails at the existing dirty_worktree check before the candidate-scope logic is reached. Create a real clean submodule fixture or otherwise ensure git status is clean, then verify the producer reaches the candidate/exclusion behavior. Do not weaken the clean-worktree guard.",
+          "upheld": false
+        },
+        {
+          "id": "implement:1:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 5,
+          "target_fp": "v1:sha256:c2ded44ad2ccd1b9db8fcb75f97b9f98d24a6d093c7ce16862fb00cff329bd4b",
+          "text": "test_repeated_blocks_retain_accepted_scope_without_blocked_findings calls review_tests after a no-op retry whose frozen scope and checkpoint scoped change are identical to the prior approved review. The engine correctly reports review_tests current, so the test cannot reach its preservation assertions. If a new independent review is required for this specific exercise, explicitly reopen it; otherwise verify the existing review remains current and proceed to the protected-path submission. Recovery after a widened scope still needs the independent stale-review check.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-19T04:51:49Z",
+      "fp_parts": {
+        "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
+        "inputs": {
+          "base": "v1:sha256:1eee7b2e3964a69facb766f50195fd0750184506761869cf1d3140667ff55a3a",
+          "doc": "v1:blob:b0a79141fe1b4c4ad3c03ac7f911f36d48919512",
+          "tests": "v1:sha256:0402a0d7c66a5a3c43ec4de9a1f5ce5707ae6c5fd81a7a4caad45794866f1b64"
+        },
+        "policy": {}
+      },
+      "holder": "codex:root/g1049-implement",
+      "input_fp": "v1:sha256:02801c04b772775d1384ad4d198044a2601577473472820f41169e9e5d606916",
+      "ok": true,
+      "output": {
+        "code": {
+          "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
+          "change": "213df1d5e79ee89f900c79fd07f0ca5263394b93",
+          "commit": "8f47aa1123e20ea7b6174948e7b2403a3fd7bde6",
+          "tree": "17e746f0dbcd5468849a55147b0acf05538fe11a"
+        },
+        "summary": "A local prototype passes 17 of the 19 focused tests, including the real rewritten-segment refusal and guarded history recovery. The remaining two tests fail before the intended behavior or assume a review can restart despite unchanged inputs; the prototype is preserved locally for the corrected test checkpoint."
+      },
+      "reason": "new",
+      "status": "done"
+    },
     "review_design": {
       "attempt": 3,
       "correction_runs": 1,
