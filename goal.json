@@ -384,38 +384,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 9,
+      "attempt": 10,
       "correction_runs": 4,
       "findings": [],
-      "finished_at": "2026-11-19T01:30:02Z",
+      "finished_at": "2026-11-19T02:32:52Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:5b199f7a7f94e75dfbec83fa682e91d088f0edec",
-          "tests": "v1:sha256:0ce2b5e1230dc659f4eb530eb5e30e34443c3832dbc7178bdd86df1e0131a33a"
+          "tests": "v1:sha256:5b3d2b2935c6c0f2161877f15e91423daf5301fa0f3b8e31d4946bb53aec7596"
         },
         "policy": {},
-        "subject": "v1:sha256:d3118211aee8ff34defda42f30ba75738af17ba1b7fd9a443e8acdb95623c8c3"
+        "subject": "v1:sha256:d97eeaf24711a50f4272e16e99682f260a164c8a487cc1055fd934ed7e785989"
       },
-      "holder": "codex:root/g1051-review-tests-9",
-      "input_fp": "v1:sha256:34590136fe23cbbedf11df63e834f17d658544de6855df8aa3533e27423bfda9",
+      "holder": "codex:root/g1051-review-tests-10",
+      "input_fp": "v1:sha256:63d76b0240a17c57f59f85929eb42a6c793d69af4cc1a5d8abf8673623d96a1b",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "b6eeabe479fe9702af8f90f42f4bd0cb4381a7d5",
-          "commit": "575e0e2db113140f6e9a11544a7980281673d5c5",
+          "blob": "36fe0760c74d4796fb174c049e1cb07b1275aae2",
+          "commit": "babbd1d561c271e015f4a9103a8fcefe63df9899",
           "path": ".zzzops/reviews/1051/review_tests.md"
         },
-        "summary": "The fixture preserves opt-in at the immutable equal-tree source and uses the actual human approval/refusal schema; all three focused cases pass locally."
+        "summary": "The actual external-merge, nested lineage and invalid-snapshot regressions exercise real Git; the focused run correctly remains red on a source-goal cycle."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "8c1a3d0357153613dc741559bc852732cf6b37d3",
-          "commit": "025b1cb948b148e770fb2502276cffb0113d89cd",
-          "tree": "0136d58a9bb276d3235057362feed0b4bf96925b"
+          "change": "9dc78d5a5551b3d62aa37ddebbf50f1c08df2c05",
+          "commit": "da22933c41ee66880f101e38417258aa220d2a37",
+          "tree": "cc95f8c334edcb10687e3a13cddf3345f4dc50b3"
         }
       },
       "status": "done"
