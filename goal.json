@@ -169,43 +169,30 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 2,
-      "findings": [
-        {
-          "id": "implement:2:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "open",
-          "target": "design",
-          "target_attempt": 3,
-          "target_fp": "v1:sha256:dd5a7ed58339a06664272c6c930d7c8ce441522bf3c2146f2f99c7be8005cee4",
-          "text": "The recovery contract says changed work history or a conflicting lease must refuse the guarded write, but the approved design does not define a host-compatible atomic check of the observed work ref with the goal update. A local bare-remote pre-receive experiment confirmed that git push --atomic with an unchanged work ref and --force-with-lease sends only the changed goal ref, so an out-of-band direct work push racing the edit is not checked server-side. Short-lived workspace leases atomically fence cooperating ZzzOps claims, and re-reading work detects earlier changes, but cannot fence arbitrary direct Git pushes. Specify whether the guarantee is limited to cooperating engine writers and explicitly expose/document that boundary, or require a verifiable server-side cross-ref transaction/unsupported-host refusal for strict mode. Add an adversarial direct-work-ref race test and do not claim full atomic protection without proof.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-19T05:07:13Z",
+      "findings": [],
+      "finished_at": "2026-11-19T06:03:54Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
           "base": "v1:sha256:1eee7b2e3964a69facb766f50195fd0750184506761869cf1d3140667ff55a3a",
-          "doc": "v1:blob:b0a79141fe1b4c4ad3c03ac7f911f36d48919512",
-          "tests": "v1:sha256:e1c14e14fbf006fa471be929b1ec7c98fb1240d31e653133e95448b9edf9ba1d"
+          "doc": "v1:blob:fbac244685db79270e91c498ab400c3f5bd862c4",
+          "tests": "v1:sha256:41660b716d5fb268bf432e4f99fb58ec7f4f9c4a31f5fed9516138c4b2c1a03b"
         },
         "policy": {}
       },
-      "holder": "codex:root/g1049-implement-2",
-      "input_fp": "v1:sha256:d5f1c14e78d27713a66dbdbe84d133fbe3f10dc6dac198bcdf8251f4ab660f2b",
+      "holder": "codex:root/g1049-implement-3",
+      "input_fp": "v1:sha256:6aae2182d928dfd431297ce0588cef6083254b46b5bda0e5ecd14b42ce18ff9b",
       "ok": true,
       "output": {
         "code": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "d00a2baeea05c70cb076838495b7e387f22cd402",
-          "commit": "2d488649718cd974cbd309181c72e47728a9c0fe",
-          "tree": "23d0e5106881aa9a02e028ed93783c8767e3b174"
+          "change": "bd35bf461a9b459dbfcc7350ed4ede4a519c6d49",
+          "commit": "096f1a7d5603423b81931ed1ec25a2b2defb57c9",
+          "tree": "e413e1e30091e7a8b41e7000ce2a2ee011e6d375"
         },
-        "summary": "A local prototype passes the 19 accepted real-Git tests plus additional cross-clone, changed-work and candidate-selection checks. A host-level concurrency limitation makes the approved unqualified work-history guarantee unattainable with GitHub atomic push; the tested prototype is preserved locally for the corrected design."
+        "summary": "Preserve accepted tests across blocked producer attempts using capability-gated, retained lease/work provenance and reviewed scope selection; provide read-only history recovery proposals with guarded edits. A CAS workspace gate fences cooperating engine writers, supports expiry/reclaim, and explicitly discloses the remaining out-of-band direct-push race. The accepted 31-test real-Git/CLI suite, both named gate checks, four extra safety tests and legacy merge-sync regressions passed locally. A host stalled past a gate expiry without a competing reclaim cannot enforce wall-clock expiry server-side; review should assess this platform boundary."
       },
       "reason": "stale",
       "status": "done"
