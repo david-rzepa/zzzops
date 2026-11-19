@@ -276,7 +276,7 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 6,
+      "attempt": 7,
       "correction_runs": 2,
       "findings": [
         {
@@ -284,7 +284,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 7,
           "target_fp": "v1:sha256:3ea1d6cc99bf0d774fa9dd124fb1a84768a9e5f31e7e6437aa41f5e4157eb9b3",
@@ -296,43 +296,56 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 7,
           "target_fp": "v1:sha256:3ea1d6cc99bf0d774fa9dd124fb1a84768a9e5f31e7e6437aa41f5e4157eb9b3",
           "text": "Add the owner-approved crash/expiry/reclaim and cooperating work-writer fencing cases using the smallest realistic local Git/CLI tests: a reclaimed expired holder cannot publish, a crashed gate can be recovered, and an already-claimed publisher or sync cannot race recovery. Audit and exercise or safely refuse all remaining work-ref mutation/claim paths, as required by the design.",
           "upheld": false
+        },
+        {
+          "follows": "review_tests:6:2",
+          "id": "review_tests:7:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 9,
+          "target_fp": "v1:sha256:da1707449282a08d6ed4e4afe0b7695c435f2452681c27bed8075a0338e1b19f",
+          "text": "Add the approved lower-level transaction guard regression that attempts an otherwise-unlisted engine atomic work-ref update without a valid gate and proves a structured refusal with no ref updates; then prove a valid gate permits it. Define a narrow executable transaction-guard test seam or dummy operation if needed, rather than merely checking a list of known public routes. Cover operation completion that updates work and verify successful gated command routes where not already exercised.",
+          "upheld": false
         }
       ],
-      "finished_at": "2026-11-19T05:22:20Z",
+      "finished_at": "2026-11-19T05:41:16Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
-          "doc": "v1:blob:a3ac387cd2f38ff9ee0f04e627ebb2d7657176b0",
-          "tests": "v1:sha256:f25fb71f3b4b250fd40cd704eb52d742141d1cb712b79de4bce819f7171a16d1"
+          "doc": "v1:blob:fbac244685db79270e91c498ab400c3f5bd862c4",
+          "tests": "v1:sha256:298f0ab9c0276d4d5aa30a74b13f78fcd1cd44450ef055016ef8388ae6a3fda6"
         },
         "policy": {},
-        "subject": "v1:sha256:3ea1d6cc99bf0d774fa9dd124fb1a84768a9e5f31e7e6437aa41f5e4157eb9b3"
+        "subject": "v1:sha256:da1707449282a08d6ed4e4afe0b7695c435f2452681c27bed8075a0338e1b19f"
       },
-      "holder": "codex:root/g1049-review-tests-6",
-      "input_fp": "v1:sha256:45b1f4e9369ac5fc59aa64c0942ea49b6e2e5c345d1e6d5f392035da335cd371",
+      "holder": "codex:root/g1049-review-tests-7",
+      "input_fp": "v1:sha256:e8de6a6c8af93b7a558dfd7b88a988ed4b8bac3d0eca0c1d7a65352c18f8c593",
       "ok": false,
       "output": {
         "decision": "changes_requested",
         "report": {
-          "blob": "6bb3ba536ac2d58cd5d6249caaefb90a87276fde",
-          "commit": "8399dd2c0f5d4998ed18c4820995e74eeeee736c",
+          "blob": "84698943a4f0632b728693f208a57985a926afa3",
+          "commit": "d64219c824bd64d69b16c0550567bf3bcc76f756",
           "path": ".zzzops/reviews/1049/review_tests.md"
         },
-        "summary": "Fencing tests cover key paths, but one race is nondeterministic and approved expiry/reclaim and existing work-writer cases are not exercised."
+        "summary": "Controlled recovery contention and gate lifecycle cases address the prior findings; the required shared guard against an unlisted work-ref updater remains untested."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "72402e3295763873faa1f043d69f095a70987dcb",
-          "commit": "9b22b5314c74bc6450cc67db151b49ceb7c6206f",
-          "tree": "a4f0764cd90585b9fcee93c3061a9955c3cdea90"
+          "change": "99d2ef86d02388c45a1e7ab09a2e868a308286ac",
+          "commit": "28aa280dd7d709f77651234b83fbacffc479081b",
+          "tree": "41fb2ab4496aa5b0561630e595203bd6fec6ff08"
         }
       },
       "status": "done"
