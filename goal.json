@@ -429,14 +429,14 @@
       "status": "done"
     },
     "run_tests": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T06:17:35Z",
+      "finished_at": "2026-11-19T06:33:20Z",
       "fp_parts": {
         "def": "v1:sha256:def927cb81b82bf3b076ecd841fe451396715db71445477cd2a999786666b4ca",
         "inputs": {
-          "code": "v1:sha256:99aa9e749d67f34fbeec86facc7939772ebac89307192bf7d2e9d84a70c00abc",
+          "code": "v1:sha256:55d6bdbf0633e8763113b00d3d7fa45da4cbdac14061aa483b42a05483c24a29",
           "commands": "v1:sha256:a6b166a7e28461ab499dd5333a832ba511f7cbb0235edfe1fdfe33c068de0f95"
         },
         "policy": {
@@ -455,8 +455,8 @@
           ]
         }
       },
-      "holder": "codex:root/g1049-run-tests-2",
-      "input_fp": "v1:sha256:040f9e4e80065680650ade250bd9f05c54844a0098632a8db5ef5d83a1c2613e",
+      "holder": "codex:root/g1049-run-tests-3",
+      "input_fp": "v1:sha256:edbee93ddf73c9c442c9fbbf45aa4225f2555362993df131c257bdb8742226db",
       "ok": true,
       "output": {
         "result": {
@@ -464,26 +464,26 @@
             {
               "cmd": "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope test_engine_scope_recovery",
               "exit": 0,
-              "milliseconds": 145444,
-              "seconds": 145,
+              "milliseconds": 138443,
+              "seconds": 138,
               "source": "goal",
-              "tail": "est_unavailable_checkpoint_in_history_is_uncertain (test_engine_scope_recovery.RecoveryJourney.test_unavailable_checkpoint_in_history_is_uncertain) ... ok\ntest_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal (test_engine_scope_recovery.RecoveryJourney.test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal) ... /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1049/plugins/zzzops/zzzops/engine/gitrun.py:191: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n  self._batch = None\nResourceWarning: Enable tracemalloc to get the object allocation traceback\nok\ntest_unrelated_paths_in_modified_proposal_are_refused (test_engine_scope_recovery.RecoveryJourney.test_unrelated_paths_in_modified_proposal_are_refused) ... ok\ntest_workspace_claim_cannot_race_past_recovery_gate (test_engine_scope_recovery.RecoveryJourney.test_workspace_claim_cannot_race_past_recovery_gate) ... ok\n\n----------------------------------------------------------------------\nRan 31 tests in 145.376s\n\nOK\n"
+              "tail": "est_unavailable_checkpoint_in_history_is_uncertain (test_engine_scope_recovery.RecoveryJourney.test_unavailable_checkpoint_in_history_is_uncertain) ... ok\ntest_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal (test_engine_scope_recovery.RecoveryJourney.test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal) ... /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1049/plugins/zzzops/zzzops/engine/gitrun.py:191: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n  self._batch = None\nResourceWarning: Enable tracemalloc to get the object allocation traceback\nok\ntest_unrelated_paths_in_modified_proposal_are_refused (test_engine_scope_recovery.RecoveryJourney.test_unrelated_paths_in_modified_proposal_are_refused) ... ok\ntest_workspace_claim_cannot_race_past_recovery_gate (test_engine_scope_recovery.RecoveryJourney.test_workspace_claim_cannot_race_past_recovery_gate) ... ok\n\n----------------------------------------------------------------------\nRan 31 tests in 138.377s\n\nOK\n"
             },
             {
               "cmd": "PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_scope_recovery.RecoveryJourney.test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal test_engine_scope_recovery.RecoveryJourney.test_registered_base_operation_advances_work_with_its_valid_gate",
               "exit": 0,
-              "milliseconds": 2502,
+              "milliseconds": 2501,
               "seconds": 2,
               "source": "goal",
-              "tail": "test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal (test_engine_scope_recovery.RecoveryJourney.test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal) ... /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1049/plugins/zzzops/zzzops/engine/gitrun.py:191: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n  self._batch = None\nResourceWarning: Enable tracemalloc to get the object allocation traceback\nok\ntest_registered_base_operation_advances_work_with_its_valid_gate (test_engine_scope_recovery.RecoveryJourney.test_registered_base_operation_advances_work_with_its_valid_gate) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 2.432s\n\nOK\n"
+              "tail": "test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal (test_engine_scope_recovery.RecoveryJourney.test_unlisted_session_transaction_without_gate_cannot_advance_work_or_goal) ... /home/dave/Work/dev/zzzops/.zzzops/worktrees/g1049/plugins/zzzops/zzzops/engine/gitrun.py:191: ResourceWarning: unclosed file <_io.BufferedReader name=5>\n  self._batch = None\nResourceWarning: Enable tracemalloc to get the object allocation traceback\nok\ntest_registered_base_operation_advances_work_with_its_valid_gate (test_engine_scope_recovery.RecoveryJourney.test_registered_base_operation_advances_work_with_its_valid_gate) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 2.435s\n\nOK\n"
             },
             {
               "cmd": "python3 .github/scripts/run_product_validation.py --platform linux --local",
               "exit": 0,
-              "milliseconds": 232135,
-              "seconds": 232,
+              "milliseconds": 227333,
+              "seconds": 227,
               "source": "verification",
-              "tail": "ved_patch_reaches_production_and_later_line_only_after_approval\", 43.98052494399599], [\"test_engine_journeys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 42.803559649997624], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_changed_forward_port_pr_head_invalidates_previous_approval\", 41.69855900600669], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_older_maintenance_finishes_without_rewinding_production\", 40.55048244900536]], \"executed_count\": 1209, \"completed_count\": 1209, \"worker_seconds\": [181.6114949870098, 212.67881744299666, 198.97883457000717, 210.28022472100565, 220.882091668027, 219.85445467499085, 224.83596802898683, 170.5688520760159, 225.7896875340084, 197.09945809000055, 231.9999016399961, 214.22951919600018, 206.91495466799824, 203.7435989890073, 197.6910836349998, 193.47266512099304, 204.65652768401196, 225.31699921700056, 202.6558799110062, 208.0654384919908], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
+              "tail": "_patch_reaches_production_and_later_line_only_after_approval\", 42.6470027359901], [\"test_engine_journeys.RenamedJourneyTests.test_capture_to_merge_with_a_stacked_dependent\", 42.15014455898199], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_changed_forward_port_pr_head_invalidates_previous_approval\", 40.43107356602559], [\"test_engine_insertable_release_journeys.InsertedReleaseJourneys.test_older_maintenance_finishes_without_rewinding_production\", 39.95611971602193]], \"executed_count\": 1212, \"completed_count\": 1212, \"worker_seconds\": [184.0496889659844, 215.05108169699088, 197.16499493998708, 207.05655465601012, 218.3280047660228, 218.7359347360034, 220.91036609499133, 181.36438281499431, 219.5607235619973, 186.12880859102006, 227.19945197398192, 214.17101494100643, 193.91781391800032, 196.81031438501668, 205.36724359801156, 181.77649569298956, 197.6335348589928, 221.86723402299685, 202.13006346000475, 208.50216166101745], \"failures\": 0, \"errors\": 0, \"failure_ids\": [], \"error_ids\": []}\n"
             }
           ],
           "passed": true,
@@ -502,7 +502,7 @@
               "status": "unavailable",
               "verification": {
                 "caveat": "informational; machine load and concurrent goal-command workload may differ",
-                "delta_ms": 17678,
+                "delta_ms": 12876,
                 "source": {
                   "finished_at": "2026-11-19T02:54:19Z",
                   "goal": 1051,
@@ -523,18 +523,18 @@
               "platform": "linux",
               "python": "3.14"
             },
-            "goal_ms": 147946,
+            "goal_ms": 140944,
             "parallel_commands": false,
             "plan_sha256": "5417d9a6055749cbc34fc5a8a18ac761b8f74f060fdb5343dea4e2435c9f537c",
-            "total_ms": 380080,
-            "verification_ms": 232135,
+            "total_ms": 368277,
+            "verification_ms": 227333,
             "verification_plan_sha256": "92aebafa37cd4593016f4ae36266758d6462971d4b3f8d20cd6bfd73c14c2bc1",
             "workers": {
               "goal": 20,
               "verification": 20
             }
           },
-          "tree": "4c27873e9f1753e9eefd652ca354ea1227cd0c4b"
+          "tree": "e45f5bd2dfc19a8c452abc76456f1e9b99fc5112"
         }
       },
       "reason": "stale",
