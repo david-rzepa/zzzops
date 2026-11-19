@@ -324,52 +324,38 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 1,
-      "findings": [
-        {
-          "follows": "review_tests:1:2",
-          "id": "review_tests:2:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 2,
-          "target_fp": "v1:sha256:fe3ce424e709f6abada1dfe7a6971366ccc2f1fed3d7bf065e2bd4c7c30a53b9",
-          "text": "The child scope cases still do not test acceptance of a test-authoring deletion or rename, whose old path must retain an explicit absent marker and whose new path must be protected. Add real child-repo tests that accept the deletion/rename, permit an implementation descendant with unchanged accepted entries, then reject reintroducing the deleted/old name and mutating the new name. Also test a non-descendant child rewrite that preserves all protected entry contents: the existing HEAD~1 rewind deletes the accepted tests, so ordinary content comparison alone would reject it and does not prove the distinct descendant/provenance guard.",
-          "upheld": false
-        }
-      ],
-      "finished_at": "2026-11-19T04:30:40Z",
+      "findings": [],
+      "finished_at": "2026-11-19T04:37:04Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:2a8f10ac60632611baa7b55985abcb60f4650b1d",
-          "tests": "v1:sha256:2f6d469780e2afa99dea55d4ded596663237c33567e8491e597416ef0869efe9"
+          "tests": "v1:sha256:ac5009b83138cdfc83367c8c1e6e99e2b1e20490f0cf0e53275932b88bce35fb"
         },
         "policy": {},
-        "subject": "v1:sha256:4a0b0e2fab469caef2c8cd1cec985ce397c9af32546a8fd6471fc6ced8630d69"
+        "subject": "v1:sha256:96dfc995c14572f5d9e4750e9fcce4c1263bc6f5cd4d4bf1db397cca2ff27015"
       },
-      "holder": "codex:root/g1050-review-tests-3",
-      "input_fp": "v1:sha256:e5c25f7bd73b7d827882a419081cd8d46a24e67eddfa9a1ccb64fb151e743c3f",
+      "holder": "codex:root/g1050-review-tests-4",
+      "input_fp": "v1:sha256:fb59a046a9a01a91f546633216e4a79b6d714ac4ef1ce70f491f8ef7a5f4e1cd",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "3f07988e77f0fb8db9b4a14d11d2a38fd929d4cf",
-          "commit": "b721ffc2a46b748e453afa6181c1d4039d5b9d82",
+          "blob": "42bcc86155d257f863acb41c4ffc709565f74e2c",
+          "commit": "8c622c854b120e7e0ca0d2417737ada389c6c6e1",
           "path": ".zzzops/reviews/1050/review_tests.md"
         },
-        "summary": "The additional real-Git cases cover accepted deletion and both rename paths plus an identical-tree non-descendant rewrite; the remaining finding is resolved."
+        "summary": "Fixture adds the routing capability only if absent; accepted safety tests remain intact."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "974a75d81a1f437ba45f80736270611e11ddd66b",
-          "commit": "14207c3b2df79f5ae746894151a8128d37c9f7f1",
-          "tree": "c0925f2b5712cf136d65a8ab36c3b901059a93f9"
+          "change": "1fb8883b3fc28cbb80fdd7a373021ea3385394f3",
+          "commit": "f5fccc01b5cdd75993de3187d596e15411a5ca78",
+          "tree": "c292540e24e085c0e1e7a3a2f3decc8953962aba"
         }
       },
       "status": "done"
