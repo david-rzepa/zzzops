@@ -131,7 +131,7 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 1,
       "findings": [
         {
@@ -142,7 +142,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 3,
           "target_fp": "v1:sha256:cd19a6bfa9f285e9d1936f0cbd1f34fabaca319d3147ddb0ae785573c8c291a1",
@@ -157,7 +157,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "design",
           "target_attempt": 3,
           "target_fp": "v1:sha256:cd19a6bfa9f285e9d1936f0cbd1f34fabaca319d3147ddb0ae785573c8c291a1",
@@ -165,11 +165,11 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-19T04:05:26Z",
+      "finished_at": "2026-11-19T04:08:39Z",
       "fp_parts": {
         "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
         "inputs": {
-          "doc": "v1:blob:6e65cc4166ced0eb308e9005e159540200dea7dc",
+          "doc": "v1:blob:2a8f10ac60632611baa7b55985abcb60f4650b1d",
           "spec": "v1:sha256:014dd47b89f4500ebe37fe1115934cf99ce5e5928862020735efad9984e42177"
         },
         "lenses": [
@@ -203,25 +203,25 @@
             "serves": "Developers who delegate project work to coding agents, and the agents doing it."
           }
         },
-        "subject": "v1:sha256:cd19a6bfa9f285e9d1936f0cbd1f34fabaca319d3147ddb0ae785573c8c291a1"
+        "subject": "v1:sha256:44e6fea84a9de44fed09f189358f01261cd30ba7aa2261de827cc7dac5229892"
       },
-      "holder": "codex:root/g1050-review-design",
-      "input_fp": "v1:sha256:c67c0c6e1fd999ca005866ec14126442996e83ec2cf62b1f064b33eb26dd68a1",
+      "holder": "codex:root/g1050-review-design-2",
+      "input_fp": "v1:sha256:a667c96998c81d004a50589fa3cfa3f1697a67e9688f30a556580925c81d08dd",
       "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "dde3c6827058abcea4b6c8611f33adae21d9473b",
-          "commit": "0cb38abceb5734f9a94af7600473a1e7bc65ce67",
+          "blob": "7e9779c35c1f14f0af57caa74a48cee543dc02d8",
+          "commit": "320a6412f6ee7f71a394e157a78620bcbdd5bbc9",
           "path": ".zzzops/reviews/1050/review_design.md"
         },
-        "summary": "Two routing changes need stronger review and finding gates before implementation."
+        "summary": "The revised design closes both routing findings with fail-closed transitions and fingerprinted review gates."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "6e65cc4166ced0eb308e9005e159540200dea7dc",
-          "commit": "5e63f550368a5ff1b1d377f492fbee9929436e87"
+          "blob": "2a8f10ac60632611baa7b55985abcb60f4650b1d",
+          "commit": "c37315832627c8a5bd9759beea0aba5d4b9e3a2f"
         }
       },
       "status": "done"
