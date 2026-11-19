@@ -1,0 +1,10 @@
+# G1049 test review
+
+The four tests at checkpoint 2558fcae are useful and independently reproduced red with `PYTHONPATH=.agents:plugins/zzzops/zzzops python3 -m unittest -v test_engine_blocked_scope` (four expected failures in 2.653 s). The local Git/CLI journeys are justified; there are no sleeps or fragile timing assertions. This is a red measurement, not evidence of green implementation.
+
+The checkpoint is incomplete against the approved design in two material areas:
+
+1. The core enabled-capability path is absent. Add realistic CLI/Git journeys for a producer committing a new test before blocking, publishing its work, retrying with no new commit and receiving independent review. Verify multiple blocks, verified sync/rebase, refusals for unverifiable provenance and explicit candidate exclusions. Exercise a consumer with already-published work while its producer is blocked through a real checkpoint submission, and verify protections and allowed non-test edits after producer acceptance. Cover enabled and disabled capabilities and legacy/empty scope distinctions. Assertions must inspect the final reviewed frozen scope and protection, not only helper return values.
+2. Recovery is not tested. Reproduce the G12 13/2 subset accepted-record history, invoke read-only validation, inspect path provenance and proposed edit, CAS-apply with the supported edit route, retry and independently review the producer; assert immutable history and final protection. Cover done-state recovery, idempotence, stale bases and live leases, missing, malformed, ambiguous or unrelated evidence and older capability-gated writers. Test diagnostics and refusal through real CLI/Git where their behavior depends on history, leases or atomic writes; focused checks can cover pure validation logic.
+
+The existing direct `preserve_check` probe correctly reproduces the missing guard, but does not prove every externally reachable checkpoint-publishing path invokes it. The full journey requested above covers that boundary.
