@@ -211,14 +211,14 @@
       "status": "done"
     },
     "review_design": {
-      "attempt": 3,
+      "attempt": 4,
       "correction_runs": 1,
       "findings": [],
-      "finished_at": "2026-11-19T04:18:43Z",
+      "finished_at": "2026-11-19T05:11:32Z",
       "fp_parts": {
         "def": "v1:sha256:22282a4dbcb4b22e465a59c98b742f7529b2e83adf029b4f360d3550d4346ac7",
         "inputs": {
-          "doc": "v1:blob:b0a79141fe1b4c4ad3c03ac7f911f36d48919512",
+          "doc": "v1:blob:a3ac387cd2f38ff9ee0f04e627ebb2d7657176b0",
           "spec": "v1:sha256:4a8cbbd6281ed2930a25aaeeab28d289c69eab99320d3a8dca44789c357b3dae"
         },
         "lenses": [
@@ -252,25 +252,25 @@
             "serves": "Developers who delegate project work to coding agents, and the agents doing it."
           }
         },
-        "subject": "v1:sha256:ae633a16bb8d04a3df5bfd42a50c83580634e0bbb835c70e625d71afd2e4164c"
+        "subject": "v1:sha256:391d3a46a3fa92dbfab76c41b2df18d3e404bf5a9557b2e60dc23bf6e15f0d24"
       },
-      "holder": "codex:root/g1049-review-design-3",
-      "input_fp": "v1:sha256:b9298c15cf7f90008bcde07dc754fab4e8f604f955ad2af02b674cde8a306888",
+      "holder": "codex:root/g1049-review-design-4",
+      "input_fp": "v1:sha256:96e1f50a80570cdcc9272134df5467e53850d38c2619681021dfab404541c17a",
       "ok": true,
       "output": {
         "decision": "approved",
         "report": {
-          "blob": "2b8c78582be784cea4d70c31ab9e8daca6ce7a22",
-          "commit": "085219b18244d8e82fb5e72c1bb8f41750350941",
+          "blob": "05d0cb367b5b9eb4cd4db5e2504b8c9a7fb2d4ea",
+          "commit": "6839b416a8c26c62b3a50eb7ef97a4db716f9c1a",
           "path": ".zzzops/reviews/1049/review_design.md"
         },
-        "summary": "The validation, edit and capability contracts are concrete and maintain the previously reviewed safeguards."
+        "summary": "The revised design fences cooperating writers using a changed CAS ref and explicitly discloses the direct-push race."
       },
       "reason": "stale",
       "reviewed": {
         "doc": {
-          "blob": "b0a79141fe1b4c4ad3c03ac7f911f36d48919512",
-          "commit": "0d7accf6e9435976befa8ce72f1b74217ab2de9f"
+          "blob": "a3ac387cd2f38ff9ee0f04e627ebb2d7657176b0",
+          "commit": "8975028b3e43dc85fd7e151c7759f2d8e03be891"
         }
       },
       "status": "done"
