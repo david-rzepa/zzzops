@@ -349,7 +349,7 @@
       "status": "done"
     },
     "review_impl": {
-      "attempt": 1,
+      "attempt": 2,
       "correction_runs": 1,
       "findings": [
         {
@@ -360,7 +360,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "implement",
           "target_attempt": 4,
           "target_fp": "v1:sha256:dee3d601bb393629d13f5689b982228a750f4b85c017903cbc8aab8d4a1a0748",
@@ -375,7 +375,7 @@
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "implement",
           "target_attempt": 4,
           "target_fp": "v1:sha256:dee3d601bb393629d13f5689b982228a750f4b85c017903cbc8aab8d4a1a0748",
@@ -383,12 +383,12 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-19T05:56:58Z",
+      "finished_at": "2026-11-19T06:16:04Z",
       "fp_parts": {
         "def": "v1:sha256:ba0e80cd449a16330f3e62cea7fab93aad71b666081fd28f1c0386cf4f3d2d24",
         "inputs": {
           "base": "v1:sha256:1eee7b2e3964a69facb766f50195fd0750184506761869cf1d3140667ff55a3a",
-          "code": "v1:sha256:b78622cb1defc74de5e3fb83ddd16258f40e44de89fb7392efb3b93c335da6f4",
+          "code": "v1:sha256:b840137f940fef72278ca3a7c6a249bc6d4018de5e4c81b46189ad90441a0938",
           "doc": "v1:blob:2a8f10ac60632611baa7b55985abcb60f4650b1d",
           "tests": "v1:sha256:45eae548751d46a53d957954da7301a3344ecadb48b76da84ab176644b72933f"
         },
@@ -400,27 +400,27 @@
           "craft"
         ],
         "policy": {},
-        "subject": "v1:sha256:dee3d601bb393629d13f5689b982228a750f4b85c017903cbc8aab8d4a1a0748"
+        "subject": "v1:sha256:4b73753505f131656d05896ed2bcde348276b4af94bd59e115d512717488b4b7"
       },
-      "holder": "codex:root/g1050-review-impl",
-      "input_fp": "v1:sha256:757774ac6543fd4b370c61f4aca03fb620cadebce280db0ca13dd5f68707da51",
+      "holder": "codex:root/g1050-review-impl-2",
+      "input_fp": "v1:sha256:31dca08d1e17a924751d5370562a76a81bd139b5efef2d03ae8cdc0eb9393bba",
       "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "dbd72ab3d7a6e90edb003cb74d0fe699cbd3b839",
-          "commit": "45d07d3606acc348c18403d29484fd5044334e3e",
+          "blob": "ba4c94dd97cfc4a1489613e36aa2c9d2463b1d20",
+          "commit": "4919b22f29aa8e8897ca707495ee4983221320fb",
           "path": ".zzzops/reviews/1050/review_impl.md"
         },
-        "summary": "Two real route transitions bypass outstanding findings or independent review of blocked scaffold work."
+        "summary": "Both reproduced route-transition bypasses are fixed; independent CLI probes and focused review-freshness tests pass."
       },
-      "reason": "new",
+      "reason": "stale",
       "reviewed": {
         "code": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "e7a30b016641fa68763ba7c87e84ab735920bd64",
-          "commit": "9a8d1ccc1e39dbd0a7bc55d171a1df84aef1fa8e",
-          "tree": "2b9fca79afc4929b9dbb56904e2c36ce596d2cab"
+          "change": "04890ac25e0432a6973b00e1ad111e047d15aeea",
+          "commit": "022a43939169c7a9b87d39e15dfe7646a14108fb",
+          "tree": "cec7a9e255d742af17652bb89c4a4adf97da0bba"
         }
       },
       "status": "done"
