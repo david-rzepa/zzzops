@@ -1,5 +1,5 @@
 # G1050 test review
 
-Approved. The change supplies required independent review artifacts on every direct design-review submission and runs the behavior test with Python `-B` to keep the worktree clean. Previously accepted safety assertions remain unchanged.
+Approved. The sole correction reads the live test-design lease by node name, matching the actual `show` response, and still checks that preview neither alters nor replaces the lease.
 
-I independently ran a real local-remote CLI fixture: a review with the supplied artifact was accepted as current, and a Python `-B` red invocation left the fixture Git worktree clean. The author's full current pre-implementation suite took 42.687 seconds and remained red because the feature is not implemented; final green behavior remains for implementation verification.
+I independently ran the corrected real local-remote CLI policy-preview case against the current implementation; it passed in 2.161 seconds. The test author reports all 34 focused cases green in 71.572 seconds, with the separate child-preservation case in 1.472 seconds. Broader verification remains with the implementation workflow.
