@@ -162,10 +162,10 @@
       "status": "done"
     },
     "implement": {
-      "attempt": 4,
+      "attempt": 5,
       "correction_runs": 3,
       "findings": [],
-      "finished_at": "2026-11-19T01:50:16Z",
+      "finished_at": "2026-11-19T01:59:21Z",
       "fp_parts": {
         "def": "v1:sha256:9c052bb6681347bacb0b151f833e41346029e55474cbdb9c1b683bfc63c4d2ad",
         "inputs": {
@@ -175,19 +175,22 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/g1051-implement-4",
+      "holder": "codex:root/g1051-implement-5",
       "input_fp": "v1:sha256:35bcefc8fed9697df5a6e73bad2edf442d6746662e9c3e0ae7bd15173c8a315a",
       "ok": true,
       "output": {
         "code": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "71f2887213b32322bc14cdd11928fed25bbe6a57",
-          "commit": "89522c479ccab2d3268f046405eefea23eb54d52",
-          "tree": "3cb0d63246db2e36cdf948ed8235ab3fdc65ef9d"
+          "change": "acf5ae1a02a635b0674c0314fc8ef47dabf98b69",
+          "commit": "12b1237dd5e0ae45f99847632787c22d078ff287",
+          "tree": "bba78499c3736231bd8f1379c49406cf18062762"
         },
-        "summary": "Implemented separately tracked maintenance forward-ports with immutable source provenance, capability-gated atomic goal/carrier creation, per-destination approval and protected PR merges. Added evidence-backed history-only outcomes, fresh approval after observed head/base changes, resumable provider errors, recorded post-merge divergence, and coordination-goal isolation. The required local checks pass; actual hosted protected-branch staging remains to be verified."
+        "responses": {
+          "run_tests:failed": "fixed: explicitly test the new preview_stale exit code, restore the enforced prompt budget through progressive disclosure, and validate the resulting package and affected tests."
+        },
+        "summary": "Updated the error-code regression test to cover preview_stale and preserve the complete exit-code count. Moved detailed phase-output and capability guidance into a linked cold reference, kept the CLI commands discoverable, and required the new reference and forward-port prompt in packaged bundles. Focused schema, prompt-budget, packaging, documentation and G1051 checks pass."
       },
-      "reason": "stale",
+      "reason": "reopened",
       "status": "done"
     },
     "review_design": {
