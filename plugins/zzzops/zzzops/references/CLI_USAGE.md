@@ -15,10 +15,14 @@ Every verb prints one JSON object (`show` prints text unless `--json`). **Runnin
 | `reopen G X --note T` | Re-run a done node (for example re-observe a flaky check). |
 | `edit G… (--file F… \| --set PATH=JSON…) [--base C]…` | Change goals: hold, unhold, depend, skip (a node, or one lens with `skip.<node>:<lens>`), close, budget, waive. Without `--base` for every goal it is a dry run that prints the impact preview. Both the preview and the applied result list `live_leases_on_changed_nodes` (running phases whose inputs the edit changes, with `abandon` and `restart` commands). `carried_findings` lists the open findings that stay live after the edit although their review went stale, each with the `--set` lines that waive it in the same edit. |
 | `release cut N --answer F` | With `settings.branching`: answer a `release_cut` item. Cuts `<release_prefix>N` from the integration tip and creates its line goal; `F` is the item's `answer_template` (`{"decision": "approved", "quote", "decided_by"}`). Safe to rerun: a cut that already happened returns its goal with `created.recovered: true`. |
+| `release insert TARGET --from SOURCE [--answer F]` | With release branching and the `insertable_release_targets` capability, preview an isolated release from a previously finished release. Apply with the preview's answer template after owner approval. The source and production snapshots are checked again; changes require a fresh preview. |
+| `release forward-port SOURCE --to BRANCH` | Start or resume a separate operation for a finished maintenance release. Inspect the operation with `next --goal G` and approve its exact PR or history evidence before it can complete. The source release stays closed and unchanged. |
 | `hotfix start X --answer F` | With `settings.branching`: answer a `hotfix_start` item. Creates `<hotfix_prefix>X` from the production branch and its line goal; a finished hotfix name is refused (choose a new one). |
 | `validate [G…]` / `validate --policy [--dir D]` | Check goals, the environment and policy files, and show the engine's `build` and `capabilities`; changes nothing. With `--policy-ref REF`, check the policy on `REF` and report its impact. |
 
 `ZZZOPS_TRACE=<file>` appends one JSON line per network call (`git fetch`, `push`, `ls-remote`, and every `gh` call) with `cmd`, `rc` and `ms`. Local git commands are not traced.
+
+Release targets compare as numeric components: `2.1` precedes `2.10`, and trailing zero components are aliases (`2`, `2.0`). An inserted maintenance release remains on its own line; it does not move production backwards. Production forward-ports require separate approval for each destination. GitHub guards the approved PR head but cannot atomically guard independent refs, so a detected source or base race pauses further propagation for review.
 
 **Examples.**
 ```sh
@@ -32,14 +36,11 @@ zzzops next --policy-ref zzzops/policy/ci-lint
 
 **Legacy state.** `next` and `validate` report pre-reset goals/files as `legacy`; an old policy blocks writes as `legacy_policy`. Offer `migrate-zzzops-repository` once; the legacy notice alone does not pause work. See [legacy detection and compatibility](MIGRATING.md#legacy-detection-and-compatibility) for fields, rechecks and policy-controlled dismissal.
 
-**Engine capabilities.** `settings.engine.requires` lists the capabilities (names such as `lens_findings`) that every engine working on the repository must have. An engine that lacks one pauses work and refuses writes with `engine_too_old`, whose blocker and error `details` carry `missing`; reads still work. Upgrade the plugin (REPAIR.md, "Upgrade the engine"). `validate` shows the running engine as `engine: {build, capabilities}`, and `zzzops --version` prints the build (`<plugin version> <revision>`), which the `Engine:` trailer of every goal commit also records. `settings.engine.min` is deprecated: it still works (`1.0.0` needs nothing, `1.1.0` needs `lens_findings`, `1.2.0` needs `lens_findings` and `finding_follows`, `1.3.0` needs those and `lenses`, anything higher is refused), and `validate` warns `engine_min_deprecated`. An older engine reports `policy_invalid` on `requires`: upgrade it, never remove the key. Maintainers: a change on SPEC §4.5's list (a new goal schema; fingerprint, canonical-JSON, `code_tree` or `change` semantics; an op `version`; the lease format; any new POLICY or workflow key, field or op; any new record or finding key) ships a new capability, `engine/capabilities/<name>.txt`.
+For capability floors, response-key refusals and agent output schemas, see [engine capabilities and phase outputs](PHASE_OUTPUTS.md).
 
-Require `blocked_findings` in the same policy PR as the revised design step 4, or after it, never before. That prompt exempts owner questions that `human_decisions` already answers. Blocked agents then retain live corrections on their retry cards; the default template's required set is unchanged.
+**Outputs** use the work branch's HEAD by default; an explicit checkpoint needs a full 40-hex sha. Review findings may use `follows` as described in the linked reference.
 
-Response-key refusals include `details.why` for each `no_longer_live` id: `superseded`, `resolved`, `waived`, `other_target`, `target_blocked`, `target_changed`, or `not_live`. Answer missing ids under `respond_to`; drop obsolete response keys, then resubmit.
-
-**Outputs** of agent nodes are JSON files: every declared output except checkpoints and artifacts; `responses` for every listed correction (`fixed: …` or `disputed: …`); review nodes give `decision`, `summary` and a status for every finding in `previous.findings` (ids in `previous.resolved` need none; restating them `resolved` is accepted, `open` is refused "already resolved"); a new review finding may carry `"follows": "<prior id>"` when it narrows a partly fixed finding you resolve (allowed once the policy requires capability `finding_follows` in `settings.engine.requires`; it keeps the dispute count, never `upheld`); a correction marked `stale_review` came from a review whose inputs changed since, and still needs `fixed:` or `disputed:`; a lens (a review with a `filter`) gives each new finding `impact` and `material`, and a filter gives `verdicts` (`keep` or `note`, with a `reason`) for every non-material `candidate` on its card. Checkpoint keys are optional: omit the key to default to your work branch's HEAD, including a phase that adds no commit. To choose an earlier commit, name `{"<key>": {"commit": "<full 40-hex sha>"}}`; ref names such as `HEAD` and short shas are refused.
-
+Require `blocked_findings` alongside or after the revised design step 4; see the linked reference for rollout.
 
 **Goal sync.** Require `merge_sync` only after every writer is upgraded; otherwise base retains rebase mode. Never remove it while an open work branch has sync merges. See [REPAIR.md](REPAIR.md#goal-sync-checkpoints-and-delivery) for rollout, rollback, conventional subjects, scoped checkpoints and conflict recovery.
 
@@ -48,3 +49,6 @@ Response-key refusals include `details.why` for each `no_longer_live` id: `super
 **Round budgets:** `round_budget` gates per-stage limits on new material-finding rounds (default 10); see [adoption](MIGRATING.md#clean-sync-reviews-and-round-budgets).
 
 [Defaults](MIGRATING.md#shipped-default-updates).
+
+
+**Preserved test scope recovery.** `validate G` reports read-only `scope_recovery` diagnostics for the explicitly requested goal. A proposal identifies each path's accepted-history sources and includes an edit file and observed base; review and preview that file before applying it with `edit --file FILE --base BASE`. Uncertain evidence offers no edit. A producer with mixed pending test and non-test candidates supplies `scope_selection` in its output; independent review sees the selected and excluded candidate paths. See REPAIR.md for capability activation and recovery steps.

@@ -3,6 +3,7 @@
   "settings": {
     "engine": {
       "requires": [
+        "conditional_review_routes",
         "lens_findings",
         "lenses",
         "test_cost"

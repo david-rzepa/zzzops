@@ -61,6 +61,12 @@ The current default graph has 15 nodes: one multi-lens reviewer per subject (`re
 
 Before landing a policy with `settings.branching`, require `release_lines` through the upgrade recipe in REPAIR.md and turn GitHub's "Automatically delete head branches" **off**: `gh api -X PATCH repos/{o}/{r} -F delete_branch_on_merge=false`. Merging a finish PR otherwise deletes the kept `release/N` or `hotfix/x` branch; dependency deletion can also close or move stacked and release PRs before the engine retargets them. The host-setting change needs the owner's authority; the engine never makes it. `zzzops validate` warns when the setting is on and readable, without failing validation (see SETUP.md). When removing `settings.branching`, restore the non-branching recommendation, **on**, with the owner's authority (`-F delete_branch_on_merge=true`).
 
+## Adopting insertable release targets
+
+Upgrade every writer first, then use the reviewed capability upgrade procedure in REPAIR.md to require `insertable_release_targets` before writing dotted releases. Inspect release refs and line records for aliases such as `release/2` and `release/2.0`; resolve collisions explicitly before activation. Keep the capability requirement after any dotted state has been written: removing it can let older writers misinterpret that state. Custom workflows must retain isolated release-line routing, the source snapshot checks, and the separate approval gates. A dotted label is an ordering identity, not proof of a Git ancestor; use `release insert` and review its recorded released source.
+
+For post-finish maintenance forward-ports, add the shipped `forward_port` graph and its `approve_forward_port.md` prompt to the reviewed repository workflow. Each `release forward-port SOURCE --to BRANCH` creates a separate operation; retrying the command resumes the same source snapshot and destination. History-only evidence needs its own approval and cannot prove the change remains effective after a later revert. When a source or destination changes, inspect the refreshed evidence before approving it.
+
 
 ## Adopting measured test cost (capability `test_cost`)
 
@@ -101,3 +107,12 @@ Decide `workflow.json` before individual prompt changes. Every row offers `apply
 After explicit review or decline, `record.reviewed` contains exactly the current shipped `files` hashes, including when local content or absence is kept. Writing that snapshot quiets the notice until a subsequent shipped change. Missing or invalid records offer this snapshot for explicit review and infer no historical base. A legacy `removed` entry means reviewed absence: quiet while the path is absent from current defaults and reviewable as an addition if it reappears; new receipts omit these old entries. A newer record schema alone gives `newer_record` without a replacement offer. `policy_merge_markers` is a warning. Reading these notices never writes policy or provenance and never blocks other work.
 
 **Maintainers:** maintain and validate only the current shipped defaults. G1047 removes template archive/seed maintenance and the obsolete full-workflow fixtures. Generic workflow coverage uses the shipped default, fully renamed current graphs or small explicit scenarios; it does not promise historical reconstruction. Existing schema and capability floors remain unchanged.
+
+## Adopting conditional review routes
+
+Upgrade every writer before adding `conditional_review_routes` to `settings.engine.requires` through the reviewed policy procedure. Review the shipped workflow and prompts rather than replacing local customizations. `review_design` supplies a required boolean decision; scaffold and independent review run only when selected. Preview in-flight goals with `validate --policy-ref` and `next --policy-ref`: old records lack the new output and must be re-reviewed. Do not fabricate a decision, discard findings or change running leases. Keep the prior graph or wait for active work to finish where the preview cannot preserve it. Once child-test evidence is written, keep the capability requirement until all affected goals are completed; older engines cannot safely interpret it. The initial child scope supports locally available, explicitly declared submodules whose origin matches the recorded mapping and fails closed on missing or rewritten histories and nested submodules.
+
+
+## Adopt preserved test provenance
+
+Upgrade every writer before requiring `preserved_test_provenance` through the reviewed capability upgrade in REPAIR.md. Before activation, new writers preserve existing frozen scope and refuse publishing blocked producer work that cannot be recorded safely; older writers can still lose scope, so activation is necessary to exclude them. Keep this capability required while provenance records exist. For a suspected historical loss, use the read-only `validate G` recovery diagnostic and reviewed, guarded edit described in REPAIR.md.

@@ -113,6 +113,12 @@ def _run(ctx):
     H = rebuild(ctx, ident, B, W, T)
     if ident.code_tree(H) != T:
         raise EngineError("the rebuilt PR head has a different code tree")
+    from engine.schemas import required_caps
+    if "conditional_review_routes" in required_caps(ctx.settings):
+        from engine import child_scope
+        for record in (ctx.doc.get("records") or {}).values():
+            if record.get("child_scope"):
+                child_scope.verify(ctx.session, g, H, record["child_scope"])
     if git.out("diff", "--name-only", B, H, "--", REVIEW_PATH):
         raise EngineError("the rebuilt PR head contains review files")
     # 3. push the PR head; expected value = this invocation's fetched tip

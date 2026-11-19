@@ -6,7 +6,7 @@ from __future__ import annotations
 import copy
 import time
 
-from engine import canon, schemas
+from engine import canon, schemas, release_id
 from engine import records as rec
 from engine.canon import iso
 from engine.errors import Refused
@@ -15,7 +15,7 @@ from engine.lines import RELEASE_GRAPH, branching, line_branch
 
 def line_key(kind: str, name: str) -> str:
     """Derived from the line alone, never from the answer file, so racing delegates share one key (§3.3)."""
-    return "line:" + canon.H({"line": kind, "name": str(name)})
+    return "line:" + canon.H({"line": kind, "name": release_id.label(name) if kind == "release" else str(name)})
 
 
 def check_answer(a) -> dict:
@@ -39,6 +39,16 @@ def run(s, kind: str, name: str, answer: dict) -> dict:
     check_answer(answer)
     name = str(name)
     s.open()
+    if kind == "release":
+        try:
+            canonical = release_id.canonical(name)
+        except ValueError as exc:
+            raise Refused("validation", str(exc)) from exc
+        if "." in name and "insertable_release_targets" not in schemas.required_caps(s.state.settings):
+            raise Refused("validation", "dotted release targets require capability `insertable_release_targets`")
+        if isinstance(canonical, str):
+            raise Refused("usage", "inserted releases need an approved source; use `release insert` instead")
+        name = str(canonical)
     b = branching(s.state.settings)
     if not b:
         raise Refused("usage", "release lines need settings.branching in .zzzops/POLICY.json",
@@ -117,7 +127,7 @@ def check_ready(s, p, kind, name, b) -> str:
     return tip
 
 
-def line_goal(s, kind, name, branch, cut, answer, key) -> tuple:
+def line_goal(s, kind, name, branch, cut, answer, key, inserted=None) -> tuple:
     from engine import store
     from engine.frontier import portfolio
     st = s.state
@@ -125,15 +135,18 @@ def line_goal(s, kind, name, branch, cut, answer, key) -> tuple:
     known = set(s.snap.known) | set(s.snap.goals) | set(s.snap.deleted) | set(s.snap.rewritten)
     gid = max(known | {settings["goals"]["first_id"] - 1}) + 1
     p = s.portfolio()
-    release = int(name) if kind == "release" else (p.effective or settings["releases"]["current"])
-    frm = s.snap.I if kind == "release" else settings["branching"]["production"]
+    release = release_id.canonical(name) if kind == "release" else (p.effective or settings["releases"]["current"])
+    frm = (line_branch(settings["branching"], "release", inserted["source_release"]) if inserted is not None
+           else s.snap.I if kind == "release" else settings["branching"]["production"])
     title = f"Release {name}" if kind == "release" else f"Hotfix {name}"
     doc = {"schema": 2, "id": gid, "title": title, "graph": RELEASE_GRAPH, "state": "open", "closed": None,
            "spec": f"{title}: the line branch `{branch}`, cut from `{frm}` at {cut}. Created by "
-                   f"`zzzops {'release cut' if kind == 'release' else 'hotfix start'} {name}`.",
+                   f"`zzzops {'release insert' if inserted is not None else 'release cut' if kind == 'release' else 'hotfix start'} {name}`.",
            "priority": "P1", "release": release, "depends_on": [], "skip": {}, "links": {"issue": None},
            "budget": None, "records": {},
            "flow": {"line": kind, "name": name, "branch": branch, "from": frm, "cut": cut}}
+    if inserted is not None:
+        doc["flow"]["inserted"] = inserted
     graph = st.graphs[RELEASE_GRAPH]
     first = next(n for n in graph.topo if graph.nodes[n]["kind"] == "human" and not graph.producers(n))
     docs = dict(st.docs)

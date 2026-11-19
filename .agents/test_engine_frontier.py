@@ -52,7 +52,10 @@ class FrontierTests(Base):
     def test_happy_path_reaches_every_terminal(self):
         self.s.goal(1)
         self.assertTrue(self.s.drive(1, until=self.n("merge")))
-        self.assertTrue(all(x["name"] == "current" for x in self.s.st(1).values()))
+        states = self.s.st(1)
+        skipped = {self.n("scaffold"), self.n("review_scaffold")}
+        self.assertTrue(all(x["name"] == ("skipped" if n in skipped else "current")
+                            for n, x in states.items()), states)
 
     def test_changes_requested_reopens_target_with_no_extra_phase(self):
         s = self.s
@@ -277,7 +280,9 @@ class FrontierTests(Base):
         from engine.schemas import build_graph
         s.graphs["default"] = build_graph("default", {"nodes": s.graphs["default"].nodes,
                                                       "terminal": s.graphs["default"].terminal})
-        self.assertTrue(all(x["name"] == "current" for x in s.st(1).values()), s.names(1))
+        expected_skips = {self.n("scaffold"), self.n("review_scaffold")}
+        self.assertTrue(all(x["name"] == ("skipped" if n in expected_skips else "current")
+                            for n, x in s.st(1).items()), s.names(1))
 
 
 class RenamedFrontierTests(FrontierTests):

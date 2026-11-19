@@ -450,19 +450,34 @@ def build_ledger(git: Git, snap: Snapshot, commits: dict, st: State) -> dict:
     without trailers (closed by an older engine, or before branching was on) has its document read through the
     persistent cat-file batch, so the cost does not grow with the number of such goals."""
     from engine.lines import entry_of
+    from engine import release_id
     out = {}
     for g, c in sorted(commits.items()):
         if g in st.docs:
             out[g] = entry_of(st.docs[g])
             continue
         rel = c.trailer("Release")
-        if rel is not None and rel.isdigit():
+        try:
+            target = release_id.canonical(rel)
+        except ValueError:
+            target = None
+        if target is not None:
             line = c.trailer("Line")
-            out[g] = {"release": int(rel), "state": c.trailer("State") or "open", "closed": c.trailer("Closed"),
+            out[g] = {"release": target, "state": c.trailer("State") or "open", "closed": c.trailer("Closed"),
                       "line": line, "hotfix": c.trailer("Hotfix")}
+            if c.trailer("Coordination") == "forward_port":
+                out[g]["coordination"] = True
+            if line and (g in st.invalid or g in st.newer):
+                # A trailer alone cannot prove an invalid or unreadable line's
+                # isolation metadata. Never route members onto it as verified.
+                out[g]["inserted"] = {"verified": False}
             continue
         doc, _ = read_goal_json(git, snap.goals[g])
-        if isinstance(doc, dict) and isinstance(doc.get("release"), int):
+        if isinstance(doc, dict):
+            try:
+                release_id.components(doc.get("release"))
+            except ValueError:
+                continue
             out[g] = entry_of(doc)
     return out
 
@@ -472,6 +487,8 @@ def ledger_trailers(doc: dict, settings: dict | None) -> str:
     if not settings or settings.get("branching") is None or not isinstance(doc, dict):
         return ""
     lines = [f"Release: {doc.get('release')}"]
+    if doc.get("graph") == "forward_port":
+        lines.append("Coordination: forward_port")
     if doc.get("state") == "closed" and isinstance(doc.get("closed"), dict):
         lines.append(f"Closed: {doc['closed'].get('reason')}")
     flow = doc.get("flow") or {}
@@ -597,13 +614,32 @@ def _unlock(fh):
 
 # --------------------------------------------------------------------------------------------- writes (§4.4)
 
-ENGINE_REFS = ("refs/heads/zzzops/goal/", "refs/heads/zzzops/lease/", "refs/heads/zzzops/stack/", "refs/heads/zzzops/sync/")
+ENGINE_REFS = ("refs/heads/zzzops/goal/", "refs/heads/zzzops/lease/", "refs/heads/zzzops/stack/", "refs/heads/zzzops/sync/",
+               "refs/heads/zzzops/gate/", "refs/heads/zzzops/provenance/")
 
 
 def push_atomic(git: Git, R: str, updates, report_up_to_date: bool = False) -> tuple:
     """('ok'|'rejected'|'remote', stderr). updates: [(ref, expected or None, new or None)].
     With report_up_to_date, a push that changed no ref (every ref already held its new value) is 'up_to_date'."""
     updates = [(ref, exp, new) for ref, exp, new in updates if (exp or None) != (new or None)]
+    work_writes = any(re.fullmatch(r"refs/heads/zzzops/work/g(\d+)", ref) for ref, _, _ in updates)
+    required = getattr(git, "workspace_gate_required", None)
+    if work_writes and required is None:
+        raise Refused("validation", "work-ref push requires an initialized policy context")
+    if required:
+        for work_ref, _, _ in updates:
+            match = re.fullmatch(r"refs/heads/zzzops/work/g(\d+)", work_ref)
+            if not match:
+                continue
+            goal = int(match.group(1))
+            held = getattr(git, "workspace_gate_holds", {}).get(goal)
+            fence_ref = f"refs/heads/zzzops/gate/g{goal}"
+            if not held or not any(ref == fence_ref and old == held["oid"] and new and new != old
+                                   for ref, old, new in updates):
+                raise Refused("validation", f"G{goal} work-ref push requires its current workspace gate")
+            from engine.canon import read_now
+            if read_now() >= held["doc"]["expires_at"]:
+                raise Refused("superseded", f"G{goal} workspace gate expired before pushing")
     if not updates:
         return "ok", ""
     engine_only = all(ref.startswith(ENGINE_REFS) for ref, _, _ in updates)

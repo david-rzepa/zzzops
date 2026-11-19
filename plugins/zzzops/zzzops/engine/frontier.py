@@ -244,7 +244,7 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
     cur, st = {}, {}
 
     def current_out(p):
-        if p in skip:
+        if p in skip or (st.get(p) or {}).get("name") == "skipped":
             return SKIPPED
         return cur[p] if p in cur else Missing("not_current")
 
@@ -253,12 +253,70 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
         if n in skip:
             st[n] = {"name": "skipped", "reason": skip[n]}
             continue
+        if lx.get("insert_waiting"):
+            st[n] = {"name": "waiting", "until": f"release {lx['insert_waiting']} inserted",
+                     "reason": "release_insert"}
+            continue
+        if (lx.get("upstream") or {}).get("insert_invalid"):
+            st[n] = {"name": "waiting", "until": "inserted release provenance reviewed",
+                     "reason": "release_insert_provenance_changed"}
+            continue
         r = R.get(n)
         L = leases.get(n)
         if L and r and r["attempt"] >= L.attempt:
             L = None
         vals, missing = resolve(graph, doc, n, current_out, dep_view)
         subj = graph.subject(n)
+        # A conditional review may be skipped along with its subject. Check the
+        # route before requiring the subject, but never infer false from missing
+        # or stale inputs.
+        route = node.get("when")
+        if route and vals.get(route) is False and not any(
+                m.get("node") != subj or m.get("reason") != "skipped" for m in missing):
+            selector = (node.get("inputs") or {}).get(route, {}).get("from")
+            members = [x for x, nd in N.items() if nd.get("when") and
+                       ((nd.get("inputs") or {}).get(nd["when"]) or {}).get("from") == selector]
+            active = any(leases.get(x) and leases[x].live(now) for x in members)
+            findings_open = any(f.get("status") == "open" and is_material(f)
+                                and (carrier in members or f.get("target") in members)
+                                for carrier, record in records.items() for f in record.get("findings") or [])
+            # A blocked attempt may have published work without a checkpoint.
+            # Keep its normal repair/review path available until it completes.
+            blocked_work = any((records.get(x) or {}).get("status") == "blocked"
+                               and graph.checkpoint_outputs(x) for x in members)
+            safe = not active and not findings_open and not blocked_work
+            for x in members:
+                producer = records.get(x) or {}
+                output = producer.get("output") or producer.get("last_output") or {}
+                for key in graph.checkpoint_outputs(x):
+                    checkpoint = (output.get(key) or {}).get("commit")
+                    if not checkpoint:
+                        continue
+                    def reviewed_current(y):
+                        r = records.get(y) or {}
+                        if (r.get("status") != "done" or not r.get("ok") or
+                                ((r.get("reviewed") or {}).get(key) or {}).get("commit") != checkpoint):
+                            return False
+                        def review_input(p):
+                            return held_recorded(p) if p == x else current_out(p)
+                        review_vals, review_missing = resolve(graph, doc, y, review_input, dep_view)
+                        if review_missing:
+                            return False
+                        expected = fp_parts(graph, y, review_vals, R.get(x), settings, R, skip)
+                        observed = r.get("fp_parts") or {}
+                        # Only the route decision may change without invalidating
+                        # the exact checkpoint's prior independent review.
+                        expected_inputs = {k: v for k, v in expected.get("inputs", {}).items()
+                                           if k != N[y].get("when")}
+                        observed_inputs = {k: v for k, v in observed.get("inputs", {}).items()
+                                           if k != N[y].get("when")}
+                        return (expected_inputs == observed_inputs and
+                                all(expected.get(k) == observed.get(k) for k in ("def", "policy", "subject")))
+                    if not any(reviewed_current(y) for y in members if graph.subject(y) == x):
+                        safe = False
+            if safe:
+                st[n] = {"name": "skipped", "reason": f"{route} is false"}
+                continue
         if subj and subj not in cur:
             missing.append(miss(subj, "subject_not_current"))
         if L and L.live(now):
@@ -278,7 +336,8 @@ def frontier(graph: Graph, doc: dict, dep_view: dict, leases: dict, settings: di
         if missing:
             st[n] = {"name": "blocked", "missing": missing}
             continue
-        if node.get("release_gate") and not hotfix_member and doc["release"] > effective:
+        from engine import release_id
+        if node.get("release_gate") and not hotfix_member and release_id.components(doc["release"]) > release_id.components(effective):
             st[n] = {"name": "waiting", "until": f"release {doc['release']}", "reason": "release"}
             continue
         parts = fp_parts(graph, n, vals, R.get(subj), settings, R, skip)
@@ -519,10 +578,18 @@ def portfolio(docs: dict, graphs: dict, leases: dict, settings: dict, now: int, 
     invalid: id -> errors; newer: ids whose schema is newer than this engine. G1025, with settings.branching only:
     `ledger` (id -> trailer entry, §3.1) and `upstream` (id -> {"target", "tip", "behind", "merged_in_target"})."""
     from engine import lines as ln
+    from engine import release_id
     b = ln.branching(settings)
     L = ln.merged_ledger(ledger, docs) if b else {}
     lns = ln.lines_of(L, settings) if b else []
     effective = ln.effective_release(settings, lns) if b else None
+    if b and "insertable_release_targets" in required_caps(settings):
+        targets = [entry.get("release") for entry in L.values()
+                   if entry.get("state") in ("open", "held") and ln.is_member(entry)
+                   and entry.get("release") is not None]
+        targets.extend(x.name for x in lns if x.kind == "release" and x.open)
+        if any(isinstance(release_id.canonical(target), str) for target in targets):
+            effective = release_id.canonical(min(targets, key=release_id.components))
     upstream = upstream or {}
     invalid = dict(invalid or {})
     newer = set(newer or ())
@@ -549,12 +616,21 @@ def portfolio(docs: dict, graphs: dict, leases: dict, settings: dict, now: int, 
             target = ln.target_of(d, settings, lns)
             lctx = {"target": target["branch"], "integration": settings["integration_branch"], "effective": effective,
                     "hotfix_waiting": target.get("name") if target["kind"] == "hotfix" and not target["branch"] else None,
+                    "insert_waiting": target.get("name") if target["kind"] == "inserted" and not target["branch"] else None,
                     "upstream": upstream.get(g) or {}}
             flow = d.get("flow") or {}
+            if d.get("graph") == "forward_port":
+                lctx["line_behind"] = bool((upstream.get(g) or {}).get("behind"))
             if flow.get("line"):
+                if (isinstance(flow.get("inserted"), dict) and not flow["inserted"].get("verified")
+                        and d.get("records")):
+                    lctx["insert_waiting"] = flow["name"]
                 me = next((x for x in lns if x.goal == g), None)
                 lctx["members_open"] = ln.open_members(L, me) if me else []
                 lctx["line_behind"] = bool((upstream.get(g) or {}).get("behind"))
+        else:
+            if isinstance(release_id.canonical(d["release"]), str) and not (d.get("flow") or {}):
+                lctx = {"insert_waiting": release_id.label(d["release"]), "effective": effective}
         st, cur, live, notes, stale = frontier(graph, d, dep_view, goal_leases, settings, now, lctx)
         res = GoalResult(g, d, graph, st, cur, live, notes, stale=stale, target=target)
         finish_goal(res, goal_leases, now, settings)
@@ -732,6 +808,7 @@ PRI = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 
 
 def order_key(settings: dict, doc: dict, graph: Graph, node: str) -> tuple:
+    from engine import release_id
     stage = graph.nodes[node]["stage"] if node in graph.nodes else "delivery"
     s = (0 if stage == "discovery" else 1) if settings["scheduling"]["order"] == "stage_first" else 0
-    return (s, doc["release"], PRI[doc["priority"]], doc["id"], graph.topo.index(node) if node in graph.topo else 0)
+    return (s, release_id.components(doc["release"]), PRI[doc["priority"]], doc["id"], graph.topo.index(node) if node in graph.topo else 0)

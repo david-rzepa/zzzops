@@ -6,6 +6,7 @@ A line goal has no work branch. Its worktree is detached; each back-merge builds
 from __future__ import annotations
 
 import os
+import re
 
 from engine.canon import iso
 from engine.lines import branching, lines_of, merged_ledger, open_members
@@ -64,7 +65,7 @@ def tip(ctx, branch):
     return ctx.session.target_tip(branch)
 
 
-def back_merge(ctx, state, source, into, into_tip, slot, title):
+def back_merge(ctx, state, source, into, into_tip, slot, title, require_approval=False):
     """Merge `source` into branch `into` through the PR of `zzzops/sync/g<line>/<slot>`. Returns ("merged", commit or
     None) or a Blocked whose op_state is the whole `state` (this back-merge keeps its part under state["bm"][slot])."""
     git, gh, s = ctx.git, ctx.gh, ctx.session
@@ -136,6 +137,30 @@ def back_merge(ctx, state, source, into, into_tip, slot, title):
         pr = {"number": int(url.rstrip("/").rsplit("/", 1)[-1]), "baseRefName": into}
     elif pr["baseRefName"] != into:
         gh.run("pr", "edit", str(pr["number"]), "--base", into)
+    if require_approval:
+        subject = {"pr": pr["number"], "head": head, "base": into_tip, "source": source}
+        if bm.get("asked_forward") == subject and ctx.answer:
+            text = str(ctx.answer.get("text") or "").strip().casefold().rstrip(".! ")
+            destination = into.casefold()
+            affirmative = {"yes", "approve", "approved", "approve the forward-port",
+                           f"i approve this exact {destination} forward-port",
+                           f"i approve the displayed {destination} forward-port"}
+            quote = str(ctx.answer.get("quote") or "").casefold()
+            contradicted = bool(re.search(r"\b(?:no|not|never|decline|reject|refuse)\b", quote))
+            if text in affirmative and not contradicted:
+                bm.setdefault("approved_forward", []).append(subject)
+                bm.pop("asked_forward", None)
+            else:
+                return Blocked({"category": "decision", "waiting_for": "human",
+                                "reason": f"forward-port to {into} was not approved",
+                                "question": f"PR #{pr['number']} to `{into}` was not approved. To proceed, answer `approve the forward-port`; otherwise reopen and revise it.",
+                                "options": ["approve the forward-port", "reopen and revise"], "op_state": state})
+        if subject not in bm.get("approved_forward", []):
+            bm["asked_forward"] = subject
+            return Blocked({"category": "decision", "waiting_for": "human",
+                            "reason": f"forward-port to {into} needs approval",
+                            "question": f"Approve PR #{pr['number']} to `{into}`, head {head}, base {into_tip}, source {source}?",
+                            "options": ["approve the forward-port", "reopen and revise"], "op_state": state})
     return merge_pr(ctx, state, pr["number"], head, into)
 
 
@@ -144,7 +169,7 @@ def merge_pr(ctx, state, n, head, into):
     gh = ctx.gh
     v = gh.json("pr", "view", str(n), "--json", VIEW)
     if v["state"] == "MERGED":
-        return "merged", (v.get("mergeCommit") or {}).get("oid")
+        return verified_merged_pr(ctx, state, v, head, into)
     if v["state"] == "CLOSED":
         return Blocked({"category": "external", "waiting_for": "human", "reason": f"PR #{n} closed without merging",
                         "question": f"PR #{n} into `{into}` was closed on GitHub. Reopen it, then answer.",
@@ -174,7 +199,24 @@ def merge_pr(ctx, state, n, head, into):
     v = gh.json("pr", "view", str(n), "--json", VIEW)
     if v["state"] != "MERGED":
         return wait(ctx, state, "merge not observed yet", 120)
-    return "merged", (v.get("mergeCommit") or {}).get("oid")
+    return verified_merged_pr(ctx, state, v, head, into)
+
+
+def verified_merged_pr(ctx, state, pr, approved_head, into):
+    """An observed merge is evidence only when its actual head was approved."""
+    merged = (pr.get("mergeCommit") or {}).get("oid")
+    ctx.session.fetch_branches([into])
+    actual_parents = parents(ctx.git, merged) if merged and ctx.git.exists(merged) else []
+    if (pr.get("headRefOid") != approved_head or pr.get("baseRefName") != into
+            or len(actual_parents) != 2 or actual_parents[1] != approved_head):
+        state["observed_merge"] = {"pr": pr.get("number"), "merge_commit": merged,
+                                   "observed_head": pr.get("headRefOid"), "approved_head": approved_head,
+                                   "base": pr.get("baseRefName"), "parents": actual_parents}
+        return Blocked({"category": "decision", "waiting_for": "human",
+                        "reason": "merged PR head or merge evidence differs from approval",
+                        "question": f"PR #{pr.get('number')} merged as {merged}, but its actual head or merge evidence differs from the approved {approved_head}. Review before further propagation; no rollback was attempted.",
+                        "op_state": state})
+    return "merged", merged
 
 
 def line_info(ctx):
@@ -197,7 +239,8 @@ def sync(ctx):
     T = tip(ctx, branch)
     if not T:
         return gone(ctx, branch, state)
-    if kind == "hotfix":                                  # record-only: bind approve_finish to the hotfix tip (§7)
+    if kind == "hotfix" or (ctx.doc.get("flow") or {}).get("inserted"):
+        # Inserted releases, like hotfixes, must not propagate before approval.
         return Done({"merged": T, "merge_commit": None}, ok=True, summary=f"{branch} at {T[:7]}")
     I = ctx.snap.I
     out = back_merge(ctx, state, T, I, ctx.snap.integration, "integration", f"Release {name}: merge {branch} into {I}")
@@ -230,12 +273,45 @@ def finish(ctx):
     b = branching(ctx.settings)
     prod = b["production"]
     title = f"Release {name}" if kind == "release" else f"Hotfix {name}"
+    inserted = (ctx.doc.get("flow") or {}).get("inserted")
+    if inserted:
+        # Each invocation begins with a fresh snapshot; a known source or
+        # production change needs new approval rather than a guessed rebase.
+        observed_production = s.fetch_branches([prod]).get(prod)
+        observed_source = s.snap.goals.get(inserted["source_goal"])
+        expected_production = state.get("production_merge") or inserted["production_commit"]
+        if (observed_production != expected_production
+                or observed_source != inserted["source_goal_commit"]):
+            return Blocked({"category": "decision", "waiting_for": "human",
+                            "reason": "inserted release provenance or production changed",
+                            "question": "The approved release source or production changed. Obtain a fresh preview and approval before finishing.",
+                            "op_state": state})
+        if inserted["mode"] == "maintenance":
+            # Maintenance is a logical release on its retained line, not a
+            # production merge. Preserve the approved tip and source lineage.
+            return Done({"production_merge": None, "back_merges": {},
+                         "maintenance": {"approved_tip": T,
+                                         "source_commit": inserted["source_commit"],
+                                         "source_goal": inserted["source_goal"],
+                                         "source_release": inserted["source_release"]}},
+                        ok=True, summary=f"{branch} finished as an isolated maintenance release at {T[:7]}")
     if state.get("production_merge") is None:
         prs = gh.json("pr", "list", "--head", branch, "--base", prod, "--state", "all", "--json",
                       "number,state,headRefOid,mergeCommit") or []
-        done = next((x for x in prs if x["state"] == "MERGED" and git.is_ancestor(T, x["headRefOid"] or "")), None)
+        merged_prs = [x for x in prs if x["state"] == "MERGED"]
+        # An earlier delivery of the same branch can precede the newly
+        # approved tip. Recover an exact match first; a merged descendant of
+        # the approved tip instead indicates a changed-head delivery.
+        done = next((x for x in merged_prs if x.get("headRefOid") == T), None)
+        if done is None:
+            done = next((x for x in merged_prs if x.get("headRefOid")
+                         and git.is_ancestor(T, x["headRefOid"])), None)
         if done:
-            state["production_merge"] = (done.get("mergeCommit") or {}).get("oid")
+            view = gh.json("pr", "view", str(done["number"]), "--json", VIEW)
+            out = verified_merged_pr(ctx, state, view, T, prod)
+            if isinstance(out, Blocked):
+                return out
+            state["production_merge"] = out[1]
         else:
             P = tip(ctx, prod)
             if not P:
@@ -261,18 +337,55 @@ def finish(ctx):
             if isinstance(out, Blocked):
                 return out
             state["production_merge"] = out[1]
+    if inserted:
+        # GitHub guards the PR head, not an independent source ref or base.
+        # Record the actual merge and stop forwarding if a race is observed.
+        actual = s.fetch_branches([prod]).get(prod)
+        merge_commit = state.get("production_merge")
+        merge_parents = parents(git, merge_commit) if merge_commit and git.exists(merge_commit) else []
+        s.refetch(all_goals=True)
+        current_source = s.snap.goals.get(inserted["source_goal"])
+        if (not merge_parents or merge_parents[0] != inserted["production_commit"]
+                or current_source != inserted["source_goal_commit"]
+                or not actual or not git.is_ancestor(merge_commit, actual)):
+            return Blocked({"category": "decision", "waiting_for": "human",
+                            "reason": "post-merge release source or production divergence",
+                            "question": "The PR merged but its source or production base changed. Review the recorded merge before further propagation; no automatic rollback was attempted.",
+                            "op_state": state})
     back = state.setdefault("back", {})
-    intos = [(ctx.snap.I, ctx.snap.integration, "integration")]
+    integration_tip = s.fetch_branches([ctx.snap.I]).get(ctx.snap.I) if inserted else ctx.snap.integration
+    intos = [(ctx.snap.I, integration_tip, "integration")]
     if kind == "hotfix":
         rel = next((x for x in lns if x.kind == "release" and x.open), None)
         if rel and tip(ctx, rel.branch):
             intos.append((rel.branch, tip(ctx, rel.branch), "release"))
+    elif inserted:
+        from engine import release_id
+        for rel in lns:
+            if (rel.kind == "release" and rel.open and rel.goal != ctx.goal
+                    and release_id.components(rel.name) > release_id.components(name)):
+                rel_tip = tip(ctx, rel.branch)
+                if rel_tip:
+                    intos.append((rel.branch, rel_tip, "release-" + rel.name.replace(".", "-")))
     for into, into_tip, slot in intos:
         if into in back:
             continue
-        out = back_merge(ctx, state, T, into, into_tip, slot, f"{title}: merge {branch} into {into}")
+        out = back_merge(ctx, state, T, into, into_tip, slot, f"{title}: merge {branch} into {into}",
+                         require_approval=bool(inserted))
         if isinstance(out, Blocked):
             return out
         back[into] = out[1]
+        if inserted and out[1]:
+            actual = s.fetch_branches([into, prod])
+            merge_parents = parents(git, out[1]) if git.exists(out[1]) else []
+            s.refetch(all_goals=True)
+            if (not merge_parents or merge_parents[0] != into_tip
+                    or actual.get(prod) != state["production_merge"]
+                    or s.snap.goals.get(inserted["source_goal"]) != inserted["source_goal_commit"]
+                    or not actual.get(into) or not git.is_ancestor(out[1], actual[into])):
+                return Blocked({"category": "decision", "waiting_for": "human",
+                                "reason": "post-merge forward-port source or base divergence",
+                                "question": "Review the recorded forward-port before further propagation; no automatic rollback was attempted.",
+                                "op_state": state})
     return Done({"production_merge": state["production_merge"], "back_merges": dict(back)}, ok=True,
                 summary=f"{branch} merged into {prod}" + "".join(f", {k}" for k in back))
