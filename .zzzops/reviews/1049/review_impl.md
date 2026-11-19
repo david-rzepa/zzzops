@@ -1,5 +1,5 @@
-# G1049 implementation re-review
+# G1049 post-sync implementation review
 
-The previously reported first-attempt scope and stale concurrent claim defects are fixed. The capability-enabled path now includes final candidates in ambiguity checks and reviewer context. Workspace claims refetch and repeat the full start validation while holding the gate, including live same-node and other-node workspace lease checks.
+Reviewed the merge resolutions in record schema, blocked and successful checkpoint handling, documentation, and subsequent parent/child provenance correction. Both capabilities' record fields and checkpoint paths are retained. The combined implementation carries blocked producer segments, separately captures child scope, excludes gitlink paths from parent frozen entries, includes child evidence in checkpoint identity, and keeps the guarded workspace-claim validation.
 
-I independently ran the three real-Git regressions for initial mixed candidates and both concurrent-start cases; all passed. The run also emitted a `ResourceWarning` about a Git subprocess pipe, which does not affect these outcomes and is not a material finding for this change. The full recorded verification passed.
+Independently ran seven local real-Git/CLI checks: blocked child retry with both capabilities, child implementation advance with both, conditional-only refusal of unrecordable transient parent work, transient parent candidate preservation, nonblocked ambiguous candidate selection, and stale same-node and other-node workspace claims. All passed. Existing Git subprocess cleanup emitted non-fatal ResourceWarnings during two checks. The recorded complete validation also passed. No material synchronization conflict found.
