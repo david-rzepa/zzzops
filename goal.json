@@ -128,10 +128,10 @@
       "status": "done"
     },
     "design": {
-      "attempt": 2,
+      "attempt": 3,
       "correction_runs": 0,
       "findings": [],
-      "finished_at": "2026-11-19T04:08:01Z",
+      "finished_at": "2026-11-19T04:18:10Z",
       "fp_parts": {
         "def": "v1:sha256:3d9c6b12fd9064db5f5238ec1754c5c063841a4fe91b1288d78f2113fa7eb216",
         "inputs": {
@@ -140,20 +140,19 @@
         },
         "policy": {}
       },
-      "holder": "codex:root/g1049-design-fix",
+      "holder": "codex:root/g1049-design-contract",
       "input_fp": "v1:sha256:66037f9e6a03e6b47cc13989a77c66f91ff9b2379287946442f0d56d000b533d",
       "ok": true,
       "output": {
         "doc": {
-          "blob": "e9fc7a9db4ca6f297f27853c3ce3671519784d2c",
-          "commit": "e9e29aaa75c06db5842a7f8ead5cc8c6be3b3157",
+          "blob": "b0a79141fe1b4c4ad3c03ac7f911f36d48919512",
+          "commit": "0d7accf6e9435976befa8ce72f1b74217ab2de9f",
           "path": ".zzzops/reviews/1049/design.md"
         },
         "responses": {
-          "adversary_design:1:1": "fixed: Refuse all preserved consumer checkpoint submissions while the producer is blocked, independently of blocked_findings; test the previously published work-tip case and require normal final-tree checks after producer acceptance.",
-          "review_design:1:1": "fixed: Persist lease-fenced immutable start/end provenance for each blocked producer attempt, derive and review its candidates with the retry segment, and refuse ambiguous rebase provenance or silently included unrelated changes; test a pre-block test commit followed by a no-op retry."
+          "test_design:2:1": "fixed: The contract names preserved_test_provenance and engine.capabilities discovery, and specifies scope_recovery diagnostics with exact status, goal base, per-path source identities, issues and an exact existing-format edit object for preview and guarded apply."
         },
-        "summary": "Preserve verified producer-attempt provenance through blocked retries so tests committed before a no-op retry remain in the reviewed scope, and refuse preserved consumer checkpoints while their producer is blocked. Recover damaged goals from accepted Git history with explicit CAS, capability-gated compatibility, and independent review."
+        "summary": "Define a stable capability identifier and machine-readable validation recovery proposal that can be reviewed, previewed, and applied with the existing CAS-protected edit command. Preserve provenance, ambiguity refusal, existing output fields and independent review."
       },
       "reason": "reopened",
       "status": "done"
