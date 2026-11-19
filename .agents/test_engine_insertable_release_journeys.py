@@ -830,6 +830,9 @@ class MaintenanceForwardPortJourneys(Branching):
         return self._finished
 
     def _build_finished_maintenance(self):
+        # Opt in before cutting the source, so its immutable tree and every
+        # derived destination retain the reviewed capability policy.
+        self.activate()
         self.finished_source()
         later = self.goal(release=2)
         self.done(later, code={"src/newer.py": "newer = True\n"})
@@ -838,7 +841,6 @@ class MaintenanceForwardPortJourneys(Branching):
         self.approve(line2, "approve_finish")
         self.op(line2, "finish")
         production = self.tip("main")
-        self.activate()
         patch = self.goal(release="1.1")
         line = self.insert(self.preview())["goal"]
         self.done(patch, code={"src/maintenance.py": "fixed = True\n"})
@@ -868,7 +870,7 @@ class MaintenanceForwardPortJourneys(Branching):
 
     def answer_port(self, goal, item, decision="approved"):
         self.w.ok("a", "answer", str(goal), item["node"], "--fp", item["fp"],
-                  "--file", self.w.file({"decision": decision, "text": decision,
+                  "--file", self.w.file({"decision": decision, "summary": decision,
                                        "quote": decision, "decided_by": "Dave"}))
 
     def drive_port(self, goal):
@@ -926,7 +928,7 @@ class MaintenanceForwardPortJourneys(Branching):
         port = self.request_port()
         item = self.port_until_human(port)
         dev_before = self.tip("dev")
-        self.answer_port(port, item, decision="rejected")
+        self.answer_port(port, item, decision="changes_requested")
         self.drive_port(port)
         self.assertEqual(dev_before, self.tip("dev"))
         self.assertEqual(production, self.tip("main"))
@@ -974,6 +976,9 @@ class MaintenanceForwardPortJourneys(Branching):
         self.w.remote_git("update-ref", "refs/heads/dev", observed, previous)
         self.assertNotEqual(source, observed)
         self.assertEqual(source_tree, self.w.remote_git("rev-parse", f"{observed}^{{tree}}"))
+        for commit in (source, observed):
+            policy = json.loads(self.w.remote_git("show", f"{commit}:.zzzops/POLICY.json"))
+            self.assertIn(CAPABILITY, policy["settings"]["engine"]["requires"])
         self.assertFalse(self.is_ancestor(source, observed))
         self.assertFalse(self.is_ancestor(observed, source))
         self.assertTrue(self.is_ancestor(previous, observed))
