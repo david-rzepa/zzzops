@@ -276,40 +276,16 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 7,
+      "attempt": 8,
       "correction_runs": 2,
       "findings": [
-        {
-          "id": "review_tests:6:1",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 7,
-          "target_fp": "v1:sha256:3ea1d6cc99bf0d774fa9dd124fb1a84768a9e5f31e7e6437aa41f5e4157eb9b3",
-          "text": "Make the competing-recovery race deterministic: add a contender-ready barrier at the actual gate claim/push boundary and prove overlap before releasing the first recovery. A 0.5-second sleep can allow sequential execution, where ordinary goal CAS alone makes the test pass. Verify the changed CAS ref without assuming it cannot be under zzzops/lease/.",
-          "upheld": false
-        },
-        {
-          "id": "review_tests:6:2",
-          "note": null,
-          "response": null,
-          "rounds": 1,
-          "status": "resolved",
-          "target": "test_design",
-          "target_attempt": 7,
-          "target_fp": "v1:sha256:3ea1d6cc99bf0d774fa9dd124fb1a84768a9e5f31e7e6437aa41f5e4157eb9b3",
-          "text": "Add the owner-approved crash/expiry/reclaim and cooperating work-writer fencing cases using the smallest realistic local Git/CLI tests: a reclaimed expired holder cannot publish, a crashed gate can be recovered, and an already-claimed publisher or sync cannot race recovery. Audit and exercise or safely refuse all remaining work-ref mutation/claim paths, as required by the design.",
-          "upheld": false
-        },
         {
           "follows": "review_tests:6:2",
           "id": "review_tests:7:1",
           "note": null,
           "response": null,
           "rounds": 1,
-          "status": "open",
+          "status": "resolved",
           "target": "test_design",
           "target_attempt": 9,
           "target_fp": "v1:sha256:da1707449282a08d6ed4e4afe0b7695c435f2452681c27bed8075a0338e1b19f",
@@ -317,35 +293,35 @@
           "upheld": false
         }
       ],
-      "finished_at": "2026-11-19T05:41:16Z",
+      "finished_at": "2026-11-19T05:47:36Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
           "doc": "v1:blob:fbac244685db79270e91c498ab400c3f5bd862c4",
-          "tests": "v1:sha256:298f0ab9c0276d4d5aa30a74b13f78fcd1cd44450ef055016ef8388ae6a3fda6"
+          "tests": "v1:sha256:41660b716d5fb268bf432e4f99fb58ec7f4f9c4a31f5fed9516138c4b2c1a03b"
         },
         "policy": {},
-        "subject": "v1:sha256:da1707449282a08d6ed4e4afe0b7695c435f2452681c27bed8075a0338e1b19f"
+        "subject": "v1:sha256:15f1b4b51c0d0f9e75642cabeb862aeb799b3ce60d0ae385e2b3360fa5437174"
       },
-      "holder": "codex:root/g1049-review-tests-7",
-      "input_fp": "v1:sha256:e8de6a6c8af93b7a558dfd7b88a988ed4b8bac3d0eca0c1d7a65352c18f8c593",
-      "ok": false,
+      "holder": "codex:root/g1049-review-tests-8",
+      "input_fp": "v1:sha256:0dd08eeca7616a63c89b3bc966ae2b634c91af7b620918e64c444b1f11393964",
+      "ok": true,
       "output": {
-        "decision": "changes_requested",
+        "decision": "approved",
         "report": {
-          "blob": "84698943a4f0632b728693f208a57985a926afa3",
-          "commit": "d64219c824bd64d69b16c0550567bf3bcc76f756",
+          "blob": "2d4f57393e307201fb119d9b33294a00f86c32a2",
+          "commit": "8ae410a30becd6413e52deecd6f12c4b50533d2b",
           "path": ".zzzops/reviews/1049/review_tests.md"
         },
-        "summary": "Controlled recovery contention and gate lifecycle cases address the prior findings; the required shared guard against an unlisted work-ref updater remains untested."
+        "summary": "The unlisted real transaction and successful registered base control cover the shared gate guard; later validation must reach the new assertions."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "0e62c6ba1c6f711ca1546c5e802e50daef6e4478",
-          "change": "99d2ef86d02388c45a1e7ab09a2e868a308286ac",
-          "commit": "28aa280dd7d709f77651234b83fbacffc479081b",
-          "tree": "41fb2ab4496aa5b0561630e595203bd6fec6ff08"
+          "change": "1a89053b91df26cf6e39b54943e7e8458201033e",
+          "commit": "bfe4f6a2d289a6989610177d5dea8ffb790f799d",
+          "tree": "7edf0160fb11900bd146d1a8d97b54c270588703"
         }
       },
       "status": "done"
