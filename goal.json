@@ -281,38 +281,75 @@
       "status": "done"
     },
     "review_tests": {
-      "attempt": 5,
-      "correction_runs": 2,
-      "findings": [],
-      "finished_at": "2026-11-19T00:08:20Z",
+      "attempt": 6,
+      "correction_runs": 3,
+      "findings": [
+        {
+          "id": "review_tests:6:1",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 8,
+          "target_fp": "v1:sha256:df239fab8155901b4264b9df78cdd6033b4bf449860ac3a9442e92c3cdee60af",
+          "text": "The approval invalidation test changes the carrier head and destination simultaneously. An implementation that checks only either one can pass while the other alone changes. Exercise each change independently with the other fixed, requiring fresh exact approval and no merge under stale approval.",
+          "upheld": false
+        },
+        {
+          "id": "review_tests:6:2",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 8,
+          "target_fp": "v1:sha256:df239fab8155901b4264b9df78cdd6033b4bf449860ac3a9442e92c3cdee60af",
+          "text": "The maintenance forward-port cases do not inject source-goal-only or destination-only movement after the final precheck at the actual protected provider merge. The approved design permits the merge race but requires recording actual result/divergence, no rollback and pausing further automation. Add deterministic local-provider boundary tests for those outcomes, without asserting impossible cross-ref atomicity.",
+          "upheld": false
+        },
+        {
+          "id": "review_tests:6:3",
+          "note": null,
+          "response": null,
+          "rounds": 1,
+          "status": "open",
+          "target": "test_design",
+          "target_attempt": 8,
+          "target_fp": "v1:sha256:df239fab8155901b4264b9df78cdd6033b4bf449860ac3a9442e92c3cdee60af",
+          "text": "Each of the nine maintenance cases repeats the identical genuine two-release setup before reaching the missing CLI (17.410–17.560 s apiece; more than 156 s per run before feature assertions). Reduce this redundant cost via a real-engine-created reusable seed and isolated per-case Git/provider copies, or equivalent, retaining meaningful real-stack and independent assertions.",
+          "upheld": false
+        }
+      ],
+      "finished_at": "2026-11-19T01:08:21Z",
       "fp_parts": {
         "def": "v1:sha256:fe95ae09ee0f9f1ad2643ac35155602b64707df47cf83a8c3a08e9c722b0384c",
         "inputs": {
-          "doc": "v1:blob:b4f730d036d7169afa4a2a4c7c7c814b9522fc98",
-          "tests": "v1:sha256:9a78e952bbf82e6c1cfcdad2d71a775bc1e59e2f08fa9a0062eed8876bd27d53"
+          "doc": "v1:blob:5b199f7a7f94e75dfbec83fa682e91d088f0edec",
+          "tests": "v1:sha256:7df49b35fa0cac121640a690bbeaa2c6ba237999243593cb02e51092f3a7f13f"
         },
         "policy": {},
-        "subject": "v1:sha256:2d31065f8c1b800eb7420966996924e970af9e3248ef9cf8121cb587d75125a3"
+        "subject": "v1:sha256:8916f0a2edae09f5bcb0509e8bb145d13262917baf2e2abbbde7f7a3479febcc"
       },
-      "holder": "codex:root/g1051-review-tests-5",
-      "input_fp": "v1:sha256:b709150a57938e75237808a1d4958346d2b95af5e5080ccf577bb3cc4db8c657",
-      "ok": true,
+      "holder": "codex:root/g1051-review-tests-6",
+      "input_fp": "v1:sha256:824436388b1d855fb48023048b2399a94cda119f188a833f1c2d9ff8702fc103",
+      "ok": false,
       "output": {
-        "decision": "approved",
+        "decision": "changes_requested",
         "report": {
-          "blob": "ad91b080a3822c13e98d4965ab7f1f6b382f3bad",
-          "commit": "cdd6d42e8ee1e3fa53038ef3e3df6a1b7b4218d6",
+          "blob": "675b27bafbbd1c0a6e4369080890a9b7c9c8087a",
+          "commit": "1a1ddbbe5308da62fdc6e98171ff742f8443849b",
           "path": ".zzzops/reviews/1051/review_tests.md"
         },
-        "summary": "The new cases test separate forward-port approval, changed PR heads and refusal; the measured negative-answer regression remains red and hosted protections remain a staging gate."
+        "summary": "Maintenance coverage is broad, but independent stale-approval guards, provider-boundary divergence and repeated expensive setup need correction."
       },
       "reason": "stale",
       "reviewed": {
         "tests": {
           "base": "cb33c2d65b0affbdc60b4492cdc4a032c1014241",
-          "change": "4d0089d228767f8b7ee2ce3d725e8146a1132bef",
-          "commit": "c495b116b2fea7cfff71020be59f232ad16f33a9",
-          "tree": "623191d3690f45c81c631dc128a45edd8007514d"
+          "change": "88b7d6725eb1de2b40b12821cb27f3e9e02a77c8",
+          "commit": "b620f93806557b5211eeb85e6e6e5061975fbe84",
+          "tree": "b0e3cf6d7fb058d55b6a0c9f4c0571cae7acbcb0"
         }
       },
       "status": "done"
