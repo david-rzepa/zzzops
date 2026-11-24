@@ -170,7 +170,7 @@ Each step has the same fields: implements, before → after, files, edits, prere
     - no engine-reserved node ids;
     - the selector kinds `node`, `deps.<node>.<output>`, `goal.*` and `policy.*`.
   - `schemas.validate_policy(p)`: SPEC §3.2, including setting ranges ("out-of-range settings make the policy invalid", DESIGN §10 item 10), `schema_version` 1 refused with "see MIGRATING.md", and > 2 refused as `engine_too_old`.
-  - `schemas.validate_goal(doc, graph, dep_docs)`: SPEC §3.3 rules 1–8. Rule 3 refuses a skip of a terminal node; rule 6 is the 65,536-byte limit; rule 8 is closed-done-means-delivered, which takes a frontier callback, so stub it as a parameter until step 2.
+  - `schemas.validate_goal(doc, graph, dep_docs)`: SPEC §3.3 rules 1–8. Rule 3 refuses a skip of a terminal node; rule 6 is the 262,144-byte limit; rule 8 is closed-done-means-delivered, which takes a frontier callback, so stub it as a parameter until step 2.
   - Plus the record, finding, blocked, lease-message, submit-output, blocked-file, answer-file and new-goal-file validators (SPEC §3.4–§3.13).
 - **Prerequisites:** none. Nothing old is touched.
 - **Acceptance** (`python3 -m unittest discover -s .agents -p 'test_engine_schemas.py' -v`):
@@ -178,7 +178,7 @@ Each step has the same fields: implements, before → after, files, edits, prere
   - A copy of `workflow.json` with **every node id renamed** (a fixed mapping such as `design → n01`, …) validates (DESIGN §10 item 3).
   - Each SPEC §3.1 graph error gives its named error: cycle, unknown selector, two checkpoint outputs, and a `preserve` naming a non-producer.
   - Out-of-range settings (`verification.timeout_minutes: 0`, `ci_timeout_minutes: -1`, an unknown `merge.method`) make the policy invalid.
-  - A goal document over 65,536 bytes is refused as `too_large`. A `skip` of a terminal node is refused. `closed.reason: "done"` with a non-current terminal is refused (rule 8, via a stub frontier).
+  - A goal document over 262,144 bytes is refused as `too_large`. A `skip` of a terminal node is refused. `closed.reason: "done"` with a non-current terminal is refused (rule 8, via a stub frontier).
   - `canon.dumps` is byte-identical for dicts built in different key orders, and with non-ASCII strings.
   - The grep check `grep -rnE '"(design|review_design|approve_design|base|test_design|review_tests|implement|run_tests|review_impl|integrate|approve_merge|merge)"' plugins/zzzops/zzzops/engine` prints nothing: no default node id appears in engine source (DESIGN §10 item 3). Keep this as a test too (`test_engine_names.py`, which scans `engine/**/*.py`).
 - **Done when:** the acceptance cases pass and the old suite is unchanged.

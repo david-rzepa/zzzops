@@ -10,6 +10,8 @@ import threading
 import unittest
 
 import engine_fixtures as fx
+from engine.canon import goal_bytes
+from engine.schemas import DOC_LIMIT
 from test_engine_lifecycle import Journey
 
 
@@ -119,7 +121,8 @@ class EditTests(Journey):
         self.assertIn("cycle", err["error"]["message"])
         rc, err = self.w.run("a", "edit", str(a), "--set", "release=2", "--base", self.tip(a))
         self.assertIn("release", err["error"]["message"])
-        rc, err = self.w.run("a", "edit", str(b), "--set", f'skip.{self.n("design")}="{"x" * 70000}"', "--base", self.tip(b))
+        oversized = self.w.file({"set": {f"skip.{self.n('design')}": "x" * (DOC_LIMIT + 1)}})
+        rc, err = self.w.run("a", "edit", str(b), "--file", oversized, "--base", self.tip(b))
         self.assertEqual("too_large", err["error"]["code"])
         rc, err = self.w.run("a", "edit", str(b), "--set", f'skip.{self.n("merge")}="no"', "--base", self.tip(b))
         self.assertIn("terminal node cannot be skipped", err["error"]["message"])
@@ -226,6 +229,32 @@ class CloseTests(unittest.TestCase):
         rc, err = self.w.run("a", "edit", str(g), "--set", 'state="open"', "--base", tip)
         self.assertEqual(1, rc)
         self.assertIn("stays closed", err["error"]["message"])
+
+    def test_large_goal_can_submit_and_close_without_losing_records(self):
+        workflow = tiny_workflow()
+        workflow["graphs"]["default"]["nodes"]["write"]["outputs"]["evidence"] = "object"
+        self.w.bootstrap(workflow=workflow)
+        g = self.w.new(title="large goal")["created"]["id"]
+        before = self.w.ok("a", "show", str(g), "--json")["goal_commit"]
+        card = self.A.start(g, "write")
+        evidence = {f"item_{i}": "x" * 4000 for i in range(70)}
+        rc, refused = self.A.submit(g, "write", card, {"summary": "W", "evidence": evidence},
+                                    artifact="# W\n", ok=False)
+        self.assertEqual(1, rc)
+        self.assertEqual("too_large", refused["error"]["code"])
+        self.assertEqual(before, self.w.ok("b", "show", str(g), "--json")["goal_commit"])
+
+        evidence = {f"item_{i}": "x" * 4000 for i in range(20)}
+        self.A.submit(g, "write", card, {"summary": "W", "evidence": evidence}, artifact="# W\n")
+        doc = self.w.ok("b", "show", str(g), "--json")["goal"]
+        self.assertGreater(len(goal_bytes(doc)), 65536)
+        saved = doc["records"]["write"]
+        self.assertEqual(evidence, saved["output"]["evidence"])
+        card = self.B.start(g, "check")
+        result = self.B.submit(g, "check", card, {"decision": "approved", "summary": "ok"}, artifact="ok\n")
+        self.assertEqual("done", result["closed"]["reason"])
+        closed = self.w.ok("a", "show", str(g), "--json")["goal"]
+        self.assertEqual(saved, closed["records"]["write"])
 
 
 class RenamedSyncTests(SyncTests):
