@@ -96,7 +96,7 @@
 - **Long-running ops.** Op `start` runs to completion in one call (§5.1). The execute skill runs it with the harness's maximum timeout or in the background and waits for its exit; it prefers running ops from the root agent; unattended Claude Code runs set `BASH_DEFAULT_TIMEOUT_MS` and `BASH_MAX_TIMEOUT_MS` above `verification.timeout_minutes`.
 - **Reverted dependencies.** `git.base` detects a dependency's merge commit rewritten out of `I` (§5.2), not a revert: a revert keeps the merge commit as an ancestor, so a dependent still stacks on `I` without the reverted code.
 - **Squash-landed policy branches.** A policy branch counts as landed by ancestry or by `.zzzops/` equality with `I` (§4.3). Once another policy change lands on `I`, a squash-landed branch that was not deleted fails both tests and blocks new work again, with the policy-change blocker message. The `policy_branch_landed` warning, shown while it still counts as landed, is the mitigation: delete the branch (`x2:L7`).
-- **Goal size.** `git.base` stores `replay_map` (and, after a conflict, `replay_pos`) in `goal.json`, about 100 bytes per goal commit, review commits included. v1 supports goals of up to 200 commits on the work branch; beyond that, `base`'s finishing push can exceed the 65,536-byte document limit (§3.3 rule 6) and takes the crash path. Split such a goal (`x2:L10`).
+- **Goal size.** `git.base` stores `replay_map` (and, after a conflict, `replay_pos`) in `goal.json`, about 100 bytes per goal commit, review commits included. These maps and the latest node records count toward the 262,144-byte document limit (§3.3 rule 6). Split a goal before its retained records exceed that bound (`x2:L10`).
 - **Template defaults.** Bootstrap sets `goals.first_id` above the highest issue and PR number, and adjusts `routing.tiers` to the harnesses in use (§8.1, §8.3).
 
 ---
@@ -150,7 +150,7 @@ Developer clones that do not run ZzzOps may add the negative refspec `git config
 ### 2.4 Goal branch shape
 - Every commit's tree has exactly one entry: `100644 blob <oid>\tgoal.json`.
 - The creation commit has no parent. Every later engine commit has exactly one parent: the fetched tip. A repair commit (§4.2) may have two.
-- `goal.json` bytes are `json.dumps(doc, indent=2, sort_keys=True, ensure_ascii=False) + "\n"`, UTF-8. The size limit (65,536 bytes) applies to these bytes.
+- `goal.json` bytes are `json.dumps(doc, indent=2, sort_keys=True, ensure_ascii=False) + "\n"`, UTF-8. The size limit (262,144 bytes) applies to these bytes.
 
 ---
 
@@ -321,7 +321,7 @@ There is no `review_path` field: the review path is the constant `.zzzops/review
 3a. **Lens skips (G1022).** A key `<node>:<lens>` removes one lens of a multi-lens reviewer for this goal; the node itself still runs. An unknown node or lens only warns (`orphan_record`; the lens still runs). A new key naming a lens with `skippable: false` is refused on a write ("`<node>:<lens>` is not skippable (lenses.<lens>.skippable: false in workflow.json)"); on reading, or when `old` already held it, it warns (`skip_not_skippable`). A key containing `:` never matches a node id, so every other use of `skip` is unaffected.
 4. Every `depends_on` id is an existing goal; the dependency relation over all goals is acyclic (an error names every cycle member); `release(dep) ≤ release(goal)` for every dependency.
 5. A write may not change `state` to `open` (or `held`) when `old.closed.reason == "done"`: a done goal stays closed; open a follow-up goal. A cancelled or superseded goal may be reopened.
-6. Serialized size ≤ 65,536 bytes (§2.4). A size error names the five largest JSON paths and their byte counts.
+6. Serialized size ≤ 262,144 bytes (§2.4). A size error names the five largest JSON paths and their byte counts. Existing per-field limits remain unchanged.
 7. No floats anywhere.
 8. **Closed `done` means delivered.** A write that closes a goal with `closed.reason == "done"` (when `old` was not already closed as done) requires every terminal node of its graph to be current in the new document (§4.9, with dependency views over the new documents). Otherwise the reason must be `superseded` or `cancelled`, and dependents get the ordinary stuck item (drop, retarget, cancel). The generic close (§4.19) and the `close` item (§4.10) satisfy it by construction. Like rule 5, it is checked on writes only, never on reads.
 
@@ -2339,7 +2339,7 @@ Each item below is a point that neither DESIGN.md nor the change lists decide. T
 3. The work, PR and stack branches of a goal are fetched with globs `g<id>*` (an absent branch is then not a fetch error), and non-exact matches are ignored. (R5 C4)
 4. `cannot lock ref` retries: up to 3 retries, 50–500 ms jitter. Persisting failure is `remote`, exit 2.
 5. A force-pushed goal is repaired by a forward commit with both tips as parents. (REPAIR.md recipe)
-6. `goal.json` is the only file on a goal branch, serialized with `indent=2`, sorted keys, UTF-8 and a final newline; the 64 KB limit applies to those bytes. (R5 M4)
+6. `goal.json` is the only file on a goal branch, serialized with `indent=2`, sorted keys, UTF-8 and a final newline; the 256 KiB limit applies to those bytes. (R5 M4)
 7. Compare-and-swap backoff: full jitter, base 0.25 s, factor 2, cap 4 s, deadline 30 s, then `contention` (exit 3). After a failed push, if every pushed ref already holds the commit built, the write is reported as applied. (R5 M4, P F15)
 8. Only SHA-1 repositories are supported.
 9. Goal ids: `settings.goals.first_id` (default 1; this repository 1000) seeds the first id. (R5 H13)

@@ -21,7 +21,7 @@ GOAL_FIELDS = {"title", "spec", "priority", "release", "links"}
 START_REASONS = {"new", "stale", "reopened", "retry", "not_ok", "upstream"}   # upstream: G1025 schedules
 RESERVED_OUTPUT = "responses"
 REVIEW_PATH = ".zzzops/reviews"
-DOC_LIMIT = 65536
+DOC_LIMIT = 262144
 TEXT_LIMIT = 4096
 SPEC_LIMIT = 16384
 

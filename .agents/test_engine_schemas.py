@@ -185,10 +185,24 @@ class GoalTests(unittest.TestCase):
     def test_valid_goal(self):
         self.assertEqual([], self.errs(default_goal(records={"design": record()})))
 
+    def sized_goal(self, size):
+        chunks = []
+        doc = default_goal(records={"design": record(output={"details": chunks})})
+        while size - len(canon.goal_bytes(doc)) > 4100:
+            chunks.append("x" * 3500)
+        chunks.append("")
+        chunks[-1] = "x" * (size - len(canon.goal_bytes(doc)))
+        self.assertEqual(size, len(canon.goal_bytes(doc)))
+        self.assertTrue(all(len(chunk.encode("utf-8")) <= schemas.TEXT_LIMIT for chunk in chunks))
+        return doc
+
+    def test_goal_at_document_limit_is_valid(self):
+        self.assertEqual([], self.errs(self.sized_goal(262144)))
+
     def test_too_large(self):
-        doc = default_goal(records={f"design": record(output={"summary": "x" * 70000})})
+        doc = self.sized_goal(262145)
         errs = self.errs(doc)
-        self.assertTrue(any("too_large" in e and "records.design.output.summary" in e for e in errs), errs)
+        self.assertTrue(any("262145 bytes > 262144" in e and "records.design.output.details" in e for e in errs), errs)
 
     def test_skip_of_terminal_node(self):
         self.assertTrue(any("terminal node cannot be skipped" in e for e in self.errs(default_goal(skip={"merge": "x"}))))
